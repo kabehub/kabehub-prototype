@@ -16,6 +16,20 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [provider, setProvider] = useState<"claude" | "gemini">("claude");
 
+  // LocalStorageからAPIキーを読み込んでヘッダーに乗せるヘルパー
+  const getApiKeyHeaders = useCallback((): Record<string, string> => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    try {
+      const anthropic = localStorage.getItem("kabehub_anthropic_key");
+      const gemini = localStorage.getItem("kabehub_gemini_key");
+      const openai = localStorage.getItem("kabehub_openai_key");
+      if (anthropic) headers["x-anthropic-api-key"] = anthropic;
+      if (gemini) headers["x-gemini-api-key"] = gemini;
+      if (openai) headers["x-openai-api-key"] = openai;
+    } catch {}
+    return headers;
+  }, []);
+
   const fetchThreads = useCallback(async () => {
     try {
       const res = await fetch("/api/threads", { cache: "no-store" });
@@ -123,10 +137,8 @@ export default function Home() {
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getApiKeyHeaders(),
         body: JSON.stringify({
-          threadId: activeThreadId,
-          messages: [...messages.map(m => ({ role: m.role, content: m.content, provider: m.provider })), { role: "user", content: userContent }],
           userContent,
           provider,
           systemPrompt: activeThread?.system_prompt ?? "",
@@ -161,7 +173,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getApiKeyHeaders(),
         body: JSON.stringify({
           threadId: activeThreadId,
           messages: [...messages.map(m => ({ role: m.role, content: m.content, provider: m.provider }))],
@@ -209,7 +221,7 @@ export default function Home() {
 
       const chatRes = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getApiKeyHeaders(),
         body: JSON.stringify({
           threadId: activeThreadId,
           messages: newMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),

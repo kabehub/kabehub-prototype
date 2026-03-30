@@ -67,6 +67,57 @@ export default function ChatPanel({
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
 
+  // ★ APIキー管理関連
+  const [showApiKeys, setShowApiKeys] = useState(false);
+  const [apiKeyDrafts, setApiKeyDrafts] = useState({ anthropic: "", gemini: "", openai: "" });
+  const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [showKeyValues, setShowKeyValues] = useState({ anthropic: false, gemini: false, openai: false });
+
+  // APIキーをLocalStorageから読み込む
+  useEffect(() => {
+    try {
+      setApiKeyDrafts({
+        anthropic: localStorage.getItem("kabehub_anthropic_key") ?? "",
+        gemini: localStorage.getItem("kabehub_gemini_key") ?? "",
+        openai: localStorage.getItem("kabehub_openai_key") ?? "",
+      });
+    } catch {}
+  }, []);
+
+  const hasAnyApiKey = !!(apiKeyDrafts.anthropic || apiKeyDrafts.gemini || apiKeyDrafts.openai);
+
+  const handleSaveApiKeys = () => {
+    try {
+      if (apiKeyDrafts.anthropic.trim()) {
+        localStorage.setItem("kabehub_anthropic_key", apiKeyDrafts.anthropic.trim());
+      } else {
+        localStorage.removeItem("kabehub_anthropic_key");
+      }
+      if (apiKeyDrafts.gemini.trim()) {
+        localStorage.setItem("kabehub_gemini_key", apiKeyDrafts.gemini.trim());
+      } else {
+        localStorage.removeItem("kabehub_gemini_key");
+      }
+      if (apiKeyDrafts.openai.trim()) {
+        localStorage.setItem("kabehub_openai_key", apiKeyDrafts.openai.trim());
+      } else {
+        localStorage.removeItem("kabehub_openai_key");
+      }
+      setApiKeySaved(true);
+      setTimeout(() => setApiKeySaved(false), 2000);
+    } catch (err) {
+      console.error("APIキー保存失敗:", err);
+    }
+  };
+
+  const handleOpenApiKeys = () => {
+    setShowApiKeys(true);
+    setShowNotes(false);
+    setShowDrafts(false);
+    setShowSystemPrompt(false);
+    setShowShare(false);
+  };
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -79,6 +130,7 @@ export default function ChatPanel({
     setShowDrafts(false);
     setShowSystemPrompt(false);
     setShowShare(false);
+    setShowApiKeys(false);
     setSharePublic(thread?.is_public ?? false);
     setShareHideMemos(thread?.hide_memos ?? false);
     setShareToken(thread?.share_token ?? null);
@@ -504,7 +556,14 @@ const handleExport = (format: "txt" | "md" | "csv") => {
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
             >✎</button>
-            {/* ★ 公開設定ボタン */}
+            {/* ★ APIキー設定ボタン */}
+            <button
+              onClick={handleOpenApiKeys}
+              title="APIキーを設定"
+              style={{ padding: "5px 12px", borderRadius: "6px", border: `1px solid ${showApiKeys ? "var(--accent)" : hasAnyApiKey ? "var(--accent)" : "var(--border)"}`, background: showApiKeys ? "var(--accent)" : "white", color: showApiKeys ? "white" : hasAnyApiKey ? "var(--accent)" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={(e) => { if (!showApiKeys) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
+              onMouseLeave={(e) => { if (!showApiKeys) { (e.currentTarget as HTMLButtonElement).style.borderColor = hasAnyApiKey ? "var(--accent)" : "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = hasAnyApiKey ? "var(--accent)" : "var(--ink-muted)"; } }}
+            >🔑 APIキー{hasAnyApiKey && " ✓"}</button>
             <button
               onClick={handleOpenShare}
               title="公開設定"
@@ -568,6 +627,72 @@ const handleExport = (format: "txt" | "md" | "csv") => {
           </div>
         )}
       </div>
+
+      {/* ★ APIキー設定ドロワー */}
+      {showApiKeys && (
+        <div style={{ borderBottom: "1px solid var(--border)", background: "#fefdf0", padding: "16px 28px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>APIキー設定</div>
+              <div style={{ fontSize: "10px", color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>このブラウザにのみ保存されます（LocalStorage）</div>
+            </div>
+            <button onClick={() => setShowApiKeys(false)} style={{ background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 2px" }}>×</button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {/* Anthropic */}
+            <div>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>Anthropic (Claude) <span style={{ color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>— sk-ant-... で始まるキー</span></div>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <input
+                  type={showKeyValues.anthropic ? "text" : "password"}
+                  value={apiKeyDrafts.anthropic}
+                  onChange={(e) => setApiKeyDrafts(prev => ({ ...prev, anthropic: e.target.value }))}
+                  placeholder="sk-ant-api03-..."
+                  style={{ flex: 1, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", background: "white", boxSizing: "border-box" }}
+                />
+                <button onClick={() => setShowKeyValues(prev => ({ ...prev, anthropic: !prev.anthropic }))} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", cursor: "pointer" }}>{showKeyValues.anthropic ? "隠す" : "表示"}</button>
+              </div>
+            </div>
+            {/* Gemini */}
+            <div>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>Google (Gemini) <span style={{ color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>— AIza... で始まるキー</span></div>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <input
+                  type={showKeyValues.gemini ? "text" : "password"}
+                  value={apiKeyDrafts.gemini}
+                  onChange={(e) => setApiKeyDrafts(prev => ({ ...prev, gemini: e.target.value }))}
+                  placeholder="AIzaSy..."
+                  style={{ flex: 1, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", background: "white", boxSizing: "border-box" }}
+                />
+                <button onClick={() => setShowKeyValues(prev => ({ ...prev, gemini: !prev.gemini }))} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", cursor: "pointer" }}>{showKeyValues.gemini ? "隠す" : "表示"}</button>
+              </div>
+            </div>
+            {/* OpenAI */}
+            <div>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>OpenAI <span style={{ color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>— sk-... で始まるキー（将来用）</span></div>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <input
+                  type={showKeyValues.openai ? "text" : "password"}
+                  value={apiKeyDrafts.openai}
+                  onChange={(e) => setApiKeyDrafts(prev => ({ ...prev, openai: e.target.value }))}
+                  placeholder="sk-proj-..."
+                  style={{ flex: 1, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", background: "white", boxSizing: "border-box" }}
+                />
+                <button onClick={() => setShowKeyValues(prev => ({ ...prev, openai: !prev.openai }))} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", cursor: "pointer" }}>{showKeyValues.openai ? "隠す" : "表示"}</button>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "12px" }}>
+            <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>
+              空欄で保存すると削除されます。未入力のキーは .env.local の設定が使われます。
+            </div>
+            <button
+              onClick={handleSaveApiKeys}
+              style={{ padding: "5px 16px", borderRadius: "6px", border: "none", background: apiKeySaved ? "#16a34a" : "var(--accent)", color: "white", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.2s" }}
+            >{apiKeySaved ? "✓ 保存しました" : "保存"}</button>
+          </div>
+        </div>
+      )}
 
       {/* ★ システムプロンプトドロワー */}
       {showSystemPrompt && thread && (

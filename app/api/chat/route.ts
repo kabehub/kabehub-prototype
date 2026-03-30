@@ -121,9 +121,10 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. AI API 呼び出し
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  // ユーザー設定キー（ヘッダー）を優先、なければ env.local のキーをフォールバック
+  const anthropicKey = req.headers.get("x-anthropic-api-key") || process.env.ANTHROPIC_API_KEY;
+  const geminiKey = req.headers.get("x-gemini-api-key") || process.env.GEMINI_API_KEY;
+  const openaiKey = req.headers.get("x-openai-api-key") || process.env.OPENAI_API_KEY;
 
   // メモにはラベルを付与してAPIへ渡す
   const messagesForApi = messages.map((m: ChatMessage) => ({
@@ -138,28 +139,25 @@ export async function POST(req: NextRequest) {
   let usedProvider = provider;
 
   try {
-    if (provider === "gemini" && geminiKey) {
+    if (provider === "gemini") {
+      if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
       assistantContent = await callGemini(geminiKey, messagesForApi, systemPrompt);
       usedProvider = "gemini";
-    } else if (provider === "claude" && anthropicKey) {
+    } else if (provider === "claude") {
+      if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
       assistantContent = await callClaude(anthropicKey, messagesForApi, systemPrompt);
       usedProvider = "claude";
-    } else if (anthropicKey) {
-      assistantContent = await callClaude(anthropicKey, messagesForApi, systemPrompt);
-      usedProvider = "claude";
-    } else if (geminiKey) {
-      assistantContent = await callGemini(geminiKey, messagesForApi, systemPrompt);
-      usedProvider = "gemini";
-    } else if (openaiKey) {
+    } else if (provider === "openai") {
+      if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
       assistantContent = await callOpenAI(openaiKey, messagesForApi, systemPrompt);
       usedProvider = "openai";
     } else {
-      assistantContent = `## モック応答\n\nAPIキーが設定されていません。`;
-      usedProvider = "mock";
+      throw new Error(`未対応のプロバイダーです: ${provider}`);
     }
   } catch (err) {
     console.error("AI API error:", err);
-    assistantContent = `（エラー: ${err instanceof Error ? err.message : "不明なエラー"}）`;
+    assistantContent = `（エラー: ${err instanceof Error ? err.message : "不明なエラー"}）\n※右上の「🔑 APIキー」ボタンから設定を確認してください。`;
+    usedProvider = provider;
   }
 
   // 4. AIの応答を保存
