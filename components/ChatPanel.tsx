@@ -1,0 +1,770 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Message, Thread, ThreadNote, MessageNote, Draft } from "@/types";
+import MessageBubble, { ThinkingBubble } from "./MessageBubble";
+import ChatInput from "./ChatInput";
+
+interface ChatPanelProps {
+  thread: Thread | null;
+  messages: Message[];
+  inputValue: string;
+  onInputChange: (val: string) => void;
+  onSubmit: () => void;
+  onMemoSubmit: () => void;
+  isLoading: boolean;
+  provider: "claude" | "gemini";
+  onProviderChange: (p: "claude" | "gemini") => void;
+  onTitleUpdate: (id: string, title: string) => void;
+  onRegenerate: (targetProvider: "claude" | "gemini") => void;
+  onTrimFrom: (message: Message) => void;
+}
+
+export default function ChatPanel({
+  thread,
+  messages,
+  inputValue,
+  onInputChange,
+  onSubmit,
+  onMemoSubmit,
+  isLoading,
+  provider,
+  onProviderChange,
+  onTitleUpdate,
+  onRegenerate,
+  onTrimFrom,
+}: ChatPanelProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showDialog, setShowDialog] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+
+  // スレッドメモ関連
+  const [showNotes, setShowNotes] = useState(false);
+  const [notes, setNotes] = useState<ThreadNote[]>([]);
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState("");
+  const [notesLoading, setNotesLoading] = useState(false);
+
+  // メッセージノート関連
+  const [messageNotes, setMessageNotes] = useState<MessageNote[]>([]);
+
+  // 下書き関連
+  const [showDrafts, setShowDrafts] = useState(false);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+
+  // ★ システムプロンプト関連
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [systemPromptDraft, setSystemPromptDraft] = useState("");
+  const [systemPromptSaving, setSystemPromptSaving] = useState(false);
+
+  // ★ 公開設定関連
+  const [showShare, setShowShare] = useState(false);
+  const [sharePublic, setSharePublic] = useState(false);
+  const [shareHideMemos, setShareHideMemos] = useState(false);
+  const [shareSaving, setShareSaving] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isLoading]);
+
+  // スレッド切り替え時にリセット
+  useEffect(() => {
+    setShowNotes(false);
+    setShowDrafts(false);
+    setShowSystemPrompt(false);
+    setShowShare(false);
+    setSharePublic(thread?.is_public ?? false);
+    setShareHideMemos(thread?.hide_memos ?? false);
+    setShareToken(thread?.share_token ?? null);
+    setNotes([]);
+    setDrafts([]);
+    setMessageNotes([]);
+    setNewNoteContent("");
+    setEditingNoteId(null);
+    // スレッドのsystem_promptを読み込む
+    setSystemPromptDraft(thread?.system_prompt ?? "");
+  }, [thread?.id]);
+
+  const fetchNotes = useCallback(async () => {
+    if (!thread) return;
+    setNotesLoading(true);
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/notes`, { cache: "no-store" });
+      const data: ThreadNote[] = await res.json();
+      setNotes(data);
+    } catch (err) {
+      console.error("メモ取得失敗:", err);
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [thread]);
+
+  const fetchMessageNotes = useCallback(async () => {
+    if (!thread) return;
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/message-notes`, { cache: "no-store" });
+      const data: MessageNote[] = await res.json();
+      setMessageNotes(data);
+    } catch (err) {
+      console.error("メッセージノート取得失敗:", err);
+    }
+  }, [thread]);
+
+  const fetchDrafts = useCallback(async () => {
+    if (!thread) return;
+    setDraftsLoading(true);
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/drafts`, { cache: "no-store" });
+      const data: Draft[] = await res.json();
+      setDrafts(data);
+    } catch (err) {
+      console.error("下書き取得失敗:", err);
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, [thread]);
+
+  // スレッド選択時にメッセージノートを取得
+  useEffect(() => {
+    if (thread) fetchMessageNotes();
+  }, [thread?.id, fetchMessageNotes]);
+
+  const handleOpenNotes = () => {
+    setShowNotes(true);
+    setShowDrafts(false);
+    setShowSystemPrompt(false);
+    fetchNotes();
+  };
+
+  const handleOpenDrafts = () => {
+    setShowDrafts(true);
+    setShowNotes(false);
+    setShowSystemPrompt(false);
+    fetchDrafts();
+  };
+
+  // ★ システムプロンプトドロワーを開く
+  const handleOpenSystemPrompt = () => {
+    setShowSystemPrompt(true);
+    setShowNotes(false);
+    setShowDrafts(false);
+    // 現在のスレッドのsystem_promptを反映
+    setSystemPromptDraft(thread?.system_prompt ?? "");
+  };
+
+  // ★ 公開設定ドロワーを開く
+  const handleOpenShare = () => {
+    setShowShare(true);
+    setShowNotes(false);
+    setShowDrafts(false);
+    setShowSystemPrompt(false);
+    setSharePublic(thread?.is_public ?? false);
+    setShareHideMemos(thread?.hide_memos ?? false);
+    setShareToken(thread?.share_token ?? null);
+  };
+
+  // ★ 公開設定を保存
+  const handleSaveShare = async (newPublic: boolean, newHideMemos: boolean) => {
+    if (!thread) return;
+    setShareSaving(true);
+    try {
+      const res = await fetch(`/api/threads/${thread.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_public: newPublic,
+          hide_memos: newHideMemos,
+          needsToken: newPublic, // 公開ONの時だけtokenを生成
+        }),
+      });
+      const updated = await res.json();
+      setSharePublic(updated.is_public ?? false);
+      setShareHideMemos(updated.hide_memos ?? false);
+      setShareToken(updated.share_token ?? null);
+      thread.is_public = updated.is_public;
+      thread.hide_memos = updated.hide_memos;
+      thread.share_token = updated.share_token;
+    } catch (err) {
+      console.error("公開設定保存失敗:", err);
+    } finally {
+      setShareSaving(false);
+    }
+  };
+
+  // ★ URLをコピー
+  const handleCopyUrl = () => {
+    if (!shareToken) return;
+    const url = `${window.location.origin}/share/${shareToken}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    });
+  };
+
+
+  // ★ システムプロンプトを保存
+  const handleSaveSystemPrompt = async () => {
+    if (!thread) return;
+    setSystemPromptSaving(true);
+    try {
+      const res = await fetch(`/api/threads/${thread.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ system_prompt: systemPromptDraft }),
+      });
+      const updated = await res.json();
+      // thread オブジェクトはprops経由なのでローカルstateに反映
+      // 親コンポーネントへの通知は onTitleUpdate を流用してもよいが、
+      // system_promptはUIに直接表示しないため thread.system_prompt を
+      // ローカルで参照できるよう、closeだけして次回ドロワー展開時に再読み込み
+      thread.system_prompt = updated.system_prompt ?? "";
+    } catch (err) {
+      console.error("システムプロンプト保存失敗:", err);
+    } finally {
+      setSystemPromptSaving(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!thread || !newNoteContent.trim()) return;
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newNoteContent.trim() }),
+      });
+      const note: ThreadNote = await res.json();
+      setNotes((prev) => [...prev, note]);
+      setNewNoteContent("");
+    } catch (err) {
+      console.error("メモ追加失敗:", err);
+    }
+  };
+
+  const handleUpdateNote = async (id: string) => {
+    if (!thread || !editingNoteContent.trim()) return;
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/notes`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, content: editingNoteContent.trim() }),
+      });
+      const updated: ThreadNote = await res.json();
+      setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+      setEditingNoteId(null);
+    } catch (err) {
+      console.error("メモ更新失敗:", err);
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    if (!thread) return;
+    try {
+      await fetch(`/api/threads/${thread.id}/notes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+    } catch (err) {
+      console.error("メモ削除失敗:", err);
+    }
+  };
+
+  const handleAddMessageNote = useCallback(async (messageId: string, content: string) => {
+    if (!thread) return;
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/message-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, content }),
+      });
+      const note: MessageNote = await res.json();
+      setMessageNotes((prev) => [...prev, note]);
+    } catch (err) {
+      console.error("メッセージノート追加失敗:", err);
+    }
+  }, [thread]);
+
+  const handleDeleteMessageNote = useCallback(async (noteId: string) => {
+    if (!thread) return;
+    try {
+      await fetch(`/api/threads/${thread.id}/message-notes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: noteId }),
+      });
+      setMessageNotes((prev) => prev.filter((n) => n.id !== noteId));
+    } catch (err) {
+      console.error("メッセージノート削除失敗:", err);
+    }
+  }, [thread]);
+
+  const handleSaveDraft = async () => {
+    if (!thread || !inputValue.trim()) return;
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/drafts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: inputValue.trim() }),
+      });
+      const draft: Draft = await res.json();
+      setDrafts((prev) => [draft, ...prev]);
+      onInputChange("");
+    } catch (err) {
+      console.error("下書き保存失敗:", err);
+    }
+  };
+
+  const handleLoadDraft = (draft: Draft) => {
+    onInputChange(draft.content);
+    setShowDrafts(false);
+  };
+
+  const handleDeleteDraft = async (id: string) => {
+    if (!thread) return;
+    try {
+      await fetch(`/api/threads/${thread.id}/drafts`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      setDrafts((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      console.error("下書き削除失敗:", err);
+    }
+  };
+
+const buildExportContent = (format: "txt" | "md") => {
+  if (!thread) return "";
+  const lines: string[] = [];
+  const filename = thread.title.replace(/[/\\?%*:|"<>]/g, "_");
+
+  if (format === "md") {
+    lines.push(`# ${thread.title}`);
+    lines.push("");
+    lines.push(`> エクスポート日時: ${new Date().toLocaleString("ja-JP")}`);
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    messages.forEach((msg) => {
+      const providerLabel =
+        msg.provider === "gemini" ? "Gemini" :
+        msg.provider === "claude" ? "Claude" :
+        msg.provider === "memo" ? "📝 Memo" : "You";
+      const time = new Date(msg.created_at).toLocaleString("ja-JP");
+      if (msg.provider === "memo") {
+        lines.push(`> **${providerLabel}** · ${time}`);
+        lines.push(`> ${msg.content.split("\n").join("\n> ")}`);
+      } else if (msg.role === "user") {
+        lines.push(`**You** · ${time}`);
+        lines.push("");
+        lines.push(msg.content);
+      } else {
+        lines.push(`**${providerLabel}** · ${time}`);
+        lines.push("");
+        lines.push(msg.content);
+      }
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+    });
+  } else {
+    lines.push(`# ${thread.title}`);
+    lines.push(`エクスポート日時: ${new Date().toLocaleString("ja-JP")}`);
+    lines.push("=".repeat(40));
+    lines.push("");
+    messages.forEach((msg) => {
+      const role = msg.role === "user" ? "【あなた】" : `【${msg.provider === "gemini" ? "Gemini" : msg.provider === "claude" ? "Claude" : "AI"}】`;
+      const time = new Date(msg.created_at).toLocaleString("ja-JP");
+      lines.push(`${role} ${time}`);
+      lines.push(msg.content);
+      lines.push("");
+      lines.push("-".repeat(40));
+      lines.push("");
+    });
+  }
+
+  return lines.join("\n");
+};
+
+const handleExport = (format: "txt" | "md") => {
+  if (!thread || messages.length === 0) return;
+  const content = buildExportContent(format);
+  const mimeType = format === "md" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8";
+  const filename = thread.title.replace(/[/\\?%*:|"<>]/g, "_");
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.${format}`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+  const openDialog = () => {
+    setEditTitle(thread?.title ?? "");
+    setShowDialog(true);
+  };
+
+  const handleSaveTitle = async () => {
+    if (!thread || !editTitle.trim()) return;
+    await fetch(`/api/threads/${thread.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: editTitle.trim() }),
+    });
+    onTitleUpdate(thread.id, editTitle.trim());
+    setShowDialog(false);
+  };
+
+  const lastAssistantIndex = messages.reduce(
+    (last, msg, i) => (msg.role === "assistant" ? i : last),
+    -1
+  );
+
+  // システムプロンプトが設定されているかどうか
+  const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: "var(--chat-bg)", overflow: "hidden" }}>
+
+      {/* Header */}
+      <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)", display: "flex", alignItems: "center", gap: "12px", minHeight: "60px" }}>
+        {thread ? (
+          <>
+            <div style={{ width: "4px", height: "18px", background: "var(--accent)", borderRadius: "2px", flexShrink: 0 }} />
+            <h1 style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 500, color: "var(--ink)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {thread.title}
+            </h1>
+            {/* タイトル編集ボタン */}
+            <button
+              onClick={openDialog}
+              title="タイトルを編集"
+              style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+            >✎</button>
+            {/* ★ 公開設定ボタン */}
+            <button
+              onClick={handleOpenShare}
+              title="公開設定"
+              style={{ padding: "5px 12px", borderRadius: "6px", border: `1px solid ${showShare ? "var(--accent)" : sharePublic ? "#16a34a" : "var(--border)"}`, background: showShare ? "var(--accent)" : "white", color: showShare ? "white" : sharePublic ? "#16a34a" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={(e) => { if (!showShare) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
+              onMouseLeave={(e) => { if (!showShare) { (e.currentTarget as HTMLButtonElement).style.borderColor = sharePublic ? "#16a34a" : "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = sharePublic ? "#16a34a" : "var(--ink-muted)"; } }}
+            >{sharePublic ? "🌐 公開中" : "🔒 非公開"}</button>
+            {/* ★ システムプロンプトボタン */}
+            <button
+              onClick={handleOpenSystemPrompt}
+              title="システムプロンプトを設定"
+              style={{ padding: "5px 12px", borderRadius: "6px", border: `1px solid ${showSystemPrompt ? "var(--accent)" : hasSystemPrompt ? "var(--accent)" : "var(--border)"}`, background: showSystemPrompt ? "var(--accent)" : "white", color: showSystemPrompt ? "white" : hasSystemPrompt ? "var(--accent)" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={(e) => { if (!showSystemPrompt) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
+              onMouseLeave={(e) => { if (!showSystemPrompt) { (e.currentTarget as HTMLButtonElement).style.borderColor = hasSystemPrompt ? "var(--accent)" : "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = hasSystemPrompt ? "var(--accent)" : "var(--ink-muted)"; } }}
+            >🤖 プロンプト{hasSystemPrompt && " ✓"}</button>
+            {/* スレッドメモボタン */}
+            <button
+              onClick={handleOpenNotes}
+              title="スレッドメモ"
+              style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: showNotes ? "var(--accent)" : "white", color: showNotes ? "white" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={(e) => { if (!showNotes) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
+              onMouseLeave={(e) => { if (!showNotes) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; } }}
+            >📝 メモ {notes.length > 0 && `(${notes.length})`}</button>
+            {/* 下書きボタン */}
+            <button
+              onClick={handleOpenDrafts}
+              title="下書き"
+              style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: showDrafts ? "var(--accent)" : "white", color: showDrafts ? "white" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={(e) => { if (!showDrafts) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
+              onMouseLeave={(e) => { if (!showDrafts) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; } }}
+            >📋 下書き {drafts.length > 0 && `(${drafts.length})`}</button>
+            {messages.length > 0 && (
+  <>
+    <button
+      onClick={() => handleExport("txt")}
+      title="TXTでエクスポート"
+      style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+    >↓ TXT</button>
+    <button
+      onClick={() => handleExport("md")}
+      title="Markdownでエクスポート"
+      style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+    >↓ MD</button>
+  </>
+)}
+          </>
+        ) : (
+          <div style={{ fontSize: "13px", color: "var(--ink-muted)", fontStyle: "italic" }}>
+            スレッドを選択するか、新規作成してください
+          </div>
+        )}
+      </div>
+
+      {/* ★ システムプロンプトドロワー */}
+      {showSystemPrompt && thread && (
+        <div style={{ borderBottom: "1px solid var(--border)", background: "#f5f3ff", padding: "16px 28px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>システムプロンプト</div>
+              <div style={{ fontSize: "10px", color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>このスレッドのAIの役割・人格を設定します</div>
+            </div>
+            <button onClick={() => setShowSystemPrompt(false)} style={{ background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 2px" }}>×</button>
+          </div>
+          <textarea
+            value={systemPromptDraft}
+            onChange={(e) => setSystemPromptDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSaveSystemPrompt(); }}
+            placeholder={`例：あなたは優秀なプロダクトマネージャーです。ユーザーのアイデアに対して、批判的かつ建設的なフィードバックをしてください。\n例：あなたは厳しい編集者です。文章の冗長な部分を容赦なく指摘してください。`}
+            style={{ width: "100%", minHeight: "100px", maxHeight: "200px", padding: "10px 12px", border: "1px solid #c4b5fd", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", background: "white", lineHeight: 1.6 }}
+          />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
+            <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
+              Cmd/Ctrl+Enter で保存 · 空にして保存するとリセット
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {systemPromptDraft.trim() && (
+                <button
+                  onClick={() => setSystemPromptDraft("")}
+                  style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}
+                >クリア</button>
+              )}
+              <button
+                onClick={handleSaveSystemPrompt}
+                disabled={systemPromptSaving}
+                style={{ padding: "5px 14px", borderRadius: "6px", border: "none", background: systemPromptSaving ? "var(--border)" : "#7c3aed", color: systemPromptSaving ? "var(--ink-faint)" : "white", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: systemPromptSaving ? "default" : "pointer", transition: "all 0.15s" }}
+              >{systemPromptSaving ? "保存中…" : "保存"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ★ 公開設定ドロワー */}
+      {showShare && thread && (
+        <div style={{ borderBottom: "1px solid var(--border)", background: "#f0fdf4", padding: "16px 28px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>公開設定</div>
+              <div style={{ fontSize: "10px", color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>URLを知っている人なら誰でも閲覧できます</div>
+            </div>
+            <button onClick={() => setShowShare(false)} style={{ background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 2px" }}>×</button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+              <div
+                onClick={() => { const next = !sharePublic; setSharePublic(next); handleSaveShare(next, shareHideMemos); }}
+                style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}
+              >
+                <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: sharePublic ? "translateX(18px)" : "translateX(0)" }} />
+              </div>
+              <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
+                {sharePublic ? "🌐 公開中（リンクを知っている人が閲覧可能）" : "🔒 非公開"}
+              </span>
+              {shareSaving && <span style={{ fontSize: "11px", color: "var(--ink-faint)" }}>保存中…</span>}
+            </label>
+            {sharePublic && (
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", paddingLeft: "4px" }}>
+                <div
+                  onClick={() => { const next = !shareHideMemos; setShareHideMemos(next); handleSaveShare(sharePublic, next); }}
+                  style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareHideMemos ? "#7c3aed" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}
+                >
+                  <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareHideMemos ? "translateX(18px)" : "translateX(0)" }} />
+                </div>
+                <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
+                  📝 メモを共有ページに表示しない
+                </span>
+              </label>
+            )}
+            {sharePublic && shareToken && (
+              <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "8px", background: "white", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "8px 12px" }}>
+                <span style={{ fontSize: "12px", color: "#15803d", fontFamily: "'JetBrains Mono', monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {typeof window !== "undefined" ? `${window.location.origin}/share/${shareToken}` : `/share/${shareToken}`}
+                </span>
+                <button
+                  onClick={handleCopyUrl}
+                  style={{ padding: "4px 12px", borderRadius: "6px", border: "none", background: shareCopied ? "#16a34a" : "#dcfce7", color: shareCopied ? "white" : "#15803d", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", flexShrink: 0, transition: "all 0.15s" }}
+                >{shareCopied ? "✓ コピー済み" : "📋 コピー"}</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* スレッドメモドロワー */}
+      {showNotes && thread && (
+        <div style={{ borderBottom: "1px solid var(--border)", background: "#fafaf7", padding: "16px 28px", maxHeight: "320px", overflowY: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>スレッドメモ</div>
+            <button onClick={() => setShowNotes(false)} style={{ background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 2px" }}>×</button>
+          </div>
+          {notesLoading ? (
+            <div style={{ fontSize: "12px", color: "var(--ink-faint)", padding: "8px 0" }}>読み込み中…</div>
+          ) : notes.length === 0 ? (
+            <div style={{ fontSize: "12px", color: "var(--ink-faint)", padding: "8px 0" }}>メモはまだありません</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
+              {notes.map((note) => (
+                <div key={note.id} style={{ background: "white", border: "1px solid var(--border)", borderRadius: "8px", padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {editingNoteId === note.id ? (
+                    <>
+                      <textarea autoFocus value={editingNoteContent} onChange={(e) => setEditingNoteContent(e.target.value)} style={{ width: "100%", minHeight: "60px", padding: "6px 8px", border: "1px solid var(--accent)", borderRadius: "6px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", boxSizing: "border-box" }} />
+                      <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                        <button onClick={() => setEditingNoteId(null)} style={{ padding: "3px 10px", borderRadius: "5px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", cursor: "pointer" }}>キャンセル</button>
+                        <button onClick={() => handleUpdateNote(note.id)} style={{ padding: "3px 10px", borderRadius: "5px", border: "none", background: "var(--accent)", color: "white", fontSize: "11px", cursor: "pointer" }}>保存</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: "13px", color: "var(--ink)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{note.content}</div>
+                      <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                        <button onClick={() => { setEditingNoteId(note.id); setEditingNoteContent(note.content); }} style={{ padding: "2px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}>✎ 編集</button>
+                        <button onClick={() => handleDeleteNote(note.id)} style={{ padding: "2px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+                        >✕ 削除</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <textarea
+              value={newNoteContent}
+              onChange={(e) => setNewNoteContent(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAddNote(); }}
+              placeholder="メモを追加… (Cmd/Ctrl+Enter で保存)"
+              style={{ width: "100%", minHeight: "60px", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", background: "white" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={handleAddNote} disabled={!newNoteContent.trim()} style={{ padding: "5px 14px", borderRadius: "6px", border: "none", background: newNoteContent.trim() ? "var(--accent)" : "var(--border)", color: newNoteContent.trim() ? "white" : "var(--ink-faint)", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", cursor: newNoteContent.trim() ? "pointer" : "default", transition: "all 0.15s" }}>
+                ＋ 追加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 下書きドロワー */}
+      {showDrafts && thread && (
+        <div style={{ borderBottom: "1px solid var(--border)", background: "#f0f9ff", padding: "16px 28px", maxHeight: "320px", overflowY: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>下書き</div>
+            <button onClick={() => setShowDrafts(false)} style={{ background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 2px" }}>×</button>
+          </div>
+          {draftsLoading ? (
+            <div style={{ fontSize: "12px", color: "var(--ink-faint)", padding: "8px 0" }}>読み込み中…</div>
+          ) : drafts.length === 0 ? (
+            <div style={{ fontSize: "12px", color: "var(--ink-faint)", padding: "8px 0" }}>下書きはまだありません</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {drafts.map((draft) => (
+                <div key={draft.id} style={{ background: "white", border: "1px solid var(--border)", borderRadius: "8px", padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ fontSize: "13px", color: "var(--ink)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{draft.content}</div>
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                    <button
+                      onClick={() => handleLoadDraft(draft)}
+                      style={{ padding: "2px 8px", borderRadius: "5px", border: "1px solid var(--accent)", background: "white", color: "var(--accent)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}
+                    >↑ 入力欄へ</button>
+                    <button
+                      onClick={() => handleDeleteDraft(draft.id)}
+                      style={{ padding: "2px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+                    >✕ 削除</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Messages */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "28px 48px" }}>
+        {!thread && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "16px", color: "var(--ink-muted)" }}>
+            <div style={{ width: "56px", height: "56px", borderRadius: "14px", background: "white", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>✦</div>
+            <div style={{ textAlign: "center", lineHeight: 1.8 }}>
+              <div style={{ fontFamily: "'Lora', serif", fontSize: "18px", color: "var(--ink)", marginBottom: "6px" }}>思考を始めましょう</div>
+              <div style={{ fontSize: "13px" }}>左の「＋」から新しい壁打ちを開始できます。</div>
+            </div>
+          </div>
+        )}
+        {thread && messages.length === 0 && !isLoading && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--ink-muted)", fontSize: "13px" }}>
+            最初のメッセージを入力してください。
+          </div>
+        )}
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            isLast={i === lastAssistantIndex}
+            isLoading={isLoading}
+            provider={provider}
+            onRegenerate={onRegenerate}
+            onTrimFrom={onTrimFrom}
+            messageNotes={messageNotes}
+            onAddMessageNote={handleAddMessageNote}
+            onDeleteMessageNote={handleDeleteMessageNote}
+          />
+        ))}
+        {isLoading && <ThinkingBubble />}
+      </div>
+
+      {/* 下書き保存ボタン */}
+      {thread && inputValue.trim() && (
+        <div style={{ padding: "0 28px 8px", display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={handleSaveDraft}
+            style={{ padding: "4px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.15s" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+          >
+            📋 下書き保存
+          </button>
+        </div>
+      )}
+
+      {/* Input */}
+      <ChatInput
+        value={inputValue}
+        onChange={onInputChange}
+        onSubmit={onSubmit}
+        onMemoSubmit={onMemoSubmit}
+        isLoading={isLoading}
+        disabled={!thread}
+        provider={provider}
+        onProviderChange={onProviderChange}
+      />
+
+      {/* タイトル編集ダイアログ */}
+      {showDialog && (
+        <div onClick={() => setShowDialog(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: "12px", padding: "24px", width: "400px", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}>
+            <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, marginBottom: "16px", color: "var(--ink)" }}>タイトルを編集</div>
+            <input
+              autoFocus
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveTitle(); if (e.key === "Escape") setShowDialog(false); }}
+              style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "14px", fontFamily: "'DM Sans', sans-serif", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
+              <button onClick={() => setShowDialog(false)} style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer" }}>キャンセル</button>
+              <button onClick={handleSaveTitle} style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: "var(--accent)", color: "white", fontSize: "13px", cursor: "pointer" }}>保存</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
