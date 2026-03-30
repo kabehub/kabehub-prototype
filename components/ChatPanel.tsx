@@ -341,49 +341,99 @@ export default function ChatPanel({
     }
   };
 
-const buildExportContent = (format: "txt" | "md") => {
+const buildExportContent = (format: "txt" | "md" | "csv") => {
   if (!thread) return "";
   const lines: string[] = [];
-  const filename = thread.title.replace(/[/\\?%*:|"<>]/g, "_");
 
   if (format === "md") {
-    lines.push(`# ${thread.title}`);
-    lines.push("");
-    lines.push(`> エクスポート日時: ${new Date().toLocaleString("ja-JP")}`);
-    lines.push("");
+    // --- YAML フロントマター ---
+    const createdAt = messages.length > 0
+      ? new Date(messages[0].created_at).toISOString()
+      : new Date(thread.created_at).toISOString();
+    const modifiedAt = messages.length > 0
+      ? new Date(messages[messages.length - 1].created_at).toISOString()
+      : new Date(thread.updated_at ?? thread.created_at).toISOString();
+
+    // 使用AIをproviderから自動収集
+    const usedAIs = Array.from(
+      new Set(
+        messages
+          .map((m) => m.provider)
+          .filter((p) => p === "claude" || p === "gemini")
+      )
+    );
+    const tags = ["ai-conversation", ...usedAIs];
+
+    // タイトル内のダブルクォートをエスケープ
+    const safeTitle = thread.title.replace(/"/g, '\\"');
+    const systemPromptValue = thread.system_prompt?.trim() ?? "";
+
+    lines.push("---");
+    lines.push(`title: "${safeTitle}"`);
+    lines.push(`source: kabehub`);
+    lines.push(`created: ${createdAt}`);
+    lines.push(`modified: ${modifiedAt}`);
+    lines.push(`tags:`);
+    tags.forEach((tag) => lines.push(`  - ${tag}`));
+    lines.push(`message_count: ${messages.length}`);
+    lines.push(`system_prompt: "${systemPromptValue.replace(/"/g, '\\"')}"`);
     lines.push("---");
     lines.push("");
+
+    // --- Callout 形式でメッセージ出力 ---
     messages.forEach((msg) => {
-      const providerLabel =
-        msg.provider === "gemini" ? "Gemini" :
-        msg.provider === "claude" ? "Claude" :
-        msg.provider === "memo" ? "📝 Memo" : "You";
-      const time = new Date(msg.created_at).toLocaleString("ja-JP");
+      const contentLines = msg.content
+        .split("\n")
+        .map((l) => `> ${l}`)
+        .join("\n");
+
       if (msg.provider === "memo") {
-        lines.push(`> **${providerLabel}** · ${time}`);
-        lines.push(`> ${msg.content.split("\n").join("\n> ")}`);
+        lines.push(`> [!MEMO] 📝 Memo`);
+        lines.push(contentLines);
       } else if (msg.role === "user") {
-        lines.push(`**You** · ${time}`);
-        lines.push("");
-        lines.push(msg.content);
+        lines.push(`> [!QUESTION] You`);
+        lines.push(contentLines);
       } else {
-        lines.push(`**${providerLabel}** · ${time}`);
-        lines.push("");
-        lines.push(msg.content);
+        const aiLabel = msg.provider === "gemini" ? "Gemini" : "Claude";
+        lines.push(`> [!NOTE] ${aiLabel}`);
+        lines.push(contentLines);
       }
       lines.push("");
-      lines.push("---");
-      lines.push("");
     });
+
+  } else if (format === "csv") {
+    // --- CSV（BOM付き・Excel対応）---
+    lines.push("\uFEFF" + "timestamp,role,provider,content");
+    messages.forEach((msg) => {
+      const timestamp = new Date(msg.created_at).toLocaleString("ja-JP");
+      const role = msg.role;
+      const provider = msg.provider ?? "unknown";
+      // content: 改行→スペース、ダブルクォートを "" にエスケープ、カンマ/改行/クォート含む場合は囲む
+      const rawContent = msg.content.replace(/\n/g, " ");
+      const needsQuote = /[,"\n]/.test(rawContent);
+      const escapedContent = rawContent.replace(/"/g, '""');
+      const content = needsQuote ? `"${escapedContent}"` : escapedContent;
+      lines.push(`${timestamp},${role},${provider},${content}`);
+    });
+
   } else {
+    // --- TXT ---
     lines.push(`# ${thread.title}`);
     lines.push(`エクスポート日時: ${new Date().toLocaleString("ja-JP")}`);
     lines.push("=".repeat(40));
     lines.push("");
     messages.forEach((msg) => {
-      const role = msg.role === "user" ? "【あなた】" : `【${msg.provider === "gemini" ? "Gemini" : msg.provider === "claude" ? "Claude" : "AI"}】`;
+      let roleLabel: string;
+      if (msg.provider === "memo") {
+        roleLabel = "【📝 メモ】";
+      } else if (msg.role === "user") {
+        roleLabel = "【あなた】";
+      } else {
+        const aiName = msg.provider === "gemini" ? "Gemini" : msg.provider === "claude" ? "Claude" : "AI";
+        roleLabel = `【${aiName}】`;
+      }
       const time = new Date(msg.created_at).toLocaleString("ja-JP");
-      lines.push(`${role} ${time}`);
+      lines.push(`${roleLabel} ${time}`);
       lines.push(msg.content);
       lines.push("");
       lines.push("-".repeat(40));
@@ -394,10 +444,13 @@ const buildExportContent = (format: "txt" | "md") => {
   return lines.join("\n");
 };
 
-const handleExport = (format: "txt" | "md") => {
+const handleExport = (format: "txt" | "md" | "csv") => {
   if (!thread || messages.length === 0) return;
   const content = buildExportContent(format);
-  const mimeType = format === "md" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8";
+  const mimeType =
+    format === "md" ? "text/markdown;charset=utf-8" :
+    format === "csv" ? "text/csv;charset=utf-8" :
+    "text/plain;charset=utf-8";
   const filename = thread.title.replace(/[/\\?%*:|"<>]/g, "_");
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -494,11 +547,18 @@ const handleExport = (format: "txt" | "md") => {
     >↓ TXT</button>
     <button
       onClick={() => handleExport("md")}
-      title="Markdownでエクスポート"
+      title="Markdownでエクスポート（Obsidian対応）"
       style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
     >↓ MD</button>
+    <button
+      onClick={() => handleExport("csv")}
+      title="CSVでエクスポート（Excel対応）"
+      style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+    >↓ CSV</button>
   </>
 )}
           </>
