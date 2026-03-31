@@ -155,7 +155,7 @@ export default function ChatPanel({
     } finally {
       setNotesLoading(false);
     }
-  }, [thread]);
+  }, [thread?.id]);
 
   const fetchMessageNotes = useCallback(async () => {
     if (!thread) return;
@@ -166,7 +166,7 @@ export default function ChatPanel({
     } catch (err) {
       console.error("メッセージノート取得失敗:", err);
     }
-  }, [thread]);
+  }, [thread?.id]);
 
   const fetchDrafts = useCallback(async () => {
     if (!thread) return;
@@ -180,7 +180,7 @@ export default function ChatPanel({
     } finally {
       setDraftsLoading(false);
     }
-  }, [thread]);
+  }, [thread?.id]);
 
   // スレッド選択時にメッセージノートを取得
   useEffect(() => {
@@ -342,7 +342,7 @@ export default function ChatPanel({
     } catch (err) {
       console.error("メッセージノート追加失敗:", err);
     }
-  }, [thread]);
+  }, [thread?.id]);
 
   const handleDeleteMessageNote = useCallback(async (noteId: string) => {
     if (!thread) return;
@@ -356,7 +356,7 @@ export default function ChatPanel({
     } catch (err) {
       console.error("メッセージノート削除失敗:", err);
     }
-  }, [thread]);
+  }, [thread?.id]);
 
   const handleSaveDraft = async () => {
     if (!thread || !inputValue.trim()) return;
