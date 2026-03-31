@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addMessage, createThread, getThread } from "@/lib/supabase-db";
+import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,6 @@ async function callClaude(
     max_tokens: 2048,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
-  // system_prompt が空でなければ注入
   if (systemPrompt && systemPrompt.trim()) {
     body.system = systemPrompt.trim();
   }
@@ -44,7 +44,6 @@ async function callGemini(
     parts: [{ text: m.content }],
   }));
   const body: Record<string, unknown> = { contents };
-  // Gemini は systemInstruction フィールドで注入
   if (systemPrompt && systemPrompt.trim()) {
     body.systemInstruction = {
       parts: [{ text: systemPrompt.trim() }],
@@ -68,7 +67,6 @@ async function callOpenAI(
   messages: ChatMessage[],
   systemPrompt?: string
 ): Promise<string> {
-  // OpenAI は system ロールのメッセージを先頭に追加
   const msgs: { role: string; content: string }[] = [];
   if (systemPrompt && systemPrompt.trim()) {
     msgs.push({ role: "system", content: systemPrompt.trim() });
@@ -92,14 +90,24 @@ async function callOpenAI(
 }
 
 export async function POST(req: NextRequest) {
-  // systemPrompt を追加で受け取る
+  // ── 認証チェック ──────────────────────────────────────────
+  const res = NextResponse.next();
+  const supabase = createRouteHandlerSupabaseClient(req, res);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = user.id;
+
+  // ── リクエストボディ ──────────────────────────────────────
   const { threadId, messages, userContent, provider, isRegenerate, isMemo, systemPrompt } =
     await req.json();
 
-  // 1. スレッドが存在しない場合は新規作成
+  // 1. スレッドが存在しない場合は新規作成（user_idを渡す）
   const exists = await getThread(threadId);
   if (!exists) {
-    await createThread(threadId, userContent);
+    await createThread(threadId, userContent, userId);
   }
 
   // 2. ユーザーメッセージを保存（再生成時はスキップ）
@@ -112,7 +120,7 @@ export async function POST(req: NextRequest) {
     created_at: new Date().toISOString(),
   };
   if (!isRegenerate) {
-    await addMessage(userMessage);
+    await addMessage(userMessage, userId);
   }
 
   // メモモードの場合はAIを呼ばずここで終了
@@ -121,19 +129,20 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. AI API 呼び出し
-  // ユーザー設定キー（ヘッダー）を優先、なければ env.local のキーをフォールバック
   const anthropicKey = req.headers.get("x-anthropic-api-key") || process.env.ANTHROPIC_API_KEY;
   const geminiKey = req.headers.get("x-gemini-api-key") || process.env.GEMINI_API_KEY;
   const openaiKey = req.headers.get("x-openai-api-key") || process.env.OPENAI_API_KEY;
 
-  // メモにはラベルを付与してAPIへ渡す
-  const messagesForApi = messages.map((m: ChatMessage) => ({
-    role: m.role,
+  const messagesForApi = [
+  ...messages.map((m: ChatMessage) => ({
+    role: m.role as string,
     content:
       m.provider === "memo"
         ? `【ユーザーの思考メモ（返答不要の前提知識）】\n${m.content}`
         : m.content,
-  }));
+  })),
+  { role: "user" as string, content: userContent },
+  ];
 
   let assistantContent = "";
   let usedProvider = provider;
@@ -169,7 +178,7 @@ export async function POST(req: NextRequest) {
     provider: usedProvider,
     created_at: new Date().toISOString(),
   };
-  await addMessage(assistantMessage);
+  await addMessage(assistantMessage, userId);
 
   return NextResponse.json({ userMessage, assistantMessage });
 }

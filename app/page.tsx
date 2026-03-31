@@ -5,18 +5,35 @@ import { v4 as uuidv4 } from "uuid";
 import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 export default function Home() {
   const [threads, setThreads] = useState<Thread[]>([]);
-  const [displayThreads, setDisplayThreads] = useState<Thread[]>([]); // 表示用（検索結果）
-  const [isSearching, setIsSearching] = useState(false); // 検索中フラグ
+  const [displayThreads, setDisplayThreads] = useState<Thread[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [provider, setProvider] = useState<"claude" | "gemini">("claude");
+  const [user, setUser] = useState<User | null>(null);
 
-  // LocalStorageからAPIキーを読み込んでヘッダーに乗せるヘルパー
+  // ── ユーザー情報の取得 ───────────────────────────────────
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }, []);
+
+  // ── LocalStorageからAPIキーを読み込む ─────────────────────
   const getApiKeyHeaders = useCallback((): Record<string, string> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     try {
@@ -35,7 +52,7 @@ export default function Home() {
       const res = await fetch("/api/threads", { cache: "no-store" });
       const data: Thread[] = await res.json();
       setThreads(data);
-      setDisplayThreads(data); // 検索していない時は全件表示
+      setDisplayThreads(data);
       return data;
     } catch (err) {
       console.error("スレッド一覧の取得失敗:", err);
@@ -69,10 +86,9 @@ export default function Home() {
     init();
   }, [fetchThreads, selectThread]);
 
-  // ── 検索 ─────────────────────────────────────────────────────
+  // ── 検索 ─────────────────────────────────────────────────
   const handleSearch = useCallback(async (query: string, target: "title" | "message" | "both") => {
     if (!query.trim()) {
-      // 空なら全件に戻す
       setIsSearching(false);
       setDisplayThreads(threads);
       return;
@@ -113,22 +129,17 @@ export default function Home() {
   );
 
   const handleTitleUpdate = useCallback((id: string, title: string) => {
-    setThreads((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, title } : t))
-    );
-    setDisplayThreads((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, title } : t))
-    );
+    setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
+    setDisplayThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
   }, []);
 
-    // ★ ここに移動
   const activeThread =
     threads.find((t) => t.id === activeThreadId) ??
     (activeThreadId
       ? { id: activeThreadId, title: "新しい壁打ち", created_at: new Date().toISOString() }
       : null);
 
-  // ── 通常送信 ──────────────────────────────────────────────────
+  // ── 通常送信 ──────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!inputValue.trim() || !activeThreadId || isLoading) return;
     const userContent = inputValue.trim();
@@ -139,6 +150,8 @@ export default function Home() {
         method: "POST",
         headers: getApiKeyHeaders(),
         body: JSON.stringify({
+          threadId: activeThreadId,
+          messages: messages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent,
           provider,
           systemPrompt: activeThread?.system_prompt ?? "",
@@ -152,9 +165,9 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, activeThreadId, isLoading, messages, fetchThreads, provider, activeThread]);
+  }, [inputValue, activeThreadId, isLoading, messages, fetchThreads, provider, activeThread, getApiKeyHeaders]);
 
-  // ── メモ送信（AIを呼ばない）──────────────────────────────────
+  // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {
     if (!inputValue.trim() || !activeThreadId || isLoading) return;
     const userContent = inputValue.trim();
@@ -184,17 +197,15 @@ export default function Home() {
       });
       if (!res.ok) throw new Error("メモ保存失敗");
       const { userMessage } = await res.json();
-      setMessages((prev) =>
-        prev.map((m) => (m.id === optimisticMemo.id ? userMessage : m))
-      );
+      setMessages((prev) => prev.map((m) => (m.id === optimisticMemo.id ? userMessage : m)));
       await fetchThreads();
     } catch (err) {
       console.error("メモ保存エラー:", err);
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMemo.id));
     }
-  }, [inputValue, activeThreadId, isLoading, messages, fetchThreads, provider, activeThread]);
+  }, [inputValue, activeThreadId, isLoading, messages, fetchThreads, provider, getApiKeyHeaders]);
 
-  // ── 再生成 ────────────────────────────────────────────────────
+  // ── 再生成 ────────────────────────────────────────────────
   const handleRegenerate = useCallback(async (targetProvider: "claude" | "gemini") => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
@@ -229,7 +240,7 @@ export default function Home() {
           provider: targetProvider,
           isRegenerate: true,
           systemPrompt: activeThread?.system_prompt ?? "",
-      }),
+        }),
       });
       const { assistantMessage } = await chatRes.json();
       setMessages((prev) => [...prev, assistantMessage]);
@@ -238,9 +249,9 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, activeThreadId, provider, activeThread]);
+  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders]);
 
-  // ── タイムトラベル削除 ──────────────────────────────────────
+  // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
     if (!activeThreadId) return;
     setIsLoading(true);
@@ -275,6 +286,8 @@ export default function Home() {
         onDeleteThread={handleDeleteThread}
         onSearch={handleSearch}
         isSearching={isSearching}
+        user={user}
+        onLogout={handleLogout}
       />
       <ChatPanel
         thread={activeThread}

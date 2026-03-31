@@ -1,10 +1,12 @@
 import { supabase } from "./supabase";
 import { Thread, Message, ThreadNote, MessageNote, Draft } from "@/types";
+
 // ── Thread CRUD ──────────────────────────────────────────────
-export async function getThreads(): Promise<Thread[]> {
+export async function getThreads(userId: string): Promise<Thread[]> {
   const { data, error } = await supabase
     .from("threads")
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -20,11 +22,15 @@ export async function getThread(id: string): Promise<Thread | null> {
   return data;
 }
 
-export async function createThread(id: string, firstMessage: string): Promise<Thread> {
+export async function createThread(
+  id: string,
+  firstMessage: string,
+  userId: string
+): Promise<Thread> {
   const title = firstMessage.slice(0, 20) + (firstMessage.length > 20 ? "…" : "");
   const { data, error } = await supabase
     .from("threads")
-    .insert({ id, title })
+    .insert({ id, title, user_id: userId })
     .select()
     .single();
   if (error) throw error;
@@ -47,11 +53,14 @@ export async function getMessages(threadId: string): Promise<Message[]> {
   return data ?? [];
 }
 
-export async function addMessage(message: Message): Promise<Message> {
-  const { id, thread_id, role, content, provider } = message;  // ← provider追加
+export async function addMessage(
+  message: Message,
+  userId: string
+): Promise<Message> {
+  const { id, thread_id, role, content, provider } = message;
   const { data, error } = await supabase
     .from("messages")
-    .insert({ id, thread_id, role, content, provider })  // ← provider追加
+    .insert({ id, thread_id, role, content, provider, user_id: userId })
     .select()
     .single();
   if (error) throw error;
@@ -69,17 +78,24 @@ export async function getNotes(threadId: string): Promise<ThreadNote[]> {
   return data ?? [];
 }
 
-export async function addNote(threadId: string, content: string): Promise<ThreadNote> {
+export async function addNote(
+  threadId: string,
+  content: string,
+  userId: string
+): Promise<ThreadNote> {
   const { data, error } = await supabase
     .from("thread_notes")
-    .insert({ thread_id: threadId, content })
+    .insert({ thread_id: threadId, content, user_id: userId })
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function updateNote(id: string, content: string): Promise<ThreadNote> {
+export async function updateNote(
+  id: string,
+  content: string
+): Promise<ThreadNote> {
   const { data, error } = await supabase
     .from("thread_notes")
     .update({ content, updated_at: new Date().toISOString() })
@@ -91,10 +107,7 @@ export async function updateNote(id: string, content: string): Promise<ThreadNot
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("thread_notes")
-    .delete()
-    .eq("id", id);
+  const { error } = await supabase.from("thread_notes").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -109,10 +122,15 @@ export async function getMessageNotes(threadId: string): Promise<MessageNote[]> 
   return data ?? [];
 }
 
-export async function addMessageNote(messageId: string, threadId: string, content: string): Promise<MessageNote> {
+export async function addMessageNote(
+  messageId: string,
+  threadId: string,
+  content: string,
+  userId: string
+): Promise<MessageNote> {
   const { data, error } = await supabase
     .from("message_notes")
-    .insert({ message_id: messageId, thread_id: threadId, content })
+    .insert({ message_id: messageId, thread_id: threadId, content, user_id: userId })
     .select()
     .single();
   if (error) throw error;
@@ -120,10 +138,7 @@ export async function addMessageNote(messageId: string, threadId: string, conten
 }
 
 export async function deleteMessageNote(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("message_notes")
-    .delete()
-    .eq("id", id);
+  const { error } = await supabase.from("message_notes").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -138,10 +153,14 @@ export async function getDrafts(threadId: string): Promise<Draft[]> {
   return data ?? [];
 }
 
-export async function addDraft(threadId: string, content: string): Promise<Draft> {
+export async function addDraft(
+  threadId: string,
+  content: string,
+  userId: string
+): Promise<Draft> {
   const { data, error } = await supabase
     .from("drafts")
-    .insert({ thread_id: threadId, content })
+    .insert({ thread_id: threadId, content, user_id: userId })
     .select()
     .single();
   if (error) throw error;
@@ -149,9 +168,6 @@ export async function addDraft(threadId: string, content: string): Promise<Draft
 }
 
 export async function deleteDraft(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("drafts")
-    .delete()
-    .eq("id", id);
+  const { error } = await supabase.from("drafts").delete().eq("id", id);
   if (error) throw error;
 }

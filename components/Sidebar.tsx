@@ -2,6 +2,7 @@
 
 import { Thread } from "@/types";
 import { useState, useCallback, useRef } from "react";
+import type { User } from "@supabase/supabase-js";
 
 interface SidebarProps {
   threads: Thread[];
@@ -11,6 +12,8 @@ interface SidebarProps {
   onDeleteThread: (id: string) => void;
   onSearch: (query: string, target: "title" | "message" | "both") => void;
   isSearching: boolean;
+  user: User | null;
+  onLogout: () => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -31,6 +34,8 @@ export default function Sidebar({
   onDeleteThread,
   onSearch,
   isSearching,
+  user,
+  onLogout,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<"title" | "message" | "both">("both");
@@ -218,11 +223,33 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* フッター */}
-        <div style={{ fontSize: "10px", color: "var(--ink-faint)", letterSpacing: "0.05em", marginTop: "8px" }}>
-          {isSearching
-            ? `「${searchQuery}」— ${threads.length} 件`
-            : `${threads.length} スレッド保存済み`}
+        {/* フッター：スレッド数 + ユーザー情報・ログアウト */}
+        <div style={{ marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: "10px", color: "var(--ink-faint)", letterSpacing: "0.05em" }}>
+            {isSearching
+              ? `「${searchQuery}」— ${threads.length} 件`
+              : `${threads.length} スレッド保存済み`}
+          </div>
+          {user && (
+            <button
+              onClick={onLogout}
+              title={`ログアウト (${user.email})`}
+              style={{
+                fontSize: "10px",
+                color: "var(--ink-faint)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px 4px",
+                borderRadius: "3px",
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)"; }}
+            >
+              ログアウト
+            </button>
+          )}
         </div>
       </div>
     </aside>

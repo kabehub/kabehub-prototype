@@ -1,6 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
-
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 後方互換のためのre-export
+export { supabase } from "./supabase/client";
+export { createServerSupabaseClient } from "./supabase/server";
+export { createRouteHandlerSupabaseClient } from "./supabase/route-handler";

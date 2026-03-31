@@ -3,6 +3,7 @@ export interface Thread {
   title: string;
   created_at: string;
   updated_at?: string;
+  user_id?: string;
   system_prompt?: string;
   share_token?: string;
   is_public?: boolean;
@@ -18,7 +19,6 @@ export interface Message {
   created_at: string;
 }
 
-// 追加
 export interface ThreadNote {
   id: string;
   thread_id: string;
@@ -42,4 +42,3 @@ export interface Draft {
   content: string;
   created_at: string;
 }
-

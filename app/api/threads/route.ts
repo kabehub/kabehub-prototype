@@ -1,19 +1,28 @@
 export const dynamic = "force-dynamic";
-export const revalidate = 0; // 0秒（＝キャッシュせず毎回最新を生成）を指定
+export const revalidate = 0;
 
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { NextRequest, NextResponse } from "next/server";
+import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createRouteHandlerSupabaseClient(req, res);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json([], { status: 401 });
+  }
+
   const { data, error } = await supabase
     .from("threads")
     .select("*")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
-  
+
   if (error) {
     return NextResponse.json([], { status: 500 });
   }
-  
+
   return NextResponse.json(data ?? [], {
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
