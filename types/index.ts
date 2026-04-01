@@ -17,6 +17,7 @@ export interface Message {
   content: string;
   provider?: "claude" | "gemini" | "openai" | "user" | "memo" | "unknown";
   created_at: string;
+  parent_id?: string | null; // 👈 追加
 }
 
 export interface ThreadNote {
