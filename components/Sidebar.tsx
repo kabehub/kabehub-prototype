@@ -231,25 +231,46 @@ export default function Sidebar({
               : `${threads.length} スレッド保存済み`}
           </div>
           {user && (
-            <button
-              onClick={onLogout}
-              title={`ログアウト (${user.email})`}
-              style={{
-                fontSize: "10px",
-                color: "var(--ink-faint)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "2px 4px",
-                borderRadius: "3px",
-                transition: "color 0.15s",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)"; }}
-            >
-              ログアウト
-            </button>
-          )}
+  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+    <button
+      onClick={() => window.location.href = '/settings'}
+      title="設定"
+      style={{
+        fontSize: "12px",
+        color: "var(--ink-faint)",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: "2px 4px",
+        borderRadius: "3px",
+        transition: "color 0.15s",
+        lineHeight: 1,
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)"; }}
+    >
+      ⚙️
+    </button>
+    <button
+      onClick={onLogout}
+      title={`ログアウト (${user.email})`}
+      style={{
+        fontSize: "10px",
+        color: "var(--ink-faint)",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: "2px 4px",
+        borderRadius: "3px",
+        transition: "color 0.15s",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)"; }}
+    >
+      ログアウト
+    </button>
+  </div>
+)}
         </div>
       </div>
     </aside>
