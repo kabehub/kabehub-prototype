@@ -101,14 +101,17 @@ export async function POST(req: NextRequest) {
   const userId = user.id;
 
   // ── リクエストボディ ──────────────────────────────────────
-  const { threadId, messages, userContent, provider, isRegenerate, isMemo, systemPrompt } =
-    await req.json();
+// ✅ 変更後
+const { threadId, messages, userContent, provider, isRegenerate, isMemo, systemPrompt, isTemporary } =
+  await req.json();
 
-  // 1. スレッドが存在しない場合は新規作成（user_idを渡す）
+// 1. 一時モードの場合はDB操作をスキップ
+if (!isTemporary) {
   const exists = await getThread(threadId);
   if (!exists) {
     await createThread(threadId, userContent, userId);
   }
+}
 
   // 2. ユーザーメッセージを保存（再生成時はスキップ）
   const userMessage = {
@@ -119,8 +122,9 @@ export async function POST(req: NextRequest) {
     provider: (isMemo ? "memo" : "user") as "memo" | "user",
     created_at: new Date().toISOString(),
   };
-  if (!isRegenerate) {
-    await addMessage(userMessage, userId);
+  // ✅ 変更後
+  if (!isRegenerate && !isTemporary) {
+  await addMessage(userMessage, userId);
   }
 
   // メモモードの場合はAIを呼ばずここで終了
@@ -178,7 +182,10 @@ export async function POST(req: NextRequest) {
     provider: usedProvider,
     created_at: new Date().toISOString(),
   };
+  // ✅ 変更後
+  if (!isTemporary) {
   await addMessage(assistantMessage, userId);
+  }
 
-  return NextResponse.json({ userMessage, assistantMessage });
+return NextResponse.json({ userMessage, assistantMessage });
 }

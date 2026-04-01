@@ -19,6 +19,11 @@ export default function Home() {
   const [provider, setProvider] = useState<"claude" | "gemini">("claude");
   const [user, setUser] = useState<User | null>(null);
 
+  // 一時モード関連
+  const [isTemporary, setIsTemporary] = useState(false);
+  const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
   // ── ユーザー情報の取得 ───────────────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -27,6 +32,18 @@ export default function Home() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // ── beforeunload: 一時モード中にブラウザを閉じようとしたら警告 ──
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isTemporary && temporaryMessages.length > 0) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isTemporary, temporaryMessages]);
 
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -61,6 +78,13 @@ export default function Home() {
   }, []);
 
   const selectThread = useCallback(async (id: string) => {
+    // 一時モード中にスレッド切り替えガード
+    if (isTemporary && temporaryMessages.length > 0) {
+      const ok = window.confirm("保存されていない一時メッセージは消去されます。よろしいですか？");
+      if (!ok) return;
+    }
+    setIsTemporary(false);
+    setTemporaryMessages([]);
     setActiveThreadId(id);
     setInputValue("");
     localStorage.setItem("lastActiveThreadId", id);
@@ -73,7 +97,7 @@ export default function Home() {
       console.error("会話読み込みエラー:", err);
       setMessages([]);
     }
-  }, []);
+  }, [isTemporary, temporaryMessages]);
 
   useEffect(() => {
     const init = async () => {
@@ -104,12 +128,19 @@ export default function Home() {
   }, [threads]);
 
   const handleNewThread = useCallback(() => {
+    // 一時モード中に新規スレッドガード
+    if (isTemporary && temporaryMessages.length > 0) {
+      const ok = window.confirm("保存されていない一時メッセージは消去されます。よろしいですか？");
+      if (!ok) return;
+    }
+    setIsTemporary(false);
+    setTemporaryMessages([]);
     const id = uuidv4();
     setActiveThreadId(id);
     setMessages([]);
     setInputValue("");
     localStorage.removeItem("lastActiveThreadId");
-  }, []);
+  }, [isTemporary, temporaryMessages]);
 
   const handleDeleteThread = useCallback(
     async (id: string) => {
@@ -118,6 +149,8 @@ export default function Home() {
         if (activeThreadId === id) {
           setActiveThreadId(null);
           setMessages([]);
+          setIsTemporary(false);
+          setTemporaryMessages([]);
           localStorage.removeItem("lastActiveThreadId");
         }
         await fetchThreads();
@@ -139,12 +172,119 @@ export default function Home() {
       ? { id: activeThreadId, title: "新しい壁打ち", created_at: new Date().toISOString() }
       : null);
 
+  // ── 一時モード切り替え ────────────────────────────────────
+  const handleSwitchTemporary = useCallback(async () => {
+    if (!activeThreadId) return;
+
+    if (!isTemporary) {
+      // 通常 → 一時
+      setIsTemporary(true);
+      setTemporaryMessages([]);
+    } else {
+      // 一時 → 通常（全件DB保存）
+      if (temporaryMessages.length === 0) {
+        setIsTemporary(false);
+        return;
+      }
+      const ok = window.confirm(`${temporaryMessages.length}件のメッセージをDBに保存して通常モードに戻しますか？`);
+      if (!ok) return;
+
+      setIsSaving(true);
+      try {
+        // スレッドがDBに存在しない場合は先に作成
+        const existsInDB = threads.some((t) => t.id === activeThreadId);
+        if (!existsInDB) {
+          const firstMsg = temporaryMessages[0];
+          const title = firstMsg?.content.slice(0, 20) ?? "新しい壁打ち";
+          await fetch("/api/threads", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: activeThreadId, title }),
+          });
+        }
+
+        // 全件を順番に保存
+        for (const msg of temporaryMessages) {
+          await fetch("/api/chat", {
+            method: "POST",
+            headers: getApiKeyHeaders(),
+            body: JSON.stringify({
+              threadId: activeThreadId,
+              messages: [],
+              userContent: msg.content,
+              provider: msg.provider === "memo" ? provider : (msg.provider as "claude" | "gemini"),
+              isMemo: msg.provider === "memo",
+              isTemporarySave: true,
+              savedMessage: msg,
+            }),
+          });
+        }
+
+        await fetchThreads();
+        setIsTemporary(false);
+        setTemporaryMessages([]);
+      } catch (err) {
+        console.error("一時メッセージ保存失敗:", err);
+        alert("保存中にエラーが発生しました。");
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  }, [activeThreadId, isTemporary, temporaryMessages, threads, fetchThreads, getApiKeyHeaders, provider]);
+
   // ── 通常送信 ──────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!inputValue.trim() || !activeThreadId || isLoading) return;
     const userContent = inputValue.trim();
     setInputValue("");
     setIsLoading(true);
+
+    if (isTemporary) {
+      // 一時モード: メモリのみ（DBに保存しない）
+      const userMsg: Message = {
+        id: uuidv4(),
+        thread_id: activeThreadId,
+        role: "user",
+        content: userContent,
+        provider: "user",
+        created_at: new Date().toISOString(),
+      };
+
+      const allMessages = [...messages, ...temporaryMessages, userMsg];
+      setTemporaryMessages((prev) => [...prev, userMsg]);
+      setMessages((prev) => [...prev, userMsg]);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: getApiKeyHeaders(),
+          body: JSON.stringify({
+            threadId: null, // DB保存しない
+            messages: allMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
+            userContent,
+            provider,
+            systemPrompt: activeThread?.system_prompt ?? "",
+            isTemporary: true,
+          }),
+        });
+        const { assistantMessage } = await res.json();
+        const tempAssistant: Message = {
+          ...assistantMessage,
+          id: uuidv4(),
+          thread_id: activeThreadId,
+          created_at: new Date().toISOString(),
+        };
+        setTemporaryMessages((prev) => [...prev, tempAssistant]);
+        setMessages((prev) => [...prev, tempAssistant]);
+      } catch (err) {
+        console.error("一時送信エラー:", err);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // 通常モード: DB保存あり
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -165,7 +305,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, activeThreadId, isLoading, messages, fetchThreads, provider, activeThread, getApiKeyHeaders]);
+  }, [inputValue, activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders]);
 
   // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {
@@ -181,8 +321,16 @@ export default function Home() {
       provider: "memo",
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticMemo]);
 
+    if (isTemporary) {
+      // 一時モード: メモリのみ
+      setTemporaryMessages((prev) => [...prev, optimisticMemo]);
+      setMessages((prev) => [...prev, optimisticMemo]);
+      return;
+    }
+
+    // 通常モード: DB保存あり
+    setMessages((prev) => [...prev, optimisticMemo]);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -203,7 +351,7 @@ export default function Home() {
       console.error("メモ保存エラー:", err);
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMemo.id));
     }
-  }, [inputValue, activeThreadId, isLoading, messages, fetchThreads, provider, getApiKeyHeaders]);
+  }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
 
   // ── 再生成 ────────────────────────────────────────────────
   const handleRegenerate = useCallback(async (targetProvider: "claude" | "gemini") => {
@@ -278,6 +426,15 @@ export default function Home() {
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      {isSaving && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 9999, color: "white", fontSize: "16px", gap: "12px"
+        }}>
+          <span>⏳</span> 一時メッセージを保存中...
+        </div>
+      )}
       <Sidebar
         threads={displayThreads}
         activeThreadId={activeThreadId}
@@ -302,6 +459,8 @@ export default function Home() {
         onTitleUpdate={handleTitleUpdate}
         onRegenerate={handleRegenerate}
         onTrimFrom={handleTrimFrom}
+        isTemporary={isTemporary}
+        onSwitchTemporary={handleSwitchTemporary}
       />
     </div>
   );

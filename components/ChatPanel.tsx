@@ -5,6 +5,7 @@ import { Message, Thread, ThreadNote, MessageNote, Draft } from "@/types";
 import MessageBubble, { ThinkingBubble } from "./MessageBubble";
 import ChatInput from "./ChatInput";
 
+// ✅ 変更後
 interface ChatPanelProps {
   thread: Thread | null;
   messages: Message[];
@@ -18,6 +19,8 @@ interface ChatPanelProps {
   onTitleUpdate: (id: string, title: string) => void;
   onRegenerate: (targetProvider: "claude" | "gemini") => void;
   onTrimFrom: (message: Message) => void;
+  isTemporary: boolean;
+  onSwitchTemporary: () => void;
 }
 
 export default function ChatPanel({
@@ -33,6 +36,8 @@ export default function ChatPanel({
   onTitleUpdate,
   onRegenerate,
   onTrimFrom,
+  isTemporary,
+  onSwitchTemporary,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -538,8 +543,7 @@ const handleExport = (format: "txt" | "md" | "csv") => {
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: "var(--chat-bg)", overflow: "hidden" }}>
-
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: isTemporary ? "#f1f1f0" : "var(--chat-bg)", overflow: "hidden" }}>
       {/* Header */}
       <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)", display: "flex", alignItems: "center", gap: "12px", minHeight: "60px" }}>
         {thread ? (
@@ -548,6 +552,30 @@ const handleExport = (format: "txt" | "md" | "csv") => {
             <h1 style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 500, color: "var(--ink)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {thread.title}
             </h1>
+              {/* ⚡ 一時モードトグル */}
+<button
+  onClick={onSwitchTemporary}
+  title={isTemporary ? "通常モードに戻す（DB保存）" : "一時モードに切り替え（DBに保存しない）"}
+  style={{
+    padding: "5px 12px",
+    borderRadius: "6px",
+    border: `1px solid ${isTemporary ? "#f59e0b" : "var(--border)"}`,
+    background: isTemporary ? "#fef3c7" : "white",
+    color: isTemporary ? "#d97706" : "var(--ink-muted)",
+    fontSize: "11px",
+    fontFamily: "'JetBrains Mono', monospace",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    flexShrink: 0,
+    transition: "all 0.15s",
+  }}
+  onMouseEnter={(e) => { if (!isTemporary) { (e.currentTarget as HTMLButtonElement).style.borderColor = "#f59e0b"; (e.currentTarget as HTMLButtonElement).style.color = "#d97706"; } }}
+  onMouseLeave={(e) => { if (!isTemporary) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; } }}
+>
+  ⚡ {isTemporary ? "一時モード中" : "一時モード"}
+</button>
             {/* タイトル編集ボタン */}
             <button
               onClick={openDialog}
