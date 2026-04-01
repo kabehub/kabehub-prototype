@@ -99,16 +99,17 @@ export default function Home() {
     }
   }, [isTemporary, temporaryMessages]);
 
-  useEffect(() => {
-    const init = async () => {
-      const latestThreads = await fetchThreads();
-      const savedId = localStorage.getItem("lastActiveThreadId");
-      if (savedId && latestThreads.some((t: Thread) => t.id === savedId)) {
-        selectThread(savedId);
-      }
-    };
-    init();
-  }, [fetchThreads, selectThread]);
+// ✅ 変更後
+useEffect(() => {
+  const init = async () => {
+    const latestThreads = await fetchThreads();
+    const savedId = localStorage.getItem("lastActiveThreadId");
+    if (savedId && latestThreads.some((t: Thread) => t.id === savedId)) {
+      selectThread(savedId);
+    }
+  };
+  init();
+}, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 検索 ─────────────────────────────────────────────────
   const handleSearch = useCallback(async (query: string, target: "title" | "message" | "both") => {

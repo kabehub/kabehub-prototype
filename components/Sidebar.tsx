@@ -149,14 +149,45 @@ export default function Sidebar({
               </div>
             </div>
             <button
-              onClick={(e) => { e.stopPropagation(); onDeleteThread(thread.id); }}
-              title="削除"
-              style={{ width: "18px", height: "18px", borderRadius: "3px", border: "none", background: "transparent", color: "var(--ink-faint)", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: 0, transition: "opacity 0.15s", padding: 0 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)"; }}
-            >
-              ×
-            </button>
+  onClick={(e) => {
+    e.stopPropagation();
+    if (window.confirm(`「${thread.title}」を削除しますか？`)) {
+      onDeleteThread(thread.id);
+    }
+  }}
+  title="削除"
+  style={{
+    width: "20px",
+    height: "20px",
+    borderRadius: "4px",
+    border: "1px solid var(--border)",
+    background: "white",
+    color: "var(--ink-muted)",
+    fontSize: "12px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    opacity: 0.6,
+    transition: "all 0.15s",
+    padding: 0,
+  }}
+  onMouseEnter={(e) => {
+    (e.currentTarget as HTMLButtonElement).style.background = "#fee2e2";
+    (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e";
+    (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e";
+    (e.currentTarget as HTMLButtonElement).style.opacity = "1";
+  }}
+  onMouseLeave={(e) => {
+    (e.currentTarget as HTMLButtonElement).style.background = "white";
+    (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+    (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+    (e.currentTarget as HTMLButtonElement).style.opacity = "0.6";
+  }}
+>
+  ×
+</button>
           </div>
         ))}
       </div>
