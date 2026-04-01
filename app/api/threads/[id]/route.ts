@@ -32,6 +32,7 @@ export async function PATCH(
   if (body.system_prompt !== undefined) updates.system_prompt = body.system_prompt;
   if (body.is_public !== undefined) updates.is_public = body.is_public;
   if (body.hide_memos !== undefined) updates.hide_memos = body.hide_memos;
+  if (body.folder_name !== undefined) updates.folder_name = body.folder_name; // 👈 追加
 
   if (body.needsToken && body.is_public) {
     const { data: existing } = await supabase

@@ -161,7 +161,19 @@ useEffect(() => {
     },
     [activeThreadId, fetchThreads]
   );
-
+const handleUpdateFolder = useCallback(async (threadId: string, folderName: string | null) => {
+  await fetch(`/api/threads/${threadId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder_name: folderName }),
+  });
+  setThreads((prev) =>
+    prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
+  );
+  setDisplayThreads((prev) =>                                          // 👈 追加
+    prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
+  );
+}, []);
   const handleTitleUpdate = useCallback((id: string, title: string) => {
     setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
     setDisplayThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
@@ -446,6 +458,7 @@ useEffect(() => {
         isSearching={isSearching}
         user={user}
         onLogout={handleLogout}
+        onUpdateFolder={handleUpdateFolder}
       />
       <ChatPanel
         thread={activeThread}

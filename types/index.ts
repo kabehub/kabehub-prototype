@@ -8,6 +8,7 @@ export interface Thread {
   share_token?: string;
   is_public?: boolean;
   hide_memos?: boolean;
+  folder_name?: string | null; // 👈 追加
 }
 
 export interface Message {
@@ -17,7 +18,7 @@ export interface Message {
   content: string;
   provider?: "claude" | "gemini" | "openai" | "user" | "memo" | "unknown";
   created_at: string;
-  parent_id?: string | null; // 👈 追加
+  parent_id?: string | null;
 }
 
 export interface ThreadNote {
@@ -41,5 +42,12 @@ export interface Draft {
   id: string;
   thread_id: string;
   content: string;
+  created_at: string;
+}
+
+export interface ThreadTag {
+  id: string;
+  thread_id: string;
+  name: string;
   created_at: string;
 }
