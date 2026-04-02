@@ -70,6 +70,7 @@ export default function ChatPanel({
   const [showShare, setShowShare] = useState(false);
   const [sharePublic, setSharePublic] = useState(false);
   const [shareHideMemos, setShareHideMemos] = useState(false);
+  const [shareAllowPromptFork, setShareAllowPromptFork] = useState(true); // 👈 追加
   const [shareSaving, setShareSaving] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
@@ -146,6 +147,7 @@ export default function ChatPanel({
     setShowApiKeys(false);
     setSharePublic(thread?.is_public ?? false);
     setShareHideMemos(thread?.hide_memos ?? false);
+    setShareAllowPromptFork(thread?.allow_prompt_fork ?? true); // 👈 追加
     setShareToken(thread?.share_token ?? null);
     setNotes([]);
     setDrafts([]);
@@ -247,11 +249,12 @@ export default function ChatPanel({
     setShowSystemPrompt(false);
     setSharePublic(thread?.is_public ?? false);
     setShareHideMemos(thread?.hide_memos ?? false);
+    setShareAllowPromptFork(thread?.allow_prompt_fork ?? true); // 👈 追加
     setShareToken(thread?.share_token ?? null);
   };
 
   // ★ 公開設定を保存
-  const handleSaveShare = async (newPublic: boolean, newHideMemos: boolean) => {
+  const handleSaveShare = async (newPublic: boolean, newHideMemos: boolean, newAllowPromptFork: boolean) => {
     if (!thread) return;
     setShareSaving(true);
     try {
@@ -261,15 +264,18 @@ export default function ChatPanel({
         body: JSON.stringify({
           is_public: newPublic,
           hide_memos: newHideMemos,
+          allow_prompt_fork: newAllowPromptFork, // 👈 追加
           needsToken: newPublic,
         }),
       });
       const updated = await res.json();
       setSharePublic(updated.is_public ?? false);
+      setShareAllowPromptFork(updated.allow_prompt_fork ?? true); // 👈 追加
       setShareHideMemos(updated.hide_memos ?? false);
       setShareToken(updated.share_token ?? null);
       thread.is_public = updated.is_public;
       thread.hide_memos = updated.hide_memos;
+      thread.allow_prompt_fork = updated.allow_prompt_fork; // 👈 追加
       thread.share_token = updated.share_token;
     } catch (err) {
       console.error("公開設定保存失敗:", err);
@@ -819,7 +825,7 @@ const handleExport = (format: "txt" | "md" | "csv") => {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
-              <div onClick={() => { const next = !sharePublic; setSharePublic(next); handleSaveShare(next, shareHideMemos); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+              <div onClick={() => { const next = !sharePublic; setSharePublic(next); handleSaveShare(next, shareHideMemos, shareAllowPromptFork); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
                 <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: sharePublic ? "translateX(18px)" : "translateX(0)" }} />
               </div>
               <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
@@ -829,10 +835,27 @@ const handleExport = (format: "txt" | "md" | "csv") => {
             </label>
             {sharePublic && (
               <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", paddingLeft: "4px" }}>
-                <div onClick={() => { const next = !shareHideMemos; setShareHideMemos(next); handleSaveShare(sharePublic, next); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareHideMemos ? "#7c3aed" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+                <div onClick={() => { const next = !shareHideMemos; setShareHideMemos(next); handleSaveShare(sharePublic, next, shareAllowPromptFork); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareHideMemos ? "#7c3aed" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
                   <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareHideMemos ? "translateX(18px)" : "translateX(0)" }} />
                 </div>
                 <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>📝 メモを共有ページに表示しない</span>
+              {/* 👇 ここから追加 */}
+<label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", paddingLeft: "4px" }}>
+  <div
+    onClick={() => {
+      const next = !shareAllowPromptFork;
+      setShareAllowPromptFork(next);
+      handleSaveShare(sharePublic, shareHideMemos, next);
+    }}
+    style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareAllowPromptFork ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}
+  >
+    <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareAllowPromptFork ? "translateX(18px)" : "translateX(0)" }} />
+  </div>
+  <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
+    {shareAllowPromptFork ? "🔓 システムプロンプトをフォーク時に引き継ぐ" : "🔒 システムプロンプトを非公開（シークレット）"}
+  </span>
+</label>
+{/* 👆 ここまで追加 */}
               </label>
             )}
             {sharePublic && shareToken && (

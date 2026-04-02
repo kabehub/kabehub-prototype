@@ -8,6 +8,8 @@ export interface Thread {
   share_token?: string;
   is_public?: boolean;
   hide_memos?: boolean;
+  forked_from_id?: string | null; // 👈 追加（セルフコピペ・フォーク用）
+  allow_prompt_fork?: boolean;    // 👈 追加
   folder_name?: string | null; // 👈 追加
 }
 
