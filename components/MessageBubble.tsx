@@ -1,7 +1,6 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import MarkdownRenderer from "./MarkdownRenderer";
 import { Message, MessageNote } from "@/types";
 import { useState } from "react";
 
@@ -146,9 +145,7 @@ export default function MessageBubble({
             }}
           >
             {isUser || isMemo ? message.content : (
-              <div className="prose-custom">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-              </div>
+              <MarkdownRenderer content={message.content} />
             )}
           </div>
 

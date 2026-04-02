@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Message, Thread } from "@/types";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
 
 type ShareData = {
   thread: Thread;
@@ -22,7 +23,7 @@ function ProviderLabel({ provider }: { provider: string }) {
   );
 }
 
-// メッセージバブル（リードオンリー版・シンプル）
+// メッセージバブル（リードオンリー版）
 function ReadOnlyBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -62,39 +63,10 @@ function ReadOnlyBubble({ message }: { message: Message }) {
             {new Date(message.created_at).toLocaleString("ja-JP")}
           </span>
         </div>
-        <div
-          style={{ fontSize: "14px", color: "#111827", lineHeight: 1.8 }}
-          dangerouslySetInnerHTML={{ __html: simpleMarkdown(message.content) }}
-        />
+        <MarkdownRenderer content={message.content} variant="share" />
       </div>
     </div>
   );
-}
-
-// 簡易Markdownレンダラー（react-markdownを使わずSSRを避けるため）
-// ※ プロジェクトでreact-markdownを使っている場合はそちらに差し替え推奨
-function simpleMarkdown(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    // コードブロック
-    .replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;overflow-x:auto;font-size:13px;font-family:\'JetBrains Mono\',monospace;line-height:1.6;margin:8px 0"><code>$1</code></pre>')
-    // インラインコード
-    .replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 5px;font-size:13px;font-family:\'JetBrains Mono\',monospace">$1</code>')
-    // 太字
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // 斜体
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    // 見出し
-    .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:600;margin:16px 0 6px">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:600;margin:20px 0 8px">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 style="font-size:20px;font-weight:700;margin:24px 0 10px">$1</h1>')
-    // 箇条書き
-    .replace(/^- (.+)$/gm, '<li style="margin:3px 0;padding-left:4px">$1</li>')
-    .replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul style="padding-left:20px;margin:8px 0">$&</ul>')
-    // 改行
-    .replace(/\n/g, "<br>");
 }
 
 export default function SharePage({ params }: { params: { token: string } }) {
@@ -102,7 +74,6 @@ export default function SharePage({ params }: { params: { token: string } }) {
   const [data, setData] = useState<ShareData | null>(null);
   const [error, setError] = useState<"notfound" | "error" | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [forking, setForking] = useState(false);
 
   useEffect(() => {
@@ -123,21 +94,12 @@ export default function SharePage({ params }: { params: { token: string } }) {
   }, [params.token]);
 
   useEffect(() => {
-    import("@/lib/supabase/client").then(({ supabase }) => {
-      supabase.auth.getUser().then(({ data }) => {
-        setIsLoggedIn(!!data.user);
-      });
-    });
-  }, []);
-
-  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [data]);
 
   const handleFork = async () => {
-    // ボタンを押した瞬間にログイン状態を確認
     const { supabase } = await import("@/lib/supabase/client");
     const { data } = await supabase.auth.getUser();
     if (!data.user) {
@@ -157,7 +119,6 @@ export default function SharePage({ params }: { params: { token: string } }) {
       setForking(false);
     }
   };
-
 
   if (loading) {
     return (
@@ -194,7 +155,6 @@ export default function SharePage({ params }: { params: { token: string } }) {
         <h1 style={{ fontFamily: "'Lora', serif", fontSize: "18px", fontWeight: 500, color: "#111827", margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {data?.thread.title}
         </h1>
-        <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#9ca3af", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
           {data?.has_secret_prompt && (
             <span
@@ -214,7 +174,6 @@ export default function SharePage({ params }: { params: { token: string } }) {
           <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#9ca3af" }}>
             🔗 KabeHub · 読み取り専用
           </div>
-        </div>
         </div>
       </div>
 
