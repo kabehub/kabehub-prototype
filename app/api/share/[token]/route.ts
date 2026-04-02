@@ -10,7 +10,7 @@ export async function GET(
   // 1. share_token でスレッドを検索
   const { data: thread, error: threadError } = await supabase
     .from("threads")
-    .select("id, title, is_public, hide_memos, share_token, created_at")
+    .select("id, title, is_public, hide_memos, share_token, created_at, allow_prompt_fork, system_prompt")
     .eq("share_token", params.token)
     .single();
 
@@ -39,6 +39,10 @@ export async function GET(
     ? (allMessages ?? []).filter((m) => m.provider !== "memo")
     : (allMessages ?? []);
 
+  const hasSecretPrompt =
+    !thread.allow_prompt_fork &&
+    !!(thread.system_prompt?.trim());
+
   return NextResponse.json({
     thread: {
       id: thread.id,
@@ -46,5 +50,8 @@ export async function GET(
       created_at: thread.created_at,
     },
     messages,
+    has_secret_prompt: hasSecretPrompt,
   });
+
+  
 }

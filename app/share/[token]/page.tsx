@@ -6,6 +6,7 @@ import { Message, Thread } from "@/types";
 type ShareData = {
   thread: Thread;
   messages: Message[];
+  has_secret_prompt: boolean;
 };
 
 // プロバイダーラベル
@@ -101,6 +102,8 @@ export default function SharePage({ params }: { params: { token: string } }) {
   const [data, setData] = useState<ShareData | null>(null);
   const [error, setError] = useState<"notfound" | "error" | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [forking, setForking] = useState(false);
 
   useEffect(() => {
     const fetchShare = async () => {
@@ -120,10 +123,41 @@ export default function SharePage({ params }: { params: { token: string } }) {
   }, [params.token]);
 
   useEffect(() => {
+    import("@/lib/supabase/client").then(({ supabase }) => {
+      supabase.auth.getUser().then(({ data }) => {
+        setIsLoggedIn(!!data.user);
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [data]);
+
+  const handleFork = async () => {
+    // ボタンを押した瞬間にログイン状態を確認
+    const { supabase } = await import("@/lib/supabase/client");
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      window.location.href = "/login";
+      return;
+    }
+    setForking(true);
+    try {
+      const res = await fetch(`/api/share/${params.token}/fork`, { method: "POST" });
+      if (!res.ok) throw new Error("フォーク失敗");
+      const { thread: newThread } = await res.json();
+      window.location.href = `/?fork=${newThread.id}`;
+    } catch (err) {
+      console.error("フォーク失敗:", err);
+      alert("フォークに失敗しました");
+    } finally {
+      setForking(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -161,7 +195,26 @@ export default function SharePage({ params }: { params: { token: string } }) {
           {data?.thread.title}
         </h1>
         <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#9ca3af", flexShrink: 0 }}>
-          🔗 KabeHub · 読み取り専用
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+          {data?.has_secret_prompt && (
+            <span
+              title="このスレッドのシステムプロンプトは非公開です。フォークした場合はデフォルトのプロンプトで開始されます。"
+              style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "4px", padding: "2px 8px", cursor: "default" }}
+            >🔒 シークレットプロンプト</span>
+          )}
+          <button
+            onClick={handleFork}
+            disabled={forking}
+            style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #7c3aed", background: forking ? "#f5f3ff" : "white", color: "#7c3aed", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", cursor: forking ? "default" : "pointer", transition: "all 0.15s" }}
+            onMouseEnter={(e) => { if (!forking) { (e.currentTarget as HTMLButtonElement).style.background = "#7c3aed"; (e.currentTarget as HTMLButtonElement).style.color = "white"; } }}
+            onMouseLeave={(e) => { if (!forking) { (e.currentTarget as HTMLButtonElement).style.background = "white"; (e.currentTarget as HTMLButtonElement).style.color = "#7c3aed"; } }}
+          >
+            {forking ? "処理中…" : "📋 この会話を引き継ぐ"}
+          </button>
+          <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#9ca3af" }}>
+            🔗 KabeHub · 読み取り専用
+          </div>
+        </div>
         </div>
       </div>
 

@@ -107,6 +107,14 @@ useEffect(() => {
     if (savedId && latestThreads.some((t: Thread) => t.id === savedId)) {
       selectThread(savedId);
     }
+    // ↓ ここに追加
+    const url = new URL(window.location.href);
+    const forkId = url.searchParams.get("fork");
+    if (forkId) {
+      url.searchParams.delete("fork");
+      window.history.replaceState({}, "", url.toString());
+      selectThread(forkId);
+    }
   };
   init();
 }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -436,6 +444,19 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
       setIsLoading(false);
     }
   }, [activeThreadId, messages]);
+  // ── セルフコピペ ──────────────────────────────────────────
+  const handleCopyThread = useCallback(async (threadId: string) => {
+    try {
+      const res = await fetch(`/api/threads/${threadId}/copy`, { method: 'POST' })
+      if (!res.ok) throw new Error('コピー失敗')
+      const { thread: newThread } = await res.json()
+      await fetchThreads()
+      selectThread(newThread.id)
+    } catch (err) {
+      console.error('コピー失敗:', err)
+      alert('コピーに失敗しました')
+    }
+  }, [fetchThreads, selectThread])
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -475,6 +496,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
         onTrimFrom={handleTrimFrom}
         isTemporary={isTemporary}
         onSwitchTemporary={handleSwitchTemporary}
+        onCopyThread={handleCopyThread}
       />
     </div>
   );

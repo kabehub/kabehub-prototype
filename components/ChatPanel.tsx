@@ -21,6 +21,7 @@ interface ChatPanelProps {
   onTrimFrom: (message: Message) => void;
   isTemporary: boolean;
   onSwitchTemporary: () => void;
+  onCopyThread: (threadId: string) => void;
 }
 
 export default function ChatPanel({
@@ -38,6 +39,7 @@ export default function ChatPanel({
   onTrimFrom,
   isTemporary,
   onSwitchTemporary,
+  onCopyThread,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -604,6 +606,19 @@ const handleExport = (format: "txt" | "md" | "csv") => {
                 onMouseEnter={(e) => { if (!isTemporary) { (e.currentTarget as HTMLButtonElement).style.borderColor = "#f59e0b"; (e.currentTarget as HTMLButtonElement).style.color = "#d97706"; } }}
                 onMouseLeave={(e) => { if (!isTemporary) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; } }}
               >⚡ {isTemporary ? "一時モード中" : "一時モード"}</button>
+              {/* コピーボタン */}
+              <button
+                onClick={async () => {
+                  if (!thread?.id) return
+                  const ok = window.confirm('この会話をベースに新しいスレッドを作成します。よろしいですか？')
+                  if (!ok) return
+                  await onCopyThread(thread.id)
+                }}
+                title="この会話をコピーして新しいスレッドを作成"
+                style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+              >📋 この会話をコピー</button>
               {/* タイトル編集ボタン */}
               <button
                 onClick={openDialog}
