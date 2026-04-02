@@ -141,7 +141,7 @@ export default function SharePage({ params }: { params: { token: string } }) {
     const { supabase } = await import("@/lib/supabase/client");
     const { data } = await supabase.auth.getUser();
     if (!data.user) {
-      window.location.href = "/login";
+      window.location.href = `/login?next=/share/${params.token}`;
       return;
     }
     setForking(true);

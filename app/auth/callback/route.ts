@@ -27,6 +27,11 @@ export async function GET(req: NextRequest) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const next = searchParams.get("next");
+      // next が /share/ で始まる場合のみ許可（オープンリダイレクト対策）
+      if (next && next.startsWith("/share/")) {
+        return NextResponse.redirect(`${origin}${next}`);
+      }
       return NextResponse.redirect(`${origin}/`);
     }
   }
