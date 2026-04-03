@@ -1,0 +1,544 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+// ---- 型定義 ----
+interface ExploreThread {
+  id: string;
+  title: string;
+  share_token: string | null;
+  created_at: string;
+  updated_at: string | null;
+  allow_prompt_fork: boolean;
+  handle: string | null;
+  display_name: string | null;
+  tags: string[];
+  message_count: number;
+  fork_count: number;
+}
+
+// ---- ユーティリティ ----
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "今";
+  if (mins < 60) return `${mins}分前`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}時間前`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}日前`;
+  return new Date(dateStr).toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
+}
+
+// ---- スレッドカード ----
+function ThreadCard({
+  thread,
+  onFork,
+  forking,
+}: {
+  thread: ExploreThread;
+  onFork: (thread: ExploreThread) => void;
+  forking: boolean;
+}) {
+  return (
+    <div
+      style={{
+        background: "white",
+        border: "1px solid var(--border)",
+        borderRadius: "10px",
+        padding: "16px 18px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        transition: "box-shadow 0.15s",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.07)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+      }}
+    >
+      {/* タイトル + シークレットバッジ */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontFamily: "'Lora', serif",
+              fontSize: "15px",
+              fontWeight: 500,
+              color: "var(--ink)",
+              lineHeight: 1.4,
+              marginBottom: "4px",
+            }}
+          >
+            {thread.title}
+          </div>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--ink-muted)",
+              fontFamily: "'JetBrains Mono', monospace",
+            }}
+          >
+            {thread.display_name || thread.handle
+              ? `@${thread.handle ?? "unknown"}`
+              : "匿名"}{" "}
+            · {timeAgo(thread.updated_at ?? thread.created_at)}
+          </div>
+        </div>
+        {!thread.allow_prompt_fork && (
+          <span
+            title="システムプロンプトは非公開です"
+            style={{
+              fontSize: "10px",
+              fontFamily: "'JetBrains Mono', monospace",
+              color: "#92400e",
+              background: "#fef3c7",
+              border: "1px solid #fde68a",
+              borderRadius: "4px",
+              padding: "2px 6px",
+              flexShrink: 0,
+              marginTop: "2px",
+            }}
+          >
+            🔒 シークレット
+          </span>
+        )}
+      </div>
+
+      {/* タグ */}
+      {thread.tags.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+          {thread.tags.map((tag) => (
+            <span
+              key={tag}
+              style={{
+                fontSize: "10px",
+                fontFamily: "'JetBrains Mono', monospace",
+                color: "#7c3aed",
+                background: "#f5f3ff",
+                border: "1px solid #e9d5ff",
+                borderRadius: "4px",
+                padding: "1px 7px",
+              }}
+            >
+              #{tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* フッター：メッセージ数・フォーク数・アクション */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginTop: "2px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: "12px",
+            fontSize: "11px",
+            color: "var(--ink-muted)",
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
+          <span title="メッセージ数">💬 {thread.message_count}</span>
+          <span title="フォーク数">📋 {thread.fork_count}</span>
+        </div>
+        <div style={{ display: "flex", gap: "6px" }}>
+          {thread.share_token && (
+            <a
+              href={`/share/${thread.share_token}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "5px 12px",
+                borderRadius: "5px",
+                border: "1px solid var(--border)",
+                background: "white",
+                color: "var(--ink)",
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: "pointer",
+                textDecoration: "none",
+                transition: "all 0.12s",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.background = "var(--sidebar-bg)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.background = "white";
+              }}
+            >
+              👁 閲覧
+            </a>
+          )}
+          <button
+            onClick={() => onFork(thread)}
+            disabled={forking || !thread.share_token}
+            style={{
+              padding: "5px 12px",
+              borderRadius: "5px",
+              border: "1px solid #7c3aed",
+              background: forking ? "#f5f3ff" : "white",
+              color: "#7c3aed",
+              fontSize: "11px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: forking ? "default" : "pointer",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              if (!forking) {
+                (e.currentTarget as HTMLButtonElement).style.background = "#7c3aed";
+                (e.currentTarget as HTMLButtonElement).style.color = "white";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!forking) {
+                (e.currentTarget as HTMLButtonElement).style.background = "white";
+                (e.currentTarget as HTMLButtonElement).style.color = "#7c3aed";
+              }
+            }}
+          >
+            📋 フォーク
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- メインページ ----
+export default function ExplorePage() {
+  const [items, setItems] = useState<ExploreThread[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [forkingId, setForkingId] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // データ取得
+  const fetchItems = useCallback(async (q: string, cursor: string | null, append: boolean) => {
+    if (!append) setLoading(true);
+    else setLoadingMore(true);
+
+    try {
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (cursor) params.set("cursor", cursor);
+
+      const res = await fetch(`/api/explore?${params.toString()}`);
+      if (!res.ok) throw new Error("fetch error");
+      const json = await res.json();
+
+      setItems((prev) => append ? [...prev, ...json.items] : json.items);
+      setHasMore(json.hasMore);
+      setNextCursor(json.nextCursor);
+    } catch (err) {
+      console.error("explore fetch error:", err);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchItems("", null, false);
+  }, [fetchItems]);
+
+  // 検索（デバウンス）
+  const handleSearchChange = (val: string) => {
+    setQuery(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchItems(val, null, false);
+    }, 300);
+  };
+
+  // もっと見る
+  const handleLoadMore = () => {
+    if (nextCursor && !loadingMore) {
+      fetchItems(query, nextCursor, true);
+    }
+  };
+
+  // フォーク
+  const handleFork = async (thread: ExploreThread) => {
+    if (!thread.share_token) return;
+    setForkingId(thread.id);
+    try {
+      const res = await fetch(`/api/share/${thread.share_token}/fork`, {
+        method: "POST",
+      });
+      if (res.status === 401) {
+        window.location.href = `/login?next=/explore`;
+        return;
+      }
+      if (!res.ok) throw new Error("fork failed");
+      const { thread: newThread } = await res.json();
+      window.location.href = `/?fork=${newThread.id}`;
+    } catch (err) {
+      console.error("フォーク失敗:", err);
+      alert("フォークに失敗しました");
+    } finally {
+      setForkingId(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "var(--paper)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* ヘッダー */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          background: "var(--paper)",
+          borderBottom: "1px solid var(--border)",
+          padding: "16px 32px",
+          display: "flex",
+          alignItems: "center",
+          gap: "16px",
+          zIndex: 10,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}>
+          <a
+            href="/"
+            style={{
+              fontSize: "12px",
+              color: "var(--ink-muted)",
+              fontFamily: "'JetBrains Mono', monospace",
+              textDecoration: "none",
+              padding: "4px 8px",
+              border: "1px solid var(--border)",
+              borderRadius: "5px",
+              background: "white",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.background = "var(--sidebar-bg)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.background = "white";
+            }}
+          >
+            ← 戻る
+          </a>
+          <div style={{ width: "1px", height: "16px", background: "var(--border)" }} />
+          <div>
+            <div
+              style={{
+                fontFamily: "'Lora', serif",
+                fontSize: "16px",
+                fontWeight: 600,
+                color: "var(--ink)",
+                letterSpacing: "-0.02em",
+              }}
+            >
+              🌍 みんなの壁打ち
+            </div>
+            <div
+              style={{
+                fontSize: "10px",
+                color: "var(--ink-muted)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              Public Threads
+            </div>
+          </div>
+        </div>
+
+        {/* 検索バー */}
+        <div style={{ position: "relative", width: "280px" }}>
+          <span
+            style={{
+              position: "absolute",
+              left: "8px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: "11px",
+              color: "var(--ink-faint)",
+              pointerEvents: "none",
+            }}
+          >
+            🔍
+          </span>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="タイトルで検索…"
+            style={{
+              width: "100%",
+              padding: "7px 28px 7px 26px",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              fontSize: "12px",
+              fontFamily: "'DM Sans', sans-serif",
+              color: "var(--ink)",
+              background: "white",
+              outline: "none",
+              boxSizing: "border-box",
+              transition: "border-color 0.15s",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-muted)")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+          />
+          {query && (
+            <button
+              onClick={() => handleSearchChange("")}
+              style={{
+                position: "absolute",
+                right: "7px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                color: "var(--ink-faint)",
+                cursor: "pointer",
+                fontSize: "12px",
+                padding: 0,
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* コンテンツ */}
+      <div
+        style={{
+          flex: 1,
+          maxWidth: "760px",
+          width: "100%",
+          margin: "0 auto",
+          padding: "28px 24px 64px",
+        }}
+      >
+        {/* ローディング */}
+        {loading && (
+          <div
+            style={{
+              textAlign: "center",
+              color: "var(--ink-muted)",
+              fontSize: "13px",
+              fontFamily: "'JetBrains Mono', monospace",
+              marginTop: "60px",
+            }}
+          >
+            読み込み中…
+          </div>
+        )}
+
+        {/* 0件 */}
+        {!loading && items.length === 0 && (
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "80px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "12px",
+            }}
+          >
+            <div style={{ fontSize: "40px" }}>🌱</div>
+            <div
+              style={{
+                fontFamily: "'Lora', serif",
+                fontSize: "16px",
+                color: "var(--ink)",
+              }}
+            >
+              {query ? `「${query}」に一致する壁打ちはありません` : "まだ公開されている壁打ちがありません"}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--ink-muted)" }}>
+              スレッドを公開すると、ここに表示されます
+            </div>
+          </div>
+        )}
+
+        {/* スレッドカード一覧 */}
+        {!loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {items.map((thread) => (
+              <ThreadCard
+                key={thread.id}
+                thread={thread}
+                onFork={handleFork}
+                forking={forkingId === thread.id}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* もっと見るボタン */}
+        {!loading && hasMore && (
+          <div style={{ textAlign: "center", marginTop: "28px" }}>
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              style={{
+                padding: "9px 28px",
+                borderRadius: "6px",
+                border: "1px solid var(--border)",
+                background: loadingMore ? "var(--sidebar-bg)" : "white",
+                color: "var(--ink)",
+                fontSize: "12px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: loadingMore ? "default" : "pointer",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                if (!loadingMore)
+                  (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar-bg)";
+              }}
+              onMouseLeave={(e) => {
+                if (!loadingMore)
+                  (e.currentTarget as HTMLButtonElement).style.background = "white";
+              }}
+            >
+              {loadingMore ? "読み込み中…" : "もっと見る"}
+            </button>
+          </div>
+        )}
+
+        {/* 件数表示 */}
+        {!loading && items.length > 0 && (
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "20px",
+              fontSize: "11px",
+              color: "var(--ink-faint)",
+              fontFamily: "'JetBrains Mono', monospace",
+            }}
+          >
+            {items.length} 件表示中
+            {hasMore ? "（続きあり）" : "（すべて表示済み）"}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

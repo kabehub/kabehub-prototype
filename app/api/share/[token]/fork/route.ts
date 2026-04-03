@@ -27,7 +27,7 @@ export async function POST(
   // メッセージ取得
   const { data: sourceMessages, error: messagesError } = await supabase
     .from("messages")
-    .select("role, content, provider")
+    .select("role, content, provider, created_at")
     .eq("thread_id", sourceThread.id)
     .order("created_at", { ascending: true });
 
@@ -70,6 +70,7 @@ export async function POST(
       thread_id: newThread.id,
       user_id: user.id,
       parent_id: null,
+      created_at: m.created_at,
     }));
 
     const { error: insertError } = await authSupabase

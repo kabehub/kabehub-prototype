@@ -28,9 +28,11 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
-  // 未ログインかつ保護ページへのアクセス → /login へリダイレクト
+  // 未ログインかつ保護ページへのアクセス → /login へリダイレクト（nextパラメータ付き）
   if (!user && pathname !== "/login" && pathname !== "/auth/callback") {
-    return NextResponse.redirect(new URL("/login", req.url));
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   // ログイン済みで /login にアクセスしたら / へリダイレクト
