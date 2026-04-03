@@ -1,16 +1,55 @@
 "use client";
 
-import { useRef, useEffect, KeyboardEvent } from "react";
+import { useRef, useEffect, KeyboardEvent, useState } from "react";
+
+interface AttachedFile {
+  name: string;
+  content: string;
+  sizeKB: number;
+}
 
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: () => void;
-  onMemoSubmit: () => void; // 追加：メモ送信
+  onSubmit: (content: string) => void;
+  onMemoSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
   provider: "claude" | "gemini";
   onProviderChange: (p: "claude" | "gemini") => void;
+}
+
+const FILE_SIZE_LIMIT_KB = 100;
+const PREVIEW_LINES = 5;
+
+/** UTF-8で読んだ結果に文字化けが含まれるか判定 */
+function hasMojibake(text: string): boolean {
+  return text.includes("\uFFFD");
+}
+
+/** FileをUTF-8で読み、文字化けがあればShift-JISで読み直す */
+function readFileWithFallback(
+  file: File,
+  onSuccess: (content: string) => void,
+  onError: (msg: string) => void
+) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const content = ev.target?.result as string;
+    if (hasMojibake(content)) {
+      // Shift-JISで読み直す
+      const reader2 = new FileReader();
+      reader2.onload = (ev2) => {
+        onSuccess(ev2.target?.result as string);
+      };
+      reader2.onerror = () => onError("ファイルの読み込みに失敗しました");
+      reader2.readAsText(file, "Shift-JIS");
+    } else {
+      onSuccess(content);
+    }
+  };
+  reader.onerror = () => onError("ファイルの読み込みに失敗しました");
+  reader.readAsText(file, "UTF-8");
 }
 
 export default function ChatInput({
@@ -24,6 +63,12 @@ export default function ChatInput({
   onProviderChange,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -36,12 +81,128 @@ export default function ChatInput({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isLoading && value.trim()) onSubmit();
+      if (!isLoading && (value.trim() || attachedFile)) handleSubmit();
     }
   };
 
+  const processFile = (file: File) => {
+    setFileError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    // 拡張子チェック
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext !== "csv" && ext !== "txt") {
+      setFileError("CSV または TXT ファイルのみ対応しています");
+      return;
+    }
+
+    const sizeKB = file.size / 1024;
+    if (sizeKB > FILE_SIZE_LIMIT_KB) {
+      setFileError(`ファイルサイズが ${FILE_SIZE_LIMIT_KB}KB を超えています（${Math.round(sizeKB)}KB）`);
+      return;
+    }
+
+    readFileWithFallback(
+      file,
+      (content) => {
+        setAttachedFile({ name: file.name, content, sizeKB });
+        setIsPreviewExpanded(false);
+      },
+      (msg) => setFileError(msg)
+    );
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  };
+
+  // ── ドラッグ&ドロップ ──────────────────────────────────
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!isLoading && !disabled) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    // 子要素への移動では発火させない
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (isLoading || disabled) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
+  };
+
+  const handleRemoveFile = () => {
+    setAttachedFile(null);
+    setFileError(null);
+    setIsPreviewExpanded(false);
+  };
+
+  const handleSubmit = () => {
+    if (!value.trim() && !attachedFile) return;
+
+    let finalContent = value;
+    if (attachedFile) {
+      const ext = attachedFile.name.split(".").pop()?.toLowerCase() ?? "txt";
+      const lang = ext === "csv" ? "csv" : "text";
+      finalContent = value.trim()
+        ? `${value}\n\n\`\`\`${lang}\n${attachedFile.content}\n\`\`\``
+        : `\`\`\`${lang}\n${attachedFile.content}\n\`\`\``;
+    }
+
+    onChange("");
+    onSubmit(finalContent);
+    setAttachedFile(null);
+    setIsPreviewExpanded(false);
+  };
+
+  const previewLines = attachedFile?.content.split("\n").slice(0, PREVIEW_LINES) ?? [];
+  const totalLines = attachedFile?.content.split("\n").length ?? 0;
+  const hasMoreLines = totalLines > PREVIEW_LINES;
+
   return (
-    <div style={{ padding: "16px 24px 20px", borderTop: "1px solid var(--border)", background: "var(--chat-bg)" }}>
+    <div
+      style={{ padding: "16px 24px 20px", borderTop: "1px solid var(--border)", background: "var(--chat-bg)", position: "relative" }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* ドラッグ&ドロップ オーバーレイ */}
+      {isDragging && (
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(196,98,45,0.08)",
+          border: "2px dashed var(--accent)",
+          borderRadius: "10px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10,
+          pointerEvents: "none",
+        }}>
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "6px",
+            color: "var(--accent)",
+          }}>
+            <span style={{ fontSize: "24px" }}>📎</span>
+            <span style={{ fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+              ここにドロップ
+            </span>
+            <span style={{ fontSize: "11px", color: "var(--ink-muted)" }}>CSV / TXT</span>
+          </div>
+        </div>
+      )}
+
       {/* AI切り替えボタン */}
       <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
         {(["claude", "gemini"] as const).map((p) => (
@@ -67,13 +228,127 @@ export default function ChatInput({
         ))}
       </div>
 
+      {/* ファイルプレビューエリア */}
+      {attachedFile && (
+        <div style={{
+          marginBottom: "8px",
+          border: "1px solid var(--border)",
+          borderRadius: "8px",
+          background: "#fafafa",
+          overflow: "hidden",
+        }}>
+          {/* ファイルヘッダー */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "6px 10px",
+            background: "#f0f0f0",
+            borderBottom: "1px solid var(--border)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "12px" }}>📎</span>
+              <span style={{
+                fontSize: "12px",
+                fontFamily: "'JetBrains Mono', monospace",
+                color: "var(--ink)",
+                fontWeight: 600,
+              }}>
+                {attachedFile.name}
+              </span>
+              <span style={{
+                fontSize: "10px",
+                color: "var(--ink-muted)",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                {Math.round(attachedFile.sizeKB * 10) / 10}KB · {totalLines}行
+              </span>
+            </div>
+            <button
+              onClick={handleRemoveFile}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--ink-muted)",
+                fontSize: "14px",
+                padding: "0 2px",
+                lineHeight: 1,
+              }}
+              title="添付を解除"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* プレビュー本文 */}
+          <div style={{ padding: "8px 10px" }}>
+            <pre style={{
+              margin: 0,
+              fontSize: "11px",
+              fontFamily: "'JetBrains Mono', monospace",
+              color: "var(--ink-muted)",
+              lineHeight: 1.6,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+            }}>
+              {isPreviewExpanded
+                ? attachedFile.content
+                : previewLines.join("\n")}
+            </pre>
+            {hasMoreLines && (
+              <button
+                onClick={() => setIsPreviewExpanded((v) => !v)}
+                style={{
+                  marginTop: "4px",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--accent)",
+                  fontSize: "11px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  padding: 0,
+                }}
+              >
+                {isPreviewExpanded ? "▲ 折りたたむ" : `▼ さらに ${totalLines - PREVIEW_LINES} 行を表示`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ファイルサイズエラー */}
+      {fileError && (
+        <div style={{
+          marginBottom: "8px",
+          padding: "6px 10px",
+          background: "#fff0f0",
+          border: "1px solid #fca5a5",
+          borderRadius: "6px",
+          fontSize: "11px",
+          color: "#b91c1c",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}>
+          <span>⚠️ {fileError}</span>
+          <button
+            onClick={() => setFileError(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c", fontSize: "12px" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* 入力欄 */}
       <div
         style={{
           position: "relative",
           background: "white",
-          border: "1px solid var(--border)",
+          border: isDragging ? "1px solid var(--accent)" : "1px solid var(--border)",
           borderRadius: "10px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+          boxShadow: isDragging ? "0 0 0 2px rgba(196,98,45,0.15)" : "0 2px 8px rgba(0,0,0,0.04)",
           transition: "box-shadow 0.2s, border-color 0.2s",
         }}
         onFocusCapture={(e) => {
@@ -91,7 +366,7 @@ export default function ChatInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled || isLoading}
-          placeholder="思考を入力… (Enter で送信 / Shift+Enter で改行)"
+          placeholder={attachedFile ? "ファイルについて質問… (Enter で送信)" : "思考を入力… (Enter で送信 / Shift+Enter で改行)"}
           rows={3}
           style={{
             width: "100%",
@@ -111,8 +386,8 @@ export default function ChatInput({
         />
         {/* 送信ボタン（右下） */}
         <button
-          onClick={onSubmit}
-          disabled={isLoading || !value.trim() || disabled}
+          onClick={handleSubmit}
+          disabled={isLoading || (!value.trim() && !attachedFile) || disabled}
           style={{
             position: "absolute",
             right: "10px",
@@ -121,9 +396,9 @@ export default function ChatInput({
             height: "32px",
             borderRadius: "7px",
             border: "none",
-            background: isLoading || !value.trim() ? "var(--ink-faint)" : "var(--accent)",
+            background: isLoading || (!value.trim() && !attachedFile) ? "var(--ink-faint)" : "var(--accent)",
             color: "white",
-            cursor: isLoading || !value.trim() ? "default" : "pointer",
+            cursor: isLoading || (!value.trim() && !attachedFile) ? "default" : "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -142,32 +417,68 @@ export default function ChatInput({
         </button>
       </div>
 
-      {/* 下部ボタン行：メモボタン（左）＋ ヒントテキスト（右） */}
+      {/* 下部ボタン行 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
-        {/* 📝 メモボタン */}
-        <button
-          onClick={onMemoSubmit}
-          disabled={!value.trim() || isLoading || disabled}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-            padding: "4px 12px",
-            borderRadius: "20px",
-            border: "1px solid",
-            borderColor: value.trim() && !isLoading ? "#d69e2e" : "var(--border)",
-            background: value.trim() && !isLoading ? "#fefce8" : "transparent",
-            color: value.trim() && !isLoading ? "#92400e" : "var(--ink-faint)",
-            fontSize: "11px",
-            fontFamily: "'JetBrains Mono', monospace",
-            cursor: value.trim() && !isLoading ? "pointer" : "default",
-            transition: "all 0.15s",
-            letterSpacing: "0.03em",
-          }}
-          title="AIに送らずメモとして記録"
-        >
-          📝 メモ
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {/* 📝 メモボタン */}
+          <button
+            onClick={onMemoSubmit}
+            disabled={!value.trim() || isLoading || disabled}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "4px 12px",
+              borderRadius: "20px",
+              border: "1px solid",
+              borderColor: value.trim() && !isLoading ? "#d69e2e" : "var(--border)",
+              background: value.trim() && !isLoading ? "#fefce8" : "transparent",
+              color: value.trim() && !isLoading ? "#92400e" : "var(--ink-faint)",
+              fontSize: "11px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: value.trim() && !isLoading ? "pointer" : "default",
+              transition: "all 0.15s",
+              letterSpacing: "0.03em",
+            }}
+            title="AIに送らずメモとして記録"
+          >
+            📝 メモ
+          </button>
+
+          {/* 📎 ファイル添付ボタン */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || disabled}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "4px 12px",
+              borderRadius: "20px",
+              border: "1px solid",
+              borderColor: attachedFile ? "var(--accent)" : "var(--border)",
+              background: attachedFile ? "rgba(196,98,45,0.08)" : "transparent",
+              color: attachedFile ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+              fontSize: "11px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: isLoading || disabled ? "default" : "pointer",
+              transition: "all 0.15s",
+              letterSpacing: "0.03em",
+            }}
+            title="CSV / TXT ファイルを添付"
+          >
+            📎 {attachedFile ? "添付中" : "ファイル"}
+          </button>
+
+          {/* hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.txt"
+            onChange={handleFileChange}
+            style={{ display: "none" }}
+          />
+        </div>
 
         <div style={{ fontSize: "10px", color: "var(--ink-faint)", letterSpacing: "0.03em" }}>
           Enter で送信 · Shift+Enter で改行

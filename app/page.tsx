@@ -254,9 +254,8 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
   }, [activeThreadId, isTemporary, temporaryMessages, threads, fetchThreads, getApiKeyHeaders, provider]);
 
   // ── 通常送信 ──────────────────────────────────────────────
-  const handleSubmit = useCallback(async () => {
-    if (!inputValue.trim() || !activeThreadId || isLoading) return;
-    const userContent = inputValue.trim();
+  const handleSubmit = useCallback(async (userContent: string) => {
+    if (!userContent.trim() || !activeThreadId || isLoading) return;
     setInputValue("");
     setIsLoading(true);
 
@@ -326,7 +325,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders]);
+  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders]);
 
   // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {

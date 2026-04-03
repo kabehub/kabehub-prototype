@@ -11,7 +11,7 @@ interface ChatPanelProps {
   messages: Message[];
   inputValue: string;
   onInputChange: (val: string) => void;
-  onSubmit: () => void;
+  onSubmit: (content: string) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
   provider: "claude" | "gemini";
