@@ -2,7 +2,7 @@
 
 import MarkdownRenderer from "./MarkdownRenderer";
 import { Message, MessageNote } from "@/types";
-import { useState } from "react";
+import { useState, memo } from "react";
 
 interface MessageBubbleProps {
   message: Message;
@@ -16,7 +16,7 @@ interface MessageBubbleProps {
   onDeleteMessageNote?: (noteId: string) => void;
 }
 
-export default function MessageBubble({
+function MessageBubble({
   message,
   isLast,
   isLoading,
@@ -280,6 +280,8 @@ export default function MessageBubble({
     </div>
   );
 }
+
+export default memo(MessageBubble);
 
 export function ThinkingBubble() {
   return (
