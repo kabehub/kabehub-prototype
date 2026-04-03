@@ -14,6 +14,7 @@ interface MessageBubbleProps {
   messageNotes?: MessageNote[];
   onAddMessageNote?: (messageId: string, content: string) => Promise<void>;
   onDeleteMessageNote?: (noteId: string) => void;
+  isHighlighted?: boolean;
 }
 
 function MessageBubble({
@@ -26,6 +27,7 @@ function MessageBubble({
   messageNotes = [],
   onAddMessageNote,
   onDeleteMessageNote,
+  isHighlighted = false,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo"; // メモ判定
@@ -68,8 +70,22 @@ function MessageBubble({
   const alignRight = isMemo || isUser;
 
   return (
-    <div
-      className="animate-message"
+    <>
+      {isHighlighted && (
+        <style>{`
+          @keyframes kabehub-flash {
+            0%   { background-color: transparent; }
+            20%  { background-color: rgba(249, 115, 22, 0.18); }
+            100% { background-color: transparent; }
+          }
+          .kabehub-highlight {
+            animation: kabehub-flash 1.6s ease-out forwards;
+            border-radius: 12px;
+          }
+        `}</style>
+      )}
+      <div
+        className={`animate-message${isHighlighted ? " kabehub-highlight" : ""}`}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -278,6 +294,7 @@ function MessageBubble({
         </button>
       )}
     </div>
+    </>
   );
 }
 

@@ -12,6 +12,7 @@ export default function Home() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [displayThreads, setDisplayThreads] = useState<Thread[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchMatchIds, setSearchMatchIds] = useState<string[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -77,7 +78,7 @@ export default function Home() {
     }
   }, []);
 
-  const selectThread = useCallback(async (id: string) => {
+  const selectThread = useCallback(async (id: string, matchedMessageIds?: string[]) => {
     // 一時モード中にスレッド切り替えガード
     if (isTemporary && temporaryMessages.length > 0) {
       const ok = window.confirm("保存されていない一時メッセージは消去されます。よろしいですか？");
@@ -86,6 +87,7 @@ export default function Home() {
     setIsTemporary(false);
     setTemporaryMessages([]);
     setActiveThreadId(id);
+    setSearchMatchIds(matchedMessageIds ?? []);
     setInputValue("");
     localStorage.setItem("lastActiveThreadId", id);
     try {
@@ -123,13 +125,14 @@ useEffect(() => {
   const handleSearch = useCallback(async (query: string, target: "title" | "message" | "both") => {
     if (!query.trim()) {
       setIsSearching(false);
+      setSearchMatchIds([]);
       setDisplayThreads(threads);
       return;
     }
     setIsSearching(true);
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&target=${target}`, { cache: "no-store" });
-      const data: Thread[] = await res.json();
+      const data: (Thread & { matchedMessageIds?: string[] })[] = await res.json();
       setDisplayThreads(data);
     } catch (err) {
       console.error("検索失敗:", err);
@@ -471,7 +474,10 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
       <Sidebar
         threads={displayThreads}
         activeThreadId={activeThreadId}
-        onSelectThread={selectThread}
+        onSelectThread={(id: string) => {
+          const thread = displayThreads.find((t) => t.id === id) as (typeof displayThreads[0] & { matchedMessageIds?: string[] }) | undefined;
+          selectThread(id, thread?.matchedMessageIds);
+        }}
         onNewThread={handleNewThread}
         onDeleteThread={handleDeleteThread}
         onSearch={handleSearch}
@@ -496,6 +502,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
         isTemporary={isTemporary}
         onSwitchTemporary={handleSwitchTemporary}
         onCopyThread={handleCopyThread}
+        searchMatchIds={searchMatchIds}
       />
     </div>
   );

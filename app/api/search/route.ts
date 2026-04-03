@@ -9,7 +9,6 @@ export async function GET(req: NextRequest) {
   const target = searchParams.get("target") ?? "both"; // "title" | "message" | "both"
 
   if (!query) {
-    // クエリ空なら全スレッド返す
     const { data, error } = await supabase
       .from("threads")
       .select("*")
@@ -19,7 +18,9 @@ export async function GET(req: NextRequest) {
   }
 
   const pattern = `%${query}%`;
-  let threadIds = new Set<string>();
+  const threadIds = new Set<string>();
+  // スレッドIDごとにヒットしたメッセージIDを保持
+  const matchedMsgMap = new Map<string, string[]>();
 
   // タイトル検索
   if (target === "title" || target === "both") {
@@ -34,16 +35,19 @@ export async function GET(req: NextRequest) {
   if (target === "message" || target === "both") {
     const { data } = await supabase
       .from("messages")
-      .select("thread_id")
+      .select("id, thread_id")
       .ilike("content", pattern);
-    (data ?? []).forEach((m) => threadIds.add(m.thread_id));
+    (data ?? []).forEach((m) => {
+      threadIds.add(m.thread_id);
+      const existing = matchedMsgMap.get(m.thread_id) ?? [];
+      matchedMsgMap.set(m.thread_id, [...existing, m.id]);
+    });
   }
 
   if (threadIds.size === 0) {
     return NextResponse.json([]);
   }
 
-  // 該当スレッドを取得
   const { data, error } = await supabase
     .from("threads")
     .select("*")
@@ -51,5 +55,12 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error }, { status: 500 });
-  return NextResponse.json(data ?? []);
+
+  // matchedMessageIds を各スレッドに付与
+  const result = (data ?? []).map((t) => ({
+    ...t,
+    matchedMessageIds: matchedMsgMap.get(t.id) ?? [],
+  }));
+
+  return NextResponse.json(result);
 }

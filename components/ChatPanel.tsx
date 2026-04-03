@@ -22,6 +22,7 @@ interface ChatPanelProps {
   isTemporary: boolean;
   onSwitchTemporary: () => void;
   onCopyThread: (threadId: string) => void;
+  searchMatchIds?: string[];
 }
 
 export default function ChatPanel({
@@ -40,6 +41,7 @@ export default function ChatPanel({
   isTemporary,
   onSwitchTemporary,
   onCopyThread,
+  searchMatchIds = [],
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -137,6 +139,19 @@ export default function ChatPanel({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
+
+  // 検索ジャンプ: ヒットした最初のメッセージへスクロール
+  useEffect(() => {
+    if (searchMatchIds.length === 0 || messages.length === 0) return;
+    // Gemini指摘: DOM描画を確実に待つため100ms遅延
+    const timeoutId = setTimeout(() => {
+      const el = document.getElementById(`msg-${searchMatchIds[0]}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+    return () => clearTimeout(timeoutId);
+  }, [messages, searchMatchIds]);
 
   // スレッド切り替え時にリセット
   useEffect(() => {
@@ -969,18 +984,20 @@ const handleExport = (format: "txt" | "md" | "csv") => {
           </div>
         )}
         {messages.map((msg, i) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            isLast={i === lastAssistantIndex}
-            isLoading={isLoading}
-            provider={provider}
-            onRegenerate={onRegenerate}
-            onTrimFrom={onTrimFrom}
-            messageNotes={messageNotes}
-            onAddMessageNote={handleAddMessageNote}
-            onDeleteMessageNote={handleDeleteMessageNote}
-          />
+          <div key={msg.id} id={`msg-${msg.id}`}>
+            <MessageBubble
+              message={msg}
+              isLast={i === lastAssistantIndex}
+              isLoading={isLoading}
+              provider={provider}
+              onRegenerate={onRegenerate}
+              onTrimFrom={onTrimFrom}
+              messageNotes={messageNotes}
+              onAddMessageNote={handleAddMessageNote}
+              onDeleteMessageNote={handleDeleteMessageNote}
+              isHighlighted={searchMatchIds.includes(msg.id)}
+            />
+          </div>
         ))}
         {isLoading && <ThinkingBubble />}
       </div>
