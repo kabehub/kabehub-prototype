@@ -34,6 +34,8 @@ export default function MarkdownRenderer({ content, variant = "default" }: Markd
                   borderRadius: "8px",
                   padding: "12px 16px",
                   overflowX: "auto",
+                  overflowY: "auto",
+                  maxHeight: "240px",
                   fontSize: "13px",
                   fontFamily: "'JetBrains Mono', monospace",
                   lineHeight: 1.6,

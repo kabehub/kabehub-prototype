@@ -140,11 +140,11 @@ export default function MessageBubble({
                 ? "0 2px 8px rgba(15,15,10,0.15)"
                 : "0 1px 4px rgba(0,0,0,0.05)",
               fontFamily: "'DM Sans', sans-serif",
-              whiteSpace: isUser || isMemo ? "pre-wrap" : undefined,
+              whiteSpace: isMemo ? "pre-wrap" : undefined,
               cursor: "pointer",
             }}
           >
-            {isUser || isMemo ? message.content : (
+            {isMemo ? message.content : (
               <MarkdownRenderer content={message.content} />
             )}
           </div>
