@@ -17,10 +17,46 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";
+  const tag = searchParams.get("tag")?.trim() ?? "";
   const cursor = searchParams.get("cursor") ?? null;
   const limit = 20;
 
-  // ベースクエリ（profilesのJOINなし）
+  // タグ絞り込み: まず !inner JOIN を試みる
+  // （thread_tags との JOIN が動作しない場合は2クエリ方式にフォールバック）
+  let tagFilterIds: string[] | null = null;
+
+  if (tag) {
+    // まず !inner JOIN で試みる
+    try {
+      const { data: joinData, error: joinError } = await supabase
+        .from("threads")
+        .select("id, thread_tags!inner(name)")
+        .eq("is_public", true)
+        .ilike("thread_tags.name", tag);
+
+      if (!joinError && joinData) {
+        // !inner JOIN 成功 → IDリストを使って本クエリでフィルタ
+        tagFilterIds = joinData.map((t: any) => t.id);
+      } else {
+        throw new Error("inner join failed, fallback to 2-query");
+      }
+    } catch {
+      // フォールバック: thread_tags を別クエリで取得
+      const { data: tagData } = await supabase
+        .from("thread_tags")
+        .select("thread_id")
+        .ilike("name", tag);
+
+      tagFilterIds = tagData?.map((t: any) => t.thread_id) ?? [];
+    }
+
+    // タグに一致するスレッドが0件 → 即返却
+    if (tagFilterIds !== null && tagFilterIds.length === 0) {
+      return NextResponse.json({ items: [], nextCursor: null, hasMore: false });
+    }
+  }
+
+  // ベースクエリ
   let dbQuery = supabase
     .from("threads")
     .select(
@@ -44,6 +80,10 @@ export async function GET(req: NextRequest) {
 
   if (query) {
     dbQuery = dbQuery.ilike("title", `%${query}%`);
+  }
+
+  if (tagFilterIds !== null && tagFilterIds.length > 0) {
+    dbQuery = dbQuery.in("id", tagFilterIds);
   }
 
   if (cursor) {

@@ -35,10 +35,14 @@ function ThreadCard({
   thread,
   onFork,
   forking,
+  selectedTag,
+  onTagClick,
 }: {
   thread: ExploreThread;
   onFork: (thread: ExploreThread) => void;
   forking: boolean;
+  selectedTag: string;
+  onTagClick: (tag: string) => void;
 }) {
   return (
     <div
@@ -110,22 +114,29 @@ function ThreadCard({
       {/* タグ */}
       {thread.tags.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-          {thread.tags.map((tag) => (
-            <span
-              key={tag}
-              style={{
-                fontSize: "10px",
-                fontFamily: "'JetBrains Mono', monospace",
-                color: "#7c3aed",
-                background: "#f5f3ff",
-                border: "1px solid #e9d5ff",
-                borderRadius: "4px",
-                padding: "1px 7px",
-              }}
-            >
-              #{tag}
-            </span>
-          ))}
+          {thread.tags.map((tag) => {
+            const isActive = selectedTag === tag;
+            return (
+              <button
+                key={tag}
+                onClick={() => onTagClick(tag)}
+                title={isActive ? "クリックで絞り込み解除" : `#${tag} で絞り込む`}
+                style={{
+                  fontSize: "10px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: isActive ? "white" : "#7c3aed",
+                  background: isActive ? "#7c3aed" : "#f5f3ff",
+                  border: `1px solid ${isActive ? "#7c3aed" : "#e9d5ff"}`,
+                  borderRadius: "4px",
+                  padding: "1px 7px",
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+              >
+                #{tag}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -223,17 +234,19 @@ export default function ExplorePage() {
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [selectedTag, setSelectedTag] = useState("");
   const [forkingId, setForkingId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // データ取得
-  const fetchItems = useCallback(async (q: string, cursor: string | null, append: boolean) => {
+  const fetchItems = useCallback(async (q: string, tag: string, cursor: string | null, append: boolean) => {
     if (!append) setLoading(true);
     else setLoadingMore(true);
 
     try {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
+      if (tag) params.set("tag", tag);
       if (cursor) params.set("cursor", cursor);
 
       const res = await fetch(`/api/explore?${params.toString()}`);
@@ -252,22 +265,38 @@ export default function ExplorePage() {
   }, []);
 
   useEffect(() => {
-    fetchItems("", null, false);
+    fetchItems("", "", null, false);
   }, [fetchItems]);
 
   // 検索（デバウンス）
+  // "#タグ名" で入力するとタグ検索に切り替わる
   const handleSearchChange = (val: string) => {
     setQuery(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchItems(val, null, false);
+      if (val.startsWith("#") && val.length > 1) {
+        // # プレフィックスを除いた文字列でタグ検索
+        const tagVal = val.slice(1).trim();
+        setSelectedTag(tagVal);
+        fetchItems("", tagVal, null, false);
+      } else {
+        // 通常のタイトル検索（タグ絞り込みは維持）
+        fetchItems(val, selectedTag, null, false);
+      }
     }, 300);
+  };
+
+  // タグクリック（トグル）
+  const handleTagClick = (tag: string) => {
+    const next = selectedTag === tag ? "" : tag;
+    setSelectedTag(next);
+    fetchItems(query, next, null, false);
   };
 
   // もっと見る
   const handleLoadMore = () => {
     if (nextCursor && !loadingMore) {
-      fetchItems(query, nextCursor, true);
+      fetchItems(query, selectedTag, nextCursor, true);
     }
   };
 
@@ -385,7 +414,7 @@ export default function ExplorePage() {
             type="text"
             value={query}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="タイトルで検索…"
+            placeholder="タイトルで検索… (#タグ名でタグ検索)"
             style={{
               width: "100%",
               padding: "7px 28px 7px 26px",
@@ -404,7 +433,11 @@ export default function ExplorePage() {
           />
           {query && (
             <button
-              onClick={() => handleSearchChange("")}
+              onClick={() => {
+                // #タグ検索由来の selectedTag も解除する
+                if (query.startsWith("#")) setSelectedTag("");
+                handleSearchChange("");
+              }}
               style={{
                 position: "absolute",
                 right: "7px",
@@ -424,6 +457,57 @@ export default function ExplorePage() {
           )}
         </div>
       </div>
+
+      {/* 選択中タグのチップ */}
+      {selectedTag && (
+        <div
+          style={{
+            maxWidth: "760px",
+            width: "100%",
+            margin: "0 auto",
+            padding: "12px 24px 0",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <span style={{ fontSize: "11px", color: "var(--ink-muted)", fontFamily: "'JetBrains Mono', monospace" }}>
+            タグ絞り込み中:
+          </span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "11px",
+              fontFamily: "'JetBrains Mono', monospace",
+              color: "white",
+              background: "#7c3aed",
+              border: "1px solid #7c3aed",
+              borderRadius: "4px",
+              padding: "2px 8px",
+            }}
+          >
+            #{selectedTag}
+            <button
+              onClick={() => handleTagClick(selectedTag)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "white",
+                cursor: "pointer",
+                fontSize: "12px",
+                padding: "0 0 0 2px",
+                lineHeight: 1,
+                opacity: 0.8,
+              }}
+              title="絞り込みを解除"
+            >
+              ×
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* コンテンツ */}
       <div
@@ -470,10 +554,16 @@ export default function ExplorePage() {
                 color: "var(--ink)",
               }}
             >
-              {query ? `「${query}」に一致する壁打ちはありません` : "まだ公開されている壁打ちがありません"}
+              {selectedTag
+                ? `#${selectedTag} の壁打ちはありません`
+                : query
+                ? `「${query}」に一致する壁打ちはありません`
+                : "まだ公開されている壁打ちがありません"}
             </div>
             <div style={{ fontSize: "12px", color: "var(--ink-muted)" }}>
-              スレッドを公開すると、ここに表示されます
+              {selectedTag
+                ? "別のタグを試してみてください"
+                : "スレッドを公開すると、ここに表示されます"}
             </div>
           </div>
         )}
@@ -487,6 +577,8 @@ export default function ExplorePage() {
                 thread={thread}
                 onFork={handleFork}
                 forking={forkingId === thread.id}
+                selectedTag={selectedTag}
+                onTagClick={handleTagClick}
               />
             ))}
           </div>
