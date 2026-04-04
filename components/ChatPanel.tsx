@@ -855,7 +855,24 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
-              <div onClick={() => { const next = !sharePublic; setSharePublic(next); handleSaveShare(next, shareHideMemos, shareAllowPromptFork); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+              <div onClick={() => {
+                const next = !sharePublic;
+                if (next && thread) {
+                  const t = thread.title ?? "";
+                  const isDefaultTitle = t === "新しい壁打ち" || (t.length === 21 && t.endsWith("…"));
+                  if (isDefaultTitle) {
+                    const ok = window.confirm(
+                      `タイトルが自動生成のままです（「${t}」）。
+このまま公開しますか？
+
+「キャンセル」を押してタイトルを編集することをおすすめします。`
+                    );
+                    if (!ok) return;
+                  }
+                }
+                setSharePublic(next);
+                handleSaveShare(next, shareHideMemos, shareAllowPromptFork);
+              }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
                 <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: sharePublic ? "translateX(18px)" : "translateX(0)" }} />
               </div>
               <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
