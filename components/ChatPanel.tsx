@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble } from "./MessageBubble";
 import ChatInput from "./ChatInput";
+import ExportModal, { ExportOptions } from "./ExportModal";
 
 // ✅ 変更後
 interface ChatPanelProps {
@@ -88,6 +89,9 @@ export default function ChatPanel({
   const [showTagInput, setShowTagInput] = useState(false);
   const [tagInputValue, setTagInputValue] = useState("");
   const tagInputRef = useRef<HTMLInputElement>(null);
+
+  // ★ エクスポートモーダル関連
+  const [exportFormat, setExportFormat] = useState<"txt" | "md" | "csv" | null>(null);
 
   // APIキーをLocalStorageから読み込む
   useEffect(() => {
@@ -471,7 +475,17 @@ export default function ChatPanel({
     }
   };
 
-const buildExportContent = (format: "txt" | "md" | "csv") => {
+// CSVブロックを省略する（Gemini推奨の堅牢な正規表現）
+const processCsvBlocks = (content: string, omitCsv: boolean): string => {
+  if (!omitCsv) return content;
+  return content.replace(/```csv\s*\r?\n([\s\S]*?)```/gi, (_match, csvData: string) => {
+    const lines = csvData.split(/\r?\n/).filter((line: string) => line.trim() !== "");
+    const rowCount = Math.max(0, lines.length - 1); // ヘッダー行を除く
+    return `（添付ファイル: ${rowCount}行のCSVデータ）`;
+  });
+};
+
+const buildExportContent = (format: "txt" | "md" | "csv", options: ExportOptions = { omitCsv: false }) => {
   if (!thread) return "";
   const lines: string[] = [];
 
@@ -508,7 +522,8 @@ const buildExportContent = (format: "txt" | "md" | "csv") => {
     lines.push("");
 
     messages.forEach((msg) => {
-      const contentLines = msg.content
+      const msgContent = processCsvBlocks(msg.content, options.omitCsv);
+      const contentLines = msgContent
         .split("\n")
         .map((l) => `> ${l}`)
         .join("\n");
@@ -557,7 +572,7 @@ const buildExportContent = (format: "txt" | "md" | "csv") => {
       }
       const time = new Date(msg.created_at).toLocaleString("ja-JP");
       lines.push(`${roleLabel} ${time}`);
-      lines.push(msg.content);
+      lines.push(processCsvBlocks(msg.content, options.omitCsv));
       lines.push("");
       lines.push("-".repeat(40));
       lines.push("");
@@ -567,9 +582,9 @@ const buildExportContent = (format: "txt" | "md" | "csv") => {
   return lines.join("\n");
 };
 
-const handleExport = (format: "txt" | "md" | "csv") => {
+const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { omitCsv: false }) => {
   if (!thread || messages.length === 0) return;
-  const content = buildExportContent(format);
+  const content = buildExportContent(format, options);
   const mimeType =
     format === "md" ? "text/markdown;charset=utf-8" :
     format === "csv" ? "text/csv;charset=utf-8" :
@@ -689,9 +704,9 @@ const handleExport = (format: "txt" | "md" | "csv") => {
               >📋 下書き {drafts.length > 0 && `(${drafts.length})`}</button>
               {messages.length > 0 && (
                 <>
-                  <button onClick={() => handleExport("txt")} title="TXTでエクスポート" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ TXT</button>
-                  <button onClick={() => handleExport("md")} title="Markdownでエクスポート（Obsidian対応）" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ MD</button>
-                  <button onClick={() => handleExport("csv")} title="CSVでエクスポート（Excel対応）" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ CSV</button>
+                  <button onClick={() => setExportFormat("txt")} title="TXTでエクスポート" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ TXT</button>
+                  <button onClick={() => setExportFormat("md")} title="Markdownでエクスポート（Obsidian対応）" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ MD</button>
+                  <button onClick={() => setExportFormat("csv")} title="CSVでエクスポート（Excel対応）" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ CSV</button>
                 </>
               )}
             </div>
@@ -1026,6 +1041,13 @@ const handleExport = (format: "txt" | "md" | "csv") => {
         disabled={!thread}
         provider={provider}
         onProviderChange={onProviderChange}
+      />
+
+      {/* エクスポートモーダル */}
+      <ExportModal
+        format={exportFormat}
+        onClose={() => setExportFormat(null)}
+        onExport={handleExport}
       />
 
       {/* タイトル編集ダイアログ */}
