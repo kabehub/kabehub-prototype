@@ -14,7 +14,7 @@ async function callClaude(
 ): Promise<string> {
   const body: Record<string, unknown> = {
     model: "claude-sonnet-4-5",
-    max_tokens: 2048,
+    max_tokens: 8192,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
   if (systemPrompt && systemPrompt.trim()) {
