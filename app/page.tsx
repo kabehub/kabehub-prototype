@@ -13,6 +13,8 @@ export default function Home() {
   const [displayThreads, setDisplayThreads] = useState<Thread[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchMatchIds, setSearchMatchIds] = useState<string[]>([]);
+  // ✅ v26追加: 現在の検索ジャンプインデックス
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -88,6 +90,8 @@ export default function Home() {
     setTemporaryMessages([]);
     setActiveThreadId(id);
     setSearchMatchIds(matchedMessageIds ?? []);
+    // ✅ v26追加: スレッド切り替え時にインデックスリセット
+    setSearchMatchIndex(0);
     setInputValue("");
     localStorage.setItem("lastActiveThreadId", id);
     try {
@@ -126,6 +130,8 @@ useEffect(() => {
     if (!query.trim()) {
       setIsSearching(false);
       setSearchMatchIds([]);
+      // ✅ v26追加: 検索クリア時にインデックスリセット
+      setSearchMatchIndex(0);
       setDisplayThreads(threads);
       return;
     }
@@ -137,6 +143,38 @@ useEffect(() => {
     } catch (err) {
       console.error("検索失敗:", err);
     }
+  }, [threads]);
+
+  // ✅ v26追加: 検索ナビゲーション（↑↓）
+  const handleMatchNavigate = useCallback((dir: "prev" | "next") => {
+    setSearchMatchIndex((prev) => {
+      if (searchMatchIds.length === 0) return 0;
+      if (dir === "next") return (prev + 1) % searchMatchIds.length;
+      return (prev - 1 + searchMatchIds.length) % searchMatchIds.length;
+    });
+  }, [searchMatchIds.length]);
+
+  // ✅ v26追加: searchMatchIndex が変わるたびに対象メッセージへスクロール
+  useEffect(() => {
+    if (searchMatchIds.length === 0) return;
+    const targetId = searchMatchIds[searchMatchIndex];
+    if (!targetId) return;
+    const timeoutId = setTimeout(() => {
+      const el = document.getElementById(`msg-${targetId}`);
+      if (el) {
+        // behavior: "auto" で即時ジャンプ（連打対応）
+        el.scrollIntoView({ behavior: "auto", block: "center" });
+      }
+    }, 50);
+    return () => clearTimeout(timeoutId);
+  }, [searchMatchIndex, searchMatchIds]);
+
+  // ✅ v26追加: 検索クリア（ChatPanelのナビバー×ボタン用）
+  const handleClearSearch = useCallback(() => {
+    setSearchMatchIds([]);
+    setSearchMatchIndex(0);
+    setIsSearching(false);
+    setDisplayThreads(threads);
   }, [threads]);
 
   const handleNewThread = useCallback(() => {
@@ -181,7 +219,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
   setThreads((prev) =>
     prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
   );
-  setDisplayThreads((prev) =>                                          // 👈 追加
+  setDisplayThreads((prev) =>
     prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
   );
 }, []);
@@ -446,6 +484,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
       setIsLoading(false);
     }
   }, [activeThreadId, messages]);
+
   // ── セルフコピペ ──────────────────────────────────────────
   const handleCopyThread = useCallback(async (threadId: string) => {
     try {
@@ -503,6 +542,9 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
         onSwitchTemporary={handleSwitchTemporary}
         onCopyThread={handleCopyThread}
         searchMatchIds={searchMatchIds}
+        searchMatchIndex={searchMatchIndex}
+        onMatchNavigate={handleMatchNavigate}
+        onClearSearch={handleClearSearch}
       />
     </div>
   );

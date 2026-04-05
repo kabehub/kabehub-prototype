@@ -6,7 +6,7 @@ import MessageBubble, { ThinkingBubble } from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import ExportModal, { ExportOptions } from "./ExportModal";
 
-// ✅ 変更後
+// ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
   thread: Thread | null;
   messages: Message[];
@@ -24,6 +24,9 @@ interface ChatPanelProps {
   onSwitchTemporary: () => void;
   onCopyThread: (threadId: string) => void;
   searchMatchIds?: string[];
+  searchMatchIndex?: number;
+  onMatchNavigate?: (dir: "prev" | "next") => void;
+  onClearSearch?: () => void;
 }
 
 export default function ChatPanel({
@@ -43,6 +46,9 @@ export default function ChatPanel({
   onSwitchTemporary,
   onCopyThread,
   searchMatchIds = [],
+  searchMatchIndex = 0,
+  onMatchNavigate,
+  onClearSearch,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -73,7 +79,7 @@ export default function ChatPanel({
   const [showShare, setShowShare] = useState(false);
   const [sharePublic, setSharePublic] = useState(false);
   const [shareHideMemos, setShareHideMemos] = useState(false);
-  const [shareAllowPromptFork, setShareAllowPromptFork] = useState(true); // 👈 追加
+  const [shareAllowPromptFork, setShareAllowPromptFork] = useState(true);
   const [shareSaving, setShareSaving] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
@@ -144,18 +150,8 @@ export default function ChatPanel({
     }
   }, [messages, isLoading]);
 
-  // 検索ジャンプ: ヒットした最初のメッセージへスクロール
-  useEffect(() => {
-    if (searchMatchIds.length === 0 || messages.length === 0) return;
-    // Gemini指摘: DOM描画を確実に待つため100ms遅延
-    const timeoutId = setTimeout(() => {
-      const el = document.getElementById(`msg-${searchMatchIds[0]}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 100);
-    return () => clearTimeout(timeoutId);
-  }, [messages, searchMatchIds]);
+  // ✅ v26: スクロールuseEffectはpage.tsxに移動済み。
+  // ChatPanel側では searchMatchIds の変化を検知する必要はない。
 
   // スレッド切り替え時にリセット
   useEffect(() => {
@@ -166,7 +162,7 @@ export default function ChatPanel({
     setShowApiKeys(false);
     setSharePublic(thread?.is_public ?? false);
     setShareHideMemos(thread?.hide_memos ?? false);
-    setShareAllowPromptFork(thread?.allow_prompt_fork ?? true); // 👈 追加
+    setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
     setShareToken(thread?.share_token ?? null);
     setNotes([]);
     setDrafts([]);
@@ -268,7 +264,7 @@ export default function ChatPanel({
     setShowSystemPrompt(false);
     setSharePublic(thread?.is_public ?? false);
     setShareHideMemos(thread?.hide_memos ?? false);
-    setShareAllowPromptFork(thread?.allow_prompt_fork ?? true); // 👈 追加
+    setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
     setShareToken(thread?.share_token ?? null);
   };
 
@@ -283,18 +279,18 @@ export default function ChatPanel({
         body: JSON.stringify({
           is_public: newPublic,
           hide_memos: newHideMemos,
-          allow_prompt_fork: newAllowPromptFork, // 👈 追加
+          allow_prompt_fork: newAllowPromptFork,
           needsToken: newPublic,
         }),
       });
       const updated = await res.json();
       setSharePublic(updated.is_public ?? false);
-      setShareAllowPromptFork(updated.allow_prompt_fork ?? true); // 👈 追加
+      setShareAllowPromptFork(updated.allow_prompt_fork ?? true);
       setShareHideMemos(updated.hide_memos ?? false);
       setShareToken(updated.share_token ?? null);
       thread.is_public = updated.is_public;
       thread.hide_memos = updated.hide_memos;
-      thread.allow_prompt_fork = updated.allow_prompt_fork; // 👈 追加
+      thread.allow_prompt_fork = updated.allow_prompt_fork;
       thread.share_token = updated.share_token;
     } catch (err) {
       console.error("公開設定保存失敗:", err);
@@ -765,6 +761,85 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
         )}
       </div>
 
+      {/* ✅ v26追加: 検索ナビゲーションバー（ヒットが1件以上の時だけ表示） */}
+      {searchMatchIds.length > 0 && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "6px 28px",
+          background: "rgba(124, 58, 237, 0.06)",
+          borderBottom: "1px solid rgba(124, 58, 237, 0.15)",
+          fontSize: "12px",
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {/* カウンター */}
+          <span style={{ color: "#7c3aed", fontWeight: 500, minWidth: "60px" }}>
+            {searchMatchIndex + 1} / {searchMatchIds.length} 件
+          </span>
+          {/* ↑ボタン */}
+          <button
+            onClick={() => onMatchNavigate?.("prev")}
+            title="前のヒット"
+            style={{
+              width: "26px", height: "26px",
+              borderRadius: "6px",
+              border: "1px solid rgba(124, 58, 237, 0.3)",
+              background: "white",
+              color: "#7c3aed",
+              fontSize: "12px",
+              cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.12s",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#7c3aed"; (e.currentTarget as HTMLButtonElement).style.color = "white"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "white"; (e.currentTarget as HTMLButtonElement).style.color = "#7c3aed"; }}
+          >↑</button>
+          {/* ↓ボタン */}
+          <button
+            onClick={() => onMatchNavigate?.("next")}
+            title="次のヒット"
+            style={{
+              width: "26px", height: "26px",
+              borderRadius: "6px",
+              border: "1px solid rgba(124, 58, 237, 0.3)",
+              background: "white",
+              color: "#7c3aed",
+              fontSize: "12px",
+              cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.12s",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#7c3aed"; (e.currentTarget as HTMLButtonElement).style.color = "white"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "white"; (e.currentTarget as HTMLButtonElement).style.color = "#7c3aed"; }}
+          >↓</button>
+          {/* 説明テキスト */}
+          <span style={{ color: "rgba(124, 58, 237, 0.5)", fontSize: "11px", flex: 1 }}>
+            検索ヒット
+          </span>
+          {/* × 検索解除ボタン */}
+          <button
+            onClick={() => onClearSearch?.()}
+            title="検索解除"
+            style={{
+              padding: "2px 10px",
+              borderRadius: "6px",
+              border: "1px solid rgba(124, 58, 237, 0.2)",
+              background: "transparent",
+              color: "rgba(124, 58, 237, 0.6)",
+              fontSize: "11px",
+              cursor: "pointer",
+              fontFamily: "'JetBrains Mono', monospace",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#7c3aed"; (e.currentTarget as HTMLButtonElement).style.color = "#7c3aed"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(124, 58, 237, 0.2)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(124, 58, 237, 0.6)"; }}
+          >× 解除</button>
+        </div>
+      )}
+
       {/* ★ APIキー設定ドロワー */}
       {showApiKeys && (
         <div style={{ borderBottom: "1px solid var(--border)", background: "#fefdf0", padding: "16px 28px" }}>
@@ -1028,6 +1103,8 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
               onAddMessageNote={handleAddMessageNote}
               onDeleteMessageNote={handleDeleteMessageNote}
               isHighlighted={searchMatchIds.includes(msg.id)}
+              isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
+              activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
             />
           </div>
         ))}

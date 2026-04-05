@@ -122,3 +122,14 @@ html, body {
 .thinking-dot { animation: blink 1.2s infinite; }
 .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ✅ v26追加: 検索ジャンプ ↑↓ナビゲーション用フラッシュアニメーション
+   key={activeFlashKey} で再マウントされるたびに再トリガーされる設計 */
+@keyframes kabehub-flash-active {
+  0%   { background-color: rgba(251, 146, 60, 0.45); }
+  30%  { background-color: rgba(251, 146, 60, 0.35); }
+  100% { background-color: transparent; }
+}
+.kabehub-flash-active {
+  animation: kabehub-flash-active 1.6s ease-out forwards;
+}

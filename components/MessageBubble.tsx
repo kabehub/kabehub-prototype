@@ -15,6 +15,9 @@ interface MessageBubbleProps {
   onAddMessageNote?: (messageId: string, content: string) => Promise<void>;
   onDeleteMessageNote?: (noteId: string) => void;
   isHighlighted?: boolean;
+  // ✅ v26追加: アクティブヒット（現在地）と再トリガーキー
+  isActiveMatch?: boolean;
+  activeFlashKey?: number;
 }
 
 function MessageBubble({
@@ -28,6 +31,8 @@ function MessageBubble({
   onAddMessageNote,
   onDeleteMessageNote,
   isHighlighted = false,
+  isActiveMatch = false,
+  activeFlashKey,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo"; // メモ判定
@@ -71,41 +76,52 @@ function MessageBubble({
 
   return (
     <>
-      {isHighlighted && (
-        <style>{`
-          @keyframes kabehub-flash {
-            0%   { background-color: transparent; }
-            20%  { background-color: rgba(249, 115, 22, 0.18); }
-            100% { background-color: transparent; }
-          }
-          .kabehub-highlight {
-            animation: kabehub-flash 1.6s ease-out forwards;
-            border-radius: 12px;
-          }
-        `}</style>
-      )}
       <div
-        className={`animate-message${isHighlighted ? " kabehub-highlight" : ""}`}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: alignRight ? "flex-end" : "flex-start",
-        marginBottom: "20px",
-        position: "relative",
-      }}
-      onMouseEnter={(e) => {
-        const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
-        if (btn) btn.style.opacity = "1";
-        const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
-        if (copyBtn) copyBtn.style.opacity = "1";
-      }}
-      onMouseLeave={(e) => {
-        const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
-        if (btn) btn.style.opacity = "0";
-        const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
-        if (copyBtn && !copied) copyBtn.style.opacity = "0";
-      }}
-    >
+        className="animate-message"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: alignRight ? "flex-end" : "flex-start",
+          marginBottom: "20px",
+          position: "relative",
+          // ✅ v26: isActiveMatch（現在地）はオレンジ、isHighlighted（ヒット全件）は薄オレンジ
+          borderRadius: "12px",
+          transition: "background-color 0.3s",
+          backgroundColor: isActiveMatch
+            ? "transparent"  // アクティブはCSSアニメーションで制御
+            : isHighlighted
+            ? "rgba(251, 146, 60, 0.08)"  // 非アクティブヒット：常時薄オレンジ
+            : "transparent",
+        }}
+        onMouseEnter={(e) => {
+          const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
+          if (btn) btn.style.opacity = "1";
+          const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
+          if (copyBtn) copyBtn.style.opacity = "1";
+        }}
+        onMouseLeave={(e) => {
+          const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
+          if (btn) btn.style.opacity = "0";
+          const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
+          if (copyBtn && !copied) copyBtn.style.opacity = "0";
+        }}
+      >
+        {/* ✅ v26: アクティブヒットのフラッシュオーバーレイ
+            key={activeFlashKey} で searchMatchIndex が変わるたびに再マウント → アニメーション再トリガー */}
+        {isActiveMatch && activeFlashKey !== undefined && (
+          <span
+            key={activeFlashKey}
+            className="kabehub-flash-active"
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: "12px",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+        )}
+
       {/* ロールラベル */}
       <div style={{
         fontSize: "10px",
@@ -114,12 +130,14 @@ function MessageBubble({
         color: isMemo ? "#b7791f" : "var(--ink-faint)",
         marginBottom: "5px",
         fontFamily: "'JetBrains Mono', monospace",
+        position: "relative",
+        zIndex: 1,
       }}>
         {alignRight ? (isMemo ? "📝 Memo" : "You") : aiLabel()}
       </div>
 
       {/* バブル＋メモアイコン行 */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: alignRight ? "row-reverse" : "row" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: alignRight ? "row-reverse" : "row", position: "relative", zIndex: 1 }}>
         {/* バブル本体（クリックでメモ入力） */}
         <div style={{ position: "relative" }}>
           <div
@@ -223,7 +241,7 @@ function MessageBubble({
 
       {/* メモ入力欄 */}
       {showNoteInput && (
-        <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px", position: "relative", zIndex: 1 }}>
           <textarea
             autoFocus
             value={noteContent}
@@ -254,7 +272,7 @@ function MessageBubble({
 
       {/* メモ一覧 */}
       {showNoteList && myNotes.length > 0 && (
-        <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px", position: "relative", zIndex: 1 }}>
           {myNotes.map((note) => (
             <div key={note.id} style={{ background: "#fffbeb", border: "1px solid #f6e05e", borderRadius: "8px", padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
               <div style={{ fontSize: "13px", color: "var(--ink)", whiteSpace: "pre-wrap", lineHeight: 1.6, flex: 1 }}>{note.content}</div>
@@ -274,7 +292,7 @@ function MessageBubble({
         <button
           className="trim-btn"
           onClick={() => { if (window.confirm("このメッセージ以降を全て削除しますか？")) { onTrimFrom(message); } }}
-          style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: "-80px", opacity: 0, padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "opacity 0.15s", whiteSpace: "nowrap" }}
+          style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: "-80px", opacity: 0, padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "opacity 0.15s", whiteSpace: "nowrap", zIndex: 2 }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
         >
@@ -286,7 +304,7 @@ function MessageBubble({
       {!isUser && !isMemo && isLast && !isLoading && onRegenerate && (
         <button
           onClick={() => onRegenerate(otherProvider)}
-          style={{ marginTop: "6px", padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
+          style={{ marginTop: "6px", padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s", position: "relative", zIndex: 1 }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
         >
