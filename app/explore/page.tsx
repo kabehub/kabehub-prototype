@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 // ---- 型定義 ----
 interface ExploreThread {
@@ -226,19 +227,49 @@ function ThreadCard({
   );
 }
 
-// ---- メインページ ----
-export default function ExplorePage() {
+// ---- メインコンテンツ（useSearchParams を使うため Suspense で包む） ----
+function ExploreContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // ---- URLから現在値を取得（SSOT） ----
+  const urlTag = searchParams.get("tag") ?? "";
+  const urlQuery = searchParams.get("q") ?? "";
+
+  // ---- ローカルState ----
   const [items, setItems] = useState<ExploreThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [selectedTag, setSelectedTag] = useState("");
+  // inputValue だけローカル管理（タイピングの即応性を担保）
+  const [inputValue, setInputValue] = useState(urlQuery);
   const [forkingId, setForkingId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // データ取得
+  // ---- URL更新の共通関数 ----
+  const updateParams = useCallback(
+    (updates: { tag?: string | null; q?: string | null }, mode: "push" | "replace" = "replace") => {
+      const params = new URLSearchParams(searchParams.toString());
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value) {
+          params.set(key, value);
+        } else {
+          params.delete(key);
+        }
+      });
+      const url = `${pathname}?${params.toString()}`;
+      if (mode === "push") {
+        router.push(url, { scroll: false });
+      } else {
+        router.replace(url, { scroll: false });
+      }
+    },
+    [pathname, searchParams, router]
+  );
+
+  // ---- データ取得 ----
   const fetchItems = useCallback(async (q: string, tag: string, cursor: string | null, append: boolean) => {
     if (!append) setLoading(true);
     else setLoadingMore(true);
@@ -253,7 +284,7 @@ export default function ExplorePage() {
       if (!res.ok) throw new Error("fetch error");
       const json = await res.json();
 
-      setItems((prev) => append ? [...prev, ...json.items] : json.items);
+      setItems((prev) => (append ? [...prev, ...json.items] : json.items));
       setHasMore(json.hasMore);
       setNextCursor(json.nextCursor);
     } catch (err) {
@@ -264,43 +295,63 @@ export default function ExplorePage() {
     }
   }, []);
 
+  // ---- URLパラメータが変わったらフェッチ（カーソルもリセット） ----
   useEffect(() => {
-    fetchItems("", "", null, false);
-  }, [fetchItems]);
+    setItems([]);
+    setNextCursor(null);
+    fetchItems(urlQuery, urlTag, null, false);
+  }, [urlTag, urlQuery, fetchItems]);
 
-  // 検索（デバウンス）
-  // "#タグ名" で入力するとタグ検索に切り替わる
+  // ---- 検索入力ハンドラー ----
+  // inputValue はローカルで即時更新し、デバウンス後にURLへ反映
   const handleSearchChange = (val: string) => {
-    setQuery(val);
+    setInputValue(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       if (val.startsWith("#") && val.length > 1) {
-        // # プレフィックスを除いた文字列でタグ検索
+        // "#タグ名" 入力 → タグ検索に切り替え
         const tagVal = val.slice(1).trim();
-        setSelectedTag(tagVal);
-        fetchItems("", tagVal, null, false);
+        updateParams({ tag: tagVal, q: null }, "replace");
       } else {
         // 通常のタイトル検索（タグ絞り込みは維持）
-        fetchItems(val, selectedTag, null, false);
+        updateParams({ q: val || null }, "replace");
       }
     }, 300);
   };
 
-  // タグクリック（トグル）
-  const handleTagClick = (tag: string) => {
-    const next = selectedTag === tag ? "" : tag;
-    setSelectedTag(next);
-    fetchItems(query, next, null, false);
-  };
-
-  // もっと見る
-  const handleLoadMore = () => {
-    if (nextCursor && !loadingMore) {
-      fetchItems(query, selectedTag, nextCursor, true);
+  // ---- 検索クリア ----
+  const handleSearchClear = () => {
+    setInputValue("");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // #タグ検索由来の selectedTag も同時にクリア
+    if (inputValue.startsWith("#")) {
+      updateParams({ tag: null, q: null }, "replace");
+    } else {
+      updateParams({ q: null }, "replace");
     }
   };
 
-  // フォーク
+  // ---- タグクリック（トグル） ----
+  // push を使うことでブラウザの「戻る」でタグ解除できる
+  const handleTagClick = (tag: string) => {
+    const next = urlTag === tag ? null : tag;
+    // タグクリック時は inputValue が "#xxx" 形式なら一緒にクリア
+    if (inputValue.startsWith("#")) {
+      setInputValue("");
+      updateParams({ tag: next, q: null }, "push");
+    } else {
+      updateParams({ tag: next }, "push");
+    }
+  };
+
+  // ---- もっと見る ----
+  const handleLoadMore = () => {
+    if (nextCursor && !loadingMore) {
+      fetchItems(urlQuery, urlTag, nextCursor, true);
+    }
+  };
+
+  // ---- フォーク ----
   const handleFork = async (thread: ExploreThread) => {
     if (!thread.share_token) return;
     setForkingId(thread.id);
@@ -412,7 +463,7 @@ export default function ExplorePage() {
           </span>
           <input
             type="text"
-            value={query}
+            value={inputValue}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="タイトルで検索… (#タグ名でタグ検索)"
             style={{
@@ -431,13 +482,9 @@ export default function ExplorePage() {
             onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-muted)")}
             onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
           />
-          {query && (
+          {inputValue && (
             <button
-              onClick={() => {
-                // #タグ検索由来の selectedTag も解除する
-                if (query.startsWith("#")) setSelectedTag("");
-                handleSearchChange("");
-              }}
+              onClick={handleSearchClear}
               style={{
                 position: "absolute",
                 right: "7px",
@@ -459,7 +506,7 @@ export default function ExplorePage() {
       </div>
 
       {/* 選択中タグのチップ */}
-      {selectedTag && (
+      {urlTag && (
         <div
           style={{
             maxWidth: "760px",
@@ -488,9 +535,9 @@ export default function ExplorePage() {
               padding: "2px 8px",
             }}
           >
-            #{selectedTag}
+            #{urlTag}
             <button
-              onClick={() => handleTagClick(selectedTag)}
+              onClick={() => handleTagClick(urlTag)}
               style={{
                 background: "none",
                 border: "none",
@@ -554,14 +601,14 @@ export default function ExplorePage() {
                 color: "var(--ink)",
               }}
             >
-              {selectedTag
-                ? `#${selectedTag} の壁打ちはありません`
-                : query
-                ? `「${query}」に一致する壁打ちはありません`
+              {urlTag
+                ? `#${urlTag} の壁打ちはありません`
+                : urlQuery
+                ? `「${urlQuery}」に一致する壁打ちはありません`
                 : "まだ公開されている壁打ちがありません"}
             </div>
             <div style={{ fontSize: "12px", color: "var(--ink-muted)" }}>
-              {selectedTag
+              {urlTag
                 ? "別のタグを試してみてください"
                 : "スレッドを公開すると、ここに表示されます"}
             </div>
@@ -577,7 +624,7 @@ export default function ExplorePage() {
                 thread={thread}
                 onFork={handleFork}
                 forking={forkingId === thread.id}
-                selectedTag={selectedTag}
+                selectedTag={urlTag}
                 onTagClick={handleTagClick}
               />
             ))}
@@ -632,5 +679,32 @@ export default function ExplorePage() {
         )}
       </div>
     </div>
+  );
+}
+
+// ---- ページエントリーポイント（Suspense でラップ） ----
+// useSearchParams() を使うコンポーネントは必ず Suspense で囲む（Next.js 14 App Router の要件）
+export default function ExplorePage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          style={{
+            minHeight: "100vh",
+            background: "var(--paper)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "13px",
+            color: "var(--ink-muted)",
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
+          読み込み中…
+        </div>
+      }
+    >
+      <ExploreContent />
+    </Suspense>
   );
 }
