@@ -3,11 +3,16 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Message } from "@/types";
-import MarkdownRenderer from "@/components/MarkdownRenderer";
+import {
+  ArenaBubble,
+  ArenaThinking,
+  ArenaMeta,
+  PROVIDER_LABELS,
+  PROVIDER_COLORS,
+  Provider,
+} from "@/components/ArenaTimeline";
 
 // ── 型定義 ──────────────────────────────────────────────────────
-
-type Provider = "claude" | "gemini" | "openai";
 
 interface ArenaConfig {
   ai1Provider: Provider;
@@ -15,22 +20,8 @@ interface ArenaConfig {
   ai2Provider: Provider;
   ai2Prompt: string;
   topic: string;
-  turnCount: number; // 1回の実行で何ターン回すか（AI1→AI2 で1ターン）
+  turnCount: number;
 }
-
-// ── 定数 ────────────────────────────────────────────────────────
-
-const PROVIDER_LABELS: Record<Provider, string> = {
-  claude: "Claude",
-  gemini: "Gemini",
-  openai: "ChatGPT",
-};
-
-const PROVIDER_COLORS: Record<Provider, { bg: string; border: string; text: string }> = {
-  claude: { bg: "#f0f4ff", border: "#a5b4fc", text: "#3730a3" },
-  gemini: { bg: "#f0fdf4", border: "#86efac", text: "#166534" },
-  openai: { bg: "#fff7ed", border: "#fdba74", text: "#9a3412" },
-};
 
 // ── ユーティリティ ───────────────────────────────────────────────
 
@@ -47,131 +38,11 @@ function getApiKeyHeaders(): Record<string, string> {
   return headers;
 }
 
-// ── メッセージバブル（アリーナ専用） ────────────────────────────
-
-function ArenaBubble({
-  message,
-  ai1Provider,
-  ai2Provider,
-  ai1Label,
-  ai2Label,
-  aiMessageIndex,
-}: {
-  message: Message;
-  ai1Provider: Provider;
-  ai2Provider: Provider;
-  ai1Label: string;
-  ai2Label: string;
-  aiMessageIndex: number; // AI発言のみのインデックス（0始まり）。偶数=AI1、奇数=AI2
-}) {
-  const isUser = message.role === "user";
-  // 同じprovider同士（例: ChatGPT vs ChatGPT）でも正しく左右分けするため
-  // providerではなくAI発言のインデックスの偶奇で判定する
-  const isAi1 = !isUser && aiMessageIndex % 2 === 0;
-  // AI1が右、AI2が左（神の介入は中央）
-  const isIntervention = isUser;
-
-  const provider = message.provider as Provider | "user";
-  const color =
-    provider && provider !== "user" ? PROVIDER_COLORS[provider as Provider] : null;
-
-  const label = isUser
-    ? "⚡ 神の介入"
-    : isAi1
-    ? `${ai1Label} (AI1)`
-    : `${ai2Label} (AI2)`;
-
-  if (isIntervention) {
-    // 神の介入：中央表示
-    return (
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
-        <div
-          style={{
-            background: "#fefce8",
-            border: "1px solid #fde68a",
-            borderRadius: "8px",
-            padding: "8px 16px",
-            fontSize: "13px",
-            color: "#78350f",
-            fontFamily: "'DM Sans', sans-serif",
-            maxWidth: "480px",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: "#b7791f", marginBottom: "4px", fontFamily: "'JetBrains Mono', monospace" }}>
-            ⚡ 神の介入
-          </div>
-          {message.content.replace("【神からの介入】", "")}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: isAi1 ? "flex-end" : "flex-start",
-        marginBottom: "20px",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "10px",
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          color: color?.text ?? "var(--ink-faint)",
-          marginBottom: "5px",
-          fontFamily: "'JetBrains Mono', monospace",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          maxWidth: "520px",
-          borderRadius: isAi1 ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-          padding: "14px 18px",
-          background: color?.bg ?? "var(--bubble-ai)",
-          border: `1px solid ${color?.border ?? "var(--border)"}`,
-          fontSize: "14px",
-          lineHeight: 1.6,
-          color: "var(--ink)",
-          fontFamily: "'DM Sans', sans-serif",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-        }}
-      >
-        <MarkdownRenderer content={message.content} />
-      </div>
-    </div>
-  );
-}
-
-// ── ThinkingBubble（アリーナ用） ─────────────────────────────────
-
-function ArenaThinking({ label, isAi1 }: { label: string; isAi1: boolean }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: isAi1 ? "flex-end" : "flex-start", marginBottom: "20px" }}>
-      <div style={{ fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: "5px", fontFamily: "'JetBrains Mono', monospace" }}>
-        {label}
-      </div>
-      <div style={{ borderRadius: isAi1 ? "12px 12px 2px 12px" : "12px 12px 12px 2px", padding: "14px 18px", background: "var(--bubble-ai)", border: "1px solid var(--border)", display: "flex", gap: "5px", alignItems: "center" }}>
-        {[0, 1, 2].map((i) => (
-          <span key={i} className="thinking-dot" style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--ink-faint)", display: "block", animationDelay: `${i * 0.2}s` }} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── メインページ ─────────────────────────────────────────────────
 
 export default function ArenaPage() {
-  // セットアップ画面 or 闘技場画面
   const [phase, setPhase] = useState<"setup" | "arena">("setup");
 
-  // 設定
   const [config, setConfig] = useState<ArenaConfig>({
     ai1Provider: "claude",
     ai1Prompt: "",
@@ -181,21 +52,23 @@ export default function ArenaPage() {
     turnCount: 2,
   });
 
-  // 闘技場状態
   const [threadId] = useState(() => uuidv4());
   const [messages, setMessages] = useState<Message[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [thinkingLabel, setThinkingLabel] = useState<string | null>(null);
   const [thinkingIsAi1, setThinkingIsAi1] = useState(true);
-  const [totalTurns, setTotalTurns] = useState(0); // これまで実行したターン数
+  const [totalTurns, setTotalTurns] = useState(0);
   const [interventionText, setInterventionText] = useState("");
   const [showIntervention, setShowIntervention] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
 
+  // ── シェア関連 state ──────────────────────────────────────────
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const isFirstRun = messages.length === 0;
 
-  // 自動スクロール
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinkingLabel]);
@@ -203,7 +76,7 @@ export default function ArenaPage() {
   const ai1Label = PROVIDER_LABELS[config.ai1Provider];
   const ai2Label = PROVIDER_LABELS[config.ai2Provider];
 
-  // ── 1ターン実行（AI1またはAI2のどちらかが発言） ──────────────
+  // ── 1ターン実行 ───────────────────────────────────────────────
   const runOneTurn = useCallback(
     async (
       currentMessages: Message[],
@@ -252,7 +125,6 @@ export default function ArenaPage() {
     if (isRunning) return;
     setIsRunning(true);
 
-    // 介入テキストを取得してクリア（最初のターンのみ渡す）
     const intervention = interventionText.trim() || undefined;
     setInterventionText("");
     setShowIntervention(false);
@@ -262,20 +134,18 @@ export default function ArenaPage() {
       const turns = config.turnCount;
 
       for (let i = 0; i < turns; i++) {
-        // AI1ターン
         const isVeryFirst = isFirstRun && i === 0;
         const ai1Msg = await runOneTurn(
           currentMessages,
           true,
           isVeryFirst,
           config.topic,
-          i === 0 ? intervention : undefined // 介入は最初の1回だけ
+          i === 0 ? intervention : undefined
         );
         currentMessages = [...currentMessages, ai1Msg];
         setMessages([...currentMessages]);
         setThinkingLabel(null);
 
-        // AI2ターン
         const ai2Msg = await runOneTurn(currentMessages, false, false, config.topic);
         currentMessages = [...currentMessages, ai2Msg];
         setMessages([...currentMessages]);
@@ -291,6 +161,57 @@ export default function ArenaPage() {
       setThinkingLabel(null);
     }
   }, [isRunning, messages, config, interventionText, isFirstRun, runOneTurn]);
+
+  // ── シェアURL生成 ─────────────────────────────────────────────
+  const handleShare = useCallback(async () => {
+    if (isSharing || messages.length === 0) return;
+    setIsSharing(true);
+    try {
+      const newToken = uuidv4().replace(/-/g, "").slice(0, 16);
+
+      const meta: ArenaMeta = {
+        type: "arena",
+        ai1Provider: config.ai1Provider,
+        ai2Provider: config.ai2Provider,
+        ai1Prompt: config.ai1Prompt || undefined,
+        ai2Prompt: config.ai2Prompt || undefined,
+        topic: config.topic,
+      };
+
+      const res = await fetch(`/api/threads/${threadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          share_token: newToken,
+          is_public: true,
+          metadata: meta,
+        }),
+      });
+
+      if (!res.ok) throw new Error("シェアの設定に失敗しました");
+      setShareToken(newToken);
+    } catch (err) {
+      alert(`シェアに失敗しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
+    } finally {
+      setIsSharing(false);
+    }
+  }, [isSharing, messages, config, threadId]);
+
+  // ── シェアURLコピー ────────────────────────────────────────────
+  const handleCopyShareUrl = useCallback(() => {
+    if (!shareToken) return;
+    const url = `${window.location.origin}/arena/${shareToken}`;
+    navigator.clipboard.writeText(url);
+    alert("URLをコピーしました！");
+  }, [shareToken]);
+
+  // ── XシェアURL生成 ────────────────────────────────────────────
+  const buildXShareUrl = useCallback(() => {
+    if (!shareToken) return "#";
+    const url = `${window.location.origin}/arena/${shareToken}`;
+    const text = `【AI闘技場】${ai1Label} vs ${ai2Label}\nお題：${config.topic}\n\n#KabeHub #AI闘技場`;
+    return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+  }, [shareToken, ai1Label, ai2Label, config.topic]);
 
   // ── セットアップ画面 ──────────────────────────────────────────
 
@@ -486,8 +407,6 @@ export default function ArenaPage() {
               <ArenaBubble
                 key={msg.id}
                 message={msg}
-                ai1Provider={config.ai1Provider}
-                ai2Provider={config.ai2Provider}
                 ai1Label={ai1Label}
                 ai2Label={ai2Label}
                 aiMessageIndex={currentAiIdx}
@@ -504,6 +423,29 @@ export default function ArenaPage() {
       {/* 操作フッター */}
       <div style={{ position: "sticky", bottom: 0, background: "var(--paper)", borderTop: "1px solid var(--border)", padding: "16px 24px", zIndex: 10 }}>
         <div style={{ maxWidth: "760px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "10px" }}>
+
+          {/* シェアパネル（token取得後に表示） */}
+          {shareToken && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "7px" }}>
+              <span style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#166534", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {typeof window !== "undefined" ? `${window.location.origin}/arena/${shareToken}` : ""}
+              </span>
+              <button
+                onClick={handleCopyShareUrl}
+                style={{ padding: "4px 10px", borderRadius: "5px", border: "1px solid #86efac", background: "white", color: "#166534", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                📋 コピー
+              </button>
+              <a
+                href={buildXShareUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ padding: "4px 10px", borderRadius: "5px", border: "1px solid #1d9bf0", background: "#1d9bf0", color: "white", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", textDecoration: "none", whiteSpace: "nowrap" }}
+              >
+                𝕏 シェア
+              </a>
+            </div>
+          )}
 
           {/* 神の介入ボックス（トグル） */}
           {showIntervention && (
@@ -551,6 +493,16 @@ export default function ArenaPage() {
                 : isFirstRun
                 ? `▶️ ${config.turnCount}ターン 開始`
                 : `▶️ ${config.turnCount}ターン 続ける`}
+            </button>
+
+            {/* シェアボタン */}
+            <button
+              onClick={handleShare}
+              disabled={isSharing || messages.length === 0}
+              title={messages.length === 0 ? "対局を開始してからシェアできます" : "観戦URLを生成"}
+              style={{ padding: "10px 14px", borderRadius: "7px", border: "1px solid var(--border)", background: shareToken ? "#f0fdf4" : "white", color: shareToken ? "#166534" : messages.length === 0 ? "var(--ink-faint)" : "var(--ink-muted)", fontSize: "13px", cursor: messages.length === 0 ? "default" : "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
+            >
+              {isSharing ? "…" : shareToken ? "✅ 共有中" : "🔗 シェア"}
             </button>
           </div>
         </div>

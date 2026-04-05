@@ -52,6 +52,6 @@ export const config = {
      * - /share/... （ログイン不要の公開ページ）
      * - /api/share/... （公開ページ用API）
      */
-    "/((?!_next/static|_next/image|favicon.ico|share|api/share).*)",
+    "/((?!_next/static|_next/image|favicon.ico|share|api/share|arena/).*)",
   ],
 };
