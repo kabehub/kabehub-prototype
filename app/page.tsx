@@ -19,7 +19,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [provider, setProvider] = useState<"claude" | "gemini">("claude");
+  const [provider, setProvider] = useState<"claude" | "gemini" | "openai">("claude");
   const [user, setUser] = useState<User | null>(null);
 
   // 一時モード関連
@@ -274,7 +274,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
               threadId: activeThreadId,
               messages: [],
               userContent: msg.content,
-              provider: msg.provider === "memo" ? provider : (msg.provider as "claude" | "gemini"),
+              provider: msg.provider === "memo" ? provider : (msg.provider as "claude" | "gemini" | "openai"),
               isMemo: msg.provider === "memo",
               isTemporarySave: true,
               savedMessage: msg,
@@ -415,7 +415,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
   }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
 
   // ── 再生成 ────────────────────────────────────────────────
-  const handleRegenerate = useCallback(async (targetProvider: "claude" | "gemini") => {
+  const handleRegenerate = useCallback(async (targetProvider: "claude" | "gemini" | "openai") => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
     try {

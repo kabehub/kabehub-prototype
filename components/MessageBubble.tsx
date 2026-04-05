@@ -9,13 +9,12 @@ interface MessageBubbleProps {
   isLast?: boolean;
   isLoading?: boolean;
   provider?: string;
-  onRegenerate?: (targetProvider: "claude" | "gemini") => void;
+  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai") => void;
   onTrimFrom?: (message: Message) => void;
   messageNotes?: MessageNote[];
   onAddMessageNote?: (messageId: string, content: string) => Promise<void>;
   onDeleteMessageNote?: (noteId: string) => void;
   isHighlighted?: boolean;
-  // ✅ v26追加: アクティブヒット（現在地）と再トリガーキー
   isActiveMatch?: boolean;
   activeFlashKey?: number;
 }
@@ -35,16 +34,15 @@ function MessageBubble({
   activeFlashKey,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
-  const isMemo = message.provider === "memo"; // メモ判定
+  const isMemo = message.provider === "memo";
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [showNoteList, setShowNoteList] = useState(false);
-  const [copied, setCopied] = useState(false); // コピー状態
+  const [copied, setCopied] = useState(false);
   const myNotes = messageNotes.filter((n) => n.message_id === message.id);
 
-  // コピーハンドラ
   const handleCopy = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // バブルクリック（メモ入力）と競合しないよう止める
+    e.stopPropagation();
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
@@ -59,9 +57,11 @@ function MessageBubble({
     return "AI";
   };
 
-  const otherProvider = (message.provider === "claude" || message.provider === "unknown")
-    ? "gemini" : "claude";
-  const otherLabel = otherProvider === "claude" ? "Claude" : "Gemini";
+  // ✅ v27: 再生成ターゲット（自分以外の2プロバイダー）
+  const ALL_PROVIDERS = ["claude", "gemini", "openai"] as const;
+  const regenTargets = ALL_PROVIDERS.filter((p) => p !== message.provider);
+  const regenLabel = (p: string) =>
+    p === "claude" ? "Claude" : p === "gemini" ? "Gemini" : "ChatGPT";
 
   const handleSaveNote = async () => {
     if (!noteContent.trim() || !onAddMessageNote) return;
@@ -71,7 +71,6 @@ function MessageBubble({
     setShowNoteList(true);
   };
 
-  // メモ・ユーザー → 右寄せ / AI → 左寄せ
   const alignRight = isMemo || isUser;
 
   return (
@@ -84,13 +83,12 @@ function MessageBubble({
           alignItems: alignRight ? "flex-end" : "flex-start",
           marginBottom: "20px",
           position: "relative",
-          // ✅ v26: isActiveMatch（現在地）はオレンジ、isHighlighted（ヒット全件）は薄オレンジ
           borderRadius: "12px",
           transition: "background-color 0.3s",
           backgroundColor: isActiveMatch
-            ? "transparent"  // アクティブはCSSアニメーションで制御
+            ? "transparent"
             : isHighlighted
-            ? "rgba(251, 146, 60, 0.08)"  // 非アクティブヒット：常時薄オレンジ
+            ? "rgba(251, 146, 60, 0.08)"
             : "transparent",
         }}
         onMouseEnter={(e) => {
@@ -106,8 +104,7 @@ function MessageBubble({
           if (copyBtn && !copied) copyBtn.style.opacity = "0";
         }}
       >
-        {/* ✅ v26: アクティブヒットのフラッシュオーバーレイ
-            key={activeFlashKey} で searchMatchIndex が変わるたびに再マウント → アニメーション再トリガー */}
+        {/* v26: アクティブヒットのフラッシュオーバーレイ */}
         {isActiveMatch && activeFlashKey !== undefined && (
           <span
             key={activeFlashKey}
@@ -122,196 +119,199 @@ function MessageBubble({
           />
         )}
 
-      {/* ロールラベル */}
-      <div style={{
-        fontSize: "10px",
-        letterSpacing: "0.1em",
-        textTransform: "uppercase",
-        color: isMemo ? "#b7791f" : "var(--ink-faint)",
-        marginBottom: "5px",
-        fontFamily: "'JetBrains Mono', monospace",
-        position: "relative",
-        zIndex: 1,
-      }}>
-        {alignRight ? (isMemo ? "📝 Memo" : "You") : aiLabel()}
-      </div>
-
-      {/* バブル＋メモアイコン行 */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: alignRight ? "row-reverse" : "row", position: "relative", zIndex: 1 }}>
-        {/* バブル本体（クリックでメモ入力） */}
-        <div style={{ position: "relative" }}>
-          <div
-            onClick={() => { setShowNoteInput((v) => !v); setShowNoteList(false); }}
-            style={{
-              maxWidth: "560px",
-              borderRadius: isMemo
-                ? "12px 12px 2px 12px"   // メモ：右寄せ形状
-                : isUser
-                ? "12px 12px 2px 12px"   // ユーザー
-                : "12px 12px 12px 2px",  // AI
-              padding: isUser || isMemo ? "10px 14px" : "14px 18px",
-              // メモは黄色、ユーザーは既存の黒、AIは既存の白
-              background: isMemo
-                ? "#fefce8"
-                : isUser
-                ? "var(--bubble-user)"
-                : "var(--bubble-ai)",
-              color: isMemo
-                ? "#78350f"
-                : isUser
-                ? "#f5f5f0"
-                : "var(--ink)",
-              border: isMemo
-                ? "1px solid #fde68a"
-                : isUser
-                ? "none"
-                : "1px solid var(--border)",
-              fontSize: "14px",
-              lineHeight: 1.6,
-              boxShadow: isMemo
-                ? "0 1px 4px rgba(251,191,36,0.15)"
-                : isUser
-                ? "0 2px 8px rgba(15,15,10,0.15)"
-                : "0 1px 4px rgba(0,0,0,0.05)",
-              fontFamily: "'DM Sans', sans-serif",
-              whiteSpace: isMemo ? "pre-wrap" : undefined,
-              cursor: "pointer",
-            }}
-          >
-            {isMemo ? message.content : (
-              <MarkdownRenderer content={message.content} />
-            )}
-          </div>
-
-          {/* コピーボタン（ホバーで出現・全メッセージ共通） */}
-          <button
-            className="copy-btn"
-            onClick={handleCopy}
-            style={{
-              position: "absolute",
-              top: "-10px",
-              right: "-8px",
-              opacity: 0,
-              width: "24px",
-              height: "24px",
-              borderRadius: "50%",
-              border: "1px solid var(--border)",
-              background: "white",
-              color: copied ? "#38a169" : "var(--ink-muted)",
-              fontSize: "11px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
-              transition: "opacity 0.15s, color 0.15s",
-            }}
-            title="コピー"
-          >
-            {copied ? "✓" : "📋"}
-          </button>
+        {/* ロールラベル */}
+        <div style={{
+          fontSize: "10px",
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          color: isMemo ? "#b7791f" : "var(--ink-faint)",
+          marginBottom: "5px",
+          fontFamily: "'JetBrains Mono', monospace",
+          position: "relative",
+          zIndex: 1,
+        }}>
+          {alignRight ? (isMemo ? "📝 Memo" : "You") : aiLabel()}
         </div>
 
-        {/* メモアイコン（メモがある場合） */}
-        {myNotes.length > 0 && (
+        {/* バブル＋メモアイコン行 */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: alignRight ? "row-reverse" : "row", position: "relative", zIndex: 1 }}>
+          <div style={{ position: "relative" }}>
+            <div
+              onClick={() => { setShowNoteInput((v) => !v); setShowNoteList(false); }}
+              style={{
+                maxWidth: "560px",
+                borderRadius: isMemo
+                  ? "12px 12px 2px 12px"
+                  : isUser
+                  ? "12px 12px 2px 12px"
+                  : "12px 12px 12px 2px",
+                padding: isUser || isMemo ? "10px 14px" : "14px 18px",
+                background: isMemo
+                  ? "#fefce8"
+                  : isUser
+                  ? "var(--bubble-user)"
+                  : "var(--bubble-ai)",
+                color: isMemo
+                  ? "#78350f"
+                  : isUser
+                  ? "#f5f5f0"
+                  : "var(--ink)",
+                border: isMemo
+                  ? "1px solid #fde68a"
+                  : isUser
+                  ? "none"
+                  : "1px solid var(--border)",
+                fontSize: "14px",
+                lineHeight: 1.6,
+                boxShadow: isMemo
+                  ? "0 1px 4px rgba(251,191,36,0.15)"
+                  : isUser
+                  ? "0 2px 8px rgba(15,15,10,0.15)"
+                  : "0 1px 4px rgba(0,0,0,0.05)",
+                fontFamily: "'DM Sans', sans-serif",
+                whiteSpace: isMemo ? "pre-wrap" : undefined,
+                cursor: "pointer",
+              }}
+            >
+              {isMemo ? message.content : (
+                <MarkdownRenderer content={message.content} />
+              )}
+            </div>
+
+            {/* コピーボタン */}
+            <button
+              className="copy-btn"
+              onClick={handleCopy}
+              style={{
+                position: "absolute",
+                top: "-10px",
+                right: "-8px",
+                opacity: 0,
+                width: "24px",
+                height: "24px",
+                borderRadius: "50%",
+                border: "1px solid var(--border)",
+                background: "white",
+                color: copied ? "#38a169" : "var(--ink-muted)",
+                fontSize: "11px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+                transition: "opacity 0.15s, color 0.15s",
+              }}
+              title="コピー"
+            >
+              {copied ? "✓" : "📋"}
+            </button>
+          </div>
+
+          {/* メモアイコン */}
+          {myNotes.length > 0 && (
+            <button
+              onClick={() => { setShowNoteList((v) => !v); setShowNoteInput(false); }}
+              style={{
+                marginTop: "4px",
+                width: "24px",
+                height: "24px",
+                borderRadius: "50%",
+                border: "1px solid var(--accent)",
+                background: showNoteList ? "var(--accent)" : "white",
+                color: showNoteList ? "white" : "var(--accent)",
+                fontSize: "11px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                transition: "all 0.15s",
+              }}
+              title={`メモ ${myNotes.length}件`}
+            >
+              📝
+            </button>
+          )}
+        </div>
+
+        {/* メモ入力欄 */}
+        {showNoteInput && (
+          <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px", position: "relative", zIndex: 1 }}>
+            <textarea
+              autoFocus
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSaveNote(); if (e.key === "Escape") setShowNoteInput(false); }}
+              placeholder="このメッセージへのメモ… (Cmd/Ctrl+Enter で保存)"
+              style={{
+                width: "100%",
+                minHeight: "60px",
+                padding: "8px 10px",
+                border: "1px solid var(--accent)",
+                borderRadius: "7px",
+                fontSize: "13px",
+                fontFamily: "'DM Sans', sans-serif",
+                resize: "vertical",
+                outline: "none",
+                color: "var(--ink)",
+                boxSizing: "border-box",
+                background: "white",
+              }}
+            />
+            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+              <button onClick={() => setShowNoteInput(false)} style={{ padding: "3px 10px", borderRadius: "5px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", cursor: "pointer" }}>キャンセル</button>
+              <button onClick={handleSaveNote} disabled={!noteContent.trim()} style={{ padding: "3px 10px", borderRadius: "5px", border: "none", background: noteContent.trim() ? "var(--accent)" : "var(--border)", color: noteContent.trim() ? "white" : "var(--ink-faint)", fontSize: "11px", cursor: noteContent.trim() ? "pointer" : "default" }}>保存</button>
+            </div>
+          </div>
+        )}
+
+        {/* メモ一覧 */}
+        {showNoteList && myNotes.length > 0 && (
+          <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px", position: "relative", zIndex: 1 }}>
+            {myNotes.map((note) => (
+              <div key={note.id} style={{ background: "#fffbeb", border: "1px solid #f6e05e", borderRadius: "8px", padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                <div style={{ fontSize: "13px", color: "var(--ink)", whiteSpace: "pre-wrap", lineHeight: 1.6, flex: 1 }}>{note.content}</div>
+                <button
+                  onClick={() => onDeleteMessageNote?.(note.id)}
+                  style={{ padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", cursor: "pointer", flexShrink: 0 }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ✂️ 削除ボタン */}
+        {!isLoading && onTrimFrom && (
           <button
-            onClick={() => { setShowNoteList((v) => !v); setShowNoteInput(false); }}
-            style={{
-              marginTop: "4px",
-              width: "24px",
-              height: "24px",
-              borderRadius: "50%",
-              border: "1px solid var(--accent)",
-              background: showNoteList ? "var(--accent)" : "white",
-              color: showNoteList ? "white" : "var(--accent)",
-              fontSize: "11px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              transition: "all 0.15s",
-            }}
-            title={`メモ ${myNotes.length}件`}
+            className="trim-btn"
+            onClick={() => { if (window.confirm("このメッセージ以降を全て削除しますか？")) { onTrimFrom(message); } }}
+            style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: "-80px", opacity: 0, padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "opacity 0.15s", whiteSpace: "nowrap", zIndex: 2 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
           >
-            📝
+            ✂️ 削除
           </button>
         )}
-      </div>
 
-      {/* メモ入力欄 */}
-      {showNoteInput && (
-        <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px", position: "relative", zIndex: 1 }}>
-          <textarea
-            autoFocus
-            value={noteContent}
-            onChange={(e) => setNoteContent(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSaveNote(); if (e.key === "Escape") setShowNoteInput(false); }}
-            placeholder="このメッセージへのメモ… (Cmd/Ctrl+Enter で保存)"
-            style={{
-              width: "100%",
-              minHeight: "60px",
-              padding: "8px 10px",
-              border: "1px solid var(--accent)",
-              borderRadius: "7px",
-              fontSize: "13px",
-              fontFamily: "'DM Sans', sans-serif",
-              resize: "vertical",
-              outline: "none",
-              color: "var(--ink)",
-              boxSizing: "border-box",
-              background: "white",
-            }}
-          />
-          <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
-            <button onClick={() => setShowNoteInput(false)} style={{ padding: "3px 10px", borderRadius: "5px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", cursor: "pointer" }}>キャンセル</button>
-            <button onClick={handleSaveNote} disabled={!noteContent.trim()} style={{ padding: "3px 10px", borderRadius: "5px", border: "none", background: noteContent.trim() ? "var(--accent)" : "var(--border)", color: noteContent.trim() ? "white" : "var(--ink-faint)", fontSize: "11px", cursor: noteContent.trim() ? "pointer" : "default" }}>保存</button>
-          </div>
-        </div>
-      )}
-
-      {/* メモ一覧 */}
-      {showNoteList && myNotes.length > 0 && (
-        <div style={{ marginTop: "8px", width: "82%", display: "flex", flexDirection: "column", gap: "6px", position: "relative", zIndex: 1 }}>
-          {myNotes.map((note) => (
-            <div key={note.id} style={{ background: "#fffbeb", border: "1px solid #f6e05e", borderRadius: "8px", padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-              <div style={{ fontSize: "13px", color: "var(--ink)", whiteSpace: "pre-wrap", lineHeight: 1.6, flex: 1 }}>{note.content}</div>
+        {/* ✅ v27: 再生成ボタン（自分以外の2プロバイダー） */}
+        {!isUser && !isMemo && isLast && !isLoading && onRegenerate && (
+          <div style={{ display: "flex", gap: "6px", marginTop: "6px", position: "relative", zIndex: 1 }}>
+            {regenTargets.map((p) => (
               <button
-                onClick={() => onDeleteMessageNote?.(note.id)}
-                style={{ padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", cursor: "pointer", flexShrink: 0 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
+                key={p}
+                onClick={() => onRegenerate(p)}
+                style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
-              >✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ✂️ 削除ボタン */}
-      {!isLoading && onTrimFrom && (
-        <button
-          className="trim-btn"
-          onClick={() => { if (window.confirm("このメッセージ以降を全て削除しますか？")) { onTrimFrom(message); } }}
-          style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: "-80px", opacity: 0, padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "opacity 0.15s", whiteSpace: "nowrap", zIndex: 2 }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
-        >
-          ✂️ 削除
-        </button>
-      )}
-
-      {/* 再生成ボタン（メモには表示しない） */}
-      {!isUser && !isMemo && isLast && !isLoading && onRegenerate && (
-        <button
-          onClick={() => onRegenerate(otherProvider)}
-          style={{ marginTop: "6px", padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s", position: "relative", zIndex: 1 }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
-        >
-          🔄 {otherLabel}で再生成
-        </button>
-      )}
-    </div>
+              >
+                🔄 {regenLabel(p)}で再生成
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </>
   );
 }

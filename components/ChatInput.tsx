@@ -15,8 +15,8 @@ interface ChatInputProps {
   onMemoSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
-  provider: "claude" | "gemini";
-  onProviderChange: (p: "claude" | "gemini") => void;
+  provider: "claude" | "gemini" | "openai";
+onProviderChange: (p: "claude" | "gemini" | "openai") => void;
 }
 
 const FILE_SIZE_LIMIT_KB = 100;
@@ -205,7 +205,7 @@ export default function ChatInput({
 
       {/* AI切り替えボタン */}
       <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
-        {(["claude", "gemini"] as const).map((p) => (
+        {(["claude", "gemini", "openai"] as const).map((p) => (
           <button
             key={p}
             onClick={() => onProviderChange(p)}
@@ -223,7 +223,7 @@ export default function ChatInput({
               letterSpacing: "0.05em",
             }}
           >
-            {p === "claude" ? "Claude" : "Gemini"}
+            {p === "claude" ? "Claude" : p === "gemini" ? "Gemini" : "ChatGPT"}
           </button>
         ))}
       </div>

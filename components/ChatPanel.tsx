@@ -15,10 +15,10 @@ interface ChatPanelProps {
   onSubmit: (content: string) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
-  provider: "claude" | "gemini";
-  onProviderChange: (p: "claude" | "gemini") => void;
-  onTitleUpdate: (id: string, title: string) => void;
-  onRegenerate: (targetProvider: "claude" | "gemini") => void;
+  provider: "claude" | "gemini" | "openai";
+  onProviderChange: (p: "claude" | "gemini" | "openai") => void;
+  onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
+  onRegenerate: (targetProvider: "claude" | "gemini" | "openai") => void;
   onTrimFrom: (message: Message) => void;
   isTemporary: boolean;
   onSwitchTemporary: () => void;
@@ -531,7 +531,7 @@ const buildExportContent = (format: "txt" | "md" | "csv", options: ExportOptions
         lines.push(`> [!QUESTION] You`);
         lines.push(contentLines);
       } else {
-        const aiLabel = msg.provider === "gemini" ? "Gemini" : "Claude";
+        const aiLabel = msg.provider === "gemini" ? "Gemini" : msg.provider === "openai" ? "ChatGPT" : "Claude";
         lines.push(`> [!NOTE] ${aiLabel}`);
         lines.push(contentLines);
       }
@@ -563,7 +563,7 @@ const buildExportContent = (format: "txt" | "md" | "csv", options: ExportOptions
       } else if (msg.role === "user") {
         roleLabel = "【あなた】";
       } else {
-        const aiName = msg.provider === "gemini" ? "Gemini" : msg.provider === "claude" ? "Claude" : "AI";
+        const aiName = msg.provider === "gemini" ? "Gemini" : msg.provider === "openai" ? "ChatGPT" : msg.provider === "claude" ? "Claude" : "AI";
         roleLabel = `【${aiName}】`;
       }
       const time = new Date(msg.created_at).toLocaleString("ja-JP");
