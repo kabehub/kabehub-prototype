@@ -104,6 +104,25 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = user.id;
 
+  const body = await req.json();
+
+  // ── 人間乱入メッセージの保存モード ─────────────────────────────
+  // page.tsx の handleHumanSubmit から呼ばれる。
+  // RLSを通過するためにRoute Handler経由でaddMessageを使う。
+  if (body.mode === "saveHumanMessage") {
+    const { threadId, content: msgContent } = body;
+    const humanMsg = {
+      id: uuidv4(),
+      thread_id: threadId,
+      role: "user" as const,
+      content: msgContent,
+      provider: "user" as const,
+      created_at: new Date().toISOString(),
+    };
+    await addMessage(humanMsg, userId);
+    return NextResponse.json({ message: humanMsg });
+  }
+
   const {
     threadId,
     history,
@@ -114,7 +133,7 @@ export async function POST(req: NextRequest) {
     isFirst,
     topic,
     interventionContent,
-  } = await req.json();
+  } = body;
 
   // APIキー取得
   const keys = {

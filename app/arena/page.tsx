@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Message } from "@/types";
 import {
@@ -14,13 +14,26 @@ import {
 
 // ── 型定義 ──────────────────────────────────────────────────────
 
+interface PlayerConfig {
+  provider: Provider;
+  prompt: string;
+}
+
 interface ArenaConfig {
   ai1Provider: Provider;
   ai1Prompt: string;
   ai2Provider: Provider;
   ai2Prompt: string;
+  ai3Enabled: boolean;
+  ai3Provider: Provider;
+  ai3Prompt: string;
   topic: string;
   turnCount: number;
+}
+
+interface QueueItem {
+  turn: number;
+  pIdx: number;
 }
 
 // ── ユーティリティ ───────────────────────────────────────────────
@@ -48,6 +61,9 @@ export default function ArenaPage() {
     ai1Prompt: "",
     ai2Provider: "gemini",
     ai2Prompt: "",
+    ai3Enabled: false,
+    ai3Provider: "openai",
+    ai3Prompt: "",
     topic: "",
     turnCount: 2,
   });
@@ -61,37 +77,77 @@ export default function ArenaPage() {
   const [interventionText, setInterventionText] = useState("");
   const [showIntervention, setShowIntervention] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
+  const [humanInputText, setHumanInputText] = useState("");
 
-  // ── シェア関連 state ──────────────────────────────────────────
+  // actionQueue方式のstate
+  const [actionQueue, setActionQueue] = useState<QueueItem[]>([]);
+  const [waitingForHuman, setWaitingForHuman] = useState<number | null>(null); // null=待機なし / 0,1,2=playerインデックス
+
+  // 途中乗っ取り: 次のターンだけ指定ポジションを人間に置き換える（複数可）
+  const [overridePIdx, setOverridePIdx] = useState<Set<number>>(new Set());
+
+  // 送信直後「次も乗っ取る/AIに任せる」選択UI用
+  const [humanJustSubmitted, setHumanJustSubmitted] = useState<number | null>(null);
+
+  // シェア関連
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<Message[]>(messages);
   const isFirstRun = messages.length === 0;
+
+  // messagesの最新値をrefで追跡（useEffect内での参照用）
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinkingLabel]);
 
-  const ai1Label = PROVIDER_LABELS[config.ai1Provider];
-  const ai2Label = PROVIDER_LABELS[config.ai2Provider];
+  // ── players配列（useMemoで安定化） ────────────────────────────
+  const players = useMemo((): PlayerConfig[] => {
+    const list: PlayerConfig[] = [
+      { provider: config.ai1Provider, prompt: config.ai1Prompt },
+      { provider: config.ai2Provider, prompt: config.ai2Prompt },
+    ];
+    if (config.ai3Enabled) {
+      list.push({ provider: config.ai3Provider, prompt: config.ai3Prompt });
+    }
+    return list;
+  }, [
+    config.ai1Provider, config.ai1Prompt,
+    config.ai2Provider, config.ai2Prompt,
+    config.ai3Enabled, config.ai3Provider, config.ai3Prompt,
+  ]);
 
-  // ── 1ターン実行 ───────────────────────────────────────────────
+  const playerLabels = useMemo(
+    () => players.map((p) => PROVIDER_LABELS[p.provider]),
+    [players]
+  );
+
+  const ai1Label = playerLabels[0] ?? "AI1";
+  const ai2Label = playerLabels[1] ?? "AI2";
+  const ai3Label = playerLabels[2];
+
+  // ── 1ターン実行（API呼び出し） ────────────────────────────────
   const runOneTurn = useCallback(
     async (
       currentMessages: Message[],
-      isAi1Turn: boolean,
+      player: PlayerConfig,
+      pIdx: number,
       isVeryFirst: boolean,
       topic: string,
       interventionContent?: string
     ): Promise<Message> => {
-      const currentProvider = isAi1Turn ? config.ai1Provider : config.ai2Provider;
-      const currentPrompt = isAi1Turn ? config.ai1Prompt : config.ai2Prompt;
-      const selfLabel = isAi1Turn ? ai1Label : ai2Label;
-      const opponentLabel = isAi1Turn ? ai2Label : ai1Label;
+      const selfLabel = playerLabels[pIdx] ?? `AI${pIdx + 1}`;
+      // 自分以外のラベルをまとめて「相手」として渡す
+      const opponentLabel = playerLabels.filter((_, i) => i !== pIdx).join(" / ") || "相手";
+      const isAi1Position = pIdx % 2 === 0;
 
-      setThinkingLabel(`${selfLabel} (AI${isAi1Turn ? "1" : "2"})`);
-      setThinkingIsAi1(isAi1Turn);
+      setThinkingLabel(`${selfLabel} (AI${pIdx + 1})`);
+      setThinkingIsAi1(isAi1Position);
 
       const res = await fetch("/api/arena", {
         method: "POST",
@@ -103,8 +159,8 @@ export default function ArenaPage() {
             content: m.content,
             provider: m.provider,
           })),
-          currentProvider,
-          currentPrompt,
+          currentProvider: player.provider,
+          currentPrompt: player.prompt,
           selfLabel,
           opponentLabel,
           isFirst: isVeryFirst,
@@ -117,50 +173,256 @@ export default function ArenaPage() {
       const { message } = await res.json();
       return message as Message;
     },
-    [config, threadId, ai1Label, ai2Label]
+    [threadId, playerLabels]
   );
 
-  // ── Nターン実行 ───────────────────────────────────────────────
-  const handleRun = useCallback(async () => {
-    if (isRunning) return;
+  // waitingForHumanが立ったらhumanJustSubmittedをクリア（両方同時表示を防ぐ）
+  useEffect(() => {
+    if (waitingForHuman !== null) {
+      setHumanJustSubmitted(null);
+    }
+  }, [waitingForHuman]);
+
+  // ── actionQueue駆動のuseEffect（Geminiさん設計） ──────────────
+  useEffect(() => {
+    // キューが空、または人間入力待ちの時は何もしない
+    if (actionQueue.length === 0 || waitingForHuman !== null) return;
+
+    let isCancelled = false;
+
+    const processNext = async () => {
+      const nextAction = actionQueue[0];
+      const player = players[nextAction.pIdx];
+
+      if (!player) {
+        // 不正なインデックスはスキップ
+        setActionQueue((prev) => prev.slice(1));
+        return;
+      }
+
+      // 人間のターンが来たら入力待ち状態にして停止
+      // （固定human設定 OR 途中乗っ取りoverrideHumanフラグ）
+      const isOverride = (nextAction as QueueItem & { overrideHuman?: boolean }).overrideHuman === true;
+      if (player.provider === "human" || isOverride) {
+        setWaitingForHuman(nextAction.pIdx);
+        setIsRunning(false);
+        setThinkingLabel(null);
+        return;
+      }
+
+      // AIターン実行
+      try {
+        const currentMessages = messagesRef.current;
+        const isVeryFirst = currentMessages.length === 0 && nextAction.turn === 0 && nextAction.pIdx === 0;
+
+        // 介入テキストは最初のアクション（turn=0, pIdx=0）の時だけ使用
+        // ※ interventionTextはhandleRunで取り出し済みの値をqueueのfirst itemに付与するため
+        // ここでは直接state参照ではなくqueueアイテムに付与する方式で渡す
+        const interventionContent = (nextAction as QueueItem & { intervention?: string }).intervention;
+
+        const newMsg = await runOneTurn(
+          currentMessages,
+          player,
+          nextAction.pIdx,
+          isVeryFirst,
+          config.topic,
+          interventionContent
+        );
+
+        if (!isCancelled) {
+          setMessages((prev) => {
+            const updated = [...prev, newMsg];
+            messagesRef.current = updated;
+            return updated;
+          });
+          setThinkingLabel(null);
+          // 完了したらキューの先頭を消す → 次のuseEffectが自動で走る
+          setActionQueue((prev) => prev.slice(1));
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          console.error("arena run error:", err);
+          alert(`エラーが発生しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
+          setIsRunning(false);
+          setThinkingLabel(null);
+          setActionQueue([]);
+        }
+      }
+    };
+
+    processNext();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [actionQueue, waitingForHuman, players, runOneTurn, config.topic, overridePIdx]);
+
+  // キューが空になったら実行完了
+  useEffect(() => {
+    if (actionQueue.length === 0 && isRunning && waitingForHuman === null) {
+      setIsRunning(false);
+      setTotalTurns((prev) => prev + config.turnCount);
+    }
+  }, [actionQueue, isRunning, waitingForHuman, config.turnCount]);
+
+  // ── Nターン実行開始 ───────────────────────────────────────────
+  const handleRun = useCallback(() => {
+    if (isRunning || waitingForHuman !== null) return;
     setIsRunning(true);
 
     const intervention = interventionText.trim() || undefined;
     setInterventionText("");
     setShowIntervention(false);
 
-    try {
-      let currentMessages = [...messages];
-      const turns = config.turnCount;
+    // 乗っ取り設定をスナップショットして即クリア（1ターン限り）
+    const currentOverride = new Set(overridePIdx);
+    setOverridePIdx(new Set());
 
-      for (let i = 0; i < turns; i++) {
-        const isVeryFirst = isFirstRun && i === 0;
-        const ai1Msg = await runOneTurn(
-          currentMessages,
-          true,
-          isVeryFirst,
-          config.topic,
-          i === 0 ? intervention : undefined
-        );
-        currentMessages = [...currentMessages, ai1Msg];
-        setMessages([...currentMessages]);
-        setThinkingLabel(null);
+    const turns = config.turnCount;
+    const newQueue: (QueueItem & { intervention?: string; overrideHuman?: boolean })[] = [];
 
-        const ai2Msg = await runOneTurn(currentMessages, false, false, config.topic);
-        currentMessages = [...currentMessages, ai2Msg];
-        setMessages([...currentMessages]);
-        setThinkingLabel(null);
+    for (let t = 0; t < turns; t++) {
+      for (let p = 0; p < players.length; p++) {
+        const item: QueueItem & { intervention?: string; overrideHuman?: boolean } = { turn: t, pIdx: p };
+        // 最初のアイテムに介入テキストを付与
+        if (t === 0 && p === 0 && intervention) {
+          item.intervention = intervention;
+        }
+        // 最初のターン（t===0）のみ乗っ取り適用
+        if (t === 0 && currentOverride.has(p)) {
+          item.overrideHuman = true;
+        }
+        newQueue.push(item);
       }
-
-      setTotalTurns((prev) => prev + turns);
-    } catch (err) {
-      console.error("arena run error:", err);
-      alert(`エラーが発生しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
-    } finally {
-      setIsRunning(false);
-      setThinkingLabel(null);
     }
-  }, [isRunning, messages, config, interventionText, isFirstRun, runOneTurn]);
+
+    setActionQueue(newQueue);
+  }, [isRunning, waitingForHuman, interventionText, config.turnCount, players, overridePIdx]);
+
+  // ── 人間ターン送信 ────────────────────────────────────────────
+  const handleHumanSubmit = useCallback(async () => {
+    if (!humanInputText.trim() || waitingForHuman === null) return;
+
+    const pIdx = waitingForHuman;
+    const label = playerLabels[pIdx] ?? `AI${pIdx + 1}`;
+    const content = `[Human (${label})] ${humanInputText.trim()}`;
+
+    try {
+      // DBへの保存は /api/arena 経由で行う（RLS対策: Route Handlerで認証ユーザーとして保存）
+      const res = await fetch("/api/arena", {
+        method: "POST",
+        headers: getApiKeyHeaders(),
+        body: JSON.stringify({
+          mode: "saveHumanMessage",
+          threadId,
+          content,
+        }),
+      });
+      if (!res.ok) console.warn("人間メッセージのDB保存に失敗しました");
+
+      const newMsg: Message = {
+        id: uuidv4(),
+        thread_id: threadId,
+        role: "user",
+        content,
+        provider: "user",
+        created_at: new Date().toISOString(),
+      };
+
+      setMessages((prev) => {
+        const updated = [...prev, newMsg];
+        messagesRef.current = updated;
+        return updated;
+      });
+      setHumanInputText("");
+
+      // 送信後は即再開せず「次も乗っ取る / AIに任せる」選択UIを表示
+      // キューの先頭（human項目）は消すがisRunningはfalseのまま保留
+      setWaitingForHuman(null);
+      // human項目をここで即消費。選択UIはisRunning=falseで止める。
+      setActionQueue((prev) => prev.slice(1));
+      setHumanJustSubmitted(pIdx);
+    } catch (err) {
+      console.error("human submit error:", err);
+    }
+  }, [humanInputText, waitingForHuman, playerLabels, threadId]);
+
+  // ── 「AIに任せて続行」 ────────────────────────────────────────
+  const handleResumeWithAI = useCallback(() => {
+    setHumanJustSubmitted(null);
+    // human項目はhandleHumanSubmit済みなのでそのまま再開するだけ
+    setIsRunning(true);
+  }, []);
+
+  // ── 「次のターンも自分で発言」 ────────────────────────────────
+  // 次のキューの同pIdxアイテムをhuman扱いにするため、overridePIdxに追加してから再開
+  const handleResumeWithHuman = useCallback((pIdx: number) => {
+    setHumanJustSubmitted(null);
+    // human項目はhandleHumanSubmit済みなのでslice不要。次の同pIdxにoverride書き込み。
+    setActionQueue((prev) => {
+      const next = [...prev] as (QueueItem & { intervention?: string; overrideHuman?: boolean })[];
+      const targetIdx = next.findIndex((item) => item.pIdx === pIdx);
+      if (targetIdx !== -1) {
+        next[targetIdx] = { ...next[targetIdx], overrideHuman: true };
+      }
+      return next;
+    });
+    setIsRunning(true);
+  }, []);
+
+  // ── MDエクスポート ───────────────────────────────────────────
+  const handleExportMd = useCallback(() => {
+    const lines: string[] = [];
+    const now = new Date().toISOString();
+    lines.push("---");
+    lines.push("title: " + JSON.stringify("【AI闘技場】" + config.topic.slice(0, 30)));
+    lines.push("created: " + now);
+    lines.push("topic: " + JSON.stringify(config.topic));
+    lines.push("ai1: " + JSON.stringify(ai1Label + (config.ai1Prompt ? " / 人格：" + config.ai1Prompt : "")));
+    lines.push("ai2: " + JSON.stringify(ai2Label + (config.ai2Prompt ? " / 人格：" + config.ai2Prompt : "")));
+    if (config.ai3Enabled) {
+      lines.push("ai3: " + JSON.stringify((ai3Label ?? "AI3") + (config.ai3Prompt ? " / 人格：" + config.ai3Prompt : "")));
+    }
+    lines.push("---");
+    lines.push("");
+    let totalIdx = 0;
+    for (const msg of messages) {
+      const isAiMsg = msg.role === "assistant";
+      const isHumanTakeover = msg.role === "user" && msg.content.startsWith("[Human");
+      const isIntervention = msg.role === "user" && !isHumanTakeover;
+      if (isIntervention) {
+        const text = msg.content.replace("【神からの介入】", "").trim();
+        lines.push("> ⚡ 神の介入: " + text);
+        lines.push("");
+        continue;
+      }
+      if (isHumanTakeover) {
+        const pIdx = totalIdx % players.length;
+        const displayContent = msg.content.replace(/^\[Human[^\]]*\]\s*/, "");
+        lines.push("> [!QUESTION] You");
+        lines.push("> [Human (AI" + (pIdx + 1) + ")] " + displayContent.trim().split("\n").join("\n> "));
+        lines.push("");
+        totalIdx++;
+        continue;
+      }
+      if (isAiMsg) {
+        const pIdx = totalIdx % players.length;
+        const labelMap = [ai1Label, ai2Label, ai3Label ?? "AI3"];
+        const provLabel = labelMap[pIdx] ?? ai1Label;
+        lines.push("> [!NOTE] " + provLabel);
+        lines.push("> " + msg.content.trim().split("\n").join("\n> "));
+        lines.push("");
+        totalIdx++;
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "【AI闘技場】" + config.topic.slice(0, 20) + ".md";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [messages, config, ai1Label, ai2Label, ai3Label, players]);
 
   // ── シェアURL生成 ─────────────────────────────────────────────
   const handleShare = useCallback(async () => {
@@ -209,9 +471,12 @@ export default function ArenaPage() {
   const buildXShareUrl = useCallback(() => {
     if (!shareToken) return "#";
     const url = `${window.location.origin}/arena/${shareToken}`;
-    const text = `【AI闘技場】${ai1Label} vs ${ai2Label}\nお題：${config.topic}\n\n#KabeHub #AI闘技場`;
+    const vsText = config.ai3Enabled
+      ? `${ai1Label} vs ${ai2Label} vs ${ai3Label}`
+      : `${ai1Label} vs ${ai2Label}`;
+    const text = `【AI闘技場】${vsText}\nお題：${config.topic}\n\n#KabeHub #AI闘技場`;
     return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-  }, [shareToken, ai1Label, ai2Label, config.topic]);
+  }, [shareToken, ai1Label, ai2Label, ai3Label, config.topic, config.ai3Enabled]);
 
   // ── セットアップ画面 ──────────────────────────────────────────
 
@@ -226,7 +491,7 @@ export default function ArenaPage() {
               ⚔️ AI 闘技場
             </div>
             <div style={{ fontSize: "13px", color: "var(--ink-muted)", fontFamily: "'JetBrains Mono', monospace" }}>
-              2つのAIにお題を与えて、議論を観戦しよう
+              AIにお題を与えて、議論を観戦しよう
             </div>
           </div>
 
@@ -244,13 +509,13 @@ export default function ArenaPage() {
             />
           </div>
 
-          {/* AI設定 */}
+          {/* AI設定（AI1・AI2） */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             {(["ai1", "ai2"] as const).map((key, idx) => {
               const providerKey = `${key}Provider` as "ai1Provider" | "ai2Provider";
               const promptKey = `${key}Prompt` as "ai1Prompt" | "ai2Prompt";
               const prov = config[providerKey];
-              const color = PROVIDER_COLORS[prov];
+              const color = prov === "human" ? PROVIDER_COLORS["human"] : PROVIDER_COLORS[prov];
               return (
                 <div key={key} style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "16px", background: color.bg, border: `1px solid ${color.border}`, borderRadius: "10px" }}>
                   <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: color.text, fontWeight: 600, letterSpacing: "0.05em" }}>
@@ -264,17 +529,76 @@ export default function ArenaPage() {
                     <option value="claude">Claude</option>
                     <option value="gemini">Gemini</option>
                     <option value="openai">ChatGPT</option>
+                    <option value="human">👤 ユーザー（自分）</option>
                   </select>
-                  <textarea
-                    value={config[promptKey]}
-                    onChange={(e) => setConfig((c) => ({ ...c, [promptKey]: e.target.value }))}
-                    placeholder={`人格・役割設定（省略可）\n例：あなたは強硬な反対派です。`}
-                    rows={3}
-                    style={{ padding: "8px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "vertical", lineHeight: 1.5 }}
-                  />
+                  {prov !== "human" && (
+                    <textarea
+                      value={config[promptKey]}
+                      onChange={(e) => setConfig((c) => ({ ...c, [promptKey]: e.target.value }))}
+                      placeholder={`人格・役割設定（省略可）\n例：あなたは強硬な反対派です。`}
+                      rows={3}
+                      style={{ padding: "8px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "vertical", lineHeight: 1.5 }}
+                    />
+                  )}
+                  {prov === "human" && (
+                    <div style={{ fontSize: "11px", color: color.text, fontFamily: "'DM Sans', sans-serif", padding: "4px 0" }}>
+                      あなたが直接このポジションで発言します。
+                    </div>
+                  )}
                 </div>
               );
             })}
+          </div>
+
+          {/* AI3トグル */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={config.ai3Enabled}
+                onChange={(e) => setConfig((c) => ({ ...c, ai3Enabled: e.target.checked }))}
+                style={{ width: "16px", height: "16px", cursor: "pointer" }}
+              />
+              <span style={{ fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)" }}>
+                3人目を追加する（三つ巴）
+              </span>
+            </label>
+
+            {config.ai3Enabled && (() => {
+              const prov = config.ai3Provider;
+              const color = prov === "human" ? PROVIDER_COLORS["human"] : PROVIDER_COLORS[prov];
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "16px", background: color.bg, border: `1px solid ${color.border}`, borderRadius: "10px" }}>
+                  <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: color.text, fontWeight: 600, letterSpacing: "0.05em" }}>
+                    AI 3
+                  </div>
+                  <select
+                    value={prov}
+                    onChange={(e) => setConfig((c) => ({ ...c, ai3Provider: e.target.value as Provider }))}
+                    style={{ padding: "6px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", color: color.text, background: "white", cursor: "pointer", outline: "none" }}
+                  >
+                    <option value="claude">Claude</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="openai">ChatGPT</option>
+                    <option value="human">👤 ユーザー（自分）</option>
+                  </select>
+                  {prov !== "human" && (
+                    <textarea
+                      value={config.ai3Prompt}
+                      onChange={(e) => setConfig((c) => ({ ...c, ai3Prompt: e.target.value }))}
+                      placeholder={`人格・役割設定（省略可）\n例：あなたは中立的な調停者です。`}
+                      rows={3}
+                      style={{ padding: "8px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "vertical", lineHeight: 1.5 }}
+                    />
+                  )}
+                  {prov === "human" && (
+                    <div style={{ fontSize: "11px", color: color.text, fontFamily: "'DM Sans', sans-serif", padding: "4px 0" }}>
+                      あなたが直接このポジションで発言します。
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* ターン数設定 */}
@@ -294,13 +618,16 @@ export default function ArenaPage() {
               ))}
             </div>
             <span style={{ fontSize: "11px", color: "var(--ink-muted)", fontFamily: "'JetBrains Mono', monospace" }}>
-              ターン = AI1+AI2 各{config.turnCount}回ずつ
+              ターン = 全員が{config.turnCount}回ずつ
             </span>
           </div>
 
           {/* 開始ボタン */}
           <button
-            onClick={() => { if (!config.topic.trim()) { alert("お題を入力してください"); return; } setPhase("arena"); }}
+            onClick={() => {
+              if (!config.topic.trim()) { alert("お題を入力してください"); return; }
+              setPhase("arena");
+            }}
             style={{ padding: "14px", borderRadius: "8px", border: "none", background: config.topic.trim() ? "var(--accent)" : "var(--border)", color: "white", fontSize: "15px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: config.topic.trim() ? "pointer" : "default", transition: "all 0.15s" }}
           >
             ⚔️ 闘技場へ入場
@@ -314,8 +641,8 @@ export default function ArenaPage() {
 
   // ── 闘技場画面 ───────────────────────────────────────────────
 
-  const ai1Color = PROVIDER_COLORS[config.ai1Provider];
-  const ai2Color = PROVIDER_COLORS[config.ai2Provider];
+  const ai1Color = PROVIDER_COLORS[config.ai1Provider] ?? PROVIDER_COLORS["claude"];
+  const ai2Color = PROVIDER_COLORS[config.ai2Provider] ?? PROVIDER_COLORS["gemini"];
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column" }}>
@@ -329,8 +656,8 @@ export default function ArenaPage() {
           ← 設定
         </button>
 
-        {/* AI1 vs AI2 バッジ */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, justifyContent: "center" }}>
+        {/* AI バッジ */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, justifyContent: "center", flexWrap: "wrap" }}>
           <span style={{ padding: "3px 10px", borderRadius: "5px", border: `1px solid ${ai1Color.border}`, background: ai1Color.bg, color: ai1Color.text, fontSize: "12px", fontFamily: "'JetBrains Mono', monospace" }}>
             {ai1Label} (AI1)
           </span>
@@ -338,6 +665,17 @@ export default function ArenaPage() {
           <span style={{ padding: "3px 10px", borderRadius: "5px", border: `1px solid ${ai2Color.border}`, background: ai2Color.bg, color: ai2Color.text, fontSize: "12px", fontFamily: "'JetBrains Mono', monospace" }}>
             {ai2Label} (AI2)
           </span>
+          {config.ai3Enabled && ai3Label && (() => {
+            const ai3Color = PROVIDER_COLORS[config.ai3Provider] ?? PROVIDER_COLORS["openai"];
+            return (
+              <>
+                <span style={{ fontSize: "13px", color: "var(--ink-faint)", fontWeight: 700 }}>⚔️</span>
+                <span style={{ padding: "3px 10px", borderRadius: "5px", border: `1px solid ${ai3Color.border}`, background: ai3Color.bg, color: ai3Color.text, fontSize: "12px", fontFamily: "'JetBrains Mono', monospace" }}>
+                  {ai3Label} (AI3)
+                </span>
+              </>
+            );
+          })()}
           {totalTurns > 0 && (
             <span style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace", marginLeft: "8px" }}>
               {totalTurns}ターン経過
@@ -357,24 +695,27 @@ export default function ArenaPage() {
       {/* 人格設定ドロワー */}
       {showPromptEditor && (
         <div style={{ background: "var(--sidebar-bg)", borderBottom: "1px solid var(--border)", padding: "16px 24px" }}>
-          <div style={{ maxWidth: "760px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            {(["ai1", "ai2"] as const).map((key, idx) => {
-              const providerKey = `${key}Provider` as "ai1Provider" | "ai2Provider";
-              const promptKey = `${key}Prompt` as "ai1Prompt" | "ai2Prompt";
-              const prov = config[providerKey];
-              const color = PROVIDER_COLORS[prov];
+          <div style={{ maxWidth: "760px", margin: "0 auto", display: "grid", gridTemplateColumns: config.ai3Enabled ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px" }}>
+            {players.map((player, idx) => {
+              const color = PROVIDER_COLORS[player.provider];
+              const promptKeys = ["ai1Prompt", "ai2Prompt", "ai3Prompt"] as const;
+              const promptKey = promptKeys[idx];
               return (
-                <div key={key}>
+                <div key={idx}>
                   <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: color.text, marginBottom: "6px" }}>
-                    AI{idx + 1} ({PROVIDER_LABELS[prov]}) の人格
+                    AI{idx + 1} ({PROVIDER_LABELS[player.provider]}) の人格
                   </div>
-                  <textarea
-                    value={config[promptKey]}
-                    onChange={(e) => setConfig((c) => ({ ...c, [promptKey]: e.target.value }))}
-                    placeholder="人格・役割設定（省略可）"
-                    rows={3}
-                    style={{ width: "100%", padding: "8px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "vertical", boxSizing: "border-box" }}
-                  />
+                  {player.provider !== "human" ? (
+                    <textarea
+                      value={config[promptKey] ?? ""}
+                      onChange={(e) => setConfig((c) => ({ ...c, [promptKey]: e.target.value }))}
+                      placeholder="人格・役割設定（省略可）"
+                      rows={3}
+                      style={{ width: "100%", padding: "8px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "vertical", boxSizing: "border-box" }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: "11px", color: color.text, fontFamily: "'DM Sans', sans-serif" }}>ユーザーが直接発言します</div>
+                  )}
                 </div>
               );
             })}
@@ -392,24 +733,29 @@ export default function ArenaPage() {
 
       {/* タイムライン */}
       <div style={{ flex: 1, maxWidth: "760px", width: "100%", margin: "0 auto", padding: "24px 24px 32px" }}>
-        {messages.length === 0 && !isRunning && (
+        {messages.length === 0 && !isRunning && waitingForHuman === null && (
           <div style={{ textAlign: "center", marginTop: "60px", color: "var(--ink-muted)", fontSize: "13px", fontFamily: "'JetBrains Mono', monospace" }}>
             ▶️ 実行ボタンを押して闘技場を開始してください
           </div>
         )}
         {(() => {
-          let aiIdx = 0;
+          // totalIdx: AI発言 + human乱入発言を合わせた通算インデックス
+          // これにより左右位置・ラベルが正しく計算される
+          let totalIdx = 0;
           return messages.map((msg) => {
             const isAiMsg = msg.role === "assistant";
-            const currentAiIdx = isAiMsg ? aiIdx : -1;
-            if (isAiMsg) aiIdx++;
+            const isHumanTakeover = msg.role === "user" && msg.content.startsWith("[Human");
+            const currentIdx = (isAiMsg || isHumanTakeover) ? totalIdx : -1;
+            if (isAiMsg || isHumanTakeover) totalIdx++;
             return (
               <ArenaBubble
                 key={msg.id}
                 message={msg}
                 ai1Label={ai1Label}
                 ai2Label={ai2Label}
-                aiMessageIndex={currentAiIdx}
+                ai3Label={ai3Label}
+                aiMessageIndex={currentIdx}
+                playerCount={players.length}
               />
             );
           });
@@ -424,7 +770,7 @@ export default function ArenaPage() {
       <div style={{ position: "sticky", bottom: 0, background: "var(--paper)", borderTop: "1px solid var(--border)", padding: "16px 24px", zIndex: 10 }}>
         <div style={{ maxWidth: "760px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "10px" }}>
 
-          {/* シェアパネル（token取得後に表示） */}
+          {/* シェアパネル */}
           {shareToken && (
             <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "7px" }}>
               <span style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#166534", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -447,53 +793,157 @@ export default function ArenaPage() {
             </div>
           )}
 
+          {/* 人間ターン入力ボックス */}
+          {waitingForHuman !== null && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 16px", background: "#fdf4ff", border: "1px solid #e9d5ff", borderRadius: "8px" }}>
+              <div style={{ fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#6b21a8", fontWeight: 600 }}>
+                🔥 あなたのターンです！（AI{waitingForHuman + 1} / {playerLabels[waitingForHuman]}ポジション）
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <textarea
+                  value={humanInputText}
+                  onChange={(e) => setHumanInputText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleHumanSubmit(); } }}
+                  placeholder="発言を入力してください（Enter送信 / Shift+Enter改行）"
+                  rows={2}
+                  autoFocus
+                  style={{ flex: 1, padding: "8px 12px", border: "1px solid #e9d5ff", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "none" }}
+                />
+                <button
+                  onClick={handleHumanSubmit}
+                  disabled={!humanInputText.trim()}
+                  style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: humanInputText.trim() ? "#7c3aed" : "var(--border)", color: "white", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: humanInputText.trim() ? "pointer" : "default", whiteSpace: "nowrap", alignSelf: "flex-end" }}
+                >
+                  送信
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 送信直後「次も乗っ取る / AIに任せる」選択UI */}
+          {humanJustSubmitted !== null && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 16px", background: "#fdf4ff", border: "1px solid #e9d5ff", borderRadius: "8px" }}>
+              <div style={{ fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#6b21a8", fontWeight: 600 }}>
+                次のターン（AI{humanJustSubmitted + 1} / {playerLabels[humanJustSubmitted]}ポジション）はどうしますか？
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => handleResumeWithHuman(humanJustSubmitted)}
+                  style={{ flex: 1, padding: "9px", borderRadius: "7px", border: "1px solid #e9d5ff", background: "#fdf4ff", color: "#6b21a8", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}
+                >
+                  👤 次のターンも自分で発言
+                </button>
+                <button
+                  onClick={handleResumeWithAI}
+                  style={{ flex: 1, padding: "9px", borderRadius: "7px", border: "none", background: "var(--accent)", color: "white", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}
+                >
+                  🤖 AIに任せて続行
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 神の介入ボックス（トグル） */}
-          {showIntervention && (
-            <div style={{ display: "flex", gap: "8px" }}>
+          {showIntervention && waitingForHuman === null && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 14px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: "8px" }}>
               <textarea
                 value={interventionText}
                 onChange={(e) => setInterventionText(e.target.value)}
-                placeholder="両AIへのメッセージ（次のターン開始時に渡されます）"
+                placeholder="全AIへのメッセージ（次のターン開始時に渡されます）"
                 rows={2}
-                style={{ flex: 1, padding: "8px 12px", border: "1px solid #fde68a", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "#fefce8", outline: "none", resize: "none" }}
+                style={{ padding: "8px 12px", border: "1px solid #fde68a", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "none" }}
               />
+              {/* 乗っ取りチェックボックス */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#b7791f", letterSpacing: "0.05em" }}>
+                  次のターンだけ乗っ取る（チェックしたポジションで自分が発言）
+                </div>
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                  {players.map((player, idx) => {
+                    const color = PROVIDER_COLORS[player.provider];
+                    const isChecked = overridePIdx.has(idx);
+                    // セットアップで既にhumanに設定済みのポジションは非表示
+                    if (player.provider === "human") return null;
+                    return (
+                      <label
+                        key={idx}
+                        style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: isChecked ? color.text : "var(--ink-muted)", userSelect: "none" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            setOverridePIdx((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(idx);
+                              else next.delete(idx);
+                              return next;
+                            });
+                          }}
+                          style={{ cursor: "pointer" }}
+                        />
+                        <span style={{ padding: "1px 7px", borderRadius: "4px", background: isChecked ? color.bg : "transparent", border: `1px solid ${isChecked ? color.border : "transparent"}` }}>
+                          👤 AI{idx + 1} ({PROVIDER_LABELS[player.provider]}) として発言
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
           {/* ボタン列 */}
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            {/* 介入ボタン */}
-            <button
-              onClick={() => setShowIntervention((v) => !v)}
-              style={{ padding: "8px 14px", borderRadius: "7px", border: `1px solid ${showIntervention ? "#fde68a" : "var(--border)"}`, background: showIntervention ? "#fefce8" : "white", color: showIntervention ? "#78350f" : "var(--ink-muted)", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
-            >
-              ⚡ 介入
-            </button>
+            {/* 介入ボタン（人間ターン待機中は非表示） */}
+            {waitingForHuman === null && (
+              <button
+                onClick={() => setShowIntervention((v) => !v)}
+                style={{ padding: "8px 14px", borderRadius: "7px", border: `1px solid ${showIntervention ? "#fde68a" : "var(--border)"}`, background: showIntervention ? "#fefce8" : "white", color: showIntervention ? "#78350f" : "var(--ink-muted)", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
+              >
+                ⚡ 介入
+              </button>
+            )}
 
             {/* ターン数セレクター */}
-            <select
-              value={config.turnCount}
-              onChange={(e) => setConfig((c) => ({ ...c, turnCount: Number(e.target.value) }))}
-              disabled={isRunning}
-              style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", background: "white", cursor: "pointer", outline: "none" }}
-            >
-              {[1, 2, 3, 5].map((n) => (
-                <option key={n} value={n}>{n}ターン</option>
-              ))}
-            </select>
+            {waitingForHuman === null && (
+              <select
+                value={config.turnCount}
+                onChange={(e) => setConfig((c) => ({ ...c, turnCount: Number(e.target.value) }))}
+                disabled={isRunning}
+                style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", background: "white", cursor: "pointer", outline: "none" }}
+              >
+                {[1, 2, 3, 5].map((n) => (
+                  <option key={n} value={n}>{n}ターン</option>
+                ))}
+              </select>
+            )}
 
-            {/* 実行ボタン */}
-            <button
-              onClick={handleRun}
-              disabled={isRunning}
-              style={{ flex: 1, padding: "10px", borderRadius: "7px", border: "none", background: isRunning ? "var(--border)" : "var(--accent)", color: "white", fontSize: "14px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: isRunning ? "default" : "pointer", transition: "all 0.15s" }}
-            >
-              {isRunning
-                ? "⚔️ 戦闘中…"
-                : isFirstRun
-                ? `▶️ ${config.turnCount}ターン 開始`
-                : `▶️ ${config.turnCount}ターン 続ける`}
-            </button>
+            {/* 実行ボタン（人間ターン待機中は非表示） */}
+            {waitingForHuman === null && (
+              <button
+                onClick={handleRun}
+                disabled={isRunning}
+                style={{ flex: 1, padding: "10px", borderRadius: "7px", border: "none", background: isRunning ? "var(--border)" : "var(--accent)", color: "white", fontSize: "14px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: isRunning ? "default" : "pointer", transition: "all 0.15s" }}
+              >
+                {isRunning
+                  ? "⚔️ 戦闘中…"
+                  : isFirstRun
+                  ? `▶️ ${config.turnCount}ターン 開始`
+                  : `▶️ ${config.turnCount}ターン 続ける`}
+              </button>
+            )}
+
+            {/* MDエクスポートボタン */}
+            {messages.length > 0 && waitingForHuman === null && humanJustSubmitted === null && (
+              <button
+                onClick={handleExportMd}
+                title="MDファイルにエクスポート（人間の発言含む）"
+                style={{ padding: "10px 14px", borderRadius: "7px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                📄 MD
+              </button>
+            )}
 
             {/* シェアボタン */}
             <button
