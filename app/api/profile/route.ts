@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
 
+// ✅v32追加: 予約語リスト（/@handle URLと衝突するシステムパス）
+const RESERVED_HANDLES = new Set([
+  'explore', 'arena', 'settings', 'login', 'share', 'api',
+  'auth', 'admin', 'about', 'help', 'support', 'terms',
+  'privacy', 'profile', 'user', 'users', 'me', 'home',
+])
+
 export async function GET(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createRouteHandlerSupabaseClient(req, res)
@@ -41,6 +48,10 @@ export async function POST(req: NextRequest) {
   }
   if (!notAllUpper) {
     return NextResponse.json({ error: '全て大文字のIDは使用できません（将来の限定機能です）' }, { status: 400 })
+  }
+  // ✅v32追加: 予約語チェック
+  if (RESERVED_HANDLES.has(normalized)) {
+    return NextResponse.json({ error: 'そのハンドルネームは使用できません' }, { status: 400 })
   }
 
   const { data, error } = await supabase

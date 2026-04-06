@@ -21,14 +21,13 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // セッションを更新（これを呼ばないとCookieが失効する）
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const { pathname } = req.nextUrl;
 
-  // 未ログインかつ保護ページへのアクセス → /login へリダイレクト（nextパラメータ付き）
+  // 未ログインかつ保護ページへのアクセス → /login へリダイレクト
   if (!user && pathname !== "/login" && pathname !== "/auth/callback") {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
@@ -45,13 +44,11 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * 以下を除いた全パスに適用：
-     * - _next/static / _next/image（静的ファイル）
-     * - favicon.ico
-     * - /share/... （ログイン不要の公開ページ）
-     * - /api/share/... （公開ページ用API）
-     */
-    "/((?!_next/static|_next/image|favicon.ico|share|api/share|arena/).*)",
+    // ✅v32: 保護が必要なページのみを明示的に指定する方式に変更
+    // 未指定のパス（/[handle], /explore, /share, /arena等）はmiddlewareをスキップ
+    "/",
+    "/settings/:path*",
+    "/login",
+    "/auth/:path*",
   ],
 };
