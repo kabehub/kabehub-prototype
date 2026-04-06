@@ -185,8 +185,8 @@ export default function ArenaPage() {
 
   // ── actionQueue駆動のuseEffect（Geminiさん設計） ──────────────
   useEffect(() => {
-    // キューが空、または人間入力待ちの時は何もしない
-    if (actionQueue.length === 0 || waitingForHuman !== null) return;
+    // キューが空 / 実行中でない / 人間入力待ち / 選択UI表示中 の時は何もしない
+    if (actionQueue.length === 0 || !isRunning || waitingForHuman !== null || humanJustSubmitted !== null) return;
 
     let isCancelled = false;
 
@@ -255,7 +255,7 @@ export default function ArenaPage() {
     return () => {
       isCancelled = true;
     };
-  }, [actionQueue, waitingForHuman, players, runOneTurn, config.topic, overridePIdx]);
+  }, [actionQueue, isRunning, waitingForHuman, humanJustSubmitted, players, runOneTurn, config.topic, overridePIdx]);
 
   // キューが空になったら実行完了
   useEffect(() => {
