@@ -35,7 +35,8 @@ export async function PATCH(
   if (body.allow_prompt_fork !== undefined) updates.allow_prompt_fork = body.allow_prompt_fork; // 👈 追加
   if (body.folder_name !== undefined) updates.folder_name = body.folder_name; // 👈 追加
   if (body.share_token !== undefined) updates.share_token = body.share_token;
-if (body.metadata !== undefined) updates.metadata = body.metadata;
+  if (body.metadata !== undefined) updates.metadata = body.metadata;
+  if (body.genre !== undefined) updates.genre = body.genre;
 
   if (body.needsToken && body.is_public) {
     const { data: existing } = await supabase

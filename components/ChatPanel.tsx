@@ -5,6 +5,7 @@ import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/ty
 import MessageBubble, { ThinkingBubble } from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import ExportModal, { ExportOptions } from "./ExportModal";
+import { GENRES } from "@/lib/genres";
 
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
@@ -80,6 +81,8 @@ export default function ChatPanel({
   const [sharePublic, setSharePublic] = useState(false);
   const [shareHideMemos, setShareHideMemos] = useState(false);
   const [shareAllowPromptFork, setShareAllowPromptFork] = useState(true);
+  const [shareGenre, setShareGenre] = useState<string | null>(null); // 👈 追加
+  const [selectedParentGenreId, setSelectedParentGenreId] = useState<string | null>(null); // 👈 追加
   const [shareSaving, setShareSaving] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
@@ -266,10 +269,12 @@ export default function ChatPanel({
     setShareHideMemos(thread?.hide_memos ?? false);
     setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
     setShareToken(thread?.share_token ?? null);
+    setShareGenre((thread?.genre as string | null) ?? null); // 👈 追加
+    setSelectedParentGenreId(null); // 👈 追加
   };
 
   // ★ 公開設定を保存
-  const handleSaveShare = async (newPublic: boolean, newHideMemos: boolean, newAllowPromptFork: boolean) => {
+  const handleSaveShare = async (newPublic: boolean, newHideMemos: boolean, newAllowPromptFork: boolean, newGenre?: string | null) => {
     if (!thread) return;
     setShareSaving(true);
     try {
@@ -281,6 +286,7 @@ export default function ChatPanel({
           hide_memos: newHideMemos,
           allow_prompt_fork: newAllowPromptFork,
           needsToken: newPublic,
+          ...(newGenre !== undefined && { genre: newGenre }), // 👈 追加（undefinedの時は送らない）
         }),
       });
       const updated = await res.json();
@@ -288,10 +294,12 @@ export default function ChatPanel({
       setShareAllowPromptFork(updated.allow_prompt_fork ?? true);
       setShareHideMemos(updated.hide_memos ?? false);
       setShareToken(updated.share_token ?? null);
+      setShareGenre(updated.genre ?? null); // 👈 追加
       thread.is_public = updated.is_public;
       thread.hide_memos = updated.hide_memos;
       thread.allow_prompt_fork = updated.allow_prompt_fork;
       thread.share_token = updated.share_token;
+      thread.genre = updated.genre ?? null; // 👈 追加（型定義も後で更新）
     } catch (err) {
       console.error("公開設定保存失敗:", err);
     } finally {
@@ -955,30 +963,113 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
               </span>
               {shareSaving && <span style={{ fontSize: "11px", color: "var(--ink-faint)" }}>保存中…</span>}
             </label>
-            {sharePublic && (
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", paddingLeft: "4px" }}>
-                <div onClick={() => { const next = !shareHideMemos; setShareHideMemos(next); handleSaveShare(sharePublic, next, shareAllowPromptFork); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareHideMemos ? "#7c3aed" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
-                  <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareHideMemos ? "translateX(18px)" : "translateX(0)" }} />
+{sharePublic && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingLeft: "4px" }}>
+
+                {/* メモ非表示トグル */}
+                <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                  <div onClick={() => { const next = !shareHideMemos; setShareHideMemos(next); handleSaveShare(sharePublic, next, shareAllowPromptFork); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareHideMemos ? "#7c3aed" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+                    <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareHideMemos ? "translateX(18px)" : "translateX(0)" }} />
+                  </div>
+                  <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>📝 メモを共有ページに表示しない</span>
+                </label>
+
+                {/* システムプロンプトフォークトグル */}
+                <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                  <div onClick={() => { const next = !shareAllowPromptFork; setShareAllowPromptFork(next); handleSaveShare(sharePublic, shareHideMemos, next); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareAllowPromptFork ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+                    <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareAllowPromptFork ? "translateX(18px)" : "translateX(0)" }} />
+                  </div>
+                  <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
+                    {shareAllowPromptFork ? "🔓 システムプロンプトをフォーク時に引き継ぐ" : "🔒 システムプロンプトを非公開（シークレット）"}
+                  </span>
+                </label>
+
+                {/* ジャンル選択UI */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ fontSize: "11px", color: "var(--ink-muted)", fontFamily: "'JetBrains Mono', monospace" }}>ジャンル（任意）</div>
+
+                  {/* 大分類チップ */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {GENRES.map((parent) => {
+                      const isExpanded = selectedParentGenreId === parent.id;
+                      const hasSelectedChild = parent.children.some(c => c.id === shareGenre);
+                      return (
+                        <button
+                          key={parent.id}
+                          onClick={() => {
+                            if (isExpanded) {
+                              setSelectedParentGenreId(null);
+                            } else {
+                              setSelectedParentGenreId(parent.id);
+                              if (!hasSelectedChild) setShareGenre(null);
+                            }
+                          }}
+                          style={{
+                            padding: "4px 10px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+                            border: hasSelectedChild ? "1.5px solid #3b82f6" : "1px solid var(--border)",
+                            background: hasSelectedChild ? "#3b82f6" : "white",
+                            color: hasSelectedChild ? "white" : "var(--ink)",
+                            fontFamily: "'DM Sans', sans-serif",
+                          }}
+                        >
+                          {parent.icon} {parent.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 中分類（展開中の大分類がある時だけ表示） */}
+                  {selectedParentGenreId && (() => {
+                    const expandedParent = GENRES.find(g => g.id === selectedParentGenreId);
+                    if (!expandedParent) return null;
+                    return (
+                      <div style={{ padding: "8px 10px", background: "#f8fafc", borderRadius: "8px", borderLeft: "2px solid #3b82f6" }}>
+                        <div style={{ fontSize: "10px", color: "var(--ink-muted)", marginBottom: "6px", fontFamily: "'DM Sans', sans-serif" }}>
+                          ▸ {expandedParent.label}の中から選択
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                          {expandedParent.children.map((child) => (
+                            <button
+                              key={child.id}
+                              onClick={() => {
+                                setShareGenre(child.id);
+                                handleSaveShare(sharePublic, shareHideMemos, shareAllowPromptFork, child.id);
+                              }}
+                              style={{
+                                padding: "3px 9px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+                                border: shareGenre === child.id ? "1.5px solid #3b82f6" : "1px solid var(--border)",
+                                background: shareGenre === child.id ? "#dbeafe" : "white",
+                                color: shareGenre === child.id ? "#1d4ed8" : "var(--ink-muted)",
+                                fontFamily: "'DM Sans', sans-serif",
+                              }}
+                            >
+                              {child.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 確定結果チップ */}
+                  {shareGenre && (() => {
+                    const parent = GENRES.find(g => g.children.some(c => c.id === shareGenre));
+                    const child = parent?.children.find(c => c.id === shareGenre);
+                    return (
+                      <div>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", padding: "2px 10px", borderRadius: "999px", background: "#dbeafe", color: "#1d4ed8", border: "1px solid #93c5fd" }}>
+                          {parent?.icon} {parent?.label} › {child?.label}
+                          <span
+                            onClick={() => { setShareGenre(null); setSelectedParentGenreId(null); handleSaveShare(sharePublic, shareHideMemos, shareAllowPromptFork, null); }}
+                            style={{ marginLeft: "2px", cursor: "pointer", opacity: 0.6, fontSize: "10px" }}
+                          >✕</span>
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>📝 メモを共有ページに表示しない</span>
-              {/* 👇 ここから追加 */}
-<label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", paddingLeft: "4px" }}>
-  <div
-    onClick={() => {
-      const next = !shareAllowPromptFork;
-      setShareAllowPromptFork(next);
-      handleSaveShare(sharePublic, shareHideMemos, next);
-    }}
-    style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareAllowPromptFork ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}
-  >
-    <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareAllowPromptFork ? "translateX(18px)" : "translateX(0)" }} />
-  </div>
-  <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
-    {shareAllowPromptFork ? "🔓 システムプロンプトをフォーク時に引き継ぐ" : "🔒 システムプロンプトを非公開（シークレット）"}
-  </span>
-</label>
-{/* 👆 ここまで追加 */}
-              </label>
+
+              </div>
             )}
             {sharePublic && shareToken && (
               <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "8px", background: "white", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "8px 12px" }}>

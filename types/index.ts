@@ -11,6 +11,7 @@ export interface Thread {
   forked_from_id?: string | null; // 👈 追加（セルフコピペ・フォーク用）
   allow_prompt_fork?: boolean;    // 👈 追加
   folder_name?: string | null; // 👈 追加
+  genre?: string | null; // 👈 追加
 }
 
 export interface Message {
