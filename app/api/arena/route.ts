@@ -104,7 +104,26 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = user.id;
 
-  const body = await req.json();
+  let body: {
+  mode?: string;
+  threadId: string;
+  content?: string;
+  history?: ChatMessage[];
+  currentProvider?: string;
+  currentPrompt?: string;
+  opponentLabel?: string;
+  selfLabel?: string;
+  isFirst?: boolean;
+  topic?: string;
+  interventionContent?: string;
+};
+try {
+  const rawText = await req.text();
+  body = JSON.parse(rawText);
+} catch (err) {
+  console.error("arena route: JSON parse error", err);
+  return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+}
 
   // ── 人間乱入メッセージの保存モード ─────────────────────────────
   // page.tsx の handleHumanSubmit から呼ばれる。
@@ -115,7 +134,7 @@ export async function POST(req: NextRequest) {
       id: uuidv4(),
       thread_id: threadId,
       role: "user" as const,
-      content: msgContent,
+      content: msgContent ?? "",
       provider: "user" as const,
       created_at: new Date().toISOString(),
     };
@@ -146,14 +165,14 @@ export async function POST(req: NextRequest) {
   if (isFirst) {
     const exists = await getThread(threadId);
     if (!exists) {
-      await createThread(threadId, `【AI闘技場】${topic.slice(0, 30)}`, userId);
+      await createThread(threadId, `【AI闘技場】${(topic ?? "").slice(0, 30)}`, userId);
     }
   }
 
   // 神の介入メッセージをDBに保存してhistoryに追加
   // DB保存は【神からの介入】タグ付きのまま（UI表示用）
   // APIに渡す際は強すぎるシグナルを避けるため「地の文」に変換する（Geminiの提案）
-  let historyWithIntervention = [...history];
+  let historyWithIntervention = [...(history ?? [])];
   if (interventionContent?.trim()) {
     const interventionMsg = {
       id: uuidv4(),
@@ -167,8 +186,8 @@ export async function POST(req: NextRequest) {
     // APIには「地の文」として渡す（タグ強調を避けて自然な会話の流れに溶け込ませる）
     const interventionForApi = `[状況更新] 以下の新しい事実が判明しました。自然な会話の流れの中で、この事実に対するあなたの見解を簡潔に混ぜ込んで反論してください。事実：${interventionContent}`;
     historyWithIntervention = [
-      ...history,
-      { role: "user", content: interventionForApi },
+    ...(history ?? []),
+    { role: "user", content: interventionForApi },
     ];
   }
 
@@ -213,6 +232,7 @@ export async function POST(req: NextRequest) {
     currentPrompt?.trim(),
     `あなたは ${selfLabel} として、この議論に参加しています。`,
     `相手は ${opponentLabel} です。`,
+    `【絶対厳守】あなたに割り当てられた立場・主張を最後まで貫いてください。相手に反論する際も、自分の立場から離れないでください。`,  // 👈 追加
     `【重要】あなたが出力するのは、あなた自身の発言のみです。`,
     `相手（${opponentLabel}）の発言や、"[相手の発言]" などのラベルは絶対に出力しないでください。`,
     `発言の冒頭にラベルや名前を付けないでください。`,
@@ -224,7 +244,7 @@ export async function POST(req: NextRequest) {
   // AI呼び出し
   let content = "";
   try {
-    content = await callAI(currentProvider, contextMessages, fullSystemPrompt, keys);
+    content = await callAI(currentProvider ?? "", contextMessages, fullSystemPrompt, keys);
   } catch (err) {
     content = `（エラー: ${err instanceof Error ? err.message : "不明なエラー"}）\n※右上の「🔑 APIキー」ボタンから設定を確認してください。`;
   }
@@ -235,7 +255,7 @@ export async function POST(req: NextRequest) {
     thread_id: threadId,
     role: "assistant" as const,
     content,
-    provider: currentProvider as "claude" | "gemini" | "openai",
+    provider: (currentProvider ?? "claude") as "claude" | "gemini" | "openai",
     created_at: new Date().toISOString(),
   };
   await addMessage(assistantMessage, userId);
