@@ -7,13 +7,12 @@ export async function GET(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
 
-  // 認証チェック
+  // 認証チェック（未ログインでも閲覧可・ただし liked_by_me は false 固定）
+  // ✅ 変更後
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";
@@ -22,11 +21,9 @@ export async function GET(req: NextRequest) {
   const limit = 20;
 
   // タグ絞り込み: まず !inner JOIN を試みる
-  // （thread_tags との JOIN が動作しない場合は2クエリ方式にフォールバック）
   let tagFilterIds: string[] | null = null;
 
   if (tag) {
-    // まず !inner JOIN で試みる
     try {
       const { data: joinData, error: joinError } = await supabase
         .from("threads")
@@ -35,13 +32,11 @@ export async function GET(req: NextRequest) {
         .ilike("thread_tags.name", tag);
 
       if (!joinError && joinData) {
-        // !inner JOIN 成功 → IDリストを使って本クエリでフィルタ
         tagFilterIds = joinData.map((t: any) => t.id);
       } else {
         throw new Error("inner join failed, fallback to 2-query");
       }
     } catch {
-      // フォールバック: thread_tags を別クエリで取得
       const { data: tagData } = await supabase
         .from("thread_tags")
         .select("thread_id")
@@ -50,7 +45,6 @@ export async function GET(req: NextRequest) {
       tagFilterIds = tagData?.map((t: any) => t.thread_id) ?? [];
     }
 
-    // タグに一致するスレッドが0件 → 即返却
     if (tagFilterIds !== null && tagFilterIds.length === 0) {
       return NextResponse.json({ items: [], nextCursor: null, hasMore: false });
     }
@@ -101,7 +95,6 @@ export async function GET(req: NextRequest) {
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
 
-  // fork_count を別クエリで取得
   const threadIds = items.map((t) => t.id);
   let forkCounts: Record<string, number> = {};
 
@@ -115,6 +108,26 @@ export async function GET(req: NextRequest) {
       for (const row of forkData) {
         if (row.forked_from_id) {
           forkCounts[row.forked_from_id] = (forkCounts[row.forked_from_id] ?? 0) + 1;
+        }
+      }
+    }
+  }
+
+  // like_count を別クエリで取得
+  let likeCounts: Record<string, number> = {};
+  let likedByMe: Record<string, boolean> = {};
+
+  if (threadIds.length > 0) {
+    const { data: likeData } = await supabase
+      .from("likes")
+      .select("thread_id, user_id")
+      .in("thread_id", threadIds);
+
+    if (likeData) {
+      for (const row of likeData) {
+        likeCounts[row.thread_id] = (likeCounts[row.thread_id] ?? 0) + 1;
+        if (user && row.user_id === user.id) {
+          likedByMe[row.thread_id] = true;
         }
       }
     }
@@ -137,7 +150,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // レスポンス整形
   const result = items.map((t) => ({
     id: t.id,
     title: t.title,
@@ -150,6 +162,8 @@ export async function GET(req: NextRequest) {
     tags: (t.thread_tags as any[])?.map((tag) => tag.name) ?? [],
     message_count: (t.messages as any)?.[0]?.count ?? 0,
     fork_count: forkCounts[t.id] ?? 0,
+    like_count: likeCounts[t.id] ?? 0,
+    liked_by_me: likedByMe[t.id] ?? false,
   }));
 
   const nextCursor = hasMore ? items[items.length - 1].created_at : null;

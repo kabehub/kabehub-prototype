@@ -16,6 +16,8 @@ interface ExploreThread {
   tags: string[];
   message_count: number;
   fork_count: number;
+  like_count: number;
+  liked_by_me: boolean;
 }
 
 // ---- ユーティリティ ----
@@ -31,6 +33,83 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
 }
 
+// ---- ☆いいねボタン ----
+// ✅ 変更後（内部stateで管理）
+function LikeButton({
+  threadId,
+  likeCount,
+  likedByMe: initialLikedByMe,
+  onToggle,
+}: {
+  threadId: string;
+  likeCount: number;
+  likedByMe: boolean;
+  onToggle: (threadId: string, liked: boolean) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [liked, setLiked] = useState(initialLikedByMe);
+  const [count, setCount] = useState(likeCount);
+
+  const handleClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (loading) return;
+    setLoading(true);
+    // 楽観的更新
+    const newLiked = !liked;
+    setLiked(newLiked);
+    setCount((prev) => prev + (newLiked ? 1 : -1));
+    try {
+      const method = liked ? "DELETE" : "POST";
+      const res = await fetch(`/api/threads/${threadId}/likes`, { method });
+      if (res.status === 401) {
+        window.location.href = `/login?next=/explore`;
+        return;
+      }
+      if (!res.ok) {
+        // 失敗したら戻す
+        setLiked(liked);
+        setCount((prev) => prev + (newLiked ? -1 : 1));
+      } else {
+        onToggle(threadId, newLiked);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      title={liked ? "いいねを取り消す" : "いいね"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "3px",
+        padding: "2px 6px",
+        border: "none",
+        background: "none",
+        cursor: loading ? "default" : "pointer",
+        fontSize: "11px",
+        fontFamily: "'JetBrains Mono', monospace",
+        color: liked ? "#d97706" : "var(--ink-muted)",
+        transition: "color 0.15s",
+        borderRadius: "4px",
+      }}
+      onMouseEnter={(e) => {
+        if (!loading) (e.currentTarget as HTMLButtonElement).style.color = "#d97706";
+      }}
+      onMouseLeave={(e) => {
+        if (!loading)
+          (e.currentTarget as HTMLButtonElement).style.color = liked ? "#d97706" : "var(--ink-muted)";
+      }}
+    >
+      <span style={{ fontSize: "13px" }}>{liked ? "★" : "☆"}</span>
+      <span>{count}</span>
+    </button>
+  );
+}
+
 // ---- スレッドカード ----
 function ThreadCard({
   thread,
@@ -38,12 +117,14 @@ function ThreadCard({
   forking,
   selectedTag,
   onTagClick,
+  onLikeToggle,
 }: {
   thread: ExploreThread;
   onFork: (thread: ExploreThread) => void;
   forking: boolean;
   selectedTag: string;
   onTagClick: (tag: string) => void;
+  onLikeToggle: (threadId: string, liked: boolean) => void;
 }) {
   return (
     <div
@@ -141,7 +222,7 @@ function ThreadCard({
         </div>
       )}
 
-      {/* フッター：メッセージ数・フォーク数・アクション */}
+      {/* フッター：メッセージ数・フォーク数・いいね・アクション */}
       <div
         style={{
           display: "flex",
@@ -153,7 +234,8 @@ function ThreadCard({
         <div
           style={{
             display: "flex",
-            gap: "12px",
+            alignItems: "center",
+            gap: "8px",
             fontSize: "11px",
             color: "var(--ink-muted)",
             fontFamily: "'JetBrains Mono', monospace",
@@ -161,6 +243,12 @@ function ThreadCard({
         >
           <span title="メッセージ数">💬 {thread.message_count}</span>
           <span title="フォーク数">📋 {thread.fork_count}</span>
+          <LikeButton
+            threadId={thread.id}
+            likeCount={thread.like_count}
+            likedByMe={thread.liked_by_me}
+            onToggle={onLikeToggle}
+          />
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
           {thread.share_token && (
@@ -243,7 +331,6 @@ function ExploreContent() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  // inputValue だけローカル管理（タイピングの即応性を担保）
   const [inputValue, setInputValue] = useState(urlQuery);
   const [forkingId, setForkingId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -252,127 +339,132 @@ function ExploreContent() {
   const updateParams = useCallback(
     (updates: { tag?: string | null; q?: string | null }, mode: "push" | "replace" = "replace") => {
       const params = new URLSearchParams(searchParams.toString());
-      Object.entries(updates).forEach(([key, value]) => {
-        if (value) {
-          params.set(key, value);
-        } else {
-          params.delete(key);
-        }
-      });
-      const url = `${pathname}?${params.toString()}`;
-      if (mode === "push") {
-        router.push(url, { scroll: false });
-      } else {
-        router.replace(url, { scroll: false });
+      if (updates.tag !== undefined) {
+        if (updates.tag) params.set("tag", updates.tag);
+        else params.delete("tag");
       }
+      if (updates.q !== undefined) {
+        if (updates.q) params.set("q", updates.q);
+        else params.delete("q");
+      }
+      const qs = params.toString();
+      const newUrl = qs ? `${pathname}?${qs}` : pathname;
+      if (mode === "push") router.push(newUrl);
+      else router.replace(newUrl);
     },
-    [pathname, searchParams, router]
+    [searchParams, pathname, router]
   );
 
   // ---- データ取得 ----
-  const fetchItems = useCallback(async (q: string, tag: string, cursor: string | null, append: boolean) => {
-    if (!append) setLoading(true);
-    else setLoadingMore(true);
+  const fetchItems = useCallback(
+    async (tag: string, query: string, cursor: string | null, append: boolean) => {
+      if (append) setLoadingMore(true);
+      else setLoading(true);
 
-    try {
       const params = new URLSearchParams();
-      if (q) params.set("q", q);
       if (tag) params.set("tag", tag);
+      if (query) params.set("q", query);
       if (cursor) params.set("cursor", cursor);
 
-      const res = await fetch(`/api/explore?${params.toString()}`);
-      if (!res.ok) throw new Error("fetch error");
-      const json = await res.json();
+      try {
+        const res = await fetch(`/api/explore?${params.toString()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        setItems((prev) => (append ? [...prev, ...json.items] : json.items));
+        setHasMore(json.hasMore);
+        setNextCursor(json.nextCursor);
+      } finally {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+      }
+    },
+    []
+  );
 
-      setItems((prev) => (append ? [...prev, ...json.items] : json.items));
-      setHasMore(json.hasMore);
-      setNextCursor(json.nextCursor);
-    } catch (err) {
-      console.error("explore fetch error:", err);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, []);
-
-  // ---- URLパラメータが変わったらフェッチ（カーソルもリセット） ----
+  // URL変化で再フェッチ
   useEffect(() => {
-    setItems([]);
-    setNextCursor(null);
-    fetchItems(urlQuery, urlTag, null, false);
+    fetchItems(urlTag, urlQuery, null, false);
   }, [urlTag, urlQuery, fetchItems]);
 
-  // ---- 検索入力ハンドラー ----
-  // inputValue はローカルで即時更新し、デバウンス後にURLへ反映
-  const handleSearchChange = (val: string) => {
-    setInputValue(val);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      if (val.startsWith("#") && val.length > 1) {
-        // "#タグ名" 入力 → タグ検索に切り替え
-        const tagVal = val.slice(1).trim();
-        updateParams({ tag: tagVal, q: null }, "replace");
-      } else {
-        // 通常のタイトル検索（タグ絞り込みは維持）
-        updateParams({ q: val || null }, "replace");
-      }
-    }, 300);
-  };
+  // ---- いいねのトグル（楽観的更新） ----
+  const handleLikeToggle = useCallback((threadId: string, liked: boolean) => {
+    setItems((prev) =>
+      prev.map((t) =>
+        t.id === threadId
+          ? { ...t, liked_by_me: liked, like_count: t.like_count + (liked ? 1 : -1) }
+          : t
+      )
+    );
+  }, []);
 
-  // ---- 検索クリア ----
-  const handleSearchClear = () => {
-    setInputValue("");
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    // #タグ検索由来の selectedTag も同時にクリア
-    if (inputValue.startsWith("#")) {
-      updateParams({ tag: null, q: null }, "replace");
-    } else {
-      updateParams({ q: null }, "replace");
-    }
-  };
+  // ---- 検索ハンドラ ----
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setInputValue(value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
 
-  // ---- タグクリック（トグル） ----
-  // push を使うことでブラウザの「戻る」でタグ解除できる
-  const handleTagClick = (tag: string) => {
-    const next = urlTag === tag ? null : tag;
-    // タグクリック時は inputValue が "#xxx" 形式なら一緒にクリア
-    if (inputValue.startsWith("#")) {
-      setInputValue("");
-      updateParams({ tag: next, q: null }, "push");
-    } else {
-      updateParams({ tag: next }, "push");
-    }
-  };
-
-  // ---- もっと見る ----
-  const handleLoadMore = () => {
-    if (nextCursor && !loadingMore) {
-      fetchItems(urlQuery, urlTag, nextCursor, true);
-    }
-  };
-
-  // ---- フォーク ----
-  const handleFork = async (thread: ExploreThread) => {
-    if (!thread.share_token) return;
-    setForkingId(thread.id);
-    try {
-      const res = await fetch(`/api/share/${thread.share_token}/fork`, {
-        method: "POST",
-      });
-      if (res.status === 401) {
-        window.location.href = `/login?next=/explore`;
+      // #タグ検索
+      if (value.startsWith("#")) {
+        const tagValue = value.slice(1).trim();
+        debounceRef.current = setTimeout(() => {
+          updateParams({ tag: tagValue || null, q: null });
+        }, 400);
         return;
       }
-      if (!res.ok) throw new Error("fork failed");
-      const { thread: newThread } = await res.json();
-      window.location.href = `/?fork=${newThread.id}`;
-    } catch (err) {
-      console.error("フォーク失敗:", err);
-      alert("フォークに失敗しました");
-    } finally {
-      setForkingId(null);
-    }
-  };
+      debounceRef.current = setTimeout(() => {
+        updateParams({ q: value || null });
+      }, 400);
+    },
+    [updateParams]
+  );
+
+  const handleSearchClear = useCallback(() => {
+    setInputValue("");
+    updateParams({ q: null, tag: null });
+  }, [updateParams]);
+
+  const handleTagClick = useCallback(
+    (tag: string) => {
+      if (urlTag === tag) {
+        updateParams({ tag: null }, "push");
+      } else {
+        setInputValue("");
+        updateParams({ tag, q: null }, "push");
+      }
+    },
+    [urlTag, updateParams]
+  );
+
+  const handleLoadMore = useCallback(() => {
+    if (!nextCursor || loadingMore) return;
+    fetchItems(urlTag, urlQuery, nextCursor, true);
+  }, [nextCursor, loadingMore, urlTag, urlQuery, fetchItems]);
+
+  const handleFork = useCallback(
+    async (thread: ExploreThread) => {
+      const { supabase } = await import("@/lib/supabase/client");
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) {
+        const currentParams = searchParams.toString();
+        window.location.href = `/login?next=/explore${currentParams ? `?${currentParams}` : ""}`;
+        return;
+      }
+      if (!thread.share_token) return;
+      setForkingId(thread.id);
+      try {
+        const res = await fetch(`/api/share/${thread.share_token}/fork`, { method: "POST" });
+        if (!res.ok) throw new Error("フォーク失敗");
+        const { thread: newThread } = await res.json();
+        window.location.href = `/?fork=${newThread.id}`;
+      } catch (err) {
+        console.error("フォーク失敗:", err);
+        alert("フォークに失敗しました");
+      } finally {
+        setForkingId(null);
+      }
+    },
+    [searchParams]
+  );
 
   return (
     <div
@@ -390,118 +482,106 @@ function ExploreContent() {
           top: 0,
           background: "var(--paper)",
           borderBottom: "1px solid var(--border)",
-          padding: "16px 32px",
-          display: "flex",
-          alignItems: "center",
-          gap: "16px",
+          padding: "16px 24px",
           zIndex: 10,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}>
-          <a
-            href="/"
-            style={{
-              fontSize: "12px",
-              color: "var(--ink-muted)",
-              fontFamily: "'JetBrains Mono', monospace",
-              textDecoration: "none",
-              padding: "4px 8px",
-              border: "1px solid var(--border)",
-              borderRadius: "5px",
-              background: "white",
-              transition: "all 0.12s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.background = "var(--sidebar-bg)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.background = "white";
-            }}
-          >
-            ← 戻る
-          </a>
-          <div style={{ width: "1px", height: "16px", background: "var(--border)" }} />
-          <div>
-            <div
+        <div
+          style={{
+            maxWidth: "760px",
+            width: "100%",
+            margin: "0 auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <a
+              href="/"
+              style={{
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                color: "var(--ink-muted)",
+                textDecoration: "none",
+              }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "var(--ink)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)")}
+            >
+              ← 自分の壁打ち
+            </a>
+            <div style={{ flex: 1 }} />
+            <h1
               style={{
                 fontFamily: "'Lora', serif",
-                fontSize: "16px",
-                fontWeight: 600,
+                fontSize: "17px",
+                fontWeight: 500,
                 color: "var(--ink)",
-                letterSpacing: "-0.02em",
+                margin: 0,
               }}
             >
-              🌍 みんなの壁打ち
-            </div>
-            <div
-              style={{
-                fontSize: "10px",
-                color: "var(--ink-muted)",
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-              }}
-            >
-              Public Threads
-            </div>
+              みんなの壁打ち
+            </h1>
+            <div style={{ flex: 1 }} />
           </div>
-        </div>
 
-        {/* 検索バー */}
-        <div style={{ position: "relative", width: "280px" }}>
-          <span
-            style={{
-              position: "absolute",
-              left: "8px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              fontSize: "11px",
-              color: "var(--ink-faint)",
-              pointerEvents: "none",
-            }}
-          >
-            🔍
-          </span>
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="タイトルで検索… (#タグ名でタグ検索)"
-            style={{
-              width: "100%",
-              padding: "7px 28px 7px 26px",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontFamily: "'DM Sans', sans-serif",
-              color: "var(--ink)",
-              background: "white",
-              outline: "none",
-              boxSizing: "border-box",
-              transition: "border-color 0.15s",
-            }}
-            onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-muted)")}
-            onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
-          />
-          {inputValue && (
-            <button
-              onClick={handleSearchClear}
+          {/* 検索ボックス */}
+          <div style={{ position: "relative" }}>
+            <span
               style={{
                 position: "absolute",
-                right: "7px",
+                left: "8px",
                 top: "50%",
                 transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
+                fontSize: "11px",
                 color: "var(--ink-faint)",
-                cursor: "pointer",
-                fontSize: "12px",
-                padding: 0,
-                lineHeight: 1,
+                pointerEvents: "none",
               }}
             >
-              ×
-            </button>
-          )}
+              🔍
+            </span>
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="タイトルで検索… (#タグ名でタグ検索)"
+              style={{
+                width: "100%",
+                padding: "7px 28px 7px 26px",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontFamily: "'DM Sans', sans-serif",
+                color: "var(--ink)",
+                background: "white",
+                outline: "none",
+                boxSizing: "border-box",
+                transition: "border-color 0.15s",
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-muted)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+            />
+            {inputValue && (
+              <button
+                onClick={handleSearchClear}
+                style={{
+                  position: "absolute",
+                  right: "7px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "var(--ink-faint)",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -566,7 +646,6 @@ function ExploreContent() {
           padding: "28px 24px 64px",
         }}
       >
-        {/* ローディング */}
         {loading && (
           <div
             style={{
@@ -581,7 +660,6 @@ function ExploreContent() {
           </div>
         )}
 
-        {/* 0件 */}
         {!loading && items.length === 0 && (
           <div
             style={{
@@ -594,13 +672,7 @@ function ExploreContent() {
             }}
           >
             <div style={{ fontSize: "40px" }}>🌱</div>
-            <div
-              style={{
-                fontFamily: "'Lora', serif",
-                fontSize: "16px",
-                color: "var(--ink)",
-              }}
-            >
+            <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", color: "var(--ink)" }}>
               {urlTag
                 ? `#${urlTag} の壁打ちはありません`
                 : urlQuery
@@ -615,7 +687,6 @@ function ExploreContent() {
           </div>
         )}
 
-        {/* スレッドカード一覧 */}
         {!loading && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {items.map((thread) => (
@@ -626,12 +697,12 @@ function ExploreContent() {
                 forking={forkingId === thread.id}
                 selectedTag={urlTag}
                 onTagClick={handleTagClick}
+                onLikeToggle={handleLikeToggle}
               />
             ))}
           </div>
         )}
 
-        {/* もっと見るボタン */}
         {!loading && hasMore && (
           <div style={{ textAlign: "center", marginTop: "28px" }}>
             <button
@@ -662,7 +733,6 @@ function ExploreContent() {
           </div>
         )}
 
-        {/* 件数表示 */}
         {!loading && items.length > 0 && (
           <div
             style={{
@@ -683,7 +753,6 @@ function ExploreContent() {
 }
 
 // ---- ページエントリーポイント（Suspense でラップ） ----
-// useSearchParams() を使うコンポーネントは必ず Suspense で囲む（Next.js 14 App Router の要件）
 export default function ExplorePage() {
   return (
     <Suspense

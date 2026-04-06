@@ -75,6 +75,9 @@ export default function SharePage({ params }: { params: { token: string } }) {
   const [error, setError] = useState<"notfound" | "error" | null>(null);
   const [loading, setLoading] = useState(true);
   const [forking, setForking] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [likedByMe, setLikedByMe] = useState(false);
+  const [likeLoading, setLikeLoading] = useState(false);
 
   useEffect(() => {
     const fetchShare = async () => {
@@ -84,6 +87,10 @@ export default function SharePage({ params }: { params: { token: string } }) {
         if (!res.ok) { setError("error"); return; }
         const json: ShareData = await res.json();
         setData(json);
+        // いいね情報を取得
+        if (json.thread?.id) {
+          fetchLikeInfo(json.thread.id);
+        }
       } catch {
         setError("error");
       } finally {
@@ -92,6 +99,51 @@ export default function SharePage({ params }: { params: { token: string } }) {
     };
     fetchShare();
   }, [params.token]);
+
+  const fetchLikeInfo = async (threadId: string) => {
+    try {
+      const { supabase } = await import("@/lib/supabase/client");
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // like_count は likes テーブルから直接取得
+      const { count } = await supabase
+        .from("likes")
+        .select("*", { count: "exact", head: true })
+        .eq("thread_id", threadId);
+      setLikeCount(count ?? 0);
+
+      if (user) {
+        const { data: myLike } = await supabase
+          .from("likes")
+          .select("id")
+          .eq("thread_id", threadId)
+          .eq("user_id", user.id)
+          .single();
+        setLikedByMe(!!myLike);
+      }
+    } catch {
+      // エラーは無視（いいね情報が取れなくても表示は続ける）
+    }
+  };
+
+  const handleLike = async () => {
+    if (!data?.thread?.id || likeLoading) return;
+    setLikeLoading(true);
+    try {
+      const method = likedByMe ? "DELETE" : "POST";
+      const res = await fetch(`/api/threads/${data.thread.id}/likes`, { method });
+      if (res.status === 401) {
+        window.location.href = `/login?next=/share/${params.token}`;
+        return;
+      }
+      if (res.ok) {
+        setLikedByMe(!likedByMe);
+        setLikeCount((prev) => prev + (likedByMe ? -1 : 1));
+      }
+    } finally {
+      setLikeLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -156,6 +208,43 @@ export default function SharePage({ params }: { params: { token: string } }) {
           {data?.thread.title}
         </h1>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+          {/* ☆いいねボタン */}
+          <button
+            onClick={handleLike}
+            disabled={likeLoading}
+            title={likedByMe ? "いいねを取り消す" : "いいね"}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "5px 10px",
+              border: "1px solid",
+              borderColor: likedByMe ? "#d97706" : "#e5e7eb",
+              borderRadius: "6px",
+              background: likedByMe ? "#fffbeb" : "white",
+              color: likedByMe ? "#d97706" : "#6b7280",
+              fontSize: "12px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: likeLoading ? "default" : "pointer",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              if (!likeLoading) {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "#d97706";
+                (e.currentTarget as HTMLButtonElement).style.color = "#d97706";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!likeLoading) {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = likedByMe ? "#d97706" : "#e5e7eb";
+                (e.currentTarget as HTMLButtonElement).style.color = likedByMe ? "#d97706" : "#6b7280";
+              }
+            }}
+          >
+            <span style={{ fontSize: "14px" }}>{likedByMe ? "★" : "☆"}</span>
+            <span>{likeCount}</span>
+          </button>
+
           {data?.has_secret_prompt && (
             <span
               title="このスレッドのシステムプロンプトは非公開です。フォークした場合はデフォルトのプロンプトで開始されます。"
