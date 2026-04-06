@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";
   const tag = searchParams.get("tag")?.trim() ?? "";
+  const genre = searchParams.get("genre")?.trim() ?? "";
+  const parentGenre = searchParams.get("parent_genre")?.trim() ?? "";
   const cursor = searchParams.get("cursor") ?? null;
   const limit = 20;
 
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
       `
       id,
       title,
+      genre,
       share_token,
       created_at,
       updated_at,
@@ -77,8 +80,25 @@ export async function GET(req: NextRequest) {
   }
 
   if (tagFilterIds !== null && tagFilterIds.length > 0) {
-    dbQuery = dbQuery.in("id", tagFilterIds);
+  dbQuery = dbQuery.in("id", tagFilterIds);
+}
+
+if (genre) {
+  // 中分類選択時
+  dbQuery = dbQuery.eq("genre", genre);
+} else if (parentGenre) {
+  if (parentGenre === "other") {
+    // 「その他」= genre が NULL のスレッド
+    dbQuery = dbQuery.is("genre", null);
+  } else {
+    // 大分類選択時：該当する中分類IDの配列で IN 絞り込み
+    const { getChildIds } = await import("@/lib/genres");
+    const childIds = getChildIds(parentGenre as any);
+    if (childIds.length > 0) {
+      dbQuery = dbQuery.in("genre", childIds);
+    }
   }
+}
 
   if (cursor) {
     dbQuery = dbQuery.lt("created_at", cursor);
@@ -153,6 +173,7 @@ export async function GET(req: NextRequest) {
   const result = items.map((t) => ({
     id: t.id,
     title: t.title,
+    genre: (t as any).genre ?? null, // 👈 追加
     share_token: t.share_token,
     created_at: t.created_at,
     updated_at: t.updated_at,

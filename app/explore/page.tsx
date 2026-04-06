@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { GENRES } from "@/lib/genres";
 
 // ---- 型定義 ----
 interface ExploreThread {
@@ -18,6 +19,7 @@ interface ExploreThread {
   fork_count: number;
   like_count: number;
   liked_by_me: boolean;
+  genre: string | null; // 👈 追加
 }
 
 // ---- ユーティリティ ----
@@ -324,6 +326,8 @@ function ExploreContent() {
   // ---- URLから現在値を取得（SSOT） ----
   const urlTag = searchParams.get("tag") ?? "";
   const urlQuery = searchParams.get("q") ?? "";
+  const urlGenre = searchParams.get("genre") ?? "";
+  const urlParentGenre = searchParams.get("parent_genre") ?? "";
 
   // ---- ローカルState ----
   const [items, setItems] = useState<ExploreThread[]>([]);
@@ -337,16 +341,24 @@ function ExploreContent() {
 
   // ---- URL更新の共通関数 ----
   const updateParams = useCallback(
-    (updates: { tag?: string | null; q?: string | null }, mode: "push" | "replace" = "replace") => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (updates.tag !== undefined) {
-        if (updates.tag) params.set("tag", updates.tag);
-        else params.delete("tag");
-      }
-      if (updates.q !== undefined) {
-        if (updates.q) params.set("q", updates.q);
-        else params.delete("q");
-      }
+  (updates: { tag?: string | null; q?: string | null; genre?: string | null; parent_genre?: string | null }, mode: "push" | "replace" = "replace") => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (updates.tag !== undefined) {
+      if (updates.tag) params.set("tag", updates.tag);
+      else params.delete("tag");
+    }
+    if (updates.q !== undefined) {
+      if (updates.q) params.set("q", updates.q);
+      else params.delete("q");
+    }
+    if (updates.genre !== undefined) {
+      if (updates.genre) params.set("genre", updates.genre);
+      else params.delete("genre");
+    }
+    if (updates.parent_genre !== undefined) {
+      if (updates.parent_genre) params.set("parent_genre", updates.parent_genre);
+      else params.delete("parent_genre");
+    }
       const qs = params.toString();
       const newUrl = qs ? `${pathname}?${qs}` : pathname;
       if (mode === "push") router.push(newUrl);
@@ -357,14 +369,14 @@ function ExploreContent() {
 
   // ---- データ取得 ----
   const fetchItems = useCallback(
-    async (tag: string, query: string, cursor: string | null, append: boolean) => {
-      if (append) setLoadingMore(true);
-      else setLoading(true);
-
-      const params = new URLSearchParams();
-      if (tag) params.set("tag", tag);
-      if (query) params.set("q", query);
-      if (cursor) params.set("cursor", cursor);
+  async (tag: string, query: string, genre: string, parentGenre: string, cursor: string | null, append: boolean) => {
+    // ...
+    const params = new URLSearchParams();
+    if (tag) params.set("tag", tag);
+    if (query) params.set("q", query);
+    if (genre) params.set("genre", genre);
+    if (parentGenre) params.set("parent_genre", parentGenre);
+    if (cursor) params.set("cursor", cursor);
 
       try {
         const res = await fetch(`/api/explore?${params.toString()}`, { cache: "no-store" });
@@ -383,8 +395,8 @@ function ExploreContent() {
 
   // URL変化で再フェッチ
   useEffect(() => {
-    fetchItems(urlTag, urlQuery, null, false);
-  }, [urlTag, urlQuery, fetchItems]);
+  fetchItems(urlTag, urlQuery, urlGenre, urlParentGenre, null, false);
+}, [urlTag, urlQuery, urlGenre, urlParentGenre, fetchItems]);
 
   // ---- いいねのトグル（楽観的更新） ----
   const handleLikeToggle = useCallback((threadId: string, liked: boolean) => {
@@ -436,9 +448,9 @@ function ExploreContent() {
   );
 
   const handleLoadMore = useCallback(() => {
-    if (!nextCursor || loadingMore) return;
-    fetchItems(urlTag, urlQuery, nextCursor, true);
-  }, [nextCursor, loadingMore, urlTag, urlQuery, fetchItems]);
+  if (!nextCursor || loadingMore) return;
+  fetchItems(urlTag, urlQuery, urlGenre, urlParentGenre, nextCursor, true);
+}, [nextCursor, loadingMore, urlTag, urlQuery, urlGenre, urlParentGenre, fetchItems]);
 
   const handleFork = useCallback(
     async (thread: ExploreThread) => {
@@ -584,7 +596,99 @@ function ExploreContent() {
           </div>
         </div>
       </div>
+      {/* ジャンルフィルター */}
+<div
+  style={{
+    maxWidth: "760px",
+    width: "100%",
+    margin: "0 auto",
+    padding: "12px 24px 0",
+  }}
+>
+  {/* 大分類ボタン */}
+  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+    <button
+      onClick={() => updateParams({ parent_genre: null, genre: null }, "push")}
+      style={{
+        padding: "4px 12px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+        border: !urlParentGenre && !urlGenre ? "1.5px solid var(--accent)" : "1px solid var(--border)",
+        background: !urlParentGenre && !urlGenre ? "var(--accent)" : "white",
+        color: !urlParentGenre && !urlGenre ? "white" : "var(--ink)",
+        fontFamily: "'DM Sans', sans-serif",
+      }}
+    >すべて</button>
+    {GENRES.map((parent) => {
+      const isActive = urlParentGenre === parent.id || GENRES.find(g => g.id === parent.id)?.children.some(c => c.id === urlGenre);
+      return (
+        <button
+          key={parent.id}
+          onClick={() => {
+            if (urlParentGenre === parent.id) {
+              updateParams({ parent_genre: null, genre: null }, "push");
+            } else {
+              updateParams({ parent_genre: parent.id, genre: null }, "push");
+            }
+          }}
+          style={{
+            padding: "4px 12px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+            border: isActive ? "1.5px solid #3b82f6" : "1px solid var(--border)",
+            background: isActive ? "#3b82f6" : "white",
+            color: isActive ? "white" : "var(--ink)",
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          {parent.icon} {parent.label}
+        </button>
+      );
+    })}
+    <button
+      onClick={() => updateParams({ parent_genre: "other", genre: null }, "push")}
+      style={{
+        padding: "4px 12px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+        border: urlParentGenre === "other" ? "1.5px solid #3b82f6" : "1px solid var(--border)",
+        background: urlParentGenre === "other" ? "#3b82f6" : "white",
+        color: urlParentGenre === "other" ? "white" : "var(--ink)",
+        fontFamily: "'DM Sans', sans-serif",
+      }}
+    >📦 その他</button>
+  </div>
 
+  {/* 中分類（大分類が選択中かつ「その他」以外の時だけ表示） */}
+  {urlParentGenre && urlParentGenre !== "other" && (() => {
+    const expandedParent = GENRES.find(g => g.id === urlParentGenre);
+    if (!expandedParent) return null;
+    return (
+      <div style={{ marginTop: "8px", padding: "8px 10px", background: "white", borderRadius: "8px", borderLeft: "2px solid #3b82f6", border: "1px solid #e2e8f0", borderLeftWidth: "2px", borderLeftColor: "#3b82f6" }}>
+        <div style={{ fontSize: "10px", color: "var(--ink-muted)", marginBottom: "6px", fontFamily: "'DM Sans', sans-serif" }}>
+          ▸ {expandedParent.label}の中から絞り込む
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+          {expandedParent.children.map((child) => (
+            <button
+              key={child.id}
+              onClick={() => {
+                if (urlGenre === child.id) {
+                  updateParams({ genre: null }, "push");
+                } else {
+                  updateParams({ genre: child.id }, "push");
+                }
+              }}
+              style={{
+                padding: "3px 9px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+                border: urlGenre === child.id ? "1.5px solid #3b82f6" : "1px solid var(--border)",
+                background: urlGenre === child.id ? "#dbeafe" : "white",
+                color: urlGenre === child.id ? "#1d4ed8" : "var(--ink-muted)",
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+            >
+              {child.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  })()}
+</div>
       {/* 選択中タグのチップ */}
       {urlTag && (
         <div
