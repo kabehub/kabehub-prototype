@@ -341,9 +341,10 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
 
   try {
     // 既存エンドポイントを流用（RLSで弾かれた場合は /api/arena?mode=timeTravel に切り替え）
-    const res = await fetch(`/api/threads/${threadId}/messages?since=${encodeURIComponent(targetMsg.created_at)}`, {
+    const res = await fetch(`/api/threads/${threadId}/messages`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromCreatedAt: targetMsg.created_at }),
     });
 
     if (!res.ok) throw new Error("削除に失敗しました");
