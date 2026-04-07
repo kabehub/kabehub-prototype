@@ -26,7 +26,7 @@ export async function GET(
   // 3. メッセージを取得
   const { data: allMessages, error: messagesError } = await supabase
     .from("messages")
-    .select("id, role, content, provider, created_at")
+    .select("id, role, content, provider, created_at, is_hidden")
     .eq("thread_id", thread.id)
     .order("created_at", { ascending: true });
 

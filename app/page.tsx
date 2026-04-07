@@ -499,6 +499,20 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
     }
   }, [fetchThreads, selectThread])
 
+  // ── メッセージ更新（is_hidden / content マスク編集）──────────
+const handleUpdateMessage = useCallback(async (messageId: string, updates: { content?: string; is_hidden?: boolean }) => {
+  const res = await fetch(`/api/messages/${messageId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error("更新失敗");
+  // フロント側も即時反映
+  setMessages((prev) =>
+    prev.map((m) => m.id === messageId ? { ...m, ...updates } : m)
+  );
+}, []);
+
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       {isSaving && (
@@ -545,6 +559,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
         searchMatchIndex={searchMatchIndex}
         onMatchNavigate={handleMatchNavigate}
         onClearSearch={handleClearSearch}
+        onUpdateMessage={handleUpdateMessage}  // ← 追加
       />
     </div>
   );

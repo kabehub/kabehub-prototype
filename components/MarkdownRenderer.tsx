@@ -9,6 +9,11 @@ interface MarkdownRendererProps {
   variant?: "default" | "share";
 }
 
+// [[テキスト]] → ████ に変換（share variant のみ）
+function applyMask(content: string): string {
+  return content.replace(/\[\[(.+?)\]\]/g, "████");
+}
+
 function CodeBlock({
   className,
   children,
@@ -30,7 +35,7 @@ function CodeBlock({
     const timestamp = new Date()
       .toISOString()
       .replace(/[-:T]/g, "")
-      .slice(0, 12); // "202604031911"
+      .slice(0, 12);
     const filename = `kabehub_${timestamp}.${lang}`;
 
     const blob =
@@ -52,7 +57,6 @@ function CodeBlock({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ヘッダーバーの色
   const headerBg = variant === "share" ? "#f1f5f9" : "#1e293b";
   const headerColor = variant === "share" ? "#475569" : "#94a3b8";
   const codeBg = variant === "share" ? "#f8fafc" : "#0f172a";
@@ -79,7 +83,6 @@ function CodeBlock({
         border: variant === "share" ? "1px solid #e2e8f0" : "none",
       }}
     >
-      {/* ヘッダーバー */}
       <div
         style={{
           display: "flex",
@@ -90,7 +93,6 @@ function CodeBlock({
           minHeight: "28px",
         }}
       >
-        {/* 言語ラベル */}
         <span
           style={{
             fontSize: "11px",
@@ -101,33 +103,22 @@ function CodeBlock({
         >
           {lang || "code"}
         </span>
-
-        {/* ボタン群 */}
         <div style={{ display: "flex", gap: "6px" }}>
-          {/* コピーボタン（常時表示） */}
           <button
             onClick={handleCopy}
             style={{
               ...buttonBase,
               background: copied
-                ? variant === "share"
-                  ? "#dcfce7"
-                  : "#14532d"
-                : variant === "share"
-                ? "#e2e8f0"
-                : "#334155",
+                ? variant === "share" ? "#dcfce7" : "#14532d"
+                : variant === "share" ? "#e2e8f0" : "#334155",
               color: copied
-                ? variant === "share"
-                  ? "#16a34a"
-                  : "#4ade80"
+                ? variant === "share" ? "#16a34a" : "#4ade80"
                 : headerColor,
             }}
             title="クリップボードにコピー"
           >
             {copied ? "✓ コピー済み" : "📋 コピー"}
           </button>
-
-          {/* ダウンロードボタン（csv/txtのみ） */}
           {isDownloadable && (
             <button
               onClick={handleDownload}
@@ -143,8 +134,6 @@ function CodeBlock({
           )}
         </div>
       </div>
-
-      {/* コードブロック本体 */}
       <pre
         style={{
           background: codeBg,
@@ -171,12 +160,14 @@ export default function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const isShare = variant === "share";
 
+  // share variant のみマスク記法を適用
+  const processedContent = isShare ? applyMask(content) : content;
+
   return (
     <div className={isShare ? "prose prose-sm max-w-none" : undefined}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // コードブロック（```lang ... ```）
           code({ className, children, ...props }) {
             const isBlock = /language-(\w+)/.exec(className || "");
             if (isBlock) {
@@ -186,7 +177,6 @@ export default function MarkdownRenderer({
                 </CodeBlock>
               );
             }
-            // インラインコード
             return (
               <code
                 style={{
@@ -203,17 +193,10 @@ export default function MarkdownRenderer({
               </code>
             );
           },
-          // テーブル
           table({ children }) {
             return (
               <div style={{ overflowX: "auto", margin: "8px 0" }}>
-                <table
-                  style={{
-                    borderCollapse: "collapse",
-                    width: "100%",
-                    fontSize: "13px",
-                  }}
-                >
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "13px" }}>
                   {children}
                 </table>
               </div>
@@ -221,50 +204,28 @@ export default function MarkdownRenderer({
           },
           th({ children }) {
             return (
-              <th
-                style={{
-                  border: "1px solid #374151",
-                  padding: "6px 12px",
-                  background: isShare ? "#f1f5f9" : "#1e293b",
-                  fontWeight: 600,
-                  textAlign: "left",
-                }}
-              >
+              <th style={{ border: "1px solid #374151", padding: "6px 12px", background: isShare ? "#f1f5f9" : "#1e293b", fontWeight: 600, textAlign: "left" }}>
                 {children}
               </th>
             );
           },
           td({ children }) {
             return (
-              <td
-                style={{
-                  border: "1px solid #374151",
-                  padding: "6px 12px",
-                }}
-              >
+              <td style={{ border: "1px solid #374151", padding: "6px 12px" }}>
                 {children}
               </td>
             );
           },
-          // blockquote
           blockquote({ children }) {
             return (
-              <blockquote
-                style={{
-                  borderLeft: "3px solid #6b7280",
-                  margin: "8px 0",
-                  paddingLeft: "12px",
-                  color: "#9ca3af",
-                  fontStyle: "italic",
-                }}
-              >
+              <blockquote style={{ borderLeft: "3px solid #6b7280", margin: "8px 0", paddingLeft: "12px", color: "#9ca3af", fontStyle: "italic" }}>
                 {children}
               </blockquote>
             );
           },
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

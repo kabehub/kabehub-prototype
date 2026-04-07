@@ -28,6 +28,7 @@ interface ChatPanelProps {
   searchMatchIndex?: number;
   onMatchNavigate?: (dir: "prev" | "next") => void;
   onClearSearch?: () => void;
+  onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;  // ← 追加
 }
 
 export default function ChatPanel({
@@ -50,6 +51,7 @@ export default function ChatPanel({
   searchMatchIndex = 0,
   onMatchNavigate,
   onClearSearch,
+  onUpdateMessage,  // ← 追加
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1196,6 +1198,7 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
               isHighlighted={searchMatchIds.includes(msg.id)}
               isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
               activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
+              onUpdateMessage={onUpdateMessage}  // ← 追加
             />
           </div>
         ))}

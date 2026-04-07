@@ -22,6 +22,7 @@ export interface Message {
   provider?: "claude" | "gemini" | "openai" | "user" | "memo" | "unknown";
   created_at: string;
   parent_id?: string | null;
+  is_hidden?: boolean;
 }
 
 export interface ThreadNote {

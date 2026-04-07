@@ -10,7 +10,6 @@ type ShareData = {
   has_secret_prompt: boolean;
 };
 
-// プロバイダーラベル
 function ProviderLabel({ provider }: { provider: string }) {
   if (provider === "claude") return (
     <span style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#7c3aed", background: "#f5f3ff", border: "1px solid #e9d5ff", borderRadius: "4px", padding: "1px 6px" }}>Claude</span>
@@ -18,15 +17,40 @@ function ProviderLabel({ provider }: { provider: string }) {
   if (provider === "gemini") return (
     <span style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#0369a1", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: "4px", padding: "1px 6px" }}>Gemini</span>
   );
+  if (provider === "openai") return (  // ← 追加
+    <span style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#16a34a", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "4px", padding: "1px 6px" }}>ChatGPT</span>
+  );
   return (
     <span style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#6b7280", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "4px", padding: "1px 6px" }}>AI</span>
   );
 }
 
-// メッセージバブル（リードオンリー版）
 function ReadOnlyBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
+
+  // is_hidden = true のメッセージはプレースホルダー表示
+  if (message.is_hidden) {
+    return (
+      <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: "20px" }}>
+        <div style={{
+          padding: "10px 16px",
+          borderRadius: "10px",
+          border: "1px dashed #d1d5db",
+          background: "#f9fafb",
+          color: "#9ca3af",
+          fontSize: "13px",
+          fontFamily: "'JetBrains Mono', monospace",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+        }}>
+          <span>🔒</span>
+          <span>この発言は非公開です</span>
+        </div>
+      </div>
+    );
+  }
 
   if (isMemo) {
     return (
@@ -52,7 +76,6 @@ function ReadOnlyBubble({ message }: { message: Message }) {
     );
   }
 
-  // assistant
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "20px", gap: "10px" }}>
       <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "#f3f4f6", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", flexShrink: 0, marginTop: "2px" }}>✦</div>
@@ -63,6 +86,7 @@ function ReadOnlyBubble({ message }: { message: Message }) {
             {new Date(message.created_at).toLocaleString("ja-JP")}
           </span>
         </div>
+        {/* variant="share" でマスク記法([[text]] → ████)が適用される */}
         <MarkdownRenderer content={message.content} variant="share" />
       </div>
     </div>
@@ -87,7 +111,6 @@ export default function SharePage({ params }: { params: { token: string } }) {
         if (!res.ok) { setError("error"); return; }
         const json: ShareData = await res.json();
         setData(json);
-        // いいね情報を取得
         if (json.thread?.id) {
           fetchLikeInfo(json.thread.id);
         }
@@ -104,14 +127,11 @@ export default function SharePage({ params }: { params: { token: string } }) {
     try {
       const { supabase } = await import("@/lib/supabase/client");
       const { data: { user } } = await supabase.auth.getUser();
-
-      // like_count は likes テーブルから直接取得
       const { count } = await supabase
         .from("likes")
         .select("*", { count: "exact", head: true })
         .eq("thread_id", threadId);
       setLikeCount(count ?? 0);
-
       if (user) {
         const { data: myLike } = await supabase
           .from("likes")
@@ -121,9 +141,7 @@ export default function SharePage({ params }: { params: { token: string } }) {
           .single();
         setLikedByMe(!!myLike);
       }
-    } catch {
-      // エラーは無視（いいね情報が取れなくても表示は続ける）
-    }
+    } catch {}
   };
 
   const handleLike = async () => {
@@ -201,55 +219,31 @@ export default function SharePage({ params }: { params: { token: string } }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#fafaf7", display: "flex", flexDirection: "column" }}>
-      {/* ヘッダー */}
       <div style={{ position: "sticky", top: 0, background: "#fafaf7", borderBottom: "1px solid #e5e7eb", padding: "16px 32px", display: "flex", alignItems: "center", gap: "12px", zIndex: 10 }}>
         <div style={{ width: "4px", height: "18px", background: "#7c3aed", borderRadius: "2px", flexShrink: 0 }} />
         <h1 style={{ fontFamily: "'Lora', serif", fontSize: "18px", fontWeight: 500, color: "#111827", margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {data?.thread.title}
         </h1>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-          {/* ☆いいねボタン */}
           <button
             onClick={handleLike}
             disabled={likeLoading}
             title={likedByMe ? "いいねを取り消す" : "いいね"}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              padding: "5px 10px",
-              border: "1px solid",
-              borderColor: likedByMe ? "#d97706" : "#e5e7eb",
-              borderRadius: "6px",
-              background: likedByMe ? "#fffbeb" : "white",
-              color: likedByMe ? "#d97706" : "#6b7280",
-              fontSize: "12px",
-              fontFamily: "'JetBrains Mono', monospace",
-              cursor: likeLoading ? "default" : "pointer",
-              transition: "all 0.15s",
+              display: "inline-flex", alignItems: "center", gap: "4px", padding: "5px 10px",
+              border: "1px solid", borderColor: likedByMe ? "#d97706" : "#e5e7eb",
+              borderRadius: "6px", background: likedByMe ? "#fffbeb" : "white",
+              color: likedByMe ? "#d97706" : "#6b7280", fontSize: "12px",
+              fontFamily: "'JetBrains Mono', monospace", cursor: likeLoading ? "default" : "pointer", transition: "all 0.15s",
             }}
-            onMouseEnter={(e) => {
-              if (!likeLoading) {
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "#d97706";
-                (e.currentTarget as HTMLButtonElement).style.color = "#d97706";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!likeLoading) {
-                (e.currentTarget as HTMLButtonElement).style.borderColor = likedByMe ? "#d97706" : "#e5e7eb";
-                (e.currentTarget as HTMLButtonElement).style.color = likedByMe ? "#d97706" : "#6b7280";
-              }
-            }}
+            onMouseEnter={(e) => { if (!likeLoading) { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d97706"; (e.currentTarget as HTMLButtonElement).style.color = "#d97706"; } }}
+            onMouseLeave={(e) => { if (!likeLoading) { (e.currentTarget as HTMLButtonElement).style.borderColor = likedByMe ? "#d97706" : "#e5e7eb"; (e.currentTarget as HTMLButtonElement).style.color = likedByMe ? "#d97706" : "#6b7280"; } }}
           >
             <span style={{ fontSize: "14px" }}>{likedByMe ? "★" : "☆"}</span>
             <span>{likeCount}</span>
           </button>
-
           {data?.has_secret_prompt && (
-            <span
-              title="このスレッドのシステムプロンプトは非公開です。フォークした場合はデフォルトのプロンプトで開始されます。"
-              style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "4px", padding: "2px 8px", cursor: "default" }}
-            >🔒 シークレットプロンプト</span>
+            <span title="このスレッドのシステムプロンプトは非公開です。フォークした場合はデフォルトのプロンプトで開始されます。" style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "4px", padding: "2px 8px", cursor: "default" }}>🔒 シークレットプロンプト</span>
           )}
           <button
             onClick={handleFork}
@@ -266,7 +260,6 @@ export default function SharePage({ params }: { params: { token: string } }) {
         </div>
       </div>
 
-      {/* メッセージ一覧 */}
       <div ref={scrollRef} style={{ flex: 1, maxWidth: "760px", width: "100%", margin: "0 auto", padding: "32px 24px 64px" }}>
         {data?.messages.length === 0 && (
           <div style={{ textAlign: "center", color: "#9ca3af", fontSize: "13px", marginTop: "40px" }}>メッセージがありません</div>
@@ -276,7 +269,6 @@ export default function SharePage({ params }: { params: { token: string } }) {
         ))}
       </div>
 
-      {/* フッター */}
       <div style={{ borderTop: "1px solid #e5e7eb", padding: "12px 32px", background: "#fafaf7", textAlign: "center" }}>
         <span style={{ fontSize: "11px", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
           Shared via KabeHub — 思考のGitHub

@@ -11,6 +11,7 @@ interface MessageBubbleProps {
   provider?: string;
   onRegenerate?: (targetProvider: "claude" | "gemini" | "openai") => void;
   onTrimFrom?: (message: Message) => void;
+  onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   messageNotes?: MessageNote[];
   onAddMessageNote?: (messageId: string, content: string) => Promise<void>;
   onDeleteMessageNote?: (noteId: string) => void;
@@ -26,6 +27,7 @@ function MessageBubble({
   provider,
   onRegenerate,
   onTrimFrom,
+  onUpdateMessage,
   messageNotes = [],
   onAddMessageNote,
   onDeleteMessageNote,
@@ -39,6 +41,16 @@ function MessageBubble({
   const [noteContent, setNoteContent] = useState("");
   const [showNoteList, setShowNoteList] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // マスク編集モード
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // is_hidden の楽観的更新用
+  const [isHidden, setIsHidden] = useState(message.is_hidden ?? false);
+  const [isSavingHidden, setIsSavingHidden] = useState(false);
+
   const myNotes = messageNotes.filter((n) => n.message_id === message.id);
 
   const handleCopy = async (e: React.MouseEvent) => {
@@ -57,7 +69,6 @@ function MessageBubble({
     return "AI";
   };
 
-  // ✅ v27: 再生成ターゲット（自分以外の2プロバイダー）
   const ALL_PROVIDERS = ["claude", "gemini", "openai"] as const;
   const regenTargets = ALL_PROVIDERS.filter((p) => p !== message.provider);
   const regenLabel = (p: string) =>
@@ -69,6 +80,52 @@ function MessageBubble({
     setNoteContent("");
     setShowNoteInput(false);
     setShowNoteList(true);
+  };
+
+  // 🔒 is_hidden トグル
+  const handleToggleHidden = async () => {
+    if (!onUpdateMessage || isSavingHidden) return;
+    const next = !isHidden;
+    setIsHidden(next); // 楽観的更新
+    setIsSavingHidden(true);
+    try {
+      await onUpdateMessage(message.id, { is_hidden: next });
+    } catch {
+      setIsHidden(!next); // ロールバック
+    } finally {
+      setIsSavingHidden(false);
+    }
+  };
+
+  // ✏️ マスク編集保存
+  const handleSaveEdit = async () => {
+    if (!onUpdateMessage || isSavingEdit) return;
+    setIsSavingEdit(true);
+    try {
+      await onUpdateMessage(message.id, { content: editContent });
+      setIsEditing(false);
+    } catch {
+      alert("保存に失敗しました");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // テキスト選択 → [[選択テキスト]] に変換するヘルパー
+  const handleMaskSelection = () => {
+    const textarea = document.getElementById(`mask-editor-${message.id}`) as HTMLTextAreaElement | null;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start === end) return; // 選択なし
+    const selected = editContent.slice(start, end);
+    const next = editContent.slice(0, start) + `[[${selected}]]` + editContent.slice(end);
+    setEditContent(next);
+    // カーソルを [[...]] の後ろに移動
+    setTimeout(() => {
+      textarea.selectionStart = textarea.selectionEnd = start + selected.length + 4;
+      textarea.focus();
+    }, 0);
   };
 
   const alignRight = isMemo || isUser;
@@ -90,32 +147,31 @@ function MessageBubble({
             : isHighlighted
             ? "rgba(251, 146, 60, 0.08)"
             : "transparent",
+          opacity: isHidden ? 0.5 : 1,
         }}
         onMouseEnter={(e) => {
           const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
           if (btn) btn.style.opacity = "1";
           const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
           if (copyBtn) copyBtn.style.opacity = "1";
+          const maskBtn = (e.currentTarget as HTMLDivElement).querySelector(".mask-btn") as HTMLButtonElement | null;
+          if (maskBtn) maskBtn.style.opacity = "1";
         }}
         onMouseLeave={(e) => {
           const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
           if (btn) btn.style.opacity = "0";
           const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
           if (copyBtn && !copied) copyBtn.style.opacity = "0";
+          const maskBtn = (e.currentTarget as HTMLDivElement).querySelector(".mask-btn") as HTMLButtonElement | null;
+          if (maskBtn) maskBtn.style.opacity = "0";
         }}
       >
-        {/* v26: アクティブヒットのフラッシュオーバーレイ */}
+        {/* アクティブヒットのフラッシュオーバーレイ */}
         {isActiveMatch && activeFlashKey !== undefined && (
           <span
             key={activeFlashKey}
             className="kabehub-flash-active"
-            style={{
-              position: "absolute",
-              inset: 0,
-              borderRadius: "12px",
-              pointerEvents: "none",
-              zIndex: 0,
-            }}
+            style={{ position: "absolute", inset: 0, borderRadius: "12px", pointerEvents: "none", zIndex: 0 }}
           />
         )}
 
@@ -129,8 +185,17 @@ function MessageBubble({
           fontFamily: "'JetBrains Mono', monospace",
           position: "relative",
           zIndex: 1,
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
         }}>
           {alignRight ? (isMemo ? "📝 Memo" : "You") : aiLabel()}
+          {/* 非公開バッジ */}
+          {isHidden && (
+            <span style={{ fontSize: "9px", background: "#fef2f2", border: "1px solid #fecaca", color: "#ef4444", borderRadius: "3px", padding: "0 4px", fontFamily: "'JetBrains Mono', monospace" }}>
+              🔒 非公開
+            </span>
+          )}
         </div>
 
         {/* バブル＋メモアイコン行 */}
@@ -205,6 +270,37 @@ function MessageBubble({
             >
               {copied ? "✓" : "📋"}
             </button>
+
+            {/* 🔒 非公開トグルボタン（onUpdateMessage がある場合のみ表示） */}
+            {onUpdateMessage && !isMemo && (
+              <button
+                className="mask-btn"
+                onClick={(e) => { e.stopPropagation(); handleToggleHidden(); }}
+                disabled={isSavingHidden}
+                style={{
+                  position: "absolute",
+                  top: "-10px",
+                  left: "-8px",
+                  opacity: 0,
+                  width: "24px",
+                  height: "24px",
+                  borderRadius: "50%",
+                  border: `1px solid ${isHidden ? "#fca5a5" : "var(--border)"}`,
+                  background: isHidden ? "#fef2f2" : "white",
+                  color: isHidden ? "#ef4444" : "var(--ink-muted)",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+                  transition: "opacity 0.15s, color 0.15s",
+                }}
+                title={isHidden ? "公開に戻す" : "共有ページで非公開にする"}
+              >
+                🔒
+              </button>
+            )}
           </div>
 
           {/* メモアイコン */}
@@ -233,6 +329,79 @@ function MessageBubble({
             </button>
           )}
         </div>
+
+        {/* ✏️ マスク編集UI（onUpdateMessage がある場合のみ表示） */}
+        {onUpdateMessage && !isMemo && (
+          <div style={{ marginTop: "4px", position: "relative", zIndex: 1 }}>
+            {!isEditing ? (
+              <button
+                onClick={() => { setEditContent(message.content); setIsEditing(true); }}
+                style={{
+                  fontSize: "10px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: "var(--ink-faint)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  transition: "color 0.15s",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)"; }}
+              >
+                ✏️ 部分マスク編集
+              </button>
+            ) : (
+              <div style={{ width: "560px", maxWidth: "100%", display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", lineHeight: 1.6 }}>
+                  テキストを選択して「マスク」を押すと <code style={{ background: "var(--border)", borderRadius: "3px", padding: "0 3px" }}>[[選択テキスト]]</code> に変換されます。共有ページでは ████ に表示されます。
+                </div>
+                <textarea
+                  id={`mask-editor-${message.id}`}
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={6}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    border: "1px solid var(--accent)",
+                    borderRadius: "7px",
+                    fontSize: "13px",
+                    fontFamily: "'DM Sans', sans-serif",
+                    color: "var(--ink)",
+                    background: "white",
+                    outline: "none",
+                    resize: "vertical",
+                    boxSizing: "border-box",
+                    lineHeight: 1.6,
+                  }}
+                />
+                <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    style={{ padding: "3px 10px", borderRadius: "5px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", cursor: "pointer" }}
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleMaskSelection}
+                    style={{ padding: "3px 10px", borderRadius: "5px", border: "1px solid #6b7280", background: "#f3f4f6", color: "#374151", fontSize: "11px", cursor: "pointer", fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    🔒 マスク
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isSavingEdit}
+                    style={{ padding: "3px 10px", borderRadius: "5px", border: "none", background: "var(--accent)", color: "white", fontSize: "11px", cursor: isSavingEdit ? "default" : "pointer" }}
+                  >
+                    {isSavingEdit ? "保存中…" : "保存"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* メモ入力欄 */}
         {showNoteInput && (
@@ -295,7 +464,7 @@ function MessageBubble({
           </button>
         )}
 
-        {/* ✅ v27: 再生成ボタン（自分以外の2プロバイダー） */}
+        {/* 再生成ボタン */}
         {!isUser && !isMemo && isLast && !isLoading && onRegenerate && (
           <div style={{ display: "flex", gap: "6px", marginTop: "6px", position: "relative", zIndex: 1 }}>
             {regenTargets.map((p) => (
