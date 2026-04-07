@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import { generateBulkExportZip } from '@/lib/exportUtils'
 
 type Profile = {
   id: string
@@ -33,6 +34,63 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [isExporting, setIsExporting] = useState(false);
+
+const handleBulkExport = async () => {
+  setIsExporting(true);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const userId = user.id;
+    const exportedAt = new Date().toISOString();
+
+    const [
+      { data: threads },
+      { data: messages },
+      { data: tags },
+      { data: notes },
+      { data: messageNotes },
+      { data: drafts },
+      { data: profiles },
+      { data: likes },
+    ] = await Promise.all([
+      supabase.from("threads").select("*").eq("user_id", userId),
+      supabase.from("messages").select("*").eq("user_id", userId),
+      supabase.from("thread_tags").select("*").eq("user_id", userId),
+      supabase.from("thread_notes").select("*").eq("user_id", userId),
+      supabase.from("message_notes").select("*").eq("user_id", userId),
+      supabase.from("drafts").select("*").eq("user_id", userId),
+      supabase.from("profiles").select("*").eq("user_id", userId),
+      supabase.from("likes").select("*").eq("user_id", userId),
+    ]);
+
+    const blob = await generateBulkExportZip({
+      threads: threads ?? [],
+      messages: messages ?? [],
+      tags: tags ?? [],
+      notes: notes ?? [],
+      messageNotes: messageNotes ?? [],
+      drafts: drafts ?? [],
+      profiles: profiles ?? [],
+      likes: likes ?? [],
+      exportedAt,
+    });
+
+    const dateStr = exportedAt.slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `kabehub-export-${dateStr}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Export failed:", err);
+    alert("エクスポートに失敗しました。もう一度お試しください。");
+  } finally {
+    setIsExporting(false);
+  }
+};
 
   useEffect(() => {
     const init = async () => {
@@ -190,6 +248,33 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* ── データ管理セクション ── */}
+<section className="space-y-3">
+  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">
+    データ管理
+  </h2>
+  <div className="border border-gray-800 rounded-xl p-5 space-y-3">
+    <div>
+      <p className="text-sm font-medium text-gray-200">全データをエクスポート</p>
+      <p className="text-xs text-gray-500 mt-1">
+        すべてのスレッドとメッセージをJSON＋Markdownで一括ダウンロードします。アカウント削除前に必ず実行することをおすすめします。
+      </p>
+    </div>
+    <button
+      onClick={handleBulkExport}
+      disabled={isExporting}
+      className={`px-4 py-2 rounded-lg text-sm transition-colors border ${
+        isExporting
+          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
+          : 'bg-transparent border-gray-600 hover:bg-gray-800 text-gray-300 hover:text-gray-100 cursor-pointer'
+      }`}
+    >
+      {isExporting ? '⏳ エクスポート中...' : '📦 全データをエクスポート (.zip)'}
+    </button>
+  </div>
+</section>
+
         {/* 危険ゾーン */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-red-500 uppercase tracking-widest">

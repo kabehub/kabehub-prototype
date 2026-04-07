@@ -4,8 +4,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble } from "./MessageBubble";
 import ChatInput from "./ChatInput";
-import ExportModal, { ExportOptions } from "./ExportModal";
+import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
+import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
 
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
@@ -481,116 +482,11 @@ export default function ChatPanel({
     }
   };
 
-// CSVブロックを省略する（Gemini推奨の堅牢な正規表現）
-const processCsvBlocks = (content: string, omitCsv: boolean): string => {
-  if (!omitCsv) return content;
-  return content.replace(/```csv\s*\r?\n([\s\S]*?)```/gi, (_match, csvData: string) => {
-    const lines = csvData.split(/\r?\n/).filter((line: string) => line.trim() !== "");
-    const rowCount = Math.max(0, lines.length - 1); // ヘッダー行を除く
-    return `（添付ファイル: ${rowCount}行のCSVデータ）`;
-  });
-};
 
-const buildExportContent = (format: "txt" | "md" | "csv", options: ExportOptions = { omitCsv: false }) => {
-  if (!thread) return "";
-  const lines: string[] = [];
-
-  if (format === "md") {
-    const createdAt = messages.length > 0
-      ? new Date(messages[0].created_at).toISOString()
-      : new Date(thread.created_at).toISOString();
-    const modifiedAt = messages.length > 0
-      ? new Date(messages[messages.length - 1].created_at).toISOString()
-      : new Date(thread.updated_at ?? thread.created_at).toISOString();
-
-    const usedAIs = Array.from(
-      new Set(
-        messages
-          .map((m) => m.provider)
-          .filter((p) => p === "claude" || p === "gemini")
-      )
-    );
-    const exportTags = ["ai-conversation", ...usedAIs];
-
-    const safeTitle = thread.title.replace(/"/g, '\\"');
-    const systemPromptValue = thread.system_prompt?.trim() ?? "";
-
-    lines.push("---");
-    lines.push(`title: "${safeTitle}"`);
-    lines.push(`source: kabehub`);
-    lines.push(`created: ${createdAt}`);
-    lines.push(`modified: ${modifiedAt}`);
-    lines.push(`tags:`);
-    exportTags.forEach((tag) => lines.push(`  - ${tag}`));
-    lines.push(`message_count: ${messages.length}`);
-    lines.push(`system_prompt: "${systemPromptValue.replace(/"/g, '\\"')}"`);
-    lines.push("---");
-    lines.push("");
-
-    messages.forEach((msg) => {
-      const msgContent = processCsvBlocks(msg.content, options.omitCsv);
-      const contentLines = msgContent
-        .split("\n")
-        .map((l) => `> ${l}`)
-        .join("\n");
-
-      if (msg.provider === "memo") {
-        lines.push(`> [!MEMO] 📝 Memo`);
-        lines.push(contentLines);
-      } else if (msg.role === "user") {
-        lines.push(`> [!QUESTION] You`);
-        lines.push(contentLines);
-      } else {
-        const aiLabel = msg.provider === "gemini" ? "Gemini" : msg.provider === "openai" ? "ChatGPT" : "Claude";
-        lines.push(`> [!NOTE] ${aiLabel}`);
-        lines.push(contentLines);
-      }
-      lines.push("");
-    });
-
-  } else if (format === "csv") {
-    lines.push("\uFEFF" + "timestamp,role,provider,content");
-    messages.forEach((msg) => {
-      const timestamp = new Date(msg.created_at).toLocaleString("ja-JP");
-      const role = msg.role;
-      const msgProvider = msg.provider ?? "unknown";
-      const rawContent = msg.content.replace(/\n/g, " ");
-      const needsQuote = /[,"\n]/.test(rawContent);
-      const escapedContent = rawContent.replace(/"/g, '""');
-      const content = needsQuote ? `"${escapedContent}"` : escapedContent;
-      lines.push(`${timestamp},${role},${msgProvider},${content}`);
-    });
-
-  } else {
-    lines.push(`# ${thread.title}`);
-    lines.push(`エクスポート日時: ${new Date().toLocaleString("ja-JP")}`);
-    lines.push("=".repeat(40));
-    lines.push("");
-    messages.forEach((msg) => {
-      let roleLabel: string;
-      if (msg.provider === "memo") {
-        roleLabel = "【📝 メモ】";
-      } else if (msg.role === "user") {
-        roleLabel = "【あなた】";
-      } else {
-        const aiName = msg.provider === "gemini" ? "Gemini" : msg.provider === "openai" ? "ChatGPT" : msg.provider === "claude" ? "Claude" : "AI";
-        roleLabel = `【${aiName}】`;
-      }
-      const time = new Date(msg.created_at).toLocaleString("ja-JP");
-      lines.push(`${roleLabel} ${time}`);
-      lines.push(processCsvBlocks(msg.content, options.omitCsv));
-      lines.push("");
-      lines.push("-".repeat(40));
-      lines.push("");
-    });
-  }
-
-  return lines.join("\n");
-};
 
 const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { omitCsv: false }) => {
   if (!thread || messages.length === 0) return;
-  const content = buildExportContent(format, options);
+  const content = buildExportContent(format, thread, messages, options);
   const mimeType =
     format === "md" ? "text/markdown;charset=utf-8" :
     format === "csv" ? "text/csv;charset=utf-8" :
