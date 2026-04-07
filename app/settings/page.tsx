@@ -190,7 +190,44 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+        {/* 危険ゾーン */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-red-500 uppercase tracking-widest">
+            危険ゾーン
+          </h2>
+          <div className="border border-red-500/30 rounded-xl p-5 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-200">アカウントを削除する</p>
+              <p className="text-xs text-gray-500 mt-1">
+                全ての壁打ちデータが完全に削除されます。この操作は取り消せません。
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                const confirmed = window.confirm(
+                  "⚠️ アカウントを削除しますか？\n\n" +
+                  "削除すると、全ての壁打ちデータ（スレッド・メッセージ・タグ・メモ等）が完全に消去され、元に戻すことはできません。\n\n" +
+                  "💾 削除前に「エクスポート」機能（各スレッドのTXT / MD / CSV）でデータを手元に保存することをおすすめします。\n\n" +
+                  "本当に削除してよろしいですか？"
+                )
+                if (!confirmed) return
 
+                try {
+                  const { error } = await supabase.rpc('delete_current_user')
+                  if (error) throw error
+                  await supabase.auth.signOut()
+                  router.push('/login')
+                } catch (err) {
+                  console.error('アカウント削除に失敗しました', err)
+                  alert('アカウント削除に失敗しました。時間をおいて再度お試しください。')
+                }
+              }}
+              className="px-4 py-2 bg-transparent border border-red-500/50 hover:bg-red-500/10 text-red-400 hover:text-red-300 rounded-lg text-sm transition-colors"
+            >
+              アカウントを削除する
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   )

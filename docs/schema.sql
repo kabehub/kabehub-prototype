@@ -224,3 +224,23 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ========================================
+-- アカウント削除RPC（v40追加）
+-- ========================================
+
+-- ユーザー自身のアカウントと全関連データを削除する関数
+-- SECURITY DEFINER により、ANON_KEY からでも auth.users の削除が可能
+CREATE OR REPLACE FUNCTION delete_current_user()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM auth.users WHERE id = auth.uid();
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION delete_current_user() TO authenticated;
