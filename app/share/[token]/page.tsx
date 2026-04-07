@@ -102,6 +102,10 @@ export default function SharePage({ params }: { params: { token: string } }) {
   const [likeCount, setLikeCount] = useState(0);
   const [likedByMe, setLikedByMe] = useState(false);
   const [likeLoading, setLikeLoading] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportDone, setReportDone] = useState(false);
 
   useEffect(() => {
     const fetchShare = async () => {
@@ -196,6 +200,27 @@ export default function SharePage({ params }: { params: { token: string } }) {
   }
 };
 
+  const handleReport = async () => {
+  if (!reportReason || reportSubmitting) return;
+  setReportSubmitting(true);
+  try {
+    const res = await fetch("/api/reports", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ threadId: data?.thread.id, reason: reportReason }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      alert(json.error ?? "報告の送信に失敗しました");
+      return;
+    }
+    setReportDone(true);
+  } catch {
+    alert("報告の送信に失敗しました");
+  } finally {
+    setReportSubmitting(false);
+  }
+};
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#fafaf7", color: "#6b7280", fontSize: "14px", fontFamily: "'DM Sans', sans-serif" }}>
@@ -275,11 +300,61 @@ export default function SharePage({ params }: { params: { token: string } }) {
         ))}
       </div>
 
-      <div style={{ borderTop: "1px solid #e5e7eb", padding: "12px 32px", background: "#fafaf7", textAlign: "center" }}>
-        <span style={{ fontSize: "11px", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
-          Shared via KabeHub — 思考のGitHub
-        </span>
-      </div>
+      <div style={{ borderTop: "1px solid #e5e7eb", padding: "12px 32px", background: "#fafaf7", display: "flex", alignItems: "center", justifyContent: "center", gap: "16px" }}>
+  <span style={{ fontSize: "11px", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
+    Shared via KabeHub — 思考のGitHub
+  </span>
+  <button
+    onClick={() => { setShowReportModal(true); setReportDone(false); setReportReason(""); }}
+    style={{ fontSize: "11px", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#ef4444"; }}
+    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#9ca3af"; }}
+  >⚑ 報告する</button>
+</div>
+
+{/* 通報モーダル */}
+{showReportModal && (
+  <>
+    <div onClick={() => setShowReportModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 1000 }} />
+    <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 1001, background: "white", borderRadius: "12px", padding: "28px", width: "min(440px, calc(100vw - 32px))", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
+      {reportDone ? (
+        <div style={{ textAlign: "center", padding: "16px 0" }}>
+          <div style={{ fontSize: "32px", marginBottom: "12px" }}>✅</div>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", color: "#111827", marginBottom: "8px" }}>報告を受け付けました</div>
+          <div style={{ fontSize: "12px", color: "#6b7280", fontFamily: "'DM Sans', sans-serif", marginBottom: "20px" }}>ご協力ありがとうございます。内容を確認の上、対応いたします。</div>
+          <button onClick={() => setShowReportModal(false)} style={{ padding: "8px 24px", borderRadius: "7px", border: "1px solid #e5e7eb", background: "white", color: "#6b7280", fontSize: "13px", cursor: "pointer" }}>閉じる</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#6b7280", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "8px" }}>報告する</div>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, color: "#111827", marginBottom: "18px" }}>このコンテンツを報告</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
+            {[
+              "個人情報・プライバシー侵害",
+              "誹謗中傷・ハラスメント",
+              "不適切なコンテンツ（暴力・性的表現等）",
+              "スパム・商業宣伝",
+              "その他",
+            ].map((label) => (
+              <label key={label} onClick={() => setReportReason(label)} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                <div style={{ width: "16px", height: "16px", borderRadius: "50%", border: reportReason === label ? "5px solid #ef4444" : "2px solid #d1d5db", flexShrink: 0, transition: "all 0.15s" }} />
+                <span style={{ fontSize: "13px", color: "#111827", fontFamily: "'DM Sans', sans-serif" }}>{label}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+            <button onClick={() => setShowReportModal(false)} style={{ padding: "8px 18px", borderRadius: "7px", border: "1px solid #e5e7eb", background: "white", color: "#6b7280", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>キャンセル</button>
+            <button
+              onClick={handleReport}
+              disabled={!reportReason || reportSubmitting}
+              style={{ padding: "8px 18px", borderRadius: "7px", border: "none", background: reportReason && !reportSubmitting ? "#ef4444" : "#d1d5db", color: reportReason && !reportSubmitting ? "white" : "#9ca3af", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", cursor: reportReason && !reportSubmitting ? "pointer" : "not-allowed", transition: "background 0.15s" }}
+            >{reportSubmitting ? "送信中…" : "報告を送信"}</button>
+          </div>
+        </>
+      )}
     </div>
+  </>
+)}
+</div>
   );
 }

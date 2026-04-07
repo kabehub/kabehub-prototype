@@ -7,6 +7,7 @@ import ChatInput from "./ChatInput";
 import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
+import PublishConfirmModal from "./PublishConfirmModal";
 
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
@@ -89,6 +90,8 @@ export default function ChatPanel({
   const [shareSaving, setShareSaving] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+const [pendingDefaultTitle, setPendingDefaultTitle] = useState<string | null>(null);
 
   // ★ APIキー管理関連
   const [showApiKeys, setShowApiKeys] = useState(false);
@@ -841,19 +844,15 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
                 if (next && thread) {
                   const t = thread.title ?? "";
                   const isDefaultTitle = t === "新しい壁打ち" || (t.length === 21 && t.endsWith("…"));
-                  if (isDefaultTitle) {
-                    const ok = window.confirm(
-                      `タイトルが自動生成のままです（「${t}」）。
-このまま公開しますか？
-
-「キャンセル」を押してタイトルを編集することをおすすめします。`
-                    );
-                    if (!ok) return;
-                  }
+                  setPendingDefaultTitle(isDefaultTitle ? t : null);
+                  setShowPublishConfirm(true);
+                  return;
                 }
-                setSharePublic(next);
-                handleSaveShare(next, shareHideMemos, shareAllowPromptFork);
-              }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+                // 非公開に戻す場合はモーダル不要
+                setSharePublic(false);
+                handleSaveShare(false, shareHideMemos, shareAllowPromptFork);
+                }} 
+                style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
                 <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: sharePublic ? "translateX(18px)" : "translateX(0)" }} />
               </div>
               <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
@@ -1133,6 +1132,23 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
         onClose={() => setExportFormat(null)}
         onExport={handleExport}
       />
+
+      {/* ← ここに追加 */}
+      <PublishConfirmModal
+        isOpen={showPublishConfirm}
+        isDefaultTitle={pendingDefaultTitle !== null}
+        defaultTitle={pendingDefaultTitle ?? ""}
+        onConfirm={() => {
+          setShowPublishConfirm(false);
+          setPendingDefaultTitle(null);
+          setSharePublic(true);
+          handleSaveShare(true, shareHideMemos, shareAllowPromptFork);
+        }}
+      onCancel={() => {
+        setShowPublishConfirm(false);
+        setPendingDefaultTitle(null);
+      }}
+    />
 
       {/* タイトル編集ダイアログ */}
       {showDialog && (
