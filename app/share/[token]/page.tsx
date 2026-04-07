@@ -170,25 +170,31 @@ export default function SharePage({ params }: { params: { token: string } }) {
   }, [data]);
 
   const handleFork = async () => {
-    const { supabase } = await import("@/lib/supabase/client");
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) {
-      window.location.href = `/login?next=/share/${params.token}`;
-      return;
+  const { supabase } = await import("@/lib/supabase/client");
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) {
+    window.location.href = `/login?next=/share/${params.token}`;
+    return;
+  }
+  setForking(true);
+  try {
+    const res = await fetch(`/api/share/${params.token}/fork`, { method: "POST" });
+    if (!res.ok) throw new Error("フォーク失敗");
+    const { thread: newThread, hidden_count } = await res.json(); // ← hidden_count を追加
+
+    // 非公開メッセージがあった場合はToast表示してから遷移
+    if (hidden_count > 0) {
+      alert(`📋 会話を引き継ぎました\n🔒 ${hidden_count}件の非公開メッセージはプレースホルダーに置き換えられました`);
     }
-    setForking(true);
-    try {
-      const res = await fetch(`/api/share/${params.token}/fork`, { method: "POST" });
-      if (!res.ok) throw new Error("フォーク失敗");
-      const { thread: newThread } = await res.json();
-      window.location.href = `/?fork=${newThread.id}`;
-    } catch (err) {
-      console.error("フォーク失敗:", err);
-      alert("フォークに失敗しました");
-    } finally {
-      setForking(false);
-    }
-  };
+
+    window.location.href = `/?fork=${newThread.id}`;
+  } catch (err) {
+    console.error("フォーク失敗:", err);
+    alert("フォークに失敗しました");
+  } finally {
+    setForking(false);
+  }
+};
 
   if (loading) {
     return (
