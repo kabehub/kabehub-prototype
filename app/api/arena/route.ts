@@ -142,6 +142,20 @@ try {
     return NextResponse.json({ message: humanMsg });
   }
 
+  // /api/arena/route.ts の既存のmode分岐に追加
+if (body.mode === "timeTravel") {
+  const { threadId, since } = body as { threadId: string; since: string };
+  // supabase と userId はこのスコープより上で取得済みのものをそのまま使う
+  const { error } = await supabase
+    .from("messages")
+    .delete()
+    .eq("thread_id", threadId)
+    .eq("user_id", userId)
+    .gte("created_at", since);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
   const {
     threadId,
     history,
@@ -233,6 +247,7 @@ try {
     `あなたは ${selfLabel} として、この議論に参加しています。`,
     `相手は ${opponentLabel} です。`,
     `【絶対厳守】あなたに割り当てられた立場・主張を最後まで貫いてください。相手に反論する際も、自分の立場から離れないでください。`,  // 👈 追加
+    `【絶対厳守】応答の冒頭に「[自分の発言]」「[相手の発言]」などのラベルを絶対に付けないでください。本文だけを出力してください。`,
     `【重要】あなたが出力するのは、あなた自身の発言のみです。`,
     `相手（${opponentLabel}）の発言や、"[相手の発言]" などのラベルは絶対に出力しないでください。`,
     `発言の冒頭にラベルや名前を付けないでください。`,

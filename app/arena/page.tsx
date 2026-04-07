@@ -34,6 +34,7 @@ interface ArenaConfig {
 interface QueueItem {
   turn: number;
   pIdx: number;
+  intervention?: string;
 }
 
 // ── ユーティリティ ───────────────────────────────────────────────
@@ -49,6 +50,16 @@ function getApiKeyHeaders(): Record<string, string> {
     if (openai) headers["x-openai-api-key"] = openai;
   } catch {}
   return headers;
+}
+
+// 削除後のmessages配列からAI発言ブロック数を数え直してtotalTurnsを再計算
+function calcTotalTurns(msgs: Message[], playerCount: number): number {
+  const aiAndHumanCount = msgs.filter(
+    (m) => m.role === "assistant" ||
+    (m.role === "user" && m.content.startsWith("[Human"))
+  ).length;
+  // 全員1周 = playerCount発言 = 1ターン
+  return Math.floor(aiAndHumanCount / playerCount);
 }
 
 // ── メインページ ─────────────────────────────────────────────────
@@ -83,11 +94,10 @@ export default function ArenaPage() {
   const [actionQueue, setActionQueue] = useState<QueueItem[]>([]);
   const [waitingForHuman, setWaitingForHuman] = useState<number | null>(null); // null=待機なし / 0,1,2=playerインデックス
 
-  // 途中乗っ取り: 次のターンだけ指定ポジションを人間に置き換える（複数可）
-  const [overridePIdx, setOverridePIdx] = useState<Set<number>>(new Set());
-
-  // 送信直後「次も乗っ取る/AIに任せる」選択UI用
-  const [humanJustSubmitted, setHumanJustSubmitted] = useState<number | null>(null);
+  // 継続介入モード: null=OFF / 0,1,2=乗っ取るpIdx
+  // - セットアップで "human" を選んだ枠は handleStart で初期値に変換
+  // - フッターのトグル＋selectで変更可能（AI枠への途中乗っ取り用）
+  const [isContinuousTakeover, setIsContinuousTakeover] = useState<number | null>(null);
 
   // シェア関連
   const [shareToken, setShareToken] = useState<string | null>(null);
@@ -142,7 +152,6 @@ export default function ArenaPage() {
       interventionContent?: string
     ): Promise<Message> => {
       const selfLabel = playerLabels[pIdx] ?? `AI${pIdx + 1}`;
-      // 自分以外のラベルをまとめて「相手」として渡す
       const opponentLabel = playerLabels.filter((_, i) => i !== pIdx).join(" / ") || "相手";
       const isAi1Position = pIdx % 2 === 0;
 
@@ -176,17 +185,9 @@ export default function ArenaPage() {
     [threadId, playerLabels]
   );
 
-  // waitingForHumanが立ったらhumanJustSubmittedをクリア（両方同時表示を防ぐ）
+  // ── actionQueue駆動のuseEffect ────────────────────────────────
   useEffect(() => {
-    if (waitingForHuman !== null) {
-      setHumanJustSubmitted(null);
-    }
-  }, [waitingForHuman]);
-
-  // ── actionQueue駆動のuseEffect（Geminiさん設計） ──────────────
-  useEffect(() => {
-    // キューが空 / 実行中でない / 人間入力待ち / 選択UI表示中 の時は何もしない
-    if (actionQueue.length === 0 || !isRunning || waitingForHuman !== null || humanJustSubmitted !== null) return;
+    if (actionQueue.length === 0 || !isRunning || waitingForHuman !== null) return;
 
     let isCancelled = false;
 
@@ -195,15 +196,17 @@ export default function ArenaPage() {
       const player = players[nextAction.pIdx];
 
       if (!player) {
-        // 不正なインデックスはスキップ
         setActionQueue((prev) => prev.slice(1));
         return;
       }
 
-      // 人間のターンが来たら入力待ち状態にして停止
-      // （固定human設定 OR 途中乗っ取りoverrideHumanフラグ）
-      const isOverride = (nextAction as QueueItem & { overrideHuman?: boolean }).overrideHuman === true;
-      if (player.provider === "human" || isOverride) {
+      // 停止判定:
+      //   ① ネイティブ human（セットアップで "human" に設定した枠）
+      //   ② 継続介入モードがONで、かつこのpIdxが乗っ取り対象
+      const isNativeHuman = player.provider === "human";
+      const isTakeoverTarget = isContinuousTakeover !== null && nextAction.pIdx === isContinuousTakeover;
+
+      if (isNativeHuman || isTakeoverTarget) {
         setWaitingForHuman(nextAction.pIdx);
         setIsRunning(false);
         setThinkingLabel(null);
@@ -214,11 +217,7 @@ export default function ArenaPage() {
       try {
         const currentMessages = messagesRef.current;
         const isVeryFirst = currentMessages.length === 0 && nextAction.turn === 0 && nextAction.pIdx === 0;
-
-        // 介入テキストは最初のアクション（turn=0, pIdx=0）の時だけ使用
-        // ※ interventionTextはhandleRunで取り出し済みの値をqueueのfirst itemに付与するため
-        // ここでは直接state参照ではなくqueueアイテムに付与する方式で渡す
-        const interventionContent = (nextAction as QueueItem & { intervention?: string }).intervention;
+        const interventionContent = nextAction.intervention;
 
         const newMsg = await runOneTurn(
           currentMessages,
@@ -236,7 +235,6 @@ export default function ArenaPage() {
             return updated;
           });
           setThinkingLabel(null);
-          // 完了したらキューの先頭を消す → 次のuseEffectが自動で走る
           setActionQueue((prev) => prev.slice(1));
         }
       } catch (err) {
@@ -255,7 +253,7 @@ export default function ArenaPage() {
     return () => {
       isCancelled = true;
     };
-  }, [actionQueue, isRunning, waitingForHuman, humanJustSubmitted, players, runOneTurn, config.topic, overridePIdx]);
+  }, [actionQueue, isRunning, waitingForHuman, isContinuousTakeover, players, runOneTurn, config.topic]);
 
   // キューが空になったら実行完了
   useEffect(() => {
@@ -274,30 +272,21 @@ export default function ArenaPage() {
     setInterventionText("");
     setShowIntervention(false);
 
-    // 乗っ取り設定をスナップショットして即クリア（1ターン限り）
-    const currentOverride = new Set(overridePIdx);
-    setOverridePIdx(new Set());
-
     const turns = config.turnCount;
-    const newQueue: (QueueItem & { intervention?: string; overrideHuman?: boolean })[] = [];
+    const newQueue: QueueItem[] = [];
 
     for (let t = 0; t < turns; t++) {
       for (let p = 0; p < players.length; p++) {
-        const item: QueueItem & { intervention?: string; overrideHuman?: boolean } = { turn: t, pIdx: p };
-        // 最初のアイテムに介入テキストを付与
+        const item: QueueItem = { turn: t, pIdx: p };
         if (t === 0 && p === 0 && intervention) {
           item.intervention = intervention;
-        }
-        // 最初のターン（t===0）のみ乗っ取り適用
-        if (t === 0 && currentOverride.has(p)) {
-          item.overrideHuman = true;
         }
         newQueue.push(item);
       }
     }
 
     setActionQueue(newQueue);
-  }, [isRunning, waitingForHuman, interventionText, config.turnCount, players, overridePIdx]);
+  }, [isRunning, waitingForHuman, interventionText, config.turnCount, players]);
 
   // ── 人間ターン送信 ────────────────────────────────────────────
   const handleHumanSubmit = useCallback(async () => {
@@ -308,7 +297,6 @@ export default function ArenaPage() {
     const content = `[Human (${label})] ${humanInputText.trim()}`;
 
     try {
-      // DBへの保存は /api/arena 経由で行う（RLS対策: Route Handlerで認証ユーザーとして保存）
       const res = await fetch("/api/arena", {
         method: "POST",
         headers: getApiKeyHeaders(),
@@ -336,41 +324,73 @@ export default function ArenaPage() {
       });
       setHumanInputText("");
 
-      // 送信後は即再開せず「次も乗っ取る / AIに任せる」選択UIを表示
-      // キューの先頭（human項目）は消すがisRunningはfalseのまま保留
+      // キューの先頭（human項目）を消費して即再開
+      // → 次のuseEffectが自動で走り、次のターンへ進む
       setWaitingForHuman(null);
-      // human項目をここで即消費。選択UIはisRunning=falseで止める。
       setActionQueue((prev) => prev.slice(1));
-      setHumanJustSubmitted(pIdx);
+      setIsRunning(true);
     } catch (err) {
       console.error("human submit error:", err);
     }
   }, [humanInputText, waitingForHuman, playerLabels, threadId]);
 
-  // ── 「AIに任せて続行」 ────────────────────────────────────────
-  const handleResumeWithAI = useCallback(() => {
-    setHumanJustSubmitted(null);
-    // human項目はhandleHumanSubmit済みなのでそのまま再開するだけ
-    setIsRunning(true);
-  }, []);
+  // ── タイムトラベル（指定メッセージ以降を全削除） ─────────────
+const handleTimeTravel = useCallback(async (targetMsg: Message) => {
+  if (isRunning || waitingForHuman !== null) return;
+  if (!window.confirm(`「${targetMsg.content.slice(0, 30)}…」以降のメッセージを全て削除しますか？`)) return;
 
-  // ── 「次のターンも自分で発言」 ────────────────────────────────
-  // 次のキューの同pIdxアイテムをhuman扱いにするため、overridePIdxに追加してから再開
-  const handleResumeWithHuman = useCallback((pIdx: number) => {
-    setHumanJustSubmitted(null);
-    // human項目はhandleHumanSubmit済みなのでslice不要。次の同pIdxにoverride書き込み。
-    setActionQueue((prev) => {
-      const next = [...prev] as (QueueItem & { intervention?: string; overrideHuman?: boolean })[];
-      const targetIdx = next.findIndex((item) => item.pIdx === pIdx);
-      if (targetIdx !== -1) {
-        next[targetIdx] = { ...next[targetIdx], overrideHuman: true };
-      }
-      return next;
+  try {
+    // 既存エンドポイントを流用（RLSで弾かれた場合は /api/arena?mode=timeTravel に切り替え）
+    const res = await fetch(`/api/threads/${threadId}/messages?since=${encodeURIComponent(targetMsg.created_at)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
     });
-    setIsRunning(true);
-  }, []);
 
-  // ── MDエクスポート ───────────────────────────────────────────
+    if (!res.ok) throw new Error("削除に失敗しました");
+
+    // フロント側のmessagesを更新
+    const newMessages = messages.filter(
+      (m) => new Date(m.created_at) < new Date(targetMsg.created_at)
+    );
+    setMessages(newMessages);
+    messagesRef.current = newMessages;
+
+    // totalTurnsを絶対値方式で再計算（Geminiさん方式）
+    setTotalTurns(calcTotalTurns(newMessages, players.length));
+
+    // キューをリセット（削除後は改めて「続ける」ボタンで再開）
+    setActionQueue([]);
+
+  } catch (err) {
+    // RLSエラーの場合のフォールバック: /api/arena 経由で削除
+    console.warn("直接DELETE失敗、/api/arena 経由で再試行:", err);
+    try {
+      const res2 = await fetch("/api/arena", {
+        method: "POST",
+        headers: getApiKeyHeaders(),
+        body: JSON.stringify({
+          mode: "timeTravel",
+          threadId,
+          since: targetMsg.created_at,
+        }),
+      });
+      if (!res2.ok) throw new Error("arena経由の削除も失敗しました");
+
+      const newMessages = messages.filter(
+        (m) => new Date(m.created_at) < new Date(targetMsg.created_at)
+      );
+      setMessages(newMessages);
+      messagesRef.current = newMessages;
+      setTotalTurns(calcTotalTurns(newMessages, players.length));
+      setActionQueue([]);
+
+    } catch (err2) {
+      alert(`削除に失敗しました: ${err2 instanceof Error ? err2.message : "不明なエラー"}`);
+    }
+  }
+}, [isRunning, waitingForHuman, messages, threadId, players.length]);
+
+    // ── MDエクスポート ───────────────────────────────────────────
   const handleExportMd = useCallback(() => {
     const lines: string[] = [];
     const now = new Date().toISOString();
@@ -626,6 +646,10 @@ export default function ArenaPage() {
           <button
             onClick={() => {
               if (!config.topic.trim()) { alert("お題を入力してください"); return; }
+              // "human" プロバイダーを isContinuousTakeover の初期値に変換
+              // （最初にhumanを見つけたpIdxを使う。複数humanでも1つだけ対応）
+              const humanPIdx = [config.ai1Provider, config.ai2Provider, ...(config.ai3Enabled ? [config.ai3Provider] : [])].findIndex(p => p === "human");
+              setIsContinuousTakeover(humanPIdx !== -1 ? humanPIdx : null);
               setPhase("arena");
             }}
             style={{ padding: "14px", borderRadius: "8px", border: "none", background: config.topic.trim() ? "var(--accent)" : "var(--border)", color: "white", fontSize: "15px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: config.topic.trim() ? "pointer" : "default", transition: "all 0.15s" }}
@@ -643,6 +667,15 @@ export default function ArenaPage() {
 
   const ai1Color = PROVIDER_COLORS[config.ai1Provider] ?? PROVIDER_COLORS["claude"];
   const ai2Color = PROVIDER_COLORS[config.ai2Provider] ?? PROVIDER_COLORS["gemini"];
+
+  // 継続介入モードのトグルで使う: AI枠（human以外）のpIdx一覧
+  const aiOnlyPlayers = players
+    .map((p, idx) => ({ ...p, idx }))
+    .filter((p) => p.provider !== "human");
+
+  // ネイティブhuman枠があるかどうか
+  const nativeHumanPIdx = players.findIndex((p) => p.provider === "human");
+  const hasNativeHuman = nativeHumanPIdx !== -1;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column" }}>
@@ -739,17 +772,20 @@ export default function ArenaPage() {
           </div>
         )}
         {(() => {
-          // totalIdx: AI発言 + human乱入発言を合わせた通算インデックス
-          // これにより左右位置・ラベルが正しく計算される
-          let totalIdx = 0;
-          return messages.map((msg) => {
-            const isAiMsg = msg.role === "assistant";
-            const isHumanTakeover = msg.role === "user" && msg.content.startsWith("[Human");
-            const currentIdx = (isAiMsg || isHumanTakeover) ? totalIdx : -1;
-            if (isAiMsg || isHumanTakeover) totalIdx++;
-            return (
+        let totalIdx = 0;
+        return messages.map((msg) => {
+          const isAiMsg = msg.role === "assistant";
+          const isHumanTakeover = msg.role === "user" && msg.content.startsWith("[Human");
+          const currentIdx = (isAiMsg || isHumanTakeover) ? totalIdx : -1;
+          if (isAiMsg || isHumanTakeover) totalIdx++;
+          return (
+            // ★ div で包んでホバー時に ✂️ ボタンを表示
+            <div
+              key={msg.id}
+              style={{ position: "relative" }}
+              className="group"
+            >
               <ArenaBubble
-                key={msg.id}
                 message={msg}
                 ai1Label={ai1Label}
                 ai2Label={ai2Label}
@@ -757,6 +793,33 @@ export default function ArenaPage() {
                 aiMessageIndex={currentIdx}
                 playerCount={players.length}
               />
+              {/* タイムトラベルボタン: 停止中のみ表示 */}
+              {!isRunning && waitingForHuman === null && (
+                <button
+                  onClick={() => handleTimeTravel(msg)}
+                  title="ここ以降を削除"
+                  className="opacity-0 group-hover:opacity-100"
+                  style={{
+                    position: "absolute",
+                    bottom: "4px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    padding: "2px 10px",
+                    borderRadius: "5px",
+                    border: "1px solid var(--border)",
+                    background: "white",
+                    color: "var(--ink-muted)",
+                    fontSize: "11px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: "pointer",
+                    transition: "opacity 0.15s",
+                    whiteSpace: "nowrap",
+                  }}
+                 >
+                  ✂️ ここ以降を削除
+                </button>
+                )}
+              </div>
             );
           });
         })()}
@@ -820,29 +883,6 @@ export default function ArenaPage() {
             </div>
           )}
 
-          {/* 送信直後「次も乗っ取る / AIに任せる」選択UI */}
-          {humanJustSubmitted !== null && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 16px", background: "#fdf4ff", border: "1px solid #e9d5ff", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#6b21a8", fontWeight: 600 }}>
-                次のターン（AI{humanJustSubmitted + 1} / {playerLabels[humanJustSubmitted]}ポジション）はどうしますか？
-              </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => handleResumeWithHuman(humanJustSubmitted)}
-                  style={{ flex: 1, padding: "9px", borderRadius: "7px", border: "1px solid #e9d5ff", background: "#fdf4ff", color: "#6b21a8", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}
-                >
-                  👤 次のターンも自分で発言
-                </button>
-                <button
-                  onClick={handleResumeWithAI}
-                  style={{ flex: 1, padding: "9px", borderRadius: "7px", border: "none", background: "var(--accent)", color: "white", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}
-                >
-                  🤖 AIに任せて続行
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* 神の介入ボックス（トグル） */}
           {showIntervention && waitingForHuman === null && (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 14px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: "8px" }}>
@@ -853,48 +893,11 @@ export default function ArenaPage() {
                 rows={2}
                 style={{ padding: "8px 12px", border: "1px solid #fde68a", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", color: "var(--ink)", background: "white", outline: "none", resize: "none" }}
               />
-              {/* 乗っ取りチェックボックス */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <div style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#b7791f", letterSpacing: "0.05em" }}>
-                  次のターンだけ乗っ取る（チェックしたポジションで自分が発言）
-                </div>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  {players.map((player, idx) => {
-                    const color = PROVIDER_COLORS[player.provider];
-                    const isChecked = overridePIdx.has(idx);
-                    // セットアップで既にhumanに設定済みのポジションは非表示
-                    if (player.provider === "human") return null;
-                    return (
-                      <label
-                        key={idx}
-                        style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: isChecked ? color.text : "var(--ink-muted)", userSelect: "none" }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            setOverridePIdx((prev) => {
-                              const next = new Set(prev);
-                              if (e.target.checked) next.add(idx);
-                              else next.delete(idx);
-                              return next;
-                            });
-                          }}
-                          style={{ cursor: "pointer" }}
-                        />
-                        <span style={{ padding: "1px 7px", borderRadius: "4px", background: isChecked ? color.bg : "transparent", border: `1px solid ${isChecked ? color.border : "transparent"}` }}>
-                          👤 AI{idx + 1} ({PROVIDER_LABELS[player.provider]}) として発言
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           )}
 
           {/* ボタン列 */}
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             {/* 介入ボタン（人間ターン待機中は非表示） */}
             {waitingForHuman === null && (
               <button
@@ -903,6 +906,53 @@ export default function ArenaPage() {
               >
                 ⚡ 介入
               </button>
+            )}
+
+            {/* 継続介入モード（ネイティブhuman枠がある場合は常時ON表示のみ / AI枠への乗っ取りはトグルで制御） */}
+            {waitingForHuman === null && (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                {/* ネイティブhuman枠の常時ON表示 */}
+                {hasNativeHuman && (
+                  <span style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#6b21a8", padding: "4px 8px", background: "#fdf4ff", border: "1px solid #e9d5ff", borderRadius: "5px", whiteSpace: "nowrap" }}>
+                    👤 AI{nativeHumanPIdx + 1}: 常時あなたが発言
+                  </span>
+                )}
+
+                {/* AI枠への途中乗っ取りトグル（AI枠が1つ以上ある場合のみ表示） */}
+                {aiOnlyPlayers.length > 0 && (
+                  <label style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: isContinuousTakeover !== null ? "#7c3aed" : "var(--ink-muted)", userSelect: "none" }}>
+                    <input
+                      type="checkbox"
+                      checked={isContinuousTakeover !== null}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          // ONにした時はAI枠の最初のpIdxをデフォルトに
+                          setIsContinuousTakeover(aiOnlyPlayers[0].idx);
+                        } else {
+                          setIsContinuousTakeover(null);
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
+                    />
+                    継続介入
+                  </label>
+                )}
+
+                {/* 乗っ取り対象のAIを選ぶselectはトグルON時のみ表示 */}
+                {isContinuousTakeover !== null && aiOnlyPlayers.length > 1 && (
+                  <select
+                    value={isContinuousTakeover}
+                    onChange={(e) => setIsContinuousTakeover(Number(e.target.value))}
+                    style={{ padding: "3px 6px", border: "1px solid #e9d5ff", borderRadius: "5px", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "#6b21a8", background: "white", cursor: "pointer", outline: "none" }}
+                  >
+                    {aiOnlyPlayers.map((p) => (
+                      <option key={p.idx} value={p.idx}>
+                        AI{p.idx + 1}（{PROVIDER_LABELS[p.provider]}）の代わり
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             )}
 
             {/* ターン数セレクター */}
@@ -935,7 +985,7 @@ export default function ArenaPage() {
             )}
 
             {/* MDエクスポートボタン */}
-            {messages.length > 0 && waitingForHuman === null && humanJustSubmitted === null && (
+            {messages.length > 0 && waitingForHuman === null && (
               <button
                 onClick={handleExportMd}
                 title="MDファイルにエクスポート（人間の発言含む）"
