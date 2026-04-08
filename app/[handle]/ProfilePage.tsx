@@ -8,6 +8,8 @@ type Thread = {
   created_at: string
   updated_at: string
   share_token: string | null
+  likes_count: number
+  fork_count: number
   thread_tags: { name: string }[]
 }
 
@@ -15,15 +17,23 @@ type Profile = {
   id: string
   handle: string
   display_name: string | null
+  bio: string | null
   created_at: string
+}
+
+type Stats = {
+  publicThreadCount: number
+  totalLikes: number
+  totalForks: number
 }
 
 type Props = {
   profile: Profile
   threads: Thread[]
+  stats: Stats
 }
 
-export default function ProfilePage({ profile, threads }: Props) {
+export default function ProfilePage({ profile, threads, stats }: Props) {
   const displayName = profile.display_name ?? `@${profile.handle}`
 
   return (
@@ -49,10 +59,14 @@ export default function ProfilePage({ profile, threads }: Props) {
             {displayName.charAt(0).toUpperCase()}
           </div>
           <h1 className="text-2xl font-bold">{displayName}</h1>
-          <p className="text-gray-400 text-sm mt-1">@{profile.handle}</p>
-          <p className="text-gray-600 text-xs mt-2">
-            公開壁打ち {threads.length} 件
-          </p>
+          {profile.bio && (
+            <p className="text-gray-400 text-sm mt-3 leading-relaxed">{profile.bio}</p>
+          )}
+          <div className="flex gap-4 mt-3 text-xs text-gray-500">
+            <span>📝 {stats.publicThreadCount} 壁打ち</span>
+            <span>★ {stats.totalLikes} いいね</span>
+            <span>🍴 {stats.totalForks} 引継ぎ</span>
+          </div>
         </div>
 
         {/* 公開スレッド一覧 */}
@@ -104,6 +118,12 @@ function ThreadCard({ thread }: { thread: Thread }) {
         </h3>
         <span className="text-xs text-gray-600 whitespace-nowrap mt-0.5">{updatedAt}</span>
       </div>
+      {(thread.likes_count > 0 || thread.fork_count > 0) && (
+        <div className="flex gap-3 mt-2 text-xs text-gray-600">
+          {thread.likes_count > 0 && <span>★ {thread.likes_count}</span>}
+          {thread.fork_count > 0 && <span>🍴 {thread.fork_count}</span>}
+        </div>
+      )}
 
       {thread.thread_tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">

@@ -9,6 +9,7 @@ type Profile = {
   id: string
   handle: string
   display_name: string | null
+  bio: string | null      // ← 追加
   created_at: string
   updated_at: string
 }
@@ -30,6 +31,7 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [handle, setHandle] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [bio, setBio] = useState('') 
   const [handleError, setHandleError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -103,6 +105,7 @@ const handleBulkExport = async () => {
         setProfile(json.profile)
         setHandle(json.profile.handle)
         setDisplayName(json.profile.display_name ?? '')
+        setBio(json.profile.bio ?? '')              
       }
       setLoading(false)
     }
@@ -124,7 +127,7 @@ const handleBulkExport = async () => {
     const res = await fetch('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle, display_name: displayName || null })
+      body: JSON.stringify({ handle, display_name: displayName || null, bio: bio || null })
     })
     const json = await res.json()
 
@@ -212,6 +215,23 @@ const handleBulkExport = async () => {
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
             />
             <p className="text-xs text-gray-600">最大50文字。共有ページに表示予定。</p>
+          </div>
+          
+          {/* 自己紹介 */}
+          <div className="space-y-2">
+            <label className="block text-sm text-gray-300">
+              自己紹介
+              <span className="ml-2 text-xs text-gray-500">（任意・300文字以内）</span>
+            </label>
+            <textarea
+              value={bio}
+              onChange={e => setBio(e.target.value)}
+              maxLength={300}
+              rows={4}
+              placeholder="壁打ちのスタイルや興味分野を書いてみましょう"
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors resize-none"
+            />
+            <div className="text-right text-xs text-gray-600">{bio.length} / 300</div>
           </div>
 
           {/* 保存ボタン */}

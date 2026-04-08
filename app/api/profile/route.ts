@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { handle, display_name } = await req.json()
+  const { handle, display_name, bio } = await req.json()
 
   const normalized = handle?.toLowerCase()
   const formatOk = /^[a-z][a-z0-9_-]{2,19}$/.test(normalized ?? '')
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('profiles')
-    .upsert({ id: user.id, handle: normalized, display_name: display_name ?? null })
+    .upsert({ id: user.id, handle: normalized, display_name: display_name ?? null, bio: bio ?? null })
     .select()
     .single()
 

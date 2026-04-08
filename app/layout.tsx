@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "壁打ちエディタ",
+  title: 'KabeHub',
   description: "思考のログが消えないAIチャット",
 };
 
