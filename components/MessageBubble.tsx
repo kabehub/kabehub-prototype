@@ -128,7 +128,6 @@ function MessageBubble({
     }, 0);
   };
 
-  const alignRight = isMemo || isUser;
 
   return (
     <>

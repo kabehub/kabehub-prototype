@@ -588,15 +588,15 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
                           { label: "↓ TXT",               action: () => { if (messages.length > 0) setExportFormat("txt"); } },
                           { label: "↓ MD",                action: () => { if (messages.length > 0) setExportFormat("md"); } },
                           { label: "↓ CSV",               action: () => { if (messages.length > 0) setExportFormat("csv"); } },
-                          { label: "⚡ 一時モード",        action: () => onSwitchTemporary() },
+                          { label: isTemporary ? "⚡ 一時モード中 ✓" : "⚡ 一時モード", action: () => onSwitchTemporary(), active: isTemporary },
                           { label: `📋 下書き${drafts.length > 0 ? ` (${drafts.length})` : ""}`, action: () => handleOpenDrafts() },
                         ].map((item) => (
                           <button
                             key={item.label}
                             onClick={() => { item.action(); setShowMoreMenu(false); }}
-                            style={{ display: "block", width: "100%", textAlign: "left", fontSize: "12px", padding: "6px 10px", background: "none", border: "none", color: "var(--ink)", borderRadius: "5px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f5f5f5"; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+                            style={{ display: "block", width: "100%", textAlign: "left", fontSize: "12px", padding: "6px 10px", background: item.active ? "#fef3c7" : "none", border: "none", color: item.active ? "#d97706" : "var(--ink)", borderRadius: "5px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = item.active ? "#fde68a" : "#f5f5f5"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = item.active ? "#fef3c7" : "none"; }}
                           >
                             {item.label}
                           </button>
