@@ -595,6 +595,37 @@ export default function Sidebar({
           )}
         </div>
 
+        {/* AI闘技場リンク */}
+        <a
+          href="/arena"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 8px",
+            borderRadius: "6px",
+            border: "1px solid var(--border)",
+            background: "white",
+            color: "var(--ink-muted)",
+            fontSize: "11px",
+            fontFamily: "'JetBrains Mono', monospace",
+            textDecoration: "none",
+            marginBottom: "6px",
+            transition: "all 0.12s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "var(--sidebar-bg)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "white";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
+          }}
+        >
+          <span>⚔️</span>
+          <span>AI闘技場</span>
+        </a>
+
         {/* みんなの壁打ちリンク */}
         <a
           href="/explore"

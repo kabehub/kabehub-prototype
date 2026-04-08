@@ -244,7 +244,7 @@ function ThreadCard({
           }}
         >
           <span title="メッセージ数">💬 {thread.message_count}</span>
-          <span title="フォーク数">📋 {thread.fork_count}</span>
+          <span title="引継ぎ数">📋 {thread.fork_count}</span>
           <LikeButton
             threadId={thread.id}
             likeCount={thread.like_count}
@@ -309,7 +309,7 @@ function ThreadCard({
               }
             }}
           >
-            📋 フォーク
+            🍴 引継ぎ
           </button>
         </div>
       </div>
