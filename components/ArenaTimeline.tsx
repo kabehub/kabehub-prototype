@@ -60,10 +60,6 @@ export function ArenaBubble({
   const playerIndex = aiMessageIndex >= 0 ? aiMessageIndex % playerCount : 0;
 
   // 表示位置: 発言順の偶奇で右左を交互に（2人でも3人でも同じリズム）
-  // aiMessageIndex: 0=右, 1=左, 2=右, 3=左, 4=右…
-  // -1（神の介入）は中央表示なので下のisIntervention分岐で処理済み
-  const isRight = aiMessageIndex >= 0 ? aiMessageIndex % 2 === 0 : true;
-
   // ── 神の介入（中央表示）
   if (isIntervention) {
     return (
@@ -101,43 +97,36 @@ export function ArenaBubble({
 
   // ── 人間の発言（[Human...]プレフィックス付き user メッセージ）
   if (isUser) {
-    const humanColor = PROVIDER_COLORS["human"];
     const displayContent = message.content.replace(/^\[Human[^\]]*\]\s*/, "");
     return (
       <div
         style={{
           display: "flex",
-          flexDirection: "column",
-          alignItems: isRight ? "flex-end" : "flex-start",
-          marginBottom: "20px",
+          flexDirection: "row",
+          alignItems: "flex-start",
+          marginBottom: "16px",
+          width: "100%",
         }}
       >
         <div
           style={{
-            fontSize: "10px",
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            color: humanColor.text,
-            marginBottom: "5px",
-            fontFamily: "'JetBrains Mono', monospace",
-          }}
-        >
-          👤 あなた (AI{playerIndex + 1})
-        </div>
-        <div
-          style={{
-            maxWidth: "520px",
-            borderRadius: isRight ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-            padding: "14px 18px",
-            background: humanColor.bg,
-            border: `1px solid ${humanColor.border}`,
+            width: "100%",
+            maxWidth: "720px",
+            padding: "10px 14px",
+            borderRadius: "8px",
+            background: "#f7f7f5",
+            border: "1px solid #e8e8e8",
+            borderLeft: "4px solid var(--accent, #c4622d)",
             fontSize: "14px",
             lineHeight: 1.6,
             color: "var(--ink)",
             fontFamily: "'DM Sans', sans-serif",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+            boxShadow: "none",
           }}
         >
+          <div style={{ fontSize: "11px", fontWeight: 600, color: "#888888", marginBottom: "6px", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>
+            👤 あなた (AI{playerIndex + 1})
+          </div>
           <MarkdownRenderer content={displayContent} />
         </div>
       </div>
@@ -156,37 +145,38 @@ export function ArenaBubble({
     <div
       style={{
         display: "flex",
-        flexDirection: "column",
-        alignItems: isRight ? "flex-end" : "flex-start",
-        marginBottom: "20px",
+        flexDirection: "row",
+        alignItems: "flex-start",
+        marginBottom: "16px",
+        width: "100%",
       }}
     >
       <div
         style={{
-          fontSize: "10px",
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          color: color?.text ?? "var(--ink-faint)",
-          marginBottom: "5px",
-          fontFamily: "'JetBrains Mono', monospace",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          maxWidth: "520px",
-          borderRadius: isRight ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-          padding: "14px 18px",
-          background: color?.bg ?? "var(--bubble-ai)",
-          border: `1px solid ${color?.border ?? "var(--border)"}`,
+          width: "100%",
+          maxWidth: "720px",
+          padding: "10px 14px",
+          borderRadius: "8px",
+          background: "#ffffff",
+          border: "1px solid #e8e8e8",
+          borderLeft: `4px solid ${color?.border ?? "#e8e8e8"}`,
           fontSize: "14px",
           lineHeight: 1.6,
           color: "var(--ink)",
           fontFamily: "'DM Sans', sans-serif",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+          boxShadow: "none",
         }}
       >
+        <div style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: color?.text ?? "#888888",
+          marginBottom: "6px",
+          letterSpacing: "0.05em",
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {label}
+        </div>
         <MarkdownRenderer content={message.content} />
       </div>
     </div>
@@ -200,48 +190,45 @@ export function ArenaThinking({ label, isAi1 }: { label: string; isAi1: boolean 
     <div
       style={{
         display: "flex",
-        flexDirection: "column",
-        alignItems: isAi1 ? "flex-end" : "flex-start",
-        marginBottom: "20px",
+        flexDirection: "row",
+        alignItems: "flex-start",
+        marginBottom: "16px",
+        width: "100%",
       }}
     >
       <div
         style={{
-          fontSize: "10px",
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          color: "var(--ink-faint)",
-          marginBottom: "5px",
-          fontFamily: "'JetBrains Mono', monospace",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          borderRadius: isAi1 ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-          padding: "14px 18px",
-          background: "var(--bubble-ai)",
-          border: "1px solid var(--border)",
+          width: "100%",
+          maxWidth: "720px",
+          borderRadius: "8px",
+          padding: "14px 16px",
+          background: "#ffffff",
+          border: "1px solid #e8e8e8",
           display: "flex",
-          gap: "5px",
-          alignItems: "center",
+          flexDirection: "column",
+          gap: "8px",
+          boxShadow: "none",
         }}
       >
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="thinking-dot"
-            style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "50%",
-              background: "var(--ink-faint)",
-              display: "block",
-              animationDelay: `${i * 0.2}s`,
-            }}
-          />
-        ))}
+        <div style={{ fontSize: "11px", fontWeight: 600, color: "#888888", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>
+          {label}
+        </div>
+        <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="thinking-dot"
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: "var(--ink-faint)",
+                display: "block",
+                animationDelay: `${i * 0.2}s`,
+              }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

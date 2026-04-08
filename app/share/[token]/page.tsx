@@ -32,10 +32,12 @@ function ReadOnlyBubble({ message }: { message: Message }) {
   // is_hidden = true のメッセージはプレースホルダー表示
   if (message.is_hidden) {
     return (
-      <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: "20px" }}>
+      <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", marginBottom: "16px", width: "100%" }}>
         <div style={{
+          width: "100%",
+          maxWidth: "720px",
           padding: "10px 16px",
-          borderRadius: "10px",
+          borderRadius: "8px",
           border: "1px dashed #d1d5db",
           background: "#f9fafb",
           color: "#9ca3af",
@@ -44,6 +46,7 @@ function ReadOnlyBubble({ message }: { message: Message }) {
           display: "flex",
           alignItems: "center",
           gap: "6px",
+          boxShadow: "none",
         }}>
           <span>🔒</span>
           <span>この発言は非公開です</span>
@@ -54,9 +57,9 @@ function ReadOnlyBubble({ message }: { message: Message }) {
 
   if (isMemo) {
     return (
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "20px" }}>
-        <div style={{ maxWidth: "72%", background: "#fefce8", border: "1px solid #fde68a", borderRadius: "12px", padding: "12px 16px" }}>
-          <div style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#92400e", marginBottom: "6px" }}>📝 Memo</div>
+      <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", marginBottom: "16px", width: "100%" }}>
+        <div style={{ width: "100%", maxWidth: "720px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: "8px", padding: "10px 16px", boxShadow: "none" }}>
+          <div style={{ fontSize: "11px", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#92400e", marginBottom: "6px", letterSpacing: "0.05em" }}>📝 MEMO</div>
           <div style={{ fontSize: "14px", color: "#78350f", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{message.content}</div>
         </div>
       </div>
@@ -65,26 +68,29 @@ function ReadOnlyBubble({ message }: { message: Message }) {
 
   if (isUser) {
     return (
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "20px" }}>
-        <div style={{ maxWidth: "72%", background: "white", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "12px 16px" }}>
+      <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", marginBottom: "16px", width: "100%" }}>
+        <div style={{
+          width: "100%",
+          maxWidth: "720px",
+          background: "#f7f7f5",
+          border: "1px solid #e8e8e8",
+          borderLeft: "4px solid var(--accent, #c4622d)",
+          borderRadius: "8px",
+          padding: "10px 14px",
+          boxShadow: "none",
+        }}>
+          <div style={{ fontSize: "11px", fontWeight: 600, color: "#888888", marginBottom: "6px", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>YOU</div>
           <div style={{ fontSize: "14px", color: "#111827", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{message.content}</div>
-          <div style={{ fontSize: "10px", color: "#9ca3af", marginTop: "6px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>
-            {new Date(message.created_at).toLocaleString("ja-JP")}
-          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "20px", gap: "10px" }}>
-      <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "#f3f4f6", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", flexShrink: 0, marginTop: "2px" }}>✦</div>
-      <div style={{ maxWidth: "80%" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+    <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", marginBottom: "16px", width: "100%" }}>
+      <div style={{ width: "100%", maxWidth: "720px", background: "#ffffff", border: "1px solid #e8e8e8", borderRadius: "8px", padding: "10px 16px", boxShadow: "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
           <ProviderLabel provider={message.provider ?? "unknown"} />
-          <span style={{ fontSize: "10px", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
-            {new Date(message.created_at).toLocaleString("ja-JP")}
-          </span>
         </div>
         {/* variant="share" でマスク記法([[text]] → ████)が適用される */}
         <MarkdownRenderer content={message.content} variant="share" />
