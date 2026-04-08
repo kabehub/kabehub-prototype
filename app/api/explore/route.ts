@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
   const tag = searchParams.get("tag")?.trim() ?? "";
   const genre = searchParams.get("genre")?.trim() ?? "";
   const parentGenre = searchParams.get("parent_genre")?.trim() ?? "";
+  const sort = searchParams.get("sort") ?? "newest"; // "newest" | "popular" | "trending"
   const cursor = searchParams.get("cursor") ?? null;
   const limit = 20;
 
@@ -52,6 +53,72 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // --- trending: RPC経由で取得（PostgRESTでの計算式ORDER BYが不可のため）---
+  if (sort === "trending") {
+    const offset = cursor ? parseInt(cursor, 10) : 0;
+
+    const { data: trendData, error: trendError } = await supabase.rpc(
+      "get_trending_threads",
+      { p_limit: limit + 1, p_offset: offset }
+    );
+
+    if (trendError) {
+      console.error("trending RPC error:", trendError);
+      return NextResponse.json({ error: trendError.message }, { status: 500 });
+    }
+
+    const trendRows = trendData ?? [];
+    const hasMoreTrend = trendRows.length > limit;
+    const trendItems = hasMoreTrend ? trendRows.slice(0, limit) : trendRows;
+    const trendIds = trendItems.map((t: any) => t.id);
+
+    // like / fork / profile を既存ロジックと同じ方法で取得
+    let trendForkCounts: Record<string, number> = {};
+    let trendLikeCounts: Record<string, number> = {};
+    let trendLikedByMe: Record<string, boolean> = {};
+    let trendProfileMap: Record<string, { handle: string | null; display_name: string | null }> = {};
+
+    if (trendIds.length > 0) {
+      const [forkRes, likeRes, profileRes] = await Promise.all([
+        supabase.from("threads").select("forked_from_id").in("forked_from_id", trendIds),
+        supabase.from("likes").select("thread_id, user_id").in("thread_id", trendIds),
+        supabase.from("profiles").select("id, handle, display_name").in("id", trendItems.map((t: any) => t.user_id).filter(Boolean)),
+      ]);
+
+      for (const row of forkRes.data ?? []) {
+        if (row.forked_from_id) trendForkCounts[row.forked_from_id] = (trendForkCounts[row.forked_from_id] ?? 0) + 1;
+      }
+      for (const row of likeRes.data ?? []) {
+        trendLikeCounts[row.thread_id] = (trendLikeCounts[row.thread_id] ?? 0) + 1;
+        if (user && row.user_id === user.id) trendLikedByMe[row.thread_id] = true;
+      }
+      for (const p of profileRes.data ?? []) {
+        trendProfileMap[p.id] = { handle: p.handle, display_name: p.display_name };
+      }
+    }
+
+    const trendResult = trendItems.map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      genre: t.genre ?? null,
+      share_token: t.share_token,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      allow_prompt_fork: t.allow_prompt_fork,
+      handle: trendProfileMap[t.user_id]?.handle ?? null,
+      display_name: trendProfileMap[t.user_id]?.display_name ?? null,
+      tags: [],  // RPC返却にはthread_tagsが含まれないため空配列
+      message_count: 0,
+      fork_count: trendForkCounts[t.id] ?? t.fork_count ?? 0,
+      like_count: trendLikeCounts[t.id] ?? t.likes_count ?? 0,
+      liked_by_me: trendLikedByMe[t.id] ?? false,
+    }));
+
+    const nextCursor = hasMoreTrend ? String(offset + limit) : null;
+    return NextResponse.json({ items: trendResult, nextCursor, hasMore: hasMoreTrend });
+  }
+  // --- trending ここまで ---
+
   // ベースクエリ
   let dbQuery = supabase
     .from("threads")
@@ -72,7 +139,10 @@ export async function GET(req: NextRequest) {
     `
     )
     .eq("is_public", true)
-    .order("created_at", { ascending: false })
+    .order(
+      sort === "popular" ? "likes_count" : "created_at",
+      { ascending: false }
+    )
     .limit(limit + 1);
 
   if (query) {
@@ -101,7 +171,12 @@ if (genre) {
 }
 
   if (cursor) {
-    dbQuery = dbQuery.lt("created_at", cursor);
+    if (sort === "popular") {
+      // popular はoffsetベース
+      dbQuery = dbQuery.range(parseInt(cursor, 10), parseInt(cursor, 10) + limit);
+    } else {
+      dbQuery = dbQuery.lt("created_at", cursor);
+    }
   }
 
   const { data, error } = await dbQuery;
@@ -187,7 +262,11 @@ if (genre) {
     liked_by_me: likedByMe[t.id] ?? false,
   }));
 
-  const nextCursor = hasMore ? items[items.length - 1].created_at : null;
+  const nextCursor = hasMore
+    ? sort === "popular"
+      ? String((cursor ? parseInt(cursor, 10) : 0) + limit)
+      : items[items.length - 1].created_at
+    : null;
 
   return NextResponse.json({ items: result, nextCursor, hasMore });
 }

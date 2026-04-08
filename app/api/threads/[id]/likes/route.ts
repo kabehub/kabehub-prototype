@@ -36,15 +36,18 @@ export async function POST(
     .from("likes")
     .insert({ thread_id: threadId, user_id: user.id });
 
-  if (error) {
-    // UNIQUE制約違反（二重いいね）は無視
-    if (error.code === "23505") {
-      return NextResponse.json({ ok: true });
+  // POST: いいね追加 --- likes insert の後に追加
+    if (error) {
+      if (error.code === "23505") {
+        return NextResponse.json({ ok: true });
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
 
-  return NextResponse.json({ ok: true });
+    // ↓ 追加
+    await supabase.rpc("increment_likes_count", { p_thread_id: threadId });
+
+    return NextResponse.json({ ok: true });
 }
 
 // DELETE: いいね解除
@@ -66,9 +69,13 @@ export async function DELETE(
     .eq("thread_id", params.id)
     .eq("user_id", user.id);
 
+  // DELETE: いいね解除 --- likes delete の後に追加
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // ↓ 追加
+  await supabase.rpc("decrement_likes_count", { p_thread_id: params.id });
 
   return NextResponse.json({ ok: true });
 }

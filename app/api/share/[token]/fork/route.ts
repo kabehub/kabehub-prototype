@@ -105,9 +105,12 @@ if (messages.length > 0) {
   });
 }
 
-return NextResponse.json({
-  thread: newThread,
-  prompt_forked: sourceThread.allow_prompt_fork,
-  hidden_count: 0,
-});;
+// ↓ 追加
+  await authSupabase.rpc("increment_fork_count", { p_thread_id: sourceThread.id });
+
+  return NextResponse.json({
+    thread: newThread,
+    prompt_forked: sourceThread.allow_prompt_fork,
+    hidden_count: 0,
+  });;
 }
