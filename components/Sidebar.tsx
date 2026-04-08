@@ -347,8 +347,8 @@ interface FolderSectionProps {
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
 }
 
-function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder }: FolderSectionProps) {
-  const [collapsed, setCollapsed] = useState(false);
+function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, defaultCollapsed }: FolderSectionProps & { defaultCollapsed: boolean }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   return (
     <div style={{ marginBottom: "4px" }}>
@@ -519,18 +519,22 @@ export default function Sidebar({
         ))}
 
         {/* 通常時：フォルダグループ */}
-        {!showFlat && grouped.map((group) => (
-          <FolderSection
-            key={group.folderName ?? "__null__"}
-            folderName={group.folderName}
-            threads={group.threads}
-            activeThreadId={activeThreadId}
-            existingFolders={existingFolders}
-            onSelectThread={onSelectThread}
-            onDeleteThread={onDeleteThread}
-            onUpdateFolder={onUpdateFolder}
-          />
-        ))}
+        {!showFlat && grouped.map((group) => {
+          const hasActive = group.threads.some((t) => t.id === activeThreadId);
+          return (
+            <FolderSection
+              key={group.folderName ?? "__null__"}
+              folderName={group.folderName}
+              threads={group.threads}
+              activeThreadId={activeThreadId}
+              existingFolders={existingFolders}
+              onSelectThread={onSelectThread}
+              onDeleteThread={onDeleteThread}
+              onUpdateFolder={onUpdateFolder}
+              defaultCollapsed={!hasActive}
+            />
+          );
+        })}
       </div>
 
       {/* 検索ボックス（左下固定枠） */}
