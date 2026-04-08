@@ -336,6 +336,56 @@ function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onU
   );
 }
 
+// ---- 最近セクション ----
+function RecentSection({ threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder }: {
+  threads: Thread[];
+  activeThreadId: string | null;
+  existingFolders: string[];
+  onSelectThread: (id: string) => void;
+  onDeleteThread: (id: string) => void;
+  onUpdateFolder: (threadId: string, folderName: string | null) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  const recentThreads = useMemo(() =>
+    [...threads]
+      .sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime())
+      .slice(0, 3),
+    [threads]
+  );
+
+  if (recentThreads.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: "4px" }}>
+      <button
+        onClick={() => setCollapsed((v) => !v)}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: "5px", padding: "5px 8px", background: "none", border: "none", cursor: "pointer", borderRadius: "5px", transition: "background 0.1s" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.04)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+      >
+        <span style={{ fontSize: "9px", color: "var(--ink-faint)", transition: "transform 0.15s", display: "inline-block", transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▼</span>
+        <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--ink-muted)", flex: 1, textAlign: "left" }}>最近</span>
+      </button>
+      {!collapsed && (
+        <div style={{ paddingLeft: "12px" }}>
+          {recentThreads.map((thread) => (
+            <ThreadItem
+              key={thread.id}
+              thread={thread}
+              isActive={activeThreadId === thread.id}
+              existingFolders={existingFolders}
+              onSelect={() => onSelectThread(thread.id)}
+              onDelete={() => onDeleteThread(thread.id)}
+              onUpdateFolder={(fn) => onUpdateFolder(thread.id, fn)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- フォルダセクション ----
 interface FolderSectionProps {
   folderName: string | null;
@@ -464,34 +514,52 @@ export default function Sidebar({
       {/* Header */}
       <div
         style={{
-          padding: "20px 16px 14px",
+          padding: "16px 16px 12px",
           borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
         }}
       >
-        <div>
-          <div style={{ fontFamily: "'Lora', serif", fontWeight: 600, fontSize: "15px", color: "var(--ink)", letterSpacing: "-0.02em" }}>
-            壁打ちエディタ
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--ink-muted)", marginTop: "2px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            思考の記録
-          </div>
+        <div style={{ fontFamily: "'Lora', serif", fontWeight: 600, fontSize: "16px", color: "var(--ink)", letterSpacing: "-0.02em", marginBottom: "10px" }}>
+          KabeHub
         </div>
         <button
           onClick={onNewThread}
           title="新規スレッド"
-          style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink)", fontSize: "18px", lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", flexShrink: 0 }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "white"; (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "white"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "7px 10px",
+            borderRadius: "6px",
+            border: "1px solid var(--border)",
+            background: "white",
+            color: "var(--ink-muted)",
+            fontSize: "12px",
+            fontFamily: "'DM Sans', sans-serif",
+            cursor: "pointer",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)";
+            (e.currentTarget as HTMLButtonElement).style.color = "white";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "white";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+          }}
         >
-          +
+          <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
+          <span>新しい壁打ち</span>
         </button>
       </div>
 
       {/* Thread list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
+        {/* 最近セクション（検索中は非表示） */}
+        {!showFlat && <RecentSection threads={threads} activeThreadId={activeThreadId} existingFolders={existingFolders} onSelectThread={onSelectThread} onDeleteThread={onDeleteThread} onUpdateFolder={onUpdateFolder} />}
+
         {threads.length === 0 && !isSearching && (
           <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--ink-muted)", fontSize: "12px", lineHeight: 1.6 }}>
             まだ壁打ちがありません。
