@@ -328,6 +328,7 @@ function ExploreContent() {
   const urlQuery = searchParams.get("q") ?? "";
   const urlGenre = searchParams.get("genre") ?? "";
   const urlParentGenre = searchParams.get("parent_genre") ?? "";
+  const urlSort = searchParams.get("sort") ?? "newest"; // ← 追加
 
   // ---- ローカルState ----
   const [items, setItems] = useState<ExploreThread[]>([]);
@@ -341,7 +342,7 @@ function ExploreContent() {
 
   // ---- URL更新の共通関数 ----
   const updateParams = useCallback(
-  (updates: { tag?: string | null; q?: string | null; genre?: string | null; parent_genre?: string | null }, mode: "push" | "replace" = "replace") => {
+  (updates: { tag?: string | null; q?: string | null; genre?: string | null; parent_genre?: string | null; sort?: string | null }, mode: "push" | "replace" = "replace") => {
     const params = new URLSearchParams(searchParams.toString());
     if (updates.tag !== undefined) {
       if (updates.tag) params.set("tag", updates.tag);
@@ -359,6 +360,10 @@ function ExploreContent() {
       if (updates.parent_genre) params.set("parent_genre", updates.parent_genre);
       else params.delete("parent_genre");
     }
+    if (updates.sort !== undefined) {
+      if (updates.sort && updates.sort !== "newest") params.set("sort", updates.sort);
+      else params.delete("sort");
+    }
       const qs = params.toString();
       const newUrl = qs ? `${pathname}?${qs}` : pathname;
       if (mode === "push") router.push(newUrl);
@@ -369,14 +374,15 @@ function ExploreContent() {
 
   // ---- データ取得 ----
   const fetchItems = useCallback(
-  async (tag: string, query: string, genre: string, parentGenre: string, cursor: string | null, append: boolean) => {
-    // ...
+  async (tag: string, query: string, genre: string, parentGenre: string, sort: string, cursor: string | null, append: boolean) => {
     const params = new URLSearchParams();
     if (tag) params.set("tag", tag);
     if (query) params.set("q", query);
     if (genre) params.set("genre", genre);
     if (parentGenre) params.set("parent_genre", parentGenre);
+    if (sort && sort !== "newest") params.set("sort", sort);
     if (cursor) params.set("cursor", cursor);
+
 
       try {
         const res = await fetch(`/api/explore?${params.toString()}`, { cache: "no-store" });
@@ -395,8 +401,10 @@ function ExploreContent() {
 
   // URL変化で再フェッチ
   useEffect(() => {
-  fetchItems(urlTag, urlQuery, urlGenre, urlParentGenre, null, false);
-}, [urlTag, urlQuery, urlGenre, urlParentGenre, fetchItems]);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    setLoading(true);
+    fetchItems(urlTag, urlQuery, urlGenre, urlParentGenre, urlSort, null, false);
+  }, [urlTag, urlQuery, urlGenre, urlParentGenre, urlSort, fetchItems]);
 
   // ---- いいねのトグル（楽観的更新） ----
   const handleLikeToggle = useCallback((threadId: string, liked: boolean) => {
@@ -448,9 +456,9 @@ function ExploreContent() {
   );
 
   const handleLoadMore = useCallback(() => {
-  if (!nextCursor || loadingMore) return;
-  fetchItems(urlTag, urlQuery, urlGenre, urlParentGenre, nextCursor, true);
-}, [nextCursor, loadingMore, urlTag, urlQuery, urlGenre, urlParentGenre, fetchItems]);
+    if (!nextCursor || loadingMore) return;
+    fetchItems(urlTag, urlQuery, urlGenre, urlParentGenre, urlSort, nextCursor, true);
+  }, [nextCursor, loadingMore, urlTag, urlQuery, urlGenre, urlParentGenre, urlSort, fetchItems]);
 
   const handleFork = useCallback(
     async (thread: ExploreThread) => {
@@ -594,6 +602,50 @@ function ExploreContent() {
               </button>
             )}
           </div>
+        </div>
+      </div>
+      {/* ソートタブ */}
+      <div
+        style={{
+          maxWidth: "760px",
+          width: "100%",
+          margin: "0 auto",
+          padding: "0 24px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <div style={{ display: "flex", gap: "0" }}>
+          {(["newest", "popular", "trending"] as const).map((s) => {
+            const label = s === "newest" ? "新着" : s === "popular" ? "人気" : "トレンド";
+            const isActive = urlSort === s;
+            return (
+              <button
+                key={s}
+                onClick={() => updateParams({ sort: s }, "push")}
+                style={{
+                  padding: "10px 16px",
+                  fontSize: "12px",
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? "#7c3aed" : "var(--ink-muted)",
+                  background: "none",
+                  border: "none",
+                  borderBottom: isActive ? "2px solid #7c3aed" : "2px solid transparent",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                  marginBottom: "-1px", // borderBottomをcontainerのborderに重ねる
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
       {/* ジャンルフィルター */}
