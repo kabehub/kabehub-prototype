@@ -214,9 +214,14 @@ function MessageBubble({
                 color: isMemo ? "#78350f" : "var(--ink)",
                 border: isMemo
                   ? "1px solid #fde68a"
-                  : isUser
-                  ? "1px solid #ececec"
                   : "1px solid var(--border)",
+                borderLeft: isMemo
+                  ? "1px solid #fde68a"
+                  : isUser
+                  ? "4px solid var(--accent)"
+                  : "1px solid var(--border)",
+                paddingLeft: isUser ? "14px" : "16px",
+
                 fontSize: "14px",
                 lineHeight: 1.6,
                 boxShadow: "none",
