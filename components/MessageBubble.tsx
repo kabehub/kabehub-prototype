@@ -137,7 +137,7 @@ function MessageBubble({
         style={{
           display: "flex",
           flexDirection: "column",
-          alignItems: alignRight ? "flex-end" : "flex-start",
+          alignItems: "flex-start",
           marginBottom: "20px",
           position: "relative",
           borderRadius: "12px",
@@ -178,7 +178,7 @@ function MessageBubble({
         {/* ロールラベル */}
         <div style={{
           fontSize: "10px",
-          letterSpacing: "0.1em",
+          letterSpacing: "0.08em",
           textTransform: "uppercase",
           color: isMemo ? "#b7791f" : "var(--ink-faint)",
           marginBottom: "5px",
@@ -189,53 +189,42 @@ function MessageBubble({
           alignItems: "center",
           gap: "6px",
         }}>
-          {alignRight ? (isMemo ? "📝 Memo" : "You") : aiLabel()}
-          {/* 非公開バッジ */}
+          {isMemo ? "📝 Memo" : isUser ? "You" : aiLabel()}
           {isHidden && (
-            <span style={{ fontSize: "9px", background: "#fef2f2", border: "1px solid #fecaca", color: "#ef4444", borderRadius: "3px", padding: "0 4px", fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: "9px", background: "#fef2f2", border: "1px solid #fecaca", color: "#ef4444", borderRadius: "3px", padding: "0 4px" }}>
               🔒 非公開
             </span>
           )}
         </div>
 
         {/* バブル＋メモアイコン行 */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: alignRight ? "row-reverse" : "row", position: "relative", zIndex: 1 }}>
-          <div style={{ position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: "row", position: "relative", zIndex: 1 }}>  
+          <div style={{ position: "relative", width: "100%" }}>
             <div
               onClick={() => { setShowNoteInput((v) => !v); setShowNoteList(false); }}
               style={{
-                maxWidth: "560px",
-                borderRadius: isMemo
-                  ? "12px 12px 2px 12px"
-                  : isUser
-                  ? "12px 12px 2px 12px"
-                  : "12px 12px 12px 2px",
-                padding: isUser || isMemo ? "10px 14px" : "14px 18px",
+                width: "100%",
+                maxWidth: "720px",
+                borderRadius: "8px",
+                padding: "12px 16px",
                 background: isMemo
                   ? "#fefce8"
                   : isUser
-                  ? "var(--bubble-user)"
-                  : "var(--bubble-ai)",
-                color: isMemo
-                  ? "#78350f"
-                  : isUser
-                  ? "#f5f5f0"
-                  : "var(--ink)",
+                  ? "#f7f7f5"
+                  : "#ffffff",
+                color: isMemo ? "#78350f" : "var(--ink)",
                 border: isMemo
                   ? "1px solid #fde68a"
                   : isUser
-                  ? "none"
+                  ? "1px solid #ececec"
                   : "1px solid var(--border)",
                 fontSize: "14px",
                 lineHeight: 1.6,
-                boxShadow: isMemo
-                  ? "0 1px 4px rgba(251,191,36,0.15)"
-                  : isUser
-                  ? "0 2px 8px rgba(15,15,10,0.15)"
-                  : "0 1px 4px rgba(0,0,0,0.05)",
+                boxShadow: "none",
                 fontFamily: "'DM Sans', sans-serif",
                 whiteSpace: isMemo ? "pre-wrap" : undefined,
                 cursor: "pointer",
+                opacity: isHidden ? 0.6 : 1,
               }}
             >
               {isMemo ? message.content : (

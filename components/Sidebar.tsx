@@ -236,20 +236,20 @@ function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onU
           padding: "10px 10px",
           borderRadius: "6px",
           cursor: "pointer",
-          background: isActive ? "white" : hovered ? "rgba(255,255,255,0.5)" : "transparent",
-          boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.07)" : "none",
+          background: isActive ? "var(--sidebar-active-bg)" : hovered ? "#f7f7f7" : "transparent",
+          boxShadow: "none",
           marginBottom: "2px",
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
           gap: "6px",
           transition: "background 0.1s",
-          borderLeft: isActive ? "2px solid var(--accent)" : "2px solid transparent",
+          borderLeft: isActive ? "2px solid var(--sidebar-active-border)" : "2px solid transparent",
         }}
       >
         {/* タイトル + 時刻 */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: "12.5px", fontWeight: isActive ? 500 : 400, color: isActive ? "var(--ink)" : "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.4 }}>
+          <div style={{ fontSize: "12.5px", fontWeight: isActive ? 500 : 400, color: isActive ? "var(--sidebar-active-color)" : "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.4 }}>
             {thread.title}
           </div>
           <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginTop: "2px" }}>
@@ -454,7 +454,7 @@ export default function Sidebar({
         minWidth: "200px",
         maxWidth: "280px",
         background: "var(--sidebar-bg)",
-        borderRight: "1px solid var(--border)",
+        borderRight: "1px solid var(--sidebar-border-color)",
         display: "flex",
         flexDirection: "column",
         height: "100vh",

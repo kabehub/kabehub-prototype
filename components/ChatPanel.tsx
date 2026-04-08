@@ -91,8 +91,8 @@ export default function ChatPanel({
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
-const [pendingDefaultTitle, setPendingDefaultTitle] = useState<string | null>(null);
-
+  const [pendingDefaultTitle, setPendingDefaultTitle] = useState<string | null>(null);
+  
   // ★ APIキー管理関連
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [apiKeyDrafts, setApiKeyDrafts] = useState({ anthropic: "", gemini: "", openai: "" });
@@ -107,6 +107,9 @@ const [pendingDefaultTitle, setPendingDefaultTitle] = useState<string | null>(nu
 
   // ★ エクスポートモーダル関連
   const [exportFormat, setExportFormat] = useState<"txt" | "md" | "csv" | null>(null);
+
+  // ★ ヘッダーメニュー関連
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // APIキーをLocalStorageから読み込む
   useEffect(() => {
@@ -539,82 +542,72 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
               <h1 style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 500, color: "var(--ink)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                 {thread.title}
               </h1>
-              {/* ⚡ 一時モードトグル */}
-              <button
-                onClick={onSwitchTemporary}
-                title={isTemporary ? "通常モードに戻す（DB保存）" : "一時モードに切り替え（DBに保存しない）"}
-                style={{ padding: "5px 12px", borderRadius: "6px", border: `1px solid ${isTemporary ? "#f59e0b" : "var(--border)"}`, background: isTemporary ? "#fef3c7" : "white", color: isTemporary ? "#d97706" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { if (!isTemporary) { (e.currentTarget as HTMLButtonElement).style.borderColor = "#f59e0b"; (e.currentTarget as HTMLButtonElement).style.color = "#d97706"; } }}
-                onMouseLeave={(e) => { if (!isTemporary) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; } }}
-              >⚡ {isTemporary ? "一時モード中" : "一時モード"}</button>
-              {/* コピーボタン */}
-              <button
-                onClick={async () => {
-                  if (!thread?.id) return
-                  const ok = window.confirm('この会話をベースに新しいスレッドを作成します。よろしいですか？')
-                  if (!ok) return
-                  await onCopyThread(thread.id)
-                }}
-                title="この会話をコピーして新しいスレッドを作成"
-                style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
-              >📋 この会話をコピー</button>
-              {/* タイトル編集ボタン */}
-              <button
-                onClick={openDialog}
-                title="タイトルを編集"
-                style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
-              >✎</button>
-              {/* APIキー設定ボタン */}
-              <button
-                onClick={handleOpenApiKeys}
-                title="APIキーを設定"
-                style={{ padding: "5px 12px", borderRadius: "6px", border: `1px solid ${showApiKeys ? "var(--accent)" : hasAnyApiKey ? "var(--accent)" : "var(--border)"}`, background: showApiKeys ? "var(--accent)" : "white", color: showApiKeys ? "white" : hasAnyApiKey ? "var(--accent)" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { if (!showApiKeys) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
-                onMouseLeave={(e) => { if (!showApiKeys) { (e.currentTarget as HTMLButtonElement).style.borderColor = hasAnyApiKey ? "var(--accent)" : "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = hasAnyApiKey ? "var(--accent)" : "var(--ink-muted)"; } }}
-              >🔑 APIキー{hasAnyApiKey && " ✓"}</button>
-              <button
-                onClick={handleOpenShare}
-                title="公開設定"
-                style={{ padding: "5px 12px", borderRadius: "6px", border: `1px solid ${showShare ? "var(--accent)" : sharePublic ? "#16a34a" : "var(--border)"}`, background: showShare ? "var(--accent)" : "white", color: showShare ? "white" : sharePublic ? "#16a34a" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { if (!showShare) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
-                onMouseLeave={(e) => { if (!showShare) { (e.currentTarget as HTMLButtonElement).style.borderColor = sharePublic ? "#16a34a" : "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = sharePublic ? "#16a34a" : "var(--ink-muted)"; } }}
-              >{sharePublic ? "🌐 公開中" : "🔒 非公開"}</button>
-              {/* システムプロンプトボタン */}
-              <button
-                onClick={handleOpenSystemPrompt}
-                title="システムプロンプトを設定"
-                style={{ padding: "5px 12px", borderRadius: "6px", border: `1px solid ${showSystemPrompt ? "var(--accent)" : hasSystemPrompt ? "var(--accent)" : "var(--border)"}`, background: showSystemPrompt ? "var(--accent)" : "white", color: showSystemPrompt ? "white" : hasSystemPrompt ? "var(--accent)" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { if (!showSystemPrompt) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
-                onMouseLeave={(e) => { if (!showSystemPrompt) { (e.currentTarget as HTMLButtonElement).style.borderColor = hasSystemPrompt ? "var(--accent)" : "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = hasSystemPrompt ? "var(--accent)" : "var(--ink-muted)"; } }}
-              >🤖 プロンプト{hasSystemPrompt && " ✓"}</button>
-              {/* スレッドメモボタン */}
-              <button
-                onClick={handleOpenNotes}
-                title="スレッドメモ"
-                style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: showNotes ? "var(--accent)" : "white", color: showNotes ? "white" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { if (!showNotes) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
-                onMouseLeave={(e) => { if (!showNotes) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; } }}
-              >📝 メモ {notes.length > 0 && `(${notes.length})`}</button>
-              {/* 下書きボタン */}
-              <button
-                onClick={handleOpenDrafts}
-                title="下書き"
-                style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: showDrafts ? "var(--accent)" : "white", color: showDrafts ? "white" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }}
-                onMouseEnter={(e) => { if (!showDrafts) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; } }}
-                onMouseLeave={(e) => { if (!showDrafts) { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; } }}
-              >📋 下書き {drafts.length > 0 && `(${drafts.length})`}</button>
-              {messages.length > 0 && (
-                <>
-                  <button onClick={() => setExportFormat("txt")} title="TXTでエクスポート" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ TXT</button>
-                  <button onClick={() => setExportFormat("md")} title="Markdownでエクスポート（Obsidian対応）" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ MD</button>
-                  <button onClick={() => setExportFormat("csv")} title="CSVでエクスポート（Excel対応）" style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "all 0.15s" }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}>↓ CSV</button>
-                </>
-              )}
-            </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+
+                {/* 公開/非公開 */}
+                <button
+                  onClick={handleOpenShare}
+                  style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${sharePublic ? "#bbf7d0" : "var(--border)"}`, background: sharePublic ? "#f0fdf4" : "white", color: sharePublic ? "#16a34a" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
+                >
+                  {sharePublic ? "🌐 公開中" : "🔒 非公開"}
+                </button>
+
+                {/* プロンプト */}
+                <button
+                  onClick={handleOpenSystemPrompt}
+                  style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${hasSystemPrompt ? "var(--accent)" : "var(--border)"}`, background: "white", color: hasSystemPrompt ? "var(--accent)" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
+                >
+                  🤖 プロンプト{hasSystemPrompt && " ✓"}
+                </button>
+
+                {/* メモ */}
+                <button
+                  onClick={handleOpenNotes}
+                  style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: showNotes ? "var(--accent)" : "white", color: showNotes ? "white" : "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
+                >
+                  📝 メモ{notes.length > 0 && ` (${notes.length})`}
+                </button>
+
+                {/* ··· メニュー */}
+                <div style={{ position: "relative" }}>
+                  <button
+                    onClick={() => setShowMoreMenu((v) => !v)}
+                    style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "16px", lineHeight: 1, cursor: "pointer" }}
+                  >
+                    ···
+                  </button>
+                  {showMoreMenu && (
+                    <>
+                      <div style={{ position: "fixed", inset: 0, zIndex: 10 }} onClick={() => setShowMoreMenu(false)} />
+                      <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20, background: "white", border: "1px solid var(--border)", borderRadius: "8px", padding: "4px", minWidth: "170px", boxShadow: "0 4px 16px rgba(0,0,0,0.10)" }}>
+                        {[
+                          { label: "📋 この会話をコピー", action: async () => { const ok = window.confirm("この会話をベースに新しいスレッドを作成します。よろしいですか？"); if (ok) await onCopyThread(thread.id); } },
+                          { label: "✎ タイトル編集",      action: () => openDialog() },
+                          { label: "🔑 APIキー",           action: () => handleOpenApiKeys() },
+                          { label: "↓ TXT",               action: () => { if (messages.length > 0) setExportFormat("txt"); } },
+                          { label: "↓ MD",                action: () => { if (messages.length > 0) setExportFormat("md"); } },
+                          { label: "↓ CSV",               action: () => { if (messages.length > 0) setExportFormat("csv"); } },
+                          { label: "⚡ 一時モード",        action: () => onSwitchTemporary() },
+                          { label: `📋 下書き${drafts.length > 0 ? ` (${drafts.length})` : ""}`, action: () => handleOpenDrafts() },
+                        ].map((item) => (
+                          <button
+                            key={item.label}
+                            onClick={() => { item.action(); setShowMoreMenu(false); }}
+                            style={{ display: "block", width: "100%", textAlign: "left", fontSize: "12px", padding: "6px 10px", background: "none", border: "none", color: "var(--ink)", borderRadius: "5px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f5f5f5"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+  </div>
+</div>
 
             {/* 2行目: タグ */}
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", flexWrap: "wrap", paddingLeft: "16px" }}>
