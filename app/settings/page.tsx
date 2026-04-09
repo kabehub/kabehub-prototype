@@ -16,9 +16,9 @@ type Profile = {
 
 // ① APIキーのLocalStorageキー名（壁打ち画面と統一）
 const LS_KEYS = {
-  claude: 'anthropic_api_key',
-  gemini: 'gemini_api_key',
-  openai: 'openai_api_key',
+  claude: 'kabehub_anthropic_key',
+  gemini: 'kabehub_gemini_key',
+  openai: 'kabehub_openai_key',
 } as const
 
 function validateHandle(value: string): string | null {
