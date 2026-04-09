@@ -25,13 +25,28 @@ export async function GET(req: NextRequest) {
       }
     );
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error, data } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      const next = searchParams.get("next");
       // next が /share/ で始まる場合のみ許可（オープンリダイレクト対策）
+      const next = searchParams.get("next");
       if (next && next.startsWith("/share/")) {
         return NextResponse.redirect(`${origin}${next}`);
       }
+
+      // ③ handle未設定ならオンボーディングへ
+      const userId = data.session?.user?.id;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("handle")
+          .eq("id", userId)
+          .single();
+
+        if (!profile?.handle) {
+          return NextResponse.redirect(`${origin}/settings?onboarding=true`);
+        }
+      }
+
       return NextResponse.redirect(`${origin}/`);
     }
   }

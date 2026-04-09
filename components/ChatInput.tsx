@@ -16,7 +16,7 @@ interface ChatInputProps {
   isLoading: boolean;
   disabled?: boolean;
   provider: "claude" | "gemini" | "openai";
-onProviderChange: (p: "claude" | "gemini" | "openai") => void;
+  onProviderChange: (p: "claude" | "gemini" | "openai") => void;
 }
 
 const FILE_SIZE_LIMIT_KB = 100;
@@ -37,7 +37,6 @@ function readFileWithFallback(
   reader.onload = (ev) => {
     const content = ev.target?.result as string;
     if (hasMojibake(content)) {
-      // Shift-JISで読み直す
       const reader2 = new FileReader();
       reader2.onload = (ev2) => {
         onSuccess(ev2.target?.result as string);
@@ -51,6 +50,13 @@ function readFileWithFallback(
   reader.onerror = () => onError("ファイルの読み込みに失敗しました");
   reader.readAsText(file, "UTF-8");
 }
+
+// ② 「将来用」文言を削除 — シンプルなラベルのみ
+const PROVIDER_LABELS: Record<"claude" | "gemini" | "openai", string> = {
+  claude: "Claude",
+  gemini: "Gemini",
+  openai: "ChatGPT",
+};
 
 export default function ChatInput({
   value,
@@ -89,7 +95,6 @@ export default function ChatInput({
     setFileError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
-    // 拡張子チェック
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (ext !== "csv" && ext !== "txt") {
       setFileError("CSV または TXT ファイルのみ対応しています");
@@ -117,14 +122,12 @@ export default function ChatInput({
     if (file) processFile(file);
   };
 
-  // ── ドラッグ&ドロップ ──────────────────────────────────
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     if (!isLoading && !disabled) setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
-    // 子要素への移動では発火させない
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragging(false);
     }
@@ -223,7 +226,7 @@ export default function ChatInput({
               letterSpacing: "0.05em",
             }}
           >
-            {p === "claude" ? "Claude" : p === "gemini" ? "Gemini" : "ChatGPT"}
+            {PROVIDER_LABELS[p]}
           </button>
         ))}
       </div>
@@ -237,17 +240,15 @@ export default function ChatInput({
           background: "#fafafa",
           overflow: "hidden",
         }}>
-          {/* ファイルヘッダー */}
           <div style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             padding: "6px 10px",
-            background: "#f0f0f0",
             borderBottom: "1px solid var(--border)",
+            background: "#f5f5f5",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "12px" }}>📎</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{
                 fontSize: "12px",
                 fontFamily: "'JetBrains Mono', monospace",
@@ -281,7 +282,6 @@ export default function ChatInput({
             </button>
           </div>
 
-          {/* プレビュー本文 */}
           <div style={{ padding: "8px 10px" }}>
             <pre style={{
               margin: 0,
@@ -470,7 +470,6 @@ export default function ChatInput({
             📎 {attachedFile ? "添付中" : "ファイル"}
           </button>
 
-          {/* hidden file input */}
           <input
             ref={fileInputRef}
             type="file"
