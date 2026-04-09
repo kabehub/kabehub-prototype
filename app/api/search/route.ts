@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createRouteHandlerSupabaseClient(req, res);
+
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";
   const target = searchParams.get("target") ?? "both"; // "title" | "message" | "both"
@@ -19,7 +22,6 @@ export async function GET(req: NextRequest) {
 
   const pattern = `%${query}%`;
   const threadIds = new Set<string>();
-  // スレッドIDごとにヒットしたメッセージIDを保持
   const matchedMsgMap = new Map<string, string[]>();
 
   // タイトル検索
@@ -56,7 +58,6 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error }, { status: 500 });
 
-  // matchedMessageIds を各スレッドに付与
   const result = (data ?? []).map((t) => ({
     ...t,
     matchedMessageIds: matchedMsgMap.get(t.id) ?? [],

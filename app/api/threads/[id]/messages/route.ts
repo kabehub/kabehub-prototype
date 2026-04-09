@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const res = NextResponse.next();
+  const supabase = createRouteHandlerSupabaseClient(req, res);
+
   const { data, error } = await supabase
     .from("messages")
     .select("*")
@@ -24,6 +27,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const res = NextResponse.next();
+  const supabase = createRouteHandlerSupabaseClient(req, res);
+
   const { fromCreatedAt } = await req.json();
 
   const { error } = await supabase
