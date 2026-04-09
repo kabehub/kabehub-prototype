@@ -13,6 +13,7 @@ CREATE TABLE profiles (
   id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   handle      TEXT UNIQUE,
   display_name TEXT,
+  bio         TEXT CHECK (CHAR_LENGTH(bio) <= 300),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -50,7 +51,10 @@ CREATE TABLE threads (
   folder_name      TEXT,
   forked_from_id   UUID REFERENCES threads(id) ON DELETE SET NULL,
   allow_prompt_fork BOOLEAN NOT NULL DEFAULT TRUE,
-  metadata         JSONB
+  metadata         JSONB,
+  genre            TEXT,
+  likes_count      INTEGER DEFAULT 0,
+  fork_count       INTEGER DEFAULT 0
 );
 
 -- RLS
@@ -78,8 +82,8 @@ CREATE TABLE messages (
   -- provider の値: "claude" / "gemini" / "openai" / "user" / "memo" / "unknown"
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  parent_id  UUID REFERENCES messages(id) ON DELETE SET NULL
-  -- parent_id は Branching Mode 用（現在は未使用）
+  parent_id  UUID REFERENCES messages(id) ON DELETE SET NULL,
+  is_hidden  BOOLEAN DEFAULT FALSE
 );
 
 -- RLS
@@ -194,9 +198,21 @@ CREATE POLICY "Users can manage own drafts"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- ============================================================
+-- 8. reports（通報）
+-- ============================================================
+CREATE TABLE reports (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id        UUID REFERENCES threads(id) ON DELETE CASCADE,
+  reason           TEXT NOT NULL,
+  reporter_user_id UUID,
+  reporter_ip      TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+); 
+
 
 -- ============================================================
--- 8. インデックス（パフォーマンス最適化）
+-- 9. インデックス（パフォーマンス最適化）
 -- ============================================================
 CREATE INDEX idx_threads_user_id        ON threads(user_id);
 CREATE INDEX idx_threads_share_token    ON threads(share_token) WHERE share_token IS NOT NULL;
@@ -209,7 +225,7 @@ CREATE INDEX idx_drafts_thread_id       ON drafts(thread_id);
 
 
 -- ============================================================
--- 9. Google OAuthログイン時にprofilesを自動作成するトリガー
+-- 10. Google OAuthログイン時にprofilesを自動作成するトリガー
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
