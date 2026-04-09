@@ -133,9 +133,9 @@ if (!isTemporary) {
   }
 
   // 3. AI API 呼び出し
-  const anthropicKey = req.headers.get("x-anthropic-api-key") || process.env.ANTHROPIC_API_KEY;
-  const geminiKey = req.headers.get("x-gemini-api-key") || process.env.GEMINI_API_KEY;
-  const openaiKey = req.headers.get("x-openai-api-key") || process.env.OPENAI_API_KEY;
+  const anthropicKey = req.headers.get("x-anthropic-api-key") ;
+  const geminiKey = req.headers.get("x-gemini-api-key") ;
+  const openaiKey = req.headers.get("x-openai-api-key") ;
 
   const messagesForApi = [
   ...messages.map((m: ChatMessage) => ({
