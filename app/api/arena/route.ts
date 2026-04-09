@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addMessage, createThread, getThread } from "@/lib/supabase-db";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = "force-dynamic";
 
 type ChatMessage = { role: string; content: string; provider?: string };
-
-// ── AI呼び出し関数（route.tsから流用） ──────────────────────────
 
 async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?: string): Promise<string> {
   const body: Record<string, unknown> = {
@@ -56,8 +53,6 @@ async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt?
   return data.choices?.[0]?.message?.content ?? "（応答の取得に失敗しました）";
 }
 
-// ── AIディスパッチャー ───────────────────────────────────────────
-
 async function callAI(
   provider: string,
   messages: ChatMessage[],
@@ -69,8 +64,6 @@ async function callAI(
     return callClaude(keys.anthropic, messages, systemPrompt);
   } else if (provider === "gemini") {
     if (!keys.gemini) throw new Error("GeminiのAPIキーが設定されていません。");
-    // Gemini は履歴の末尾が必ず user ロールでないといけない制約がある
-    // アリーナでは直前が assistant（相手AI）の発言になるため、ダミーの user メッセージを末尾に追加する
     const geminiMessages = [...messages];
     if (geminiMessages.length > 0 && geminiMessages[geminiMessages.length - 1].role === "assistant") {
       geminiMessages.push({ role: "user", content: "続けてください。あなたの意見を述べてください。" });
@@ -83,21 +76,7 @@ async function callAI(
   throw new Error(`未対応のプロバイダーです: ${provider}`);
 }
 
-// ── POST /api/arena ─────────────────────────────────────────────
-//
-// リクエストボディ:
-//   threadId       : string       スレッドID（フロントで生成済み）
-//   history        : ChatMessage[] これまでの会話履歴（直近10件を想定）
-//   currentProvider: string       今回発言するAI（"claude" | "gemini" | "openai"）
-//   currentPrompt  : string       今回のAIのシステムプロンプト（人格）
-//   opponentLabel  : string       相手AIの表示名（コンテキスト注入用）
-//   selfLabel      : string       自分の表示名
-//   isFirst        : boolean      最初のターン（スレッド作成判定用）
-//   topic          : string       お題（最初のターンのみ使用）
-//   interventionContent?: string  神からの介入メッセージ（任意）
-
 export async function POST(req: NextRequest) {
-  // 認証チェック
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();
@@ -105,29 +84,27 @@ export async function POST(req: NextRequest) {
   const userId = user.id;
 
   let body: {
-  mode?: string;
-  threadId: string;
-  content?: string;
-  history?: ChatMessage[];
-  currentProvider?: string;
-  currentPrompt?: string;
-  opponentLabel?: string;
-  selfLabel?: string;
-  isFirst?: boolean;
-  topic?: string;
-  interventionContent?: string;
-};
-try {
-  const rawText = await req.text();
-  body = JSON.parse(rawText);
-} catch (err) {
-  console.error("arena route: JSON parse error", err);
-  return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-}
+    mode?: string;
+    threadId: string;
+    content?: string;
+    history?: ChatMessage[];
+    currentProvider?: string;
+    currentPrompt?: string;
+    opponentLabel?: string;
+    selfLabel?: string;
+    isFirst?: boolean;
+    topic?: string;
+    interventionContent?: string;
+  };
+  try {
+    const rawText = await req.text();
+    body = JSON.parse(rawText);
+  } catch (err) {
+    console.error("arena route: JSON parse error", err);
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  // ── 人間乱入メッセージの保存モード ─────────────────────────────
-  // page.tsx の handleHumanSubmit から呼ばれる。
-  // RLSを通過するためにRoute Handler経由でaddMessageを使う。
+  // ── 人間乱入メッセージの保存モード ──────────────────────────
   if (body.mode === "saveHumanMessage") {
     const { threadId, content: msgContent } = body;
     const humanMsg = {
@@ -138,24 +115,30 @@ try {
       provider: "user" as const,
       created_at: new Date().toISOString(),
     };
-    await addMessage(humanMsg, userId);
+    await supabase.from("messages").insert({
+      id: humanMsg.id,
+      thread_id: humanMsg.thread_id,
+      role: humanMsg.role,
+      content: humanMsg.content,
+      provider: humanMsg.provider,
+      user_id: userId,
+    });
     return NextResponse.json({ message: humanMsg });
   }
 
-  // /api/arena/route.ts の既存のmode分岐に追加
-if (body.mode === "timeTravel") {
-  const { threadId, since } = body as { threadId: string; since: string };
-  // supabase と userId はこのスコープより上で取得済みのものをそのまま使う
-  const { error } = await supabase
-    .from("messages")
-    .delete()
-    .eq("thread_id", threadId)
-    .eq("user_id", userId)
-    .gte("created_at", since);
+  // ── タイムトラベルモード ──────────────────────────────────────
+  if (body.mode === "timeTravel") {
+    const { threadId, since } = body as { threadId: string; since: string };
+    const { error } = await supabase
+      .from("messages")
+      .delete()
+      .eq("thread_id", threadId)
+      .eq("user_id", userId)
+      .gte("created_at", since);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
-}
   const {
     threadId,
     history,
@@ -170,22 +153,21 @@ if (body.mode === "timeTravel") {
 
   // APIキー取得
   const keys = {
-    anthropic: req.headers.get("x-anthropic-api-key") || process.env.ANTHROPIC_API_KEY || undefined,
-    gemini: req.headers.get("x-gemini-api-key") || process.env.GEMINI_API_KEY || undefined,
-    openai: req.headers.get("x-openai-api-key") || process.env.OPENAI_API_KEY || undefined,
+    anthropic: req.headers.get("x-anthropic-api-key") || undefined,
+    gemini: req.headers.get("x-gemini-api-key") || undefined,
+    openai: req.headers.get("x-openai-api-key") || undefined,
   };
 
-  // スレッドが存在しない場合は作成（最初のターン）
+  // スレッド作成
   if (isFirst) {
-    const exists = await getThread(threadId);
+    const { data: exists } = await supabase.from("threads").select("id").eq("id", threadId).single();
     if (!exists) {
-      await createThread(threadId, `【AI闘技場】${(topic ?? "").slice(0, 30)}`, userId);
+      const title = `【AI闘技場】${(topic ?? "").slice(0, 30)}`;
+      await supabase.from("threads").insert({ id: threadId, title, user_id: userId });
     }
   }
 
-  // 神の介入メッセージをDBに保存してhistoryに追加
-  // DB保存は【神からの介入】タグ付きのまま（UI表示用）
-  // APIに渡す際は強すぎるシグナルを避けるため「地の文」に変換する（Geminiの提案）
+  // 介入メッセージ保存
   let historyWithIntervention = [...(history ?? [])];
   if (interventionContent?.trim()) {
     const interventionMsg = {
@@ -196,42 +178,33 @@ if (body.mode === "timeTravel") {
       provider: "user" as const,
       created_at: new Date().toISOString(),
     };
-    await addMessage(interventionMsg, userId);
-    // APIには「地の文」として渡す（タグ強調を避けて自然な会話の流れに溶け込ませる）
+    await supabase.from("messages").insert({
+      id: interventionMsg.id,
+      thread_id: interventionMsg.thread_id,
+      role: interventionMsg.role,
+      content: interventionMsg.content,
+      provider: interventionMsg.provider,
+      user_id: userId,
+    });
     const interventionForApi = `[状況更新] 以下の新しい事実が判明しました。自然な会話の流れの中で、この事実に対するあなたの見解を簡潔に混ぜ込んで反論してください。事実：${interventionContent}`;
-    historyWithIntervention = [
-    ...(history ?? []),
-    { role: "user", content: interventionForApi },
-    ];
+    historyWithIntervention = [...(history ?? []), { role: "user", content: interventionForApi }];
   }
-
-  // コンテキスト構築
-  // 方針: AIへ渡すメッセージは「神/お題 = user」「AI発言 = assistant」に統一する。
-  // 話者名は content 先頭に注入して誰が発言したか明示する。
-  // これにより user/assistant が正しく交互になり、Claude・Gemini・OpenAI どれも受け付けられる。
 
   const rawHistory = historyWithIntervention.slice(-10);
   const contextMessages: ChatMessage[] = [];
 
   if (isFirst && topic && rawHistory.length === 0) {
-    // 初回かつ履歴なし：お題だけを user として渡す
     contextMessages.push({ role: "user", content: `【お題】${topic}` });
   } else {
-    // 2ターン目以降：履歴を user/assistant に変換して渡す
-    // ラベルは [自分] / [相手] に統一（AIの名前を直接使うと相手の発言まで書き続けるリスクがある）
     for (const m of rawHistory) {
       if (m.role === "user") {
         contextMessages.push({ role: "user", content: m.content });
       } else {
         const isSelf = m.provider === currentProvider;
         const label = isSelf ? "自分" : "相手";
-        contextMessages.push({
-          role: "assistant",
-          content: `[${label}の発言] ${m.content}`,
-        });
+        contextMessages.push({ role: "assistant", content: `[${label}の発言] ${m.content}` });
       }
     }
-    // 末尾が assistant の場合、次の発言を促す user メッセージを追加
     const last = contextMessages[contextMessages.length - 1];
     if (!last || last.role === "assistant") {
       contextMessages.push({
@@ -241,22 +214,18 @@ if (body.mode === "timeTravel") {
     }
   }
 
-  // システムプロンプト構築
   const fullSystemPrompt = [
     currentPrompt?.trim(),
     `あなたは ${selfLabel} として、この議論に参加しています。`,
     `相手は ${opponentLabel} です。`,
-    `【絶対厳守】あなたに割り当てられた立場・主張を最後まで貫いてください。相手に反論する際も、自分の立場から離れないでください。`,  // 👈 追加
+    `【絶対厳守】あなたに割り当てられた立場・主張を最後まで貫いてください。相手に反論する際も、自分の立場から離れないでください。`,
     `【絶対厳守】応答の冒頭に「[自分の発言]」「[相手の発言]」などのラベルを絶対に付けないでください。本文だけを出力してください。`,
     `【重要】あなたが出力するのは、あなた自身の発言のみです。`,
     `相手（${opponentLabel}）の発言や、"[相手の発言]" などのラベルは絶対に出力しないでください。`,
     `発言の冒頭にラベルや名前を付けないでください。`,
     `ルール：相手の言葉尻を捕らえたり、同じフレーズをオウム返しにしたりするのは避けてください。常に新しい視点や例え話を用いて、論理的に相手を追い詰めてください。`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter(Boolean).join("\n");
 
-  // AI呼び出し
   let content = "";
   try {
     content = await callAI(currentProvider ?? "", contextMessages, fullSystemPrompt, keys);
@@ -264,7 +233,6 @@ if (body.mode === "timeTravel") {
     content = `（エラー: ${err instanceof Error ? err.message : "不明なエラー"}）\n※右上の「🔑 APIキー」ボタンから設定を確認してください。`;
   }
 
-  // DB保存
   const assistantMessage = {
     id: uuidv4(),
     thread_id: threadId,
@@ -273,7 +241,15 @@ if (body.mode === "timeTravel") {
     provider: (currentProvider ?? "claude") as "claude" | "gemini" | "openai",
     created_at: new Date().toISOString(),
   };
-  await addMessage(assistantMessage, userId);
+
+  await supabase.from("messages").insert({
+    id: assistantMessage.id,
+    thread_id: threadId,
+    role: assistantMessage.role,
+    content: assistantMessage.content,
+    provider: assistantMessage.provider,
+    user_id: userId,
+  });
 
   return NextResponse.json({ message: assistantMessage });
 }

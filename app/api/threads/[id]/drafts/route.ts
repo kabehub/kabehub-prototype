@@ -1,5 +1,4 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { deleteThread } from "@/lib/supabase-db";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
 
@@ -12,7 +11,7 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await deleteThread(params.id);
+  await supabase.from("threads").delete().eq("id", params.id);
   return NextResponse.json({ success: true });
 }
 
@@ -33,7 +32,6 @@ export async function PATCH(
   if (body.is_public !== undefined) updates.is_public = body.is_public;
   if (body.hide_memos !== undefined) updates.hide_memos = body.hide_memos;
 
-  // 公開ONの時だけshare_tokenを生成
   if (body.needsToken && body.is_public) {
     const { data: existing } = await supabase
       .from("threads")

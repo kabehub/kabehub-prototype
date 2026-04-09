@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteThread } from "@/lib/supabase-db";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
 
@@ -12,7 +11,7 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await deleteThread(params.id);
+  await supabase.from("threads").delete().eq("id", params.id);
   return NextResponse.json({ success: true });
 }
 
@@ -32,8 +31,8 @@ export async function PATCH(
   if (body.system_prompt !== undefined) updates.system_prompt = body.system_prompt;
   if (body.is_public !== undefined) updates.is_public = body.is_public;
   if (body.hide_memos !== undefined) updates.hide_memos = body.hide_memos;
-  if (body.allow_prompt_fork !== undefined) updates.allow_prompt_fork = body.allow_prompt_fork; // 👈 追加
-  if (body.folder_name !== undefined) updates.folder_name = body.folder_name; // 👈 追加
+  if (body.allow_prompt_fork !== undefined) updates.allow_prompt_fork = body.allow_prompt_fork;
+  if (body.folder_name !== undefined) updates.folder_name = body.folder_name;
   if (body.share_token !== undefined) updates.share_token = body.share_token;
   if (body.metadata !== undefined) updates.metadata = body.metadata;
   if (body.genre !== undefined) updates.genre = body.genre;

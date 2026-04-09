@@ -1,5 +1,4 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { getMessageNotes, addMessageNote, deleteMessageNote } from "@/lib/supabase-db";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export async function GET(
@@ -11,8 +10,13 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const notes = await getMessageNotes(params.id);
-  return NextResponse.json(notes);
+  const { data, error } = await supabase
+    .from("message_notes")
+    .select("*")
+    .eq("thread_id", params.id)
+    .order("created_at", { ascending: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data ?? []);
 }
 
 export async function POST(
@@ -25,8 +29,13 @@ export async function POST(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { messageId, content } = await req.json();
-  const note = await addMessageNote(messageId, params.id, content, user.id);
-  return NextResponse.json(note);
+  const { data, error } = await supabase
+    .from("message_notes")
+    .insert({ message_id: messageId, thread_id: params.id, content, user_id: user.id })
+    .select()
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
 }
 
 export async function DELETE(
@@ -39,6 +48,6 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await req.json();
-  await deleteMessageNote(id);
+  await supabase.from("message_notes").delete().eq("id", id);
   return NextResponse.json({ success: true });
 }

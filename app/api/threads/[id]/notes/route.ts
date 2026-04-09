@@ -1,5 +1,4 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { getNotes, addNote, updateNote, deleteNote } from "@/lib/supabase-db";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export async function GET(
@@ -11,8 +10,13 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const notes = await getNotes(params.id);
-  return NextResponse.json(notes);
+  const { data, error } = await supabase
+    .from("thread_notes")
+    .select("*")
+    .eq("thread_id", params.id)
+    .order("created_at", { ascending: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data ?? []);
 }
 
 export async function POST(
@@ -25,8 +29,13 @@ export async function POST(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { content } = await req.json();
-  const note = await addNote(params.id, content, user.id);
-  return NextResponse.json(note);
+  const { data, error } = await supabase
+    .from("thread_notes")
+    .insert({ thread_id: params.id, content, user_id: user.id })
+    .select()
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
 }
 
 export async function PATCH(
@@ -39,8 +48,14 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id, content } = await req.json();
-  const note = await updateNote(id, content);
-  return NextResponse.json(note);
+  const { data, error } = await supabase
+    .from("thread_notes")
+    .update({ content, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
 }
 
 export async function DELETE(
@@ -53,6 +68,6 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await req.json();
-  await deleteNote(id);
+  await supabase.from("thread_notes").delete().eq("id", id);
   return NextResponse.json({ success: true });
 }
