@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { generateBulkExportZip } from '@/lib/exportUtils'
@@ -35,7 +35,7 @@ function maskKey(key: string): string {
   return '••••••••' + key.slice(-4)
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   // ③ ?onboarding=true のとき初回オンボーディングモード
@@ -531,5 +531,17 @@ export default function SettingsPage() {
         </section>
       </div>
     </div>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-400">
+        読み込み中...
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   )
 }
