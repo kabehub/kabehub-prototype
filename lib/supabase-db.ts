@@ -1,8 +1,8 @@
-import { supabase } from "./supabase";
+import { SupabaseClient } from "@supabase/supabase-js";
 import { Thread, Message, ThreadNote, MessageNote, Draft } from "@/types";
 
 // ── Thread CRUD ──────────────────────────────────────────────
-export async function getThreads(userId: string): Promise<Thread[]> {
+export async function getThreads(supabase: SupabaseClient, userId: string): Promise<Thread[]> {
   const { data, error } = await supabase
     .from("threads")
     .select("*")
@@ -13,7 +13,7 @@ export async function getThreads(userId: string): Promise<Thread[]> {
   return data ?? [];
 }
 
-export async function getThread(id: string): Promise<Thread | null> {
+export async function getThread(supabase: SupabaseClient, id: string): Promise<Thread | null> {
   const { data, error } = await supabase
     .from("threads")
     .select("*")
@@ -24,6 +24,7 @@ export async function getThread(id: string): Promise<Thread | null> {
 }
 
 export async function createThread(
+  supabase: SupabaseClient,
   id: string,
   firstMessage: string,
   userId: string
@@ -38,13 +39,13 @@ export async function createThread(
   return data;
 }
 
-export async function deleteThread(id: string): Promise<void> {
+export async function deleteThread(supabase: SupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("threads").delete().eq("id", id);
   if (error) throw error;
 }
 
 // ── Message CRUD ─────────────────────────────────────────────
-export async function getMessages(threadId: string): Promise<Message[]> {
+export async function getMessages(supabase: SupabaseClient, threadId: string): Promise<Message[]> {
   const { data, error } = await supabase
     .from("messages")
     .select("*")
@@ -55,6 +56,7 @@ export async function getMessages(threadId: string): Promise<Message[]> {
 }
 
 export async function addMessage(
+  supabase: SupabaseClient,
   message: Message,
   userId: string
 ): Promise<Message> {
@@ -69,7 +71,7 @@ export async function addMessage(
 }
 
 // ── ThreadNote CRUD ──────────────────────────────────────────
-export async function getNotes(threadId: string): Promise<ThreadNote[]> {
+export async function getNotes(supabase: SupabaseClient, threadId: string): Promise<ThreadNote[]> {
   const { data, error } = await supabase
     .from("thread_notes")
     .select("*")
@@ -80,6 +82,7 @@ export async function getNotes(threadId: string): Promise<ThreadNote[]> {
 }
 
 export async function addNote(
+  supabase: SupabaseClient,
   threadId: string,
   content: string,
   userId: string
@@ -94,6 +97,7 @@ export async function addNote(
 }
 
 export async function updateNote(
+  supabase: SupabaseClient,
   id: string,
   content: string
 ): Promise<ThreadNote> {
@@ -107,13 +111,13 @@ export async function updateNote(
   return data;
 }
 
-export async function deleteNote(id: string): Promise<void> {
+export async function deleteNote(supabase: SupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("thread_notes").delete().eq("id", id);
   if (error) throw error;
 }
 
 // ── MessageNote CRUD ─────────────────────────────────────────
-export async function getMessageNotes(threadId: string): Promise<MessageNote[]> {
+export async function getMessageNotes(supabase: SupabaseClient, threadId: string): Promise<MessageNote[]> {
   const { data, error } = await supabase
     .from("message_notes")
     .select("*")
@@ -124,6 +128,7 @@ export async function getMessageNotes(threadId: string): Promise<MessageNote[]> 
 }
 
 export async function addMessageNote(
+  supabase: SupabaseClient,
   messageId: string,
   threadId: string,
   content: string,
@@ -138,13 +143,13 @@ export async function addMessageNote(
   return data;
 }
 
-export async function deleteMessageNote(id: string): Promise<void> {
+export async function deleteMessageNote(supabase: SupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("message_notes").delete().eq("id", id);
   if (error) throw error;
 }
 
 // ── Draft CRUD ───────────────────────────────────────────────
-export async function getDrafts(threadId: string): Promise<Draft[]> {
+export async function getDrafts(supabase: SupabaseClient, threadId: string): Promise<Draft[]> {
   const { data, error } = await supabase
     .from("drafts")
     .select("*")
@@ -155,6 +160,7 @@ export async function getDrafts(threadId: string): Promise<Draft[]> {
 }
 
 export async function addDraft(
+  supabase: SupabaseClient,
   threadId: string,
   content: string,
   userId: string
@@ -168,7 +174,7 @@ export async function addDraft(
   return data;
 }
 
-export async function deleteDraft(id: string): Promise<void> {
+export async function deleteDraft(supabase: SupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("drafts").delete().eq("id", id);
   if (error) throw error;
 }
