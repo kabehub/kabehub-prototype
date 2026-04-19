@@ -271,7 +271,7 @@ export default function ChatInput({
             <span style={{ fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
               ここにドロップ
             </span>
-            <span style={{ fontSize: "11px", color: "var(--ink-muted)" }}>CSV / TXT</span>
+            <span style={{ fontSize: "11px", color: "var(--ink-muted)" }}>CSV / TXT/ MD</span>
           </div>
         </div>
       )}
