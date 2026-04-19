@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { generateBulkExportZip } from '@/lib/exportUtils'
+import { MODEL_CONFIG, loadModel, saveModel, type Provider, type ModelId } from '@/components/ChatInput'
 
 type Profile = {
   id: string
@@ -60,14 +61,20 @@ function SettingsContent() {
   const [showOpenaiKey, setShowOpenaiKey] = useState(false)
   const [apiKeySaved, setApiKeySaved] = useState(false)
 
-  // ① LocalStorageからAPIキーを読み込む
+  // モデル選択 state
+  const [claudeModel, setClaudeModel] = useState<ModelId>('claude-sonnet-4-5')
+  const [geminiModel, setGeminiModel] = useState<ModelId>('gemini-2.5-flash')
+
+  // ① LocalStorageからAPIキーとモデルを読み込む
   useEffect(() => {
     setClaudeKey(localStorage.getItem(LS_KEYS.claude) ?? '')
     setGeminiKey(localStorage.getItem(LS_KEYS.gemini) ?? '')
     setOpenaiKey(localStorage.getItem(LS_KEYS.openai) ?? '')
+    setClaudeModel(loadModel('claude'))
+    setGeminiModel(loadModel('gemini'))
   }, [])
 
-  // ① APIキーを保存（LocalStorage）
+  // ① APIキーとモデルを保存（LocalStorage）
   const handleSaveApiKeys = useCallback(() => {
     if (claudeKey.trim()) {
       localStorage.setItem(LS_KEYS.claude, claudeKey.trim())
@@ -84,10 +91,13 @@ function SettingsContent() {
     } else {
       localStorage.removeItem(LS_KEYS.openai)
     }
+    // モデルも保存
+    saveModel('claude', claudeModel)
+    saveModel('gemini', geminiModel)
     // トースト表示
     setApiKeySaved(true)
     setTimeout(() => setApiKeySaved(false), 2500)
-  }, [claudeKey, geminiKey, openaiKey])
+  }, [claudeKey, geminiKey, openaiKey, claudeModel, geminiModel])
 
   const handleBulkExport = async () => {
     setIsExporting(true)
@@ -342,7 +352,7 @@ function SettingsContent() {
         <section className="space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">
-              APIキー
+              APIキー・モデル設定
             </h2>
             <p className="text-xs text-gray-600 mt-1">
               キーはこのブラウザのローカルストレージに保存されます。KabeHubのサーバーには送信されません。
@@ -375,6 +385,24 @@ function SettingsContent() {
               {claudeKey && !showClaudeKey && (
                 <p className="text-xs text-gray-600 font-mono">{maskKey(claudeKey)}</p>
               )}
+              {/* Claudeモデル選択 */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs text-gray-500">デフォルトモデル：</span>
+                {MODEL_CONFIG.claude.models.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setClaudeModel(m.id)}
+                    className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                      claudeModel === m.id
+                        ? 'border-orange-500/60 bg-orange-500/10 text-orange-300'
+                        : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {m.label}
+                    <span className="ml-1 opacity-60">{m.badge === '高性能' ? '↑' : ''}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Gemini */}
@@ -401,6 +429,24 @@ function SettingsContent() {
               {geminiKey && !showGeminiKey && (
                 <p className="text-xs text-gray-600 font-mono">{maskKey(geminiKey)}</p>
               )}
+              {/* Geminiモデル選択 */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs text-gray-500">デフォルトモデル：</span>
+                {MODEL_CONFIG.gemini.models.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setGeminiModel(m.id)}
+                    className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                      geminiModel === m.id
+                        ? 'border-orange-500/60 bg-orange-500/10 text-orange-300'
+                        : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {m.label}
+                    <span className="ml-1 opacity-60">{m.badge === '高性能' ? '↑' : ''}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* OpenAI */}
@@ -429,15 +475,14 @@ function SettingsContent() {
               )}
             </div>
 
-            {/* APIキー保存ボタン＋トースト */}
+            {/* 保存ボタン＋トースト */}
             <div className="flex items-center gap-4 pt-1">
               <button
                 onClick={handleSaveApiKeys}
                 className="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
               >
-                APIキーを保存
+                APIキー・モデルを保存
               </button>
-              {/* ① 保存トースト */}
               {apiKeySaved && (
                 <span className="text-sm text-green-400 flex items-center gap-1">
                   ✅ 保存しました

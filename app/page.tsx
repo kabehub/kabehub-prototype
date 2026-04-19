@@ -6,6 +6,7 @@ import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
 import { supabase } from "@/lib/supabase/client";
+import { loadModel, type ModelId } from "@/components/ChatInput";
 import type { User } from "@supabase/supabase-js";
 
 export default function Home() {
@@ -295,10 +296,13 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
   }, [activeThreadId, isTemporary, temporaryMessages, threads, fetchThreads, getApiKeyHeaders, provider]);
 
   // ── 通常送信 ──────────────────────────────────────────────
-  const handleSubmit = useCallback(async (userContent: string) => {
+  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId) => {
     if (!userContent.trim() || !activeThreadId || isLoading) return;
     setInputValue("");
     setIsLoading(true);
+
+    // modelIdが未指定の場合はLocalStorageから読み込む
+    const resolvedModelId: ModelId = modelId ?? loadModel(provider);
 
     if (isTemporary) {
       // 一時モード: メモリのみ（DBに保存しない）
@@ -324,6 +328,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
             messages: allMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
             userContent,
             provider,
+            modelId: resolvedModelId,
             systemPrompt: activeThread?.system_prompt ?? "",
             isTemporary: true,
           }),
@@ -355,6 +360,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
           messages: messages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent,
           provider,
+          modelId: resolvedModelId,
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
       });

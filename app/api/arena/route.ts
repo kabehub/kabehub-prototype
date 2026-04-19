@@ -6,9 +6,22 @@ export const dynamic = "force-dynamic";
 
 type ChatMessage = { role: string; content: string; provider?: string };
 
-async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?: string): Promise<string> {
+// モデルID型（ChatInput.tsxのMODEL_CONFIGと対応）
+type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
+type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
+type OpenAIModel = "gpt-4o";
+type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
+
+// デフォルトモデル（modelIdが未指定の場合のフォールバック）
+const DEFAULT_MODELS: Record<string, ModelId> = {
+  claude: "claude-sonnet-4-5",
+  gemini: "gemini-2.5-flash",
+  openai: "gpt-4o",
+};
+
+async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: ClaudeModel = "claude-sonnet-4-5"): Promise<string> {
   const body: Record<string, unknown> = {
-    model: "claude-sonnet-4-5",
+    model: modelId,
     max_tokens: 8192,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
@@ -23,7 +36,7 @@ async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?
   return data.content?.[0]?.text ?? "（応答の取得に失敗しました）";
 }
 
-async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?: string): Promise<string> {
+async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: GeminiModel = "gemini-2.5-flash"): Promise<string> {
   const contents = messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
@@ -31,7 +44,7 @@ async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?
   const body: Record<string, unknown> = { contents };
   if (systemPrompt?.trim()) body.systemInstruction = { parts: [{ text: systemPrompt.trim() }] };
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
   );
   const data = await res.json();
@@ -39,14 +52,14 @@ async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "（応答の取得に失敗しました）";
 }
 
-async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt?: string): Promise<string> {
+async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: OpenAIModel = "gpt-4o"): Promise<string> {
   const msgs: { role: string; content: string }[] = [];
   if (systemPrompt?.trim()) msgs.push({ role: "system", content: systemPrompt.trim() });
   msgs.push(...messages.map((m) => ({ role: m.role, content: m.content })));
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: "gpt-4o", messages: msgs }),
+    body: JSON.stringify({ model: modelId, messages: msgs }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message ?? "OpenAI API error");
@@ -57,21 +70,23 @@ async function callAI(
   provider: string,
   messages: ChatMessage[],
   systemPrompt: string,
-  keys: { anthropic?: string; gemini?: string; openai?: string }
+  keys: { anthropic?: string; gemini?: string; openai?: string },
+  modelId?: ModelId
 ): Promise<string> {
+  const resolvedModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
   if (provider === "claude") {
     if (!keys.anthropic) throw new Error("ClaudeのAPIキーが設定されていません。");
-    return callClaude(keys.anthropic, messages, systemPrompt);
+    return callClaude(keys.anthropic, messages, systemPrompt, resolvedModelId as ClaudeModel);
   } else if (provider === "gemini") {
     if (!keys.gemini) throw new Error("GeminiのAPIキーが設定されていません。");
     const geminiMessages = [...messages];
     if (geminiMessages.length > 0 && geminiMessages[geminiMessages.length - 1].role === "assistant") {
       geminiMessages.push({ role: "user", content: "続けてください。あなたの意見を述べてください。" });
     }
-    return callGemini(keys.gemini, geminiMessages, systemPrompt);
+    return callGemini(keys.gemini, geminiMessages, systemPrompt, resolvedModelId as GeminiModel);
   } else if (provider === "openai") {
     if (!keys.openai) throw new Error("OpenAIのAPIキーが設定されていません。");
-    return callOpenAI(keys.openai, messages, systemPrompt);
+    return callOpenAI(keys.openai, messages, systemPrompt, resolvedModelId as OpenAIModel);
   }
   throw new Error(`未対応のプロバイダーです: ${provider}`);
 }
@@ -95,6 +110,7 @@ export async function POST(req: NextRequest) {
     isFirst?: boolean;
     topic?: string;
     interventionContent?: string;
+    modelId?: ModelId;
   };
   try {
     const rawText = await req.text();
@@ -149,6 +165,7 @@ export async function POST(req: NextRequest) {
     isFirst,
     topic,
     interventionContent,
+    modelId,
   } = body;
 
   // APIキー取得
@@ -228,7 +245,7 @@ export async function POST(req: NextRequest) {
 
   let content = "";
   try {
-    content = await callAI(currentProvider ?? "", contextMessages, fullSystemPrompt, keys);
+    content = await callAI(currentProvider ?? "", contextMessages, fullSystemPrompt, keys, modelId);
   } catch (err) {
     content = `（エラー: ${err instanceof Error ? err.message : "不明なエラー"}）\n※右上の「🔑 APIキー」ボタンから設定を確認してください。`;
   }

@@ -8,15 +8,72 @@ interface AttachedFile {
   sizeKB: number;
 }
 
+// ── モデル定数（将来の拡張はここに1行追加するだけ）──────────────────
+export type Provider = "claude" | "gemini" | "openai";
+
+export type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
+export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
+export type OpenAIModel = "gpt-4o"; // 将来: "gpt-4o-mini" など
+
+export type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
+
+export const MODEL_CONFIG = {
+  claude: {
+    label: "Claude",
+    models: [
+      { id: "claude-sonnet-4-5" as ClaudeModel, label: "Sonnet 4.5", badge: "標準" },
+      { id: "claude-sonnet-4-6" as ClaudeModel, label: "Sonnet 4.6", badge: "高性能" },
+    ],
+    defaultModel: "claude-sonnet-4-5" as ClaudeModel,
+    lsKey: "kabehub_claude_model",
+  },
+  gemini: {
+    label: "Gemini",
+    models: [
+      { id: "gemini-2.5-flash" as GeminiModel, label: "2.5 Flash", badge: "標準" },
+      { id: "gemini-2.5-pro" as GeminiModel, label: "2.5 Pro", badge: "高性能" },
+    ],
+    defaultModel: "gemini-2.5-flash" as GeminiModel,
+    lsKey: "kabehub_gemini_model",
+  },
+  openai: {
+    label: "ChatGPT",
+    models: [
+      { id: "gpt-4o" as OpenAIModel, label: "GPT-4o", badge: "標準" },
+    ],
+    defaultModel: "gpt-4o" as OpenAIModel,
+    lsKey: "kabehub_openai_model",
+  },
+} as const satisfies Record<Provider, {
+  label: string;
+  models: readonly { id: ModelId; label: string; badge: string }[];
+  defaultModel: ModelId;
+  lsKey: string;
+}>;
+
+/** LocalStorageからモデルを読み込む（なければデフォルト値） */
+export function loadModel(provider: Provider): ModelId {
+  const config = MODEL_CONFIG[provider];
+  const saved = typeof window !== "undefined" ? localStorage.getItem(config.lsKey) : null;
+  const validIds = config.models.map((m) => m.id as string);
+  return (saved && validIds.includes(saved) ? saved : config.defaultModel) as ModelId;
+}
+
+/** LocalStorageにモデルを保存 */
+export function saveModel(provider: Provider, modelId: ModelId) {
+  localStorage.setItem(MODEL_CONFIG[provider].lsKey, modelId);
+}
+// ─────────────────────────────────────────────────────────────────────────
+
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: (content: string) => void;
+  onSubmit: (content: string, modelId: ModelId) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
-  provider: "claude" | "gemini" | "openai";
-  onProviderChange: (p: "claude" | "gemini" | "openai") => void;
+  provider: Provider;
+  onProviderChange: (p: Provider) => void;
 }
 
 const FILE_SIZE_LIMIT_KB = 100;
@@ -51,8 +108,8 @@ function readFileWithFallback(
   reader.readAsText(file, "UTF-8");
 }
 
-// ② 「将来用」文言を削除 — シンプルなラベルのみ
-const PROVIDER_LABELS: Record<"claude" | "gemini" | "openai", string> = {
+// プロバイダーラベル
+const PROVIDER_LABELS: Record<Provider, string> = {
   claude: "Claude",
   gemini: "Gemini",
   openai: "ChatGPT",
@@ -75,6 +132,19 @@ export default function ChatInput({
   const [fileError, setFileError] = useState<string | null>(null);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // モデル選択 state（LocalStorageから初期値を読み込む）
+  const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
+
+  // プロバイダーが変わったらそのプロバイダーの保存済みモデルを読み込む
+  useEffect(() => {
+    setSelectedModel(loadModel(provider));
+  }, [provider]);
+
+  const handleModelChange = (modelId: ModelId) => {
+    setSelectedModel(modelId);
+    saveModel(provider, modelId);
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -160,7 +230,7 @@ export default function ChatInput({
     }
 
     onChange("");
-    onSubmit(finalContent);
+    onSubmit(finalContent, selectedModel);
     setAttachedFile(null);
     setIsPreviewExpanded(false);
   };
@@ -206,8 +276,9 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* AI切り替えボタン */}
-      <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
+      {/* AI切り替えボタン＋モデル選択 */}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", flexWrap: "wrap" }}>
+        {/* プロバイダー選択 */}
         {(["claude", "gemini", "openai"] as const).map((p) => (
           <button
             key={p}
@@ -227,6 +298,36 @@ export default function ChatInput({
             }}
           >
             {PROVIDER_LABELS[p]}
+          </button>
+        ))}
+
+        {/* セパレーター */}
+        <span style={{ color: "var(--border)", fontSize: "12px", margin: "0 2px" }}>|</span>
+
+        {/* モデル選択（現在のプロバイダーのモデルのみ表示） */}
+        {MODEL_CONFIG[provider].models.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => handleModelChange(m.id)}
+            title={m.badge}
+            style={{
+              padding: "4px 10px",
+              borderRadius: "20px",
+              border: "1px solid",
+              borderColor: selectedModel === m.id ? "var(--accent)" : "var(--border)",
+              background: selectedModel === m.id ? "rgba(196,98,45,0.12)" : "transparent",
+              color: selectedModel === m.id ? "var(--accent)" : "var(--ink-muted)",
+              fontSize: "10px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: "pointer",
+              transition: "all 0.15s",
+              letterSpacing: "0.03em",
+            }}
+          >
+            {m.label}
+            {m.badge === "高性能" && (
+              <span style={{ marginLeft: "3px", fontSize: "8px", opacity: 0.7 }}>↑</span>
+            )}
           </button>
         ))}
       </div>
