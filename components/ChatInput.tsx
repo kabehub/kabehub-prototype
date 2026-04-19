@@ -76,7 +76,7 @@ interface ChatInputProps {
   onProviderChange: (p: Provider) => void;
 }
 
-const FILE_SIZE_LIMIT_KB = 100;
+const FILE_SIZE_LIMIT_KB = 500;
 const PREVIEW_LINES = 5;
 
 /** UTF-8で読んだ結果に文字化けが含まれるか判定 */
@@ -166,8 +166,8 @@ export default function ChatInput({
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext !== "csv" && ext !== "txt") {
-      setFileError("CSV または TXT ファイルのみ対応しています");
+    if (ext !== "csv" && ext !== "txt" && ext !== "md") {
+      setFileError("CSV または TXT ファイル または MD ファイルのみ対応しています");
       return;
     }
 
@@ -223,7 +223,7 @@ export default function ChatInput({
     let finalContent = value;
     if (attachedFile) {
       const ext = attachedFile.name.split(".").pop()?.toLowerCase() ?? "txt";
-      const lang = ext === "csv" ? "csv" : "text";
+      const lang = ext === "csv" ? "csv" : ext === "md" ? "markdown" : "text";
       finalContent = value.trim()
         ? `${value}\n\n\`\`\`${lang}\n${attachedFile.content}\n\`\`\``
         : `\`\`\`${lang}\n${attachedFile.content}\n\`\`\``;
@@ -574,7 +574,7 @@ export default function ChatInput({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.txt"
+            accept=".csv,.txt,.md"
             onChange={handleFileChange}
             style={{ display: "none" }}
           />
