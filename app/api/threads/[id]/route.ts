@@ -49,11 +49,14 @@ export async function PATCH(
   }
 
   const { data, error } = await supabase
-    .from("threads")
-    .update(updates)
-    .eq("id", params.id)
-    .select()
-    .single();
+  .from("threads")
+  .upsert({
+    id: params.id,
+    user_id: user.id,
+    ...updates,
+  })
+  .select()
+  .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);

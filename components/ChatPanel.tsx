@@ -351,22 +351,25 @@ export default function ChatPanel({
 
   // ★ システムプロンプトを保存
   const handleSaveSystemPrompt = async () => {
-    if (!thread) return;
-    setSystemPromptSaving(true);
-    try {
-      const res = await fetch(`/api/threads/${thread.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ system_prompt: systemPromptDraft }),
-      });
-      const updated = await res.json();
-      thread.system_prompt = updated.system_prompt ?? "";
-    } catch (err) {
-      console.error("システムプロンプト保存失敗:", err);
-    } finally {
-      setSystemPromptSaving(false);
-    }
-  };
+  if (!thread) return;
+  setSystemPromptSaving(true);
+  try {
+    const res = await fetch(`/api/threads/${thread.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_prompt: systemPromptDraft,
+        title: thread.title || "無題", // Gemini指摘: INSERT時のフォールバック
+      }),
+    });
+    const updated = await res.json();
+    thread.system_prompt = updated.system_prompt ?? "";
+  } catch (err) {
+    console.error("システムプロンプト保存失敗:", err);
+  } finally {
+    setSystemPromptSaving(false);
+  }
+};
 
   // ★ タグ追加
   const handleAddTag = async () => {
