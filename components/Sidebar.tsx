@@ -395,44 +395,79 @@ interface FolderSectionProps {
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
+  onEditFolderSettings?: (folderName: string) => void;
 }
 
-function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, defaultCollapsed }: FolderSectionProps & { defaultCollapsed: boolean }) {
+function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditFolderSettings, defaultCollapsed }: FolderSectionProps & { defaultCollapsed: boolean }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [hovered, setHovered] = useState(false);
 
   return (
     <div style={{ marginBottom: "4px" }}>
       {/* フォルダヘッダー */}
-      <button
-        onClick={() => setCollapsed((v) => !v)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: "5px",
-          padding: "5px 8px",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          borderRadius: "5px",
-          transition: "background 0.1s",
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+      <div
+        style={{ position: "relative", display: "flex", alignItems: "center" }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        <span style={{ fontSize: "9px", color: "var(--ink-faint)", transition: "transform 0.15s", display: "inline-block", transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>
-          ▼
-        </span>
-        <span style={{ fontSize: "11px" }}>
-          {folderName ? "📁" : "📋"}
-        </span>
-        <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--ink-muted)", flex: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {folderName ?? "未分類"}
-        </span>
-        <span style={{ fontSize: "10px", color: "var(--ink-faint)", flexShrink: 0 }}>
-          {threads.length}
-        </span>
-      </button>
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            padding: "5px 8px",
+            background: hovered ? "rgba(0,0,0,0.04)" : "none",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: "5px",
+            transition: "background 0.1s",
+            minWidth: 0,
+          }}
+        >
+          <span style={{ fontSize: "9px", color: "var(--ink-faint)", transition: "transform 0.15s", display: "inline-block", transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>
+            ▼
+          </span>
+          <span style={{ fontSize: "11px" }}>
+            {folderName ? "📁" : "📋"}
+          </span>
+          <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--ink-muted)", flex: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {folderName ?? "未分類"}
+          </span>
+          <span style={{ fontSize: "10px", color: "var(--ink-faint)", flexShrink: 0 }}>
+            {threads.length}
+          </span>
+        </button>
+
+        {/* ⚙️ フォルダ設定ボタン（フォルダ名ありかつホバー時のみ表示） */}
+        {folderName && onEditFolderSettings && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEditFolderSettings(folderName); }}
+            title="フォルダのシステムプロンプトを設定"
+            style={{
+              opacity: hovered ? 1 : 0,
+              transition: "opacity 0.1s",
+              width: "20px",
+              height: "20px",
+              borderRadius: "4px",
+              border: "1px solid var(--border)",
+              background: "white",
+              color: "var(--ink-muted)",
+              fontSize: "11px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              flexShrink: 0,
+              marginRight: "4px",
+            }}
+          >
+            ⚙️
+          </button>
+        )}
+      </div>
 
       {/* スレッド一覧 */}
       {!collapsed && (
@@ -470,6 +505,40 @@ export default function Sidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<"title" | "message" | "both">("both");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // フォルダ設定モーダル
+  const [folderSettingsModal, setFolderSettingsModal] = useState<{ folderName: string; systemPrompt: string } | null>(null);
+  const [folderSettingsSaving, setFolderSettingsSaving] = useState(false);
+
+  const handleEditFolderSettings = useCallback(async (folderName: string) => {
+    try {
+      const res = await fetch(`/api/folder-settings?folder_name=${encodeURIComponent(folderName)}`);
+      const data = await res.json();
+      setFolderSettingsModal({ folderName, systemPrompt: data?.system_prompt ?? "" });
+    } catch {
+      setFolderSettingsModal({ folderName, systemPrompt: "" });
+    }
+  }, []);
+
+  const handleSaveFolderSettings = useCallback(async () => {
+    if (!folderSettingsModal) return;
+    setFolderSettingsSaving(true);
+    try {
+      await fetch("/api/folder-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder_name: folderSettingsModal.folderName,
+          system_prompt: folderSettingsModal.systemPrompt,
+        }),
+      });
+      setFolderSettingsModal(null);
+    } catch (err) {
+      console.error("フォルダ設定保存失敗:", err);
+    } finally {
+      setFolderSettingsSaving(false);
+    }
+  }, [folderSettingsModal]);
 
   const handleSearchChange = useCallback((val: string) => {
     setSearchQuery(val);
@@ -599,6 +668,7 @@ export default function Sidebar({
               onSelectThread={onSelectThread}
               onDeleteThread={onDeleteThread}
               onUpdateFolder={onUpdateFolder}
+              onEditFolderSettings={handleEditFolderSettings}
               defaultCollapsed={!hasActive}
             />
           );
@@ -760,6 +830,52 @@ export default function Sidebar({
           )}
         </div>
       </div>
+      {/* フォルダ設定モーダル */}
+      {folderSettingsModal && (
+        <div
+          onClick={() => setFolderSettingsModal(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "white", borderRadius: "12px", padding: "24px", width: "420px", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}
+          >
+            <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, marginBottom: "4px", color: "var(--ink)" }}>
+              📁 {folderSettingsModal.folderName}
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "16px", fontFamily: "'JetBrains Mono', monospace" }}>
+              フォルダのシステムプロンプト
+            </div>
+            <textarea
+              autoFocus
+              value={folderSettingsModal.systemPrompt}
+              onChange={(e) => setFolderSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
+              placeholder={`例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
+              style={{ width: "100%", minHeight: "120px", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+            />
+            <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
+              💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
+            </div>
+            <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setFolderSettingsModal(null)}
+                style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer" }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveFolderSettings}
+                disabled={folderSettingsSaving}
+                style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: folderSettingsSaving ? "var(--border)" : "#7c3aed", color: folderSettingsSaving ? "var(--ink-faint)" : "white", fontSize: "13px", cursor: folderSettingsSaving ? "default" : "pointer", transition: "all 0.15s" }}
+              >
+                {folderSettingsSaving ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

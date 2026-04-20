@@ -76,6 +76,28 @@ export async function POST(req: NextRequest) {
 
   const { threadId, messages, userContent, provider, modelId, isRegenerate, isMemo, systemPrompt, isTemporary } =
     await req.json();
+  // 0. フォルダのシステムプロンプトを解決
+  // スレッド個別のsystemPromptがない場合のみフォルダ設定を取得
+  let resolvedSystemPrompt: string | undefined = systemPrompt || undefined
+
+  if (!resolvedSystemPrompt && !isTemporary) {
+    const { data: thread } = await supabase
+      .from('threads')
+      .select('folder_name, user_id')
+      .eq('id', threadId)
+      .single()
+
+    if (thread?.folder_name) {
+      const { data: folderSetting } = await supabase
+        .from('folder_settings')
+        .select('system_prompt')
+        .eq('user_id', userId)
+        .eq('folder_name', thread.folder_name)
+        .maybeSingle()
+
+      resolvedSystemPrompt = folderSetting?.system_prompt ?? undefined
+    }
+  }
 
   // 1. スレッド作成
   if (!isTemporary) {
@@ -133,15 +155,15 @@ export async function POST(req: NextRequest) {
   try {
     if (provider === "gemini") {
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
-      assistantContent = await callGemini(geminiKey, messagesForApi, systemPrompt, resolvedModelId as GeminiModel);
+      assistantContent = await callGemini(geminiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as GeminiModel);
       usedProvider = "gemini";
     } else if (provider === "claude") {
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      assistantContent = await callClaude(anthropicKey, messagesForApi, systemPrompt, resolvedModelId as ClaudeModel);
+      assistantContent = await callClaude(anthropicKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as ClaudeModel);
       usedProvider = "claude";
     } else if (provider === "openai") {
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
-      assistantContent = await callOpenAI(openaiKey, messagesForApi, systemPrompt, resolvedModelId as OpenAIModel);
+      assistantContent = await callOpenAI(openaiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as OpenAIModel);
       usedProvider = "openai";
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);

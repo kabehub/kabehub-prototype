@@ -111,6 +111,29 @@ export default function ChatPanel({
   // ★ ヘッダーメニュー関連
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
+  // ★ フォルダシステムプロンプト継承表示用
+  const [folderSystemPrompt, setFolderSystemPrompt] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!thread?.folder_name) {
+      setFolderSystemPrompt(null)
+      return
+    }
+    let ignore = false
+    const fetch_ = async () => {
+      try {
+        const r = await fetch(`/api/folder-settings?folder_name=${encodeURIComponent(thread.folder_name!)}`)
+        if (!r.ok) throw new Error('fetch failed')
+        const data = await r.json()
+        if (!ignore) setFolderSystemPrompt(data?.system_prompt ?? null)
+      } catch {
+        if (!ignore) setFolderSystemPrompt(null)
+      }
+    }
+    fetch_()
+    return () => { ignore = true }
+  }, [thread?.folder_name])
+
   // APIキーをLocalStorageから読み込む
   useEffect(() => {
     try {
@@ -797,6 +820,23 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
             </div>
             <button onClick={() => setShowSystemPrompt(false)} style={{ background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 2px" }}>×</button>
           </div>
+         {/* フォルダ設定継承バナー */}
+          {folderSystemPrompt && !thread.system_prompt && (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 10px", background: "#ede9fe", borderRadius: "6px", marginBottom: "8px", border: "1px solid #c4b5fd" }}>
+              <span style={{ fontSize: "12px", flexShrink: 0 }}>📁</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "11px", color: "#7c3aed", fontFamily: "'JetBrains Mono', monospace", marginBottom: "2px" }}>
+                  フォルダ「{thread.folder_name}」の設定を継承中
+                </div>
+                <div style={{ fontSize: "11px", color: "#6d28d9", fontFamily: "'DM Sans', sans-serif", whiteSpace: "pre-wrap", lineHeight: 1.5, opacity: 0.8 }}>
+                  {folderSystemPrompt.length > 60 ? folderSystemPrompt.slice(0, 60) + "…" : folderSystemPrompt}
+                </div>
+                <div style={{ fontSize: "10px", color: "#7c3aed", marginTop: "4px", opacity: 0.7 }}>
+                  個別設定を入力すると上書きできます
+                </div>
+              </div>
+            </div>
+          )}
           <textarea
             id="system-prompt-textarea"
             name="system-prompt-textarea"
