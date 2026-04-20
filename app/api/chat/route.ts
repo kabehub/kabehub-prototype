@@ -19,23 +19,63 @@ const DEFAULT_MODELS: Record<string, ModelId> = {
   openai: "gpt-4o",
 };
 
-async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: ClaudeModel = "claude-sonnet-4-5"): Promise<string> {
+async function callClaude(
+  apiKey: string,
+  messages: ChatMessage[],
+  systemPrompt?: string,
+  modelId: ClaudeModel = "claude-sonnet-4-5"
+): Promise<string> {
+
+  // ① system をブロック形式に変更してキャッシュ付与
+  const systemBlock = systemPrompt?.trim()
+    ? [{ type: "text" as const, text: systemPrompt.trim(), cache_control: { type: "ephemeral" as const } }]
+    : undefined;
+
+  // ② messages に cache_control を付与（最後から2番目のみ）
+  const messagesForAPI = messages.map((m, index) => {
+    const isSecondToLast = index === messages.length - 2;
+    if (isSecondToLast) {
+      return {
+        role: m.role,
+        content: [{ type: "text" as const, text: m.content, cache_control: { type: "ephemeral" as const } }],
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+
   const body: Record<string, unknown> = {
     model: modelId,
     max_tokens: 8192,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: messagesForAPI,
   };
-  if (systemPrompt && systemPrompt.trim()) body.system = systemPrompt.trim();
+  if (systemBlock) body.system = systemBlock;
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "prompt-caching-2024-07-31", // Gemini指摘: 明示的に付けて安全側に倒す
+    },
     body: JSON.stringify(body),
   });
+
   const data = await response.json();
   if (!response.ok) throw new Error(data.error?.message ?? "Claude API error");
+
+  // ③ キャッシュ効果をログ出力（開発時のみ）
+  if (process.env.NODE_ENV === "development") {
+    const u = data.usage ?? {};
+    console.log("[Cache]", {
+      created: u.cache_creation_input_tokens ?? 0,
+      read:    u.cache_read_input_tokens    ?? 0,
+      normal:  u.input_tokens               ?? 0,
+    });
+  }
+
   return data.content?.[0]?.text ?? "（応答の取得に失敗しました）";
 }
-
 async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: GeminiModel = "gemini-2.5-flash"): Promise<string> {
   const contents = messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
