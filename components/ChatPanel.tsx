@@ -849,7 +849,18 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
             placeholder={`例：あなたは優秀なプロダクトマネージャーです。ユーザーのアイデアに対して、批判的かつ建設的なフィードバックをしてください。\n例：あなたは厳しい編集者です。文章の冗長な部分を容赦なく指摘してください。`}
             style={{ width: "100%", minHeight: "100px", maxHeight: "200px", padding: "10px 12px", border: "1px solid #c4b5fd", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", background: "white", lineHeight: 1.6 }}
           />
+          {/* ⚠️ トークン数警告 */}
+          {systemPromptDraft.length > 5000 && (
+            <div style={{ marginTop: "6px", padding: "6px 10px", borderRadius: "6px", background: "#fff7ed", border: "1px solid #fed7aa", fontSize: "11px", color: "#c2410c", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.5 }}>
+              ⚠️ プロンプトが長い場合、ChatGPT（TPM制限）ではエラーになることがあります。Claude・Geminiは問題ありません。
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
+
+修正できたらGit Pushはこちらです：
+bashgit add components/ChatPanel.tsx
+git commit -m "feat: システムプロンプトが長い場合のChatGPTトークン警告を追加"
+git push origin mainSonnet 4.6
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
               Cmd/Ctrl+Enter で保存 · 空にして保存するとリセット
             </div>
