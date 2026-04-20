@@ -1,262 +1,251 @@
--- ============================================================
--- KabeHub Database Schema
--- ============================================================
--- Supabaseのプロジェクト作成後、SQL Editorでこのファイルを実行してください。
--- ※ auth.users テーブルはSupabase Authが自動生成します。
--- ============================================================
+-- KabeHub セルフホスト用DBスキーマ
+-- 最終更新: 2026/04/20 (v58)
+-- Supabase Dashboard > SQL Editor で実行してください
 
+create extension if not exists "uuid-ossp";
 
 -- ============================================================
--- 1. profiles（プロフィール）
+-- profiles テーブル
 -- ============================================================
-CREATE TABLE profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  handle      TEXT UNIQUE,
-  display_name TEXT,
-  bio         TEXT CHECK (CHAR_LENGTH(bio) <= 300),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+create table if not exists profiles (
+  id            uuid primary key references auth.users(id) on delete cascade,
+  handle        text unique,
+  display_name  text,
+  bio           text check (char_length(bio) <= 300),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
 );
 
--- ハンドルネームは小文字のみ許可
-ALTER TABLE profiles
-  ADD CONSTRAINT handle_lowercase CHECK (handle = LOWER(handle));
+alter table profiles enable row level security;
 
--- RLS
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+create policy "自分のプロフィールのみ更新可"
+  on profiles for all
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
 
-CREATE POLICY "Users can manage own profile"
-  ON profiles FOR ALL
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id);
-
-CREATE POLICY "Public profiles are readable by anyone"
-  ON profiles FOR SELECT
-  USING (true);
-
+create policy "プロフィールは全員閲覧可"
+  on profiles for select
+  using (true);
 
 -- ============================================================
--- 2. threads（スレッド）
+-- threads テーブル
 -- ============================================================
-CREATE TABLE threads (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title            TEXT,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  user_id          UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  system_prompt    TEXT,
-  share_token      TEXT UNIQUE,
-  is_public        BOOLEAN NOT NULL DEFAULT FALSE,
-  hide_memos       BOOLEAN NOT NULL DEFAULT FALSE,
-  folder_name      TEXT,
-  forked_from_id   UUID REFERENCES threads(id) ON DELETE SET NULL,
-  allow_prompt_fork BOOLEAN NOT NULL DEFAULT TRUE,
-  metadata         JSONB,
-  genre            TEXT,
-  likes_count      INTEGER DEFAULT 0,
-  fork_count       INTEGER DEFAULT 0
+create table if not exists threads (
+  id                uuid primary key default gen_random_uuid(),
+  title             text default '無題',
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  user_id           uuid not null references auth.users(id) on delete cascade,
+  system_prompt     text,
+  share_token       text unique,
+  is_public         boolean not null default false,
+  hide_memos        boolean not null default false,
+  folder_name       text,
+  forked_from_id    uuid references threads(id) on delete set null,
+  allow_prompt_fork boolean not null default true,
+  metadata          jsonb,
+  genre             text,
+  likes_count       integer default 0,
+  fork_count        integer default 0
 );
 
--- RLS
-ALTER TABLE threads ENABLE ROW LEVEL SECURITY;
+create index if not exists threads_user_id_idx      on threads(user_id);
+create index if not exists threads_created_at_idx   on threads(created_at desc);
+create index if not exists threads_share_token_idx  on threads(share_token);
+create index if not exists threads_is_public_idx    on threads(is_public);
 
-CREATE POLICY "Users can manage own threads"
-  ON threads FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+alter table threads enable row level security;
 
-CREATE POLICY "Public threads are readable by anyone"
-  ON threads FOR SELECT
-  USING (is_public = TRUE);
+create policy "自分のスレッドのみ操作可"
+  on threads for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
+create policy "公開スレッドは全員閲覧可"
+  on threads for select
+  using (is_public = true);
 
 -- ============================================================
--- 3. messages（メッセージ）
+-- messages テーブル
 -- ============================================================
-CREATE TABLE messages (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  thread_id  UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-  role       TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-  content    TEXT NOT NULL,
-  provider   TEXT NOT NULL DEFAULT 'unknown',
-  -- provider の値: "claude" / "gemini" / "openai" / "user" / "memo" / "unknown"
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  parent_id  UUID REFERENCES messages(id) ON DELETE SET NULL,
-  is_hidden  BOOLEAN DEFAULT FALSE
+create table if not exists messages (
+  id          uuid primary key default gen_random_uuid(),
+  thread_id   uuid not null references threads(id) on delete cascade,
+  role        text not null check (role in ('user', 'assistant')),
+  content     text not null,
+  provider    text not null default 'unknown',
+  created_at  timestamptz not null default now(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  parent_id   uuid references messages(id) on delete set null, -- Branching Mode用（未実装）
+  is_hidden   boolean default false
 );
 
--- RLS
-ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+create index if not exists messages_thread_id_idx on messages(thread_id);
 
-CREATE POLICY "Users can manage own messages"
-  ON messages FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+alter table messages enable row level security;
 
-CREATE POLICY "Messages of public threads are readable by anyone"
-  ON messages FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM threads
-      WHERE threads.id = messages.thread_id
-        AND threads.is_public = TRUE
+create policy "自分のメッセージのみ操作可"
+  on messages for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "公開スレッドのメッセージは全員閲覧可"
+  on messages for select
+  using (
+    exists (
+      select 1 from threads
+      where threads.id = messages.thread_id
+        and threads.is_public = true
     )
   );
 
-
 -- ============================================================
--- 4. thread_tags（タグ）
+-- thread_notes テーブル
 -- ============================================================
-CREATE TABLE thread_tags (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  thread_id  UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-  name       TEXT NOT NULL CHECK (CHAR_LENGTH(name) <= 20),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  UNIQUE (thread_id, name)
+create table if not exists thread_notes (
+  id          uuid primary key default gen_random_uuid(),
+  thread_id   uuid not null references threads(id) on delete cascade,
+  content     text not null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  user_id     uuid not null references auth.users(id) on delete cascade
 );
 
--- RLS
-ALTER TABLE thread_tags ENABLE ROW LEVEL SECURITY;
+alter table thread_notes enable row level security;
 
-CREATE POLICY "Users can manage own thread_tags"
-  ON thread_tags FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Tags of public threads are readable by anyone"
-  ON thread_tags FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM threads
-      WHERE threads.id = thread_tags.thread_id
-        AND threads.is_public = TRUE
-    )
-  );
-
+create policy "自分のスレッドメモのみ操作可"
+  on thread_notes for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- ============================================================
--- 5. thread_notes（スレッドメモ）
+-- message_notes テーブル
 -- ============================================================
-CREATE TABLE thread_notes (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  thread_id  UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-  content    TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+create table if not exists message_notes (
+  id          uuid primary key default gen_random_uuid(),
+  message_id  uuid not null references messages(id) on delete cascade,
+  thread_id   uuid not null references threads(id) on delete cascade,
+  content     text not null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  user_id     uuid not null references auth.users(id) on delete cascade
 );
 
--- RLS
-ALTER TABLE thread_notes ENABLE ROW LEVEL SECURITY;
+alter table message_notes enable row level security;
 
-CREATE POLICY "Users can manage own thread_notes"
-  ON thread_notes FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
+create policy "自分のメッセージメモのみ操作可"
+  on message_notes for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- ============================================================
--- 6. message_notes（メッセージアンカーメモ）
+-- thread_tags テーブル
 -- ============================================================
-CREATE TABLE message_notes (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-  thread_id  UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-  content    TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+create table if not exists thread_tags (
+  id          uuid primary key default gen_random_uuid(),
+  thread_id   uuid not null references threads(id) on delete cascade,
+  name        text not null,
+  created_at  timestamptz not null default now(),
+  user_id     uuid not null references auth.users(id) on delete cascade
 );
 
--- RLS
-ALTER TABLE message_notes ENABLE ROW LEVEL SECURITY;
+create index if not exists thread_tags_thread_id_idx on thread_tags(thread_id);
 
-CREATE POLICY "Users can manage own message_notes"
-  ON message_notes FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+alter table thread_tags enable row level security;
 
+create policy "自分のタグのみ操作可"
+  on thread_tags for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- ============================================================
--- 7. drafts（下書き）
+-- drafts テーブル
 -- ============================================================
-CREATE TABLE drafts (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  thread_id  UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-  content    TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+create table if not exists drafts (
+  id          uuid primary key default gen_random_uuid(),
+  thread_id   uuid not null references threads(id) on delete cascade,
+  content     text not null,
+  created_at  timestamptz not null default now(),
+  user_id     uuid not null references auth.users(id) on delete cascade
 );
 
--- RLS
-ALTER TABLE drafts ENABLE ROW LEVEL SECURITY;
+alter table drafts enable row level security;
 
-CREATE POLICY "Users can manage own drafts"
-  ON drafts FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
--- ============================================================
--- 8. reports（通報）
--- ============================================================
-CREATE TABLE reports (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  thread_id        UUID REFERENCES threads(id) ON DELETE CASCADE,
-  reason           TEXT NOT NULL,
-  reporter_user_id UUID,
-  reporter_ip      TEXT,
-  created_at       TIMESTAMPTZ DEFAULT NOW()
-); 
-
+create policy "自分の下書きのみ操作可"
+  on drafts for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- ============================================================
--- 9. インデックス（パフォーマンス最適化）
+-- reports テーブル
 -- ============================================================
-CREATE INDEX idx_threads_user_id        ON threads(user_id);
-CREATE INDEX idx_threads_share_token    ON threads(share_token) WHERE share_token IS NOT NULL;
-CREATE INDEX idx_threads_is_public      ON threads(is_public) WHERE is_public = TRUE;
-CREATE INDEX idx_messages_thread_id     ON messages(thread_id);
-CREATE INDEX idx_thread_tags_thread_id  ON thread_tags(thread_id);
-CREATE INDEX idx_thread_notes_thread_id ON thread_notes(thread_id);
-CREATE INDEX idx_message_notes_message_id ON message_notes(message_id);
-CREATE INDEX idx_drafts_thread_id       ON drafts(thread_id);
+create table if not exists reports (
+  id                uuid primary key default gen_random_uuid(),
+  thread_id         uuid references threads(id) on delete set null,
+  reason            text not null,
+  reporter_user_id  uuid references auth.users(id) on delete set null,
+  reporter_ip       text,
+  created_at        timestamptz default now()
+);
 
+alter table reports enable row level security;
+
+create policy "通報は認証ユーザーのみ投稿可"
+  on reports for insert
+  to authenticated
+  with check (true);
+
+create policy "自分の通報のみ閲覧可"
+  on reports for select
+  using (auth.uid() = reporter_user_id);
 
 -- ============================================================
--- 10. Google OAuthログイン時にprofilesを自動作成するトリガー
+-- folder_settings テーブル（v57追加）
 -- ============================================================
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id)
-  VALUES (NEW.id)
-  ON CONFLICT (id) DO NOTHING;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+create table if not exists folder_settings (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid references auth.users(id) on delete cascade,
+  folder_name   text not null,
+  system_prompt text,
+  created_at    timestamptz default now(),
+  updated_at    timestamptz default now(),
+  unique(user_id, folder_name)
+);
 
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+alter table folder_settings enable row level security;
 
+create policy "自分のフォルダ設定のみ操作可"
+  on folder_settings for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
--- ========================================
--- アカウント削除RPC（v40追加）
--- ========================================
+-- updated_at 自動更新トリガー
+create or replace function update_updated_at_column()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
 
--- ユーザー自身のアカウントと全関連データを削除する関数
--- SECURITY DEFINER により、ANON_KEY からでも auth.users の削除が可能
-CREATE OR REPLACE FUNCTION delete_current_user()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  DELETE FROM auth.users WHERE id = auth.uid();
-END;
-$$;
+create trigger folder_settings_updated_at
+  before update on folder_settings
+  for each row execute function update_updated_at_column();
 
-GRANT EXECUTE ON FUNCTION delete_current_user() TO authenticated;
+-- ============================================================
+-- いいね数・引継ぎ数の増減 RPC（非正規化カラム操作用）
+-- ============================================================
+create or replace function increment_likes_count(thread_id uuid)
+returns void as $$
+  update threads set likes_count = likes_count + 1 where id = thread_id;
+$$ language sql;
+
+create or replace function decrement_likes_count(thread_id uuid)
+returns void as $$
+  update threads set likes_count = greatest(likes_count - 1, 0) where id = thread_id;
+$$ language sql;
+
+create or replace function increment_fork_count(thread_id uuid)
+returns void as $$
+  update threads set fork_count = fork_count + 1 where id = thread_id;
+$$ language sql;
