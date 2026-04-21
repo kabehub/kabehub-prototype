@@ -856,11 +856,6 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
             </div>
           )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
-
-修正できたらGit Pushはこちらです：
-bashgit add components/ChatPanel.tsx
-git commit -m "feat: システムプロンプトが長い場合のChatGPTトークン警告を追加"
-git push origin mainSonnet 4.6
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
               Cmd/Ctrl+Enter で保存 · 空にして保存するとリセット
             </div>
