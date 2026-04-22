@@ -2,10 +2,59 @@
 
 import { useRef, useEffect, KeyboardEvent, useState } from "react";
 
-interface AttachedFile {
+// ── 添付ファイル型（Discriminated Union）──────────────────────────────────
+export type AttachedTextFile = {
+  kind: "text";
   name: string;
   content: string;
   sizeKB: number;
+};
+
+export type AttachedImageFile = {
+  kind: "image";
+  name: string;
+  base64: string;       // プレフィックスなし・JPEG圧縮済み
+  mediaType: "image/jpeg"; // 常にJPEG（Canvas圧縮の都合）
+  previewUrl: string;   // サムネイル表示用 ObjectURL
+  sizeKB: number;       // 圧縮後サイズ
+};
+
+export type AttachedFile = AttachedTextFile | AttachedImageFile;
+
+// ── Canvas APIによる画像圧縮（ゼロ依存・Gemini指摘3点対応済み）────────────
+// 1. mediaTypeをimage/jpegに固定（出力がJPEGのため）
+// 2. 透過PNG等の「背景真っ黒」を白塗りで防止
+// 3. ObjectURLのメモリリークをrevokeObjectURLで解放
+async function compressImage(file: File): Promise<{ base64: string; mediaType: "image/jpeg"; sizeKB: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1024;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      const ctx = canvas.getContext("2d")!;
+      // 透過PNG/GIF → JPEG変換時の黒背景を防ぐため白で塗りつぶす
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // メモリリーク対策
+      URL.revokeObjectURL(img.src);
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      const base64 = dataUrl.split(",")[1]; // プレフィックス除去
+      const sizeKB = Math.round((base64.length * 0.75) / 1024 * 10) / 10;
+      resolve({ base64, mediaType: "image/jpeg", sizeKB });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error("画像の読み込みに失敗しました"));
+    };
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 // ── モデル定数（将来の拡張はここに1行追加するだけ）──────────────────
@@ -68,7 +117,7 @@ export function saveModel(provider: Provider, modelId: ModelId) {
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: AttachedImageFile[]) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
@@ -77,6 +126,9 @@ interface ChatInputProps {
 }
 
 const FILE_SIZE_LIMIT_KB = 500;
+const IMAGE_SIZE_LIMIT_MB = 5;
+const MAX_IMAGES = 3;      // 画像の上限枚数
+const MAX_TEXT_FILES = 3;  // テキストファイルの上限数
 const PREVIEW_LINES = 5;
 
 /** UTF-8で読んだ結果に文字化けが含まれるか判定 */
@@ -128,17 +180,32 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  // 複数ファイル対応（テキスト＋画像の混在）
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   // モデル選択 state（LocalStorageから初期値を読み込む）
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
 
   // プロバイダーが変わったらそのプロバイダーの保存済みモデルを読み込む
+  // OpenAI切り替え時は画像を自動クリア＋ObjectURL解放
   useEffect(() => {
     setSelectedModel(loadModel(provider));
+    if (provider === "openai") {
+      setAttachedFiles((prev) => {
+        const hasImage = prev.some((f) => f.kind === "image");
+        if (hasImage) {
+          prev.filter((f) => f.kind === "image").forEach((f) => {
+            URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
+          });
+          return prev.filter((f) => f.kind === "text");
+        }
+        return prev;
+      });
+    }
   }, [provider]);
 
   const handleModelChange = (modelId: ModelId) => {
@@ -157,39 +224,86 @@ export default function ChatInput({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isLoading && (value.trim() || attachedFile)) handleSubmit();
+      if (!isLoading && !isCompressing && (value.trim() || attachedFiles.length > 0)) handleSubmit();
     }
   };
 
-  const processFile = (file: File) => {
+  /** 複数ファイルを処理（テキスト＋画像の混在対応） */
+  const processFiles = async (files: FileList | File[]) => {
     setFileError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext !== "csv" && ext !== "txt" && ext !== "md") {
-      setFileError("CSV または TXT ファイル または MD ファイルのみ対応しています");
-      return;
-    }
+    const fileArray = Array.from(files);
+    // 現在の添付数をスナップショット（setStateは非同期のため）
+    let currentImages = attachedFiles.filter((f) => f.kind === "image").length;
+    let currentTexts = attachedFiles.filter((f) => f.kind === "text").length;
 
-    const sizeKB = file.size / 1024;
-    if (sizeKB > FILE_SIZE_LIMIT_KB) {
-      setFileError(`ファイルサイズが ${FILE_SIZE_LIMIT_KB}KB を超えています（${Math.round(sizeKB)}KB）`);
-      return;
-    }
+    for (const file of fileArray) {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      const isImage = file.type.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp"].includes(ext ?? "");
+      const isText = ext === "csv" || ext === "txt" || ext === "md";
 
-    readFileWithFallback(
-      file,
-      (content) => {
-        setAttachedFile({ name: file.name, content, sizeKB });
-        setIsPreviewExpanded(false);
-      },
-      (msg) => setFileError(msg)
-    );
+      if (isImage) {
+        if (provider === "openai") {
+          setFileError("画像添付はClaude・Geminiのみ対応です");
+          continue;
+        }
+        if (currentImages >= MAX_IMAGES) {
+          setFileError(`画像は最大${MAX_IMAGES}枚まで添付できます`);
+          continue;
+        }
+        if (file.size > IMAGE_SIZE_LIMIT_MB * 1024 * 1024) {
+          setFileError(`画像は${IMAGE_SIZE_LIMIT_MB}MB以下にしてください（${file.name}）`);
+          continue;
+        }
+        setIsCompressing(true);
+        try {
+          const { base64, mediaType, sizeKB } = await compressImage(file);
+          // 圧縮済みbase64からサムネイル用ObjectURLを生成
+          const byteChars = atob(base64);
+          const byteArr = new Uint8Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+          const blob = new Blob([byteArr], { type: "image/jpeg" });
+          const previewUrl = URL.createObjectURL(blob);
+          const imageFile: AttachedImageFile = { kind: "image", name: file.name, base64, mediaType, previewUrl, sizeKB };
+          setAttachedFiles((prev) => [...prev, imageFile]);
+          currentImages++;
+        } catch {
+          setFileError(`画像の圧縮に失敗しました（${file.name}）`);
+        } finally {
+          setIsCompressing(false);
+        }
+      } else if (isText) {
+        if (currentTexts >= MAX_TEXT_FILES) {
+          setFileError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+          continue;
+        }
+        const sizeKB = file.size / 1024;
+        if (sizeKB > FILE_SIZE_LIMIT_KB) {
+          setFileError(`ファイルサイズが${FILE_SIZE_LIMIT_KB}KBを超えています（${file.name}）`);
+          continue;
+        }
+        await new Promise<void>((resolve) => {
+          readFileWithFallback(
+            file,
+            (content) => {
+              const textFile: AttachedTextFile = { kind: "text", name: file.name, content, sizeKB };
+              setAttachedFiles((prev) => [...prev, textFile]);
+              currentTexts++;
+              resolve();
+            },
+            (msg) => { setFileError(msg); resolve(); }
+          );
+        });
+      } else {
+        setFileError("対応形式: CSV / TXT / MD / PNG / JPEG / GIF / WebP");
+      }
+    }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) await processFiles(files);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -203,41 +317,56 @@ export default function ChatInput({
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     if (isLoading || disabled) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) await processFiles(files);
   };
 
-  const handleRemoveFile = () => {
-    setAttachedFile(null);
-    setFileError(null);
-    setIsPreviewExpanded(false);
+  const handleRemoveFile = (index: number) => {
+    setAttachedFiles((prev) => {
+      const target = prev[index];
+      if (target.kind === "image") URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSubmit = () => {
-    if (!value.trim() && !attachedFile) return;
+    const textFiles = attachedFiles.filter((f): f is AttachedTextFile => f.kind === "text");
+    const imageFiles = attachedFiles.filter((f): f is AttachedImageFile => f.kind === "image");
+    if (!value.trim() && attachedFiles.length === 0) return;
 
+    // テキストファイルの内容をメッセージ本文に埋め込む
     let finalContent = value;
-    if (attachedFile) {
-      const ext = attachedFile.name.split(".").pop()?.toLowerCase() ?? "txt";
-      const lang = ext === "csv" ? "csv" : ext === "md" ? "markdown" : "text";
+    if (textFiles.length > 0) {
+      const fileBlocks = textFiles.map((f) => {
+        const ext = f.name.split(".").pop()?.toLowerCase() ?? "txt";
+        const lang = ext === "csv" ? "csv" : ext === "md" ? "markdown" : "text";
+        return `\`\`\`${lang}\n${f.content}\n\`\`\``;
+      });
       finalContent = value.trim()
-        ? `${value}\n\n\`\`\`${lang}\n${attachedFile.content}\n\`\`\``
-        : `\`\`\`${lang}\n${attachedFile.content}\n\`\`\``;
+        ? `${value}\n\n${fileBlocks.join("\n\n")}`
+        : fileBlocks.join("\n\n");
     }
 
     onChange("");
-    onSubmit(finalContent, selectedModel);
-    setAttachedFile(null);
+    onSubmit(finalContent, selectedModel, imageFiles.length > 0 ? imageFiles : undefined);
+    // ObjectURLを解放してからstateをクリア
+    attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
+      URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
+    });
+    setAttachedFiles([]);
     setIsPreviewExpanded(false);
   };
 
-  const previewLines = attachedFile?.content.split("\n").slice(0, PREVIEW_LINES) ?? [];
-  const totalLines = attachedFile?.content.split("\n").length ?? 0;
+  // テキストファイルのプレビュー用（最初のテキストファイルのみ表示）
+  const firstTextFile = attachedFiles.find((f): f is AttachedTextFile => f.kind === "text") ?? null;
+  const previewLines = firstTextFile?.content.split("\n").slice(0, PREVIEW_LINES) ?? [];
+  const totalLines = firstTextFile?.content.split("\n").length ?? 0;
   const hasMoreLines = totalLines > PREVIEW_LINES;
+  const hasAnyFile = attachedFiles.length > 0;
 
   return (
     <div
@@ -271,7 +400,7 @@ export default function ChatInput({
             <span style={{ fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
               ここにドロップ
             </span>
-            <span style={{ fontSize: "11px", color: "var(--ink-muted)" }}>CSV / TXT/ MD</span>
+            <span style={{ fontSize: "11px", color: "var(--ink-muted)" }}>CSV / TXT / MD / 画像</span>
           </div>
         </div>
       )}
@@ -332,89 +461,80 @@ export default function ChatInput({
         ))}
       </div>
 
-      {/* ファイルプレビューエリア */}
-      {attachedFile && (
-        <div style={{
-          marginBottom: "8px",
-          border: "1px solid var(--border)",
-          borderRadius: "8px",
-          background: "#fafafa",
-          overflow: "hidden",
-        }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "6px 10px",
-            borderBottom: "1px solid var(--border)",
-            background: "#f5f5f5",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{
-                fontSize: "12px",
-                fontFamily: "'JetBrains Mono', monospace",
-                color: "var(--ink)",
-                fontWeight: 600,
-              }}>
-                {attachedFile.name}
-              </span>
-              <span style={{
-                fontSize: "10px",
-                color: "var(--ink-muted)",
+      {/* 添付ファイルプレビューエリア（画像サムネイル＋テキストファイル） */}
+      {hasAnyFile && (
+        <div style={{ marginBottom: "8px" }}>
+          {/* 添付一覧（画像サムネイル＋テキストファイル名）*/}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: attachedFiles.some(f => f.kind === "text") ? "6px" : "0" }}>
+            {attachedFiles.map((f, i) => (
+              <div key={i} style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "3px 8px 3px 4px",
+                borderRadius: "6px",
+                border: "1px solid var(--border)",
+                background: f.kind === "image" ? "#f0f9ff" : "#fafafa",
+                fontSize: "11px",
                 fontFamily: "'JetBrains Mono', monospace",
               }}>
-                {Math.round(attachedFile.sizeKB * 10) / 10}KB · {totalLines}行
-              </span>
-            </div>
-            <button
-              onClick={handleRemoveFile}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--ink-muted)",
-                fontSize: "14px",
-                padding: "0 2px",
-                lineHeight: 1,
-              }}
-              title="添付を解除"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div style={{ padding: "8px 10px" }}>
-            <pre style={{
-              margin: 0,
-              fontSize: "11px",
-              fontFamily: "'JetBrains Mono', monospace",
-              color: "var(--ink-muted)",
-              lineHeight: 1.6,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-all",
-            }}>
-              {isPreviewExpanded
-                ? attachedFile.content
-                : previewLines.join("\n")}
-            </pre>
-            {hasMoreLines && (
-              <button
-                onClick={() => setIsPreviewExpanded((v) => !v)}
-                style={{
-                  marginTop: "4px",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--accent)",
-                  fontSize: "11px",
-                  fontFamily: "'JetBrains Mono', monospace",
-                  padding: 0,
-                }}
-              >
-                {isPreviewExpanded ? "▲ 折りたたむ" : `▼ さらに ${totalLines - PREVIEW_LINES} 行を表示`}
-              </button>
+                {f.kind === "image" ? (
+                  <img
+                    src={f.previewUrl}
+                    alt={f.name}
+                    style={{ width: 28, height: 28, objectFit: "cover", borderRadius: "3px" }}
+                  />
+                ) : (
+                  <span style={{ fontSize: "14px" }}>📄</span>
+                )}
+                <span style={{ color: "var(--ink)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {f.name}
+                </span>
+                <span style={{ color: "var(--ink-muted)", fontSize: "10px" }}>
+                  {Math.round(f.sizeKB * 10) / 10}KB
+                </span>
+                <button
+                  onClick={() => handleRemoveFile(i)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-muted)", fontSize: "12px", padding: "0 0 0 2px", lineHeight: 1 }}
+                  title="削除"
+                >✕</button>
+              </div>
+            ))}
+            {isCompressing && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: "5px",
+                padding: "3px 10px", borderRadius: "6px",
+                border: "1px dashed var(--border)", background: "#fafafa",
+                fontSize: "11px", color: "var(--ink-muted)", fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                ⏳ 圧縮中…
+              </div>
             )}
           </div>
+
+          {/* テキストファイルのコンテンツプレビュー（最初の1件のみ） */}
+          {firstTextFile && (
+            <div style={{ border: "1px solid var(--border)", borderRadius: "8px", background: "#fafafa", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: "#f5f5f5", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)" }}>
+                  {firstTextFile.name} · {totalLines}行
+                </span>
+              </div>
+              <div style={{ padding: "8px 10px" }}>
+                <pre style={{ margin: 0, fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                  {isPreviewExpanded ? firstTextFile.content : previewLines.join("\n")}
+                </pre>
+                {hasMoreLines && (
+                  <button
+                    onClick={() => setIsPreviewExpanded((v) => !v)}
+                    style={{ marginTop: "4px", background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", padding: 0 }}
+                  >
+                    {isPreviewExpanded ? "▲ 折りたたむ" : `▼ さらに ${totalLines - PREVIEW_LINES} 行を表示`}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -467,7 +587,7 @@ export default function ChatInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled || isLoading}
-          placeholder={attachedFile ? "ファイルについて質問… (Enter で送信)" : "思考を入力… (Enter で送信 / Shift+Enter で改行)"}
+          placeholder={hasAnyFile ? "ファイルについて質問… (Enter で送信)" : "思考を入力… (Enter で送信 / Shift+Enter で改行)"}
           rows={3}
           style={{
             width: "100%",
@@ -488,7 +608,7 @@ export default function ChatInput({
         {/* 送信ボタン（右下） */}
         <button
           onClick={handleSubmit}
-          disabled={isLoading || (!value.trim() && !attachedFile) || disabled}
+          disabled={isLoading || isCompressing || (!value.trim() && attachedFiles.length === 0) || disabled}
           style={{
             position: "absolute",
             right: "10px",
@@ -497,9 +617,9 @@ export default function ChatInput({
             height: "32px",
             borderRadius: "7px",
             border: "none",
-            background: isLoading || (!value.trim() && !attachedFile) ? "var(--ink-faint)" : "var(--accent)",
+            background: isLoading || isCompressing || (!value.trim() && attachedFiles.length === 0) ? "var(--ink-faint)" : "var(--accent)",
             color: "white",
-            cursor: isLoading || (!value.trim() && !attachedFile) ? "default" : "pointer",
+            cursor: isLoading || isCompressing || (!value.trim() && attachedFiles.length === 0) ? "default" : "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -557,24 +677,25 @@ export default function ChatInput({
               padding: "4px 12px",
               borderRadius: "20px",
               border: "1px solid",
-              borderColor: attachedFile ? "var(--accent)" : "var(--border)",
-              background: attachedFile ? "rgba(196,98,45,0.08)" : "transparent",
-              color: attachedFile ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+              borderColor: hasAnyFile ? "var(--accent)" : "var(--border)",
+              background: hasAnyFile ? "rgba(196,98,45,0.08)" : "transparent",
+              color: hasAnyFile ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
               fontSize: "11px",
               fontFamily: "'JetBrains Mono', monospace",
               cursor: isLoading || disabled ? "default" : "pointer",
               transition: "all 0.15s",
               letterSpacing: "0.03em",
             }}
-            title="CSV / TXT ファイルを添付"
+            title="CSV / TXT / MD / 画像（PNG・JPEG・GIF・WebP）を添付"
           >
-            📎 {attachedFile ? "添付中" : "ファイル"}
+            📎 {hasAnyFile ? `添付中 (${attachedFiles.length})` : "ファイル"}
           </button>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.txt,.md"
+            accept=".csv,.txt,.md,image/png,image/jpeg,image/gif,image/webp"
+            multiple
             onChange={handleFileChange}
             style={{ display: "none" }}
           />

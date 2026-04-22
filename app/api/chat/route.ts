@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from "uuid";
 export const dynamic = 'force-dynamic';
 
 type ChatMessage = { role: string; content: string; provider?: string };
+type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 
 // モデルID型（ChatInput.tsxのMODEL_CONFIGと対応）
 type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
@@ -23,7 +25,8 @@ async function callClaude(
   apiKey: string,
   messages: ChatMessage[],
   systemPrompt?: string,
-  modelId: ClaudeModel = "claude-sonnet-4-5"
+  modelId: ClaudeModel = "claude-sonnet-4-5",
+  imageBlocks: ImageBlock[] = []
 ): Promise<string> {
 
   // ① system をブロック形式に変更してキャッシュ付与
@@ -32,8 +35,19 @@ async function callClaude(
     : undefined;
 
   // ② messages に cache_control を付与（最後から2番目のみ）
+  // 最後のユーザーメッセージには画像ブロックを先頭に付与
   const messagesForAPI = messages.map((m, index) => {
+    const isLast = index === messages.length - 1;
     const isSecondToLast = index === messages.length - 2;
+
+    // 最後のユーザーメッセージ＋画像あり → ブロック形式
+    if (isLast && m.role === "user" && imageBlocks.length > 0) {
+      const contentBlocks: ContentBlock[] = [
+        ...imageBlocks,
+        { type: "text" as const, text: m.content },
+      ];
+      return { role: m.role, content: contentBlocks };
+    }
     if (isSecondToLast) {
       return {
         role: m.role,
@@ -76,11 +90,24 @@ async function callClaude(
 
   return data.content?.[0]?.text ?? "（応答の取得に失敗しました）";
 }
-async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: GeminiModel = "gemini-2.5-flash"): Promise<string> {
-  const contents = messages.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
+async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: GeminiModel = "gemini-2.5-flash", imageBlocks: ImageBlock[] = []): Promise<string> {
+  const contents = messages.map((m, index) => {
+    const isLast = index === messages.length - 1;
+    // 最後のユーザーメッセージに画像を付与
+    if (isLast && m.role === "user" && imageBlocks.length > 0) {
+      return {
+        role: "user",
+        parts: [
+          ...imageBlocks.map(b => ({ inlineData: { data: b.source.data, mimeType: b.source.media_type } })),
+          { text: m.content },
+        ],
+      };
+    }
+    return {
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    };
+  });
   const body: Record<string, unknown> = { contents };
   if (systemPrompt && systemPrompt.trim()) body.systemInstruction = { parts: [{ text: systemPrompt.trim() }] };
   const response = await fetch(
@@ -114,8 +141,17 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = user.id;
 
-  const { threadId, messages, userContent, provider, modelId, isRegenerate, isMemo, systemPrompt, isTemporary } =
+  const { threadId, messages, userContent, provider, modelId, isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages } =
     await req.json();
+  // 0. 画像ブロックを構築（Claude/Gemini向け）
+  // attachedImagesはフロントからbase64+mediaTypeで届く。OpenAIは非対応のため無視。
+  const imageBlocksForApi: ImageBlock[] = (attachedImages ?? []).map(
+    (img: { base64: string; mediaType: string }) => ({
+      type: "image" as const,
+      source: { type: "base64" as const, media_type: img.mediaType, data: img.base64 },
+    })
+  );
+
   // 0. フォルダのシステムプロンプトを解決
   // スレッド個別のsystemPromptがない場合のみフォルダ設定を取得
   let resolvedSystemPrompt: string | undefined = systemPrompt || undefined
@@ -195,11 +231,11 @@ export async function POST(req: NextRequest) {
   try {
     if (provider === "gemini") {
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
-      assistantContent = await callGemini(geminiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as GeminiModel);
+      assistantContent = await callGemini(geminiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as GeminiModel, imageBlocksForApi);
       usedProvider = "gemini";
     } else if (provider === "claude") {
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      assistantContent = await callClaude(anthropicKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as ClaudeModel);
+      assistantContent = await callClaude(anthropicKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as ClaudeModel, imageBlocksForApi);
       usedProvider = "claude";
     } else if (provider === "openai") {
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");

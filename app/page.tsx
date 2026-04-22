@@ -6,7 +6,7 @@ import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
 import { supabase } from "@/lib/supabase/client";
-import { loadModel, type ModelId } from "@/components/ChatInput";
+import { loadModel, type ModelId, type AttachedImageFile } from "@/components/ChatInput";
 import type { User } from "@supabase/supabase-js";
 
 export default function Home() {
@@ -296,7 +296,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
   }, [activeThreadId, isTemporary, temporaryMessages, threads, fetchThreads, getApiKeyHeaders, provider]);
 
   // ── 通常送信 ──────────────────────────────────────────────
-  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId) => {
+  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: AttachedImageFile[]) => {
     if (!userContent.trim() || !activeThreadId || isLoading) return;
     setInputValue("");
     setIsLoading(true);
@@ -331,6 +331,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
             modelId: resolvedModelId,
             systemPrompt: activeThread?.system_prompt ?? "",
             isTemporary: true,
+            attachedImages: attachedImages ?? [],
           }),
         });
         const { assistantMessage } = await res.json();
@@ -362,6 +363,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
           provider,
           modelId: resolvedModelId,
           systemPrompt: activeThread?.system_prompt ?? "",
+          attachedImages: attachedImages ?? [],
         }),
       });
       const { userMessage, assistantMessage } = await res.json();
