@@ -257,18 +257,15 @@ export default function ChatInput({
           continue;
         }
         setIsCompressing(true);
+        // サムネイル用ObjectURLは元ファイルから即時生成（圧縮前でも表示に問題なし）
+        const previewUrl = URL.createObjectURL(file);
         try {
           const { base64, mediaType, sizeKB } = await compressImage(file);
-          // 圧縮済みbase64からサムネイル用ObjectURLを生成
-          const byteChars = atob(base64);
-          const byteArr = new Uint8Array(byteChars.length);
-          for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-          const blob = new Blob([byteArr], { type: "image/jpeg" });
-          const previewUrl = URL.createObjectURL(blob);
           const imageFile: AttachedImageFile = { kind: "image", name: file.name, base64, mediaType, previewUrl, sizeKB };
           setAttachedFiles((prev) => [...prev, imageFile]);
           currentImages++;
         } catch {
+          URL.revokeObjectURL(previewUrl);
           setFileError(`画像の圧縮に失敗しました（${file.name}）`);
         } finally {
           setIsCompressing(false);
