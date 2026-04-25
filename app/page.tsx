@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
@@ -14,7 +14,6 @@ export default function Home() {
   const [displayThreads, setDisplayThreads] = useState<Thread[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchMatchIds, setSearchMatchIds] = useState<string[]>([]);
-  // ✅ v26追加: 現在の検索ジャンプインデックス
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -27,6 +26,12 @@ export default function Home() {
   const [isTemporary, setIsTemporary] = useState(false);
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ✅ v62追加: ストリーミング関連
+  // streamingContentはChatPanelに渡してリアルタイム表示する
+  const [streamingContent, setStreamingContent] = useState<string>("");
+  // AbortControllerをrefで管理（stateにするとre-renderが多すぎる）
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── ユーザー情報の取得 ───────────────────────────────────
   useEffect(() => {
@@ -48,6 +53,17 @@ export default function Home() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [isTemporary, temporaryMessages]);
+
+  // ✅ v62追加: Escキーで生成中断
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isLoading) {
+        abortControllerRef.current?.abort();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isLoading]);
 
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -82,7 +98,6 @@ export default function Home() {
   }, []);
 
   const selectThread = useCallback(async (id: string, matchedMessageIds?: string[]) => {
-    // 一時モード中にスレッド切り替えガード
     if (isTemporary && temporaryMessages.length > 0) {
       const ok = window.confirm("保存されていない一時メッセージは消去されます。よろしいですか？");
       if (!ok) return;
@@ -91,7 +106,6 @@ export default function Home() {
     setTemporaryMessages([]);
     setActiveThreadId(id);
     setSearchMatchIds(matchedMessageIds ?? []);
-    // ✅ v26追加: スレッド切り替え時にインデックスリセット
     setSearchMatchIndex(0);
     setInputValue("");
     localStorage.setItem("lastActiveThreadId", id);
@@ -106,32 +120,29 @@ export default function Home() {
     }
   }, [isTemporary, temporaryMessages]);
 
-// ✅ 変更後
-useEffect(() => {
-  const init = async () => {
-    const latestThreads = await fetchThreads();
-    const savedId = localStorage.getItem("lastActiveThreadId");
-    if (savedId && latestThreads.some((t: Thread) => t.id === savedId)) {
-      selectThread(savedId);
-    }
-    // ↓ ここに追加
-    const url = new URL(window.location.href);
-    const forkId = url.searchParams.get("fork");
-    if (forkId) {
-      url.searchParams.delete("fork");
-      window.history.replaceState({}, "", url.toString());
-      selectThread(forkId);
-    }
-  };
-  init();
-}, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const init = async () => {
+      const latestThreads = await fetchThreads();
+      const savedId = localStorage.getItem("lastActiveThreadId");
+      if (savedId && latestThreads.some((t: Thread) => t.id === savedId)) {
+        selectThread(savedId);
+      }
+      const url = new URL(window.location.href);
+      const forkId = url.searchParams.get("fork");
+      if (forkId) {
+        url.searchParams.delete("fork");
+        window.history.replaceState({}, "", url.toString());
+        selectThread(forkId);
+      }
+    };
+    init();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 検索 ─────────────────────────────────────────────────
   const handleSearch = useCallback(async (query: string, target: "title" | "message" | "both") => {
     if (!query.trim()) {
       setIsSearching(false);
       setSearchMatchIds([]);
-      // ✅ v26追加: 検索クリア時にインデックスリセット
       setSearchMatchIndex(0);
       setDisplayThreads(threads);
       return;
@@ -146,7 +157,6 @@ useEffect(() => {
     }
   }, [threads]);
 
-  // ✅ v26追加: 検索ナビゲーション（↑↓）
   const handleMatchNavigate = useCallback((dir: "prev" | "next") => {
     setSearchMatchIndex((prev) => {
       if (searchMatchIds.length === 0) return 0;
@@ -155,22 +165,17 @@ useEffect(() => {
     });
   }, [searchMatchIds.length]);
 
-  // ✅ v26追加: searchMatchIndex が変わるたびに対象メッセージへスクロール
   useEffect(() => {
     if (searchMatchIds.length === 0) return;
     const targetId = searchMatchIds[searchMatchIndex];
     if (!targetId) return;
     const timeoutId = setTimeout(() => {
       const el = document.getElementById(`msg-${targetId}`);
-      if (el) {
-        // behavior: "auto" で即時ジャンプ（連打対応）
-        el.scrollIntoView({ behavior: "auto", block: "center" });
-      }
+      if (el) el.scrollIntoView({ behavior: "auto", block: "center" });
     }, 50);
     return () => clearTimeout(timeoutId);
   }, [searchMatchIndex, searchMatchIds]);
 
-  // ✅ v26追加: 検索クリア（ChatPanelのナビバー×ボタン用）
   const handleClearSearch = useCallback(() => {
     setSearchMatchIds([]);
     setSearchMatchIndex(0);
@@ -179,7 +184,6 @@ useEffect(() => {
   }, [threads]);
 
   const handleNewThread = useCallback(() => {
-    // 一時モード中に新規スレッドガード
     if (isTemporary && temporaryMessages.length > 0) {
       const ok = window.confirm("保存されていない一時メッセージは消去されます。よろしいですか？");
       if (!ok) return;
@@ -211,19 +215,21 @@ useEffect(() => {
     },
     [activeThreadId, fetchThreads]
   );
-const handleUpdateFolder = useCallback(async (threadId: string, folderName: string | null) => {
-  await fetch(`/api/threads/${threadId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folder_name: folderName }),
-  });
-  setThreads((prev) =>
-    prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
-  );
-  setDisplayThreads((prev) =>
-    prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
-  );
-}, []);
+
+  const handleUpdateFolder = useCallback(async (threadId: string, folderName: string | null) => {
+    await fetch(`/api/threads/${threadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_name: folderName }),
+    });
+    setThreads((prev) =>
+      prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
+    );
+    setDisplayThreads((prev) =>
+      prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
+    );
+  }, []);
+
   const handleTitleUpdate = useCallback((id: string, title: string) => {
     setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
     setDisplayThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
@@ -240,11 +246,9 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
     if (!activeThreadId) return;
 
     if (!isTemporary) {
-      // 通常 → 一時
       setIsTemporary(true);
       setTemporaryMessages([]);
     } else {
-      // 一時 → 通常（全件DB保存）
       if (temporaryMessages.length === 0) {
         setIsTemporary(false);
         return;
@@ -254,7 +258,6 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
 
       setIsSaving(true);
       try {
-        // スレッドがDBに存在しない場合は先に作成
         const existsInDB = threads.some((t) => t.id === activeThreadId);
         if (!existsInDB) {
           const firstMsg = temporaryMessages[0];
@@ -266,7 +269,6 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
           });
         }
 
-        // 全件を順番に保存
         for (const msg of temporaryMessages) {
           await fetch("/api/chat", {
             method: "POST",
@@ -295,17 +297,128 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
     }
   }, [activeThreadId, isTemporary, temporaryMessages, threads, fetchThreads, getApiKeyHeaders, provider]);
 
+  // ✅ v62追加: 中断ハンドラ（■ボタン用）
+  const handleAbort = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
+
+  // ─── ストリーミング受信ヘルパー ──────────────────────────────────────────
+  // 返り値: { userMessage, assistantMessage } or throws
+  const fetchWithStreaming = useCallback(async (
+    url: string,
+    headers: Record<string, string>,
+    body: string,
+    onChunk: (text: string) => void,
+  ): Promise<{
+    userMessage: Message;
+    assistantMessage: Message;
+  }> => {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: controller.signal,
+    });
+
+    // Content-Typeがapplication/json → エラーまたはメモ応答（非ストリーミング）
+    const contentType = res.headers.get("Content-Type") ?? "";
+    if (contentType.includes("application/json")) {
+      return await res.json();
+    }
+
+    // ストリーミング受信
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let userMessage: Message | null = null;
+    let assistantMessageId = "";
+    let assistantThreadId = "";
+    let assistantProvider = "";
+    let assistantCreatedAt = "";
+    let accumulatedText = "";
+    let aborted = false;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+
+            if (parsed.type === "meta") {
+              // 最初のchunk: メタデータ受信
+              userMessage = parsed.userMessage as Message;
+              assistantMessageId = parsed.assistantMessageId;
+              assistantThreadId = parsed.threadId;
+              assistantProvider = parsed.provider;
+              assistantCreatedAt = parsed.createdAt;
+            } else if (parsed.type === "chunk") {
+              accumulatedText += parsed.text;
+              onChunk(accumulatedText); // リアルタイム表示更新
+            } else if (parsed.type === "done") {
+              aborted = parsed.aborted;
+            }
+          } catch {
+            // JSON parseエラーは無視
+          }
+        }
+      }
+    } catch (err) {
+      // AbortError: 中断（正常）
+      if ((err as Error).name === "AbortError") {
+        aborted = true;
+      } else {
+        throw err;
+      }
+    }
+
+    const finalContent = aborted
+      ? accumulatedText + "\n\n[生成中断]"
+      : accumulatedText;
+
+    const assistantMessage: Message = {
+      id: assistantMessageId || uuidv4(),
+      thread_id: assistantThreadId || "",
+      role: "assistant",
+      content: finalContent,
+      provider: assistantProvider || "unknown",
+      created_at: assistantCreatedAt || new Date().toISOString(),
+    };
+
+    return {
+      userMessage: userMessage ?? {
+        id: uuidv4(),
+        thread_id: assistantThreadId || "",
+        role: "user",
+        content: "",
+        provider: "user",
+        created_at: new Date().toISOString(),
+      },
+      assistantMessage,
+    };
+  }, []);
+
   // ── 通常送信 ──────────────────────────────────────────────
   const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: AttachedImageFile[]) => {
     if (!userContent.trim() || !activeThreadId || isLoading) return;
     setInputValue("");
     setIsLoading(true);
+    setStreamingContent(""); // ストリーミング表示をリセット
 
-    // modelIdが未指定の場合はLocalStorageから読み込む
     const resolvedModelId: ModelId = modelId ?? loadModel(provider);
 
     if (isTemporary) {
-      // 一時モード: メモリのみ（DBに保存しない）
+      // 一時モード: メモリのみ（ストリーミングなし・既存動作を維持）
       const userMsg: Message = {
         id: uuidv4(),
         thread_id: activeThreadId,
@@ -324,7 +437,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
           method: "POST",
           headers: getApiKeyHeaders(),
           body: JSON.stringify({
-            threadId: null, // DB保存しない
+            threadId: null,
             messages: allMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
             userContent,
             provider,
@@ -347,16 +460,17 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
         console.error("一時送信エラー:", err);
       } finally {
         setIsLoading(false);
+        setStreamingContent("");
       }
       return;
     }
 
-    // 通常モード: DB保存あり
+    // 通常モード: ストリーミング
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: getApiKeyHeaders(),
-        body: JSON.stringify({
+      const { userMessage, assistantMessage } = await fetchWithStreaming(
+        "/api/chat",
+        getApiKeyHeaders(),
+        JSON.stringify({
           threadId: activeThreadId,
           messages: messages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent,
@@ -365,16 +479,20 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
           systemPrompt: activeThread?.system_prompt ?? "",
           attachedImages: attachedImages ?? [],
         }),
-      });
-      const { userMessage, assistantMessage } = await res.json();
+        (accumulated) => {
+          setStreamingContent(accumulated);
+        },
+      );
+
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
       await fetchThreads();
     } catch (err) {
       console.error("送信エラー:", err);
     } finally {
       setIsLoading(false);
+      setStreamingContent("");
     }
-  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders]);
+  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming]);
 
   // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {
@@ -392,13 +510,11 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
     };
 
     if (isTemporary) {
-      // 一時モード: メモリのみ
       setTemporaryMessages((prev) => [...prev, optimisticMemo]);
       setMessages((prev) => [...prev, optimisticMemo]);
       return;
     }
 
-    // 通常モード: DB保存あり
     setMessages((prev) => [...prev, optimisticMemo]);
     try {
       const res = await fetch("/api/chat", {
@@ -426,6 +542,7 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
   const handleRegenerate = useCallback(async (targetProvider: "claude" | "gemini" | "openai") => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
+    setStreamingContent("");
     try {
       const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
       const latestMessages: Message[] = await res.json();
@@ -447,10 +564,10 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
       const newMessages = latestMessages.filter((m) => m.id !== lastAssistant.id);
       setMessages(newMessages);
 
-      const chatRes = await fetch("/api/chat", {
-        method: "POST",
-        headers: getApiKeyHeaders(),
-        body: JSON.stringify({
+      const { assistantMessage } = await fetchWithStreaming(
+        "/api/chat",
+        getApiKeyHeaders(),
+        JSON.stringify({
           threadId: activeThreadId,
           messages: newMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent: lastUser.content,
@@ -458,15 +575,19 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
           isRegenerate: true,
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
-      });
-      const { assistantMessage } = await chatRes.json();
+        (accumulated) => {
+          setStreamingContent(accumulated);
+        },
+      );
+
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
       console.error("再生成失敗:", err);
     } finally {
       setIsLoading(false);
+      setStreamingContent("");
     }
-  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders]);
+  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming]);
 
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
@@ -496,30 +617,29 @@ const handleUpdateFolder = useCallback(async (threadId: string, folderName: stri
   // ── セルフコピペ ──────────────────────────────────────────
   const handleCopyThread = useCallback(async (threadId: string) => {
     try {
-      const res = await fetch(`/api/threads/${threadId}/copy`, { method: 'POST' })
-      if (!res.ok) throw new Error('コピー失敗')
-      const { thread: newThread } = await res.json()
-      await fetchThreads()
-      selectThread(newThread.id)
+      const res = await fetch(`/api/threads/${threadId}/copy`, { method: 'POST' });
+      if (!res.ok) throw new Error('コピー失敗');
+      const { thread: newThread } = await res.json();
+      await fetchThreads();
+      selectThread(newThread.id);
     } catch (err) {
-      console.error('コピー失敗:', err)
-      alert('コピーに失敗しました')
+      console.error('コピー失敗:', err);
+      alert('コピーに失敗しました');
     }
-  }, [fetchThreads, selectThread])
+  }, [fetchThreads, selectThread]);
 
   // ── メッセージ更新（is_hidden / content マスク編集）──────────
-const handleUpdateMessage = useCallback(async (messageId: string, updates: { content?: string; is_hidden?: boolean }) => {
-  const res = await fetch(`/api/messages/${messageId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(updates),
-  });
-  if (!res.ok) throw new Error("更新失敗");
-  // フロント側も即時反映
-  setMessages((prev) =>
-    prev.map((m) => m.id === messageId ? { ...m, ...updates } : m)
-  );
-}, []);
+  const handleUpdateMessage = useCallback(async (messageId: string, updates: { content?: string; is_hidden?: boolean }) => {
+    const res = await fetch(`/api/messages/${messageId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error("更新失敗");
+    setMessages((prev) =>
+      prev.map((m) => m.id === messageId ? { ...m, ...updates } : m)
+    );
+  }, []);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -567,7 +687,10 @@ const handleUpdateMessage = useCallback(async (messageId: string, updates: { con
         searchMatchIndex={searchMatchIndex}
         onMatchNavigate={handleMatchNavigate}
         onClearSearch={handleClearSearch}
-        onUpdateMessage={handleUpdateMessage}  // ← 追加
+        onUpdateMessage={handleUpdateMessage}
+        // ✅ v62追加
+        streamingContent={streamingContent}
+        onAbort={handleAbort}
       />
     </div>
   );

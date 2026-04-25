@@ -30,7 +30,9 @@ interface ChatPanelProps {
   searchMatchIndex?: number;
   onMatchNavigate?: (dir: "prev" | "next") => void;
   onClearSearch?: () => void;
-  onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;  // ← 追加
+  onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
+  streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
+  onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
 }
 
 export default function ChatPanel({
@@ -53,7 +55,9 @@ export default function ChatPanel({
   searchMatchIndex = 0,
   onMatchNavigate,
   onClearSearch,
-  onUpdateMessage,  // ← 追加
+  onUpdateMessage,
+  streamingContent = "",  // ✅ v62追加
+  onAbort,               // ✅ v62追加
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1139,8 +1143,81 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
             />
           </div>
         ))}
-        {isLoading && <ThinkingBubble />}
+        {isLoading && !streamingContent && <ThinkingBubble />}
+        {isLoading && streamingContent && (
+          // ストリーミング中: プレーンテキスト表示（Gemini指摘②: Markdown不完全チャンクによるUI崩れを防ぐ）
+          <div style={{
+            padding: "16px 0",
+            borderBottom: "1px solid var(--border)",
+          }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "8px",
+            }}>
+              <div style={{
+                width: "6px", height: "6px", borderRadius: "50%",
+                background: "var(--accent)",
+                animation: "pulse 1s infinite",
+              }} />
+              <span style={{
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                color: "var(--ink-muted)",
+                letterSpacing: "0.05em",
+              }}>生成中…</span>
+            </div>
+            <div style={{
+              fontSize: "14px",
+              lineHeight: 1.75,
+              color: "var(--ink)",
+              whiteSpace: "pre-wrap",
+              fontFamily: "'DM Sans', sans-serif",
+            }}>
+              {streamingContent}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ✅ v62追加: ■停止ボタン（生成中のみ表示） */}
+      {isLoading && onAbort && (
+        <div style={{ padding: "0 28px 8px", display: "flex", justifyContent: "center" }}>
+          <button
+            onClick={onAbort}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 20px",
+              borderRadius: "8px",
+              border: "1.5px solid #e53e3e",
+              background: "white",
+              color: "#e53e3e",
+              fontSize: "12px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "white";
+            }}
+          >
+            <span style={{
+              display: "inline-block",
+              width: "10px", height: "10px",
+              background: "#e53e3e",
+              borderRadius: "2px",
+              flexShrink: 0,
+            }} />
+            生成を中断 <span style={{ opacity: 0.5, fontSize: "10px" }}>(Esc)</span>
+          </button>
+        </div>
+      )}
 
       {/* 下書き保存ボタン */}
       {thread && inputValue.trim() && (
