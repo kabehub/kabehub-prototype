@@ -391,7 +391,7 @@ export default function Home() {
       thread_id: assistantThreadId || "",
       role: "assistant",
       content: finalContent,
-      provider: assistantProvider || "unknown",
+      provider: (assistantProvider || "unknown") as "user" | "claude" | "gemini" | "openai" | "memo" | "unknown",
       created_at: assistantCreatedAt || new Date().toISOString(),
     };
 
