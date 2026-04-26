@@ -290,14 +290,16 @@ async function saveAssistantMessage(
   provider: string,
   messageId: string,
 ): Promise<boolean> {
-  const { error } = await supabase.from("messages").insert({
+  // ✅ v64修正: upsertで重複INSERT（duplicate key）を防ぐ
+  // 同じIDで2回保存が走った場合は既存レコードを上書き
+  const { error } = await supabase.from("messages").upsert({
     id: messageId,
     thread_id: threadId,
     role: "assistant",
     content,
     provider,
     user_id: userId,
-  });
+  }, { onConflict: "id" });
   if (error) {
     console.error("[saveAssistantMessage] DB保存失敗:", error);
     return false;
@@ -539,7 +541,7 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
             "apikey": serviceKey,
             "Authorization": `Bearer ${serviceKey}`,
-            "Prefer": "return=minimal",
+            "Prefer": "return=minimal,resolution=merge-duplicates",
           },
           body: JSON.stringify({
             id: assistantMessageId,
