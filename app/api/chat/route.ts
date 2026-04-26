@@ -281,6 +281,7 @@ function streamOpenAI(
 }
 
 // ─── DB保存ヘルパー（中断時でも確実に保存） ──────────────────────────────────
+// ✅ v64修正: 保存成功/失敗をbooleanで返す（dbSavedフラグの信頼性確保）
 async function saveAssistantMessage(
   supabase: ReturnType<typeof createRouteHandlerSupabaseClient>,
   threadId: string,
@@ -288,7 +289,7 @@ async function saveAssistantMessage(
   content: string,
   provider: string,
   messageId: string,
-) {
+): Promise<boolean> {
   const { error } = await supabase.from("messages").insert({
     id: messageId,
     thread_id: threadId,
@@ -297,7 +298,11 @@ async function saveAssistantMessage(
     provider,
     user_id: userId,
   });
-  if (error) console.error("[saveAssistantMessage] DB保存失敗:", error);
+  if (error) {
+    console.error("[saveAssistantMessage] DB保存失敗:", error);
+    return false;
+  }
+  return true;
 }
 
 // ─── POST ───────────────────────────────────────────────────────────────────
@@ -463,17 +468,16 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // DB保存はストリーム完了後または中断時に確実に行う
-  const saveToDb = async (aborted: boolean) => {
-    if (isTemporary) return;
+  // ✅ v64修正: DB保存ヘルパー。保存成功=true / 失敗=false を返す
+  // dbSavedは保存「成功」時のみtrueにする（失敗を隠蔽しない）
+  const saveToDb = async (aborted: boolean, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
+    if (isTemporary) return true;
     const contentToSave = aborted
       ? accumulatedText + "\n\n[生成中断]"
       : accumulatedText;
-    await saveAssistantMessage(supabase, threadId, userId, contentToSave, usedProvider, assistantMessageId);
+    return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId);
   };
 
-  // ReadableStream with cancel hook（Gemini指摘①への対策）
-   // ReadableStream with cancel hook（Gemini指摘①への対策）
   const readable = aiStream.pipeThrough(outputStream);
 
   // ✅ v62: 二重保存防止フラグ
@@ -494,14 +498,13 @@ export async function POST(req: NextRequest) {
           if (done) break;
           controller.enqueue(encoder.encode(value));
         }
-        // 正常完了: accumulatedTextが溜まった後に保存
-        await saveToDb(false);
-        dbSaved = true;
+        // ✅ v64修正: 保存成功時のみdbSaved=true（失敗してもtrueにしない）
+        dbSaved = await saveToDb(false, supabase);
       } catch (err) {
         // 中断またはエラー
         isAborted = true;
-        await saveToDb(true);
-        dbSaved = true;
+        // ✅ v64修正: 保存成功時のみdbSaved=true
+        dbSaved = await saveToDb(true, supabase);
         // 中断通知をフロントに送る
         controller.enqueue(
           encoder.encode(JSON.stringify({ type: "done", aborted: true }) + "\n")
@@ -511,20 +514,51 @@ export async function POST(req: NextRequest) {
       }
     },
     cancel() {
-    // DB保存済みの場合は中断フラグを立てない
-    if (!dbSaved) {
-    isAborted = true;
-  }
-},
+      // DB保存済みの場合は中断フラグを立てない
+      if (!dbSaved) {
+        isAborted = true;
+      }
+    },
   });
 
-  // ✅ waitUntilはwrappedStream定義の後（フォールバック用）
-  // 正常終了時はdbSaved=trueでスキップ。cancel後のエッジケースをカバー。
+  // ✅ v64修正: waitUntilフォールバックはサービスロールキーで直接REST API呼び出し
+  // レスポンス送信後にsupabaseクライアントが失効してもフォールバック保存を確実に実行
   waitUntil((async () => {
-    await new Promise(resolve => setTimeout(resolve, 100));
-    if (!dbSaved) {
-      await saveToDb(isAborted);
-      dbSaved = true;
+    await new Promise(resolve => setTimeout(resolve, 500));
+    if (!dbSaved && !isTemporary) {
+      console.warn("[waitUntil] フォールバック保存を実行します (dbSaved=false)");
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && serviceKey) {
+        const contentToSave = isAborted
+          ? accumulatedText + "\n\n[生成中断]"
+          : accumulatedText;
+        const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": serviceKey,
+            "Authorization": `Bearer ${serviceKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            id: assistantMessageId,
+            thread_id: threadId,
+            role: "assistant",
+            content: contentToSave,
+            provider: usedProvider,
+            user_id: userId,
+          }),
+        });
+        if (res.ok) {
+          dbSaved = true;
+          console.log("[waitUntil] フォールバック保存成功");
+        } else {
+          console.error("[waitUntil] フォールバック保存失敗:", await res.text());
+        }
+      } else {
+        console.error("[waitUntil] SUPABASE_SERVICE_ROLE_KEY 未設定のためフォールバック不可");
+      }
     }
   })());
 
