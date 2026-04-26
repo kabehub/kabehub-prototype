@@ -8,6 +8,7 @@ import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
 import PublishConfirmModal from "./PublishConfirmModal";
+import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
 
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
@@ -118,6 +119,16 @@ export default function ChatPanel({
   // ★ フォルダシステムプロンプト継承表示用
   const [folderSystemPrompt, setFolderSystemPrompt] = useState<string | null>(null)
 
+  // ★ なりきりモード関連
+  const [showRoleplay, setShowRoleplay] = useState(false);
+  const [roleplayMode, setRoleplayMode] = useState(false);
+  const [rpCharName, setRpCharName] = useState("");
+  const [rpCharNameDraft, setRpCharNameDraft] = useState("");
+  const [rpCharIconUrl, setRpCharIconUrl] = useState<string | null>(null);
+  const [rpIconSaving, setRpIconSaving] = useState(false);
+  const [rpSaving, setRpSaving] = useState(false);
+  const rpIconInputRef = useRef<HTMLInputElement>(null);
+  
   useEffect(() => {
     if (!thread?.folder_name) {
       setFolderSystemPrompt(null)
@@ -209,6 +220,11 @@ export default function ChatPanel({
     setNewNoteContent("");
     setEditingNoteId(null);
     setSystemPromptDraft(thread?.system_prompt ?? "");
+    setRoleplayMode(thread?.roleplay_mode ?? false);
+    setRpCharName(thread?.rp_char_name ?? "");
+    setRpCharNameDraft(thread?.rp_char_name ?? "");
+    setRpCharIconUrl(thread?.rp_char_icon_url ?? null);
+    setShowRoleplay(false);
     // タグリセット
     setTags([]);
     setShowTagInput(false);
@@ -311,6 +327,10 @@ export default function ChatPanel({
 
   // ★ 公開設定を保存
   const handleSaveShare = async (newPublic: boolean, newHideMemos: boolean, newAllowPromptFork: boolean, newGenre?: string | null) => {
+    if (newPublic && thread?.roleplay_mode) {
+      alert("なりきりモードのスレッドは公開できません。\nなりきりモードをOFFにしてから公開設定を行ってください。");
+      return;
+    }
     if (!thread) return;
     setShareSaving(true);
     try {
@@ -374,6 +394,103 @@ export default function ChatPanel({
     setSystemPromptSaving(false);
   }
 };
+
+  const handleOpenRoleplay = () => {
+  setShowRoleplay(true);
+  setShowNotes(false);
+  setShowDrafts(false);
+  setShowSystemPrompt(false);
+  setShowShare(false);
+  setShowApiKeys(false);
+  setRpCharNameDraft(rpCharName);
+};
+
+// なりきりモード設定を保存
+const handleSaveRoleplay = async (
+  newMode: boolean,
+  newCharName: string,
+  newIconUrl: string | null
+) => {
+  if (!thread) return;
+  setRpSaving(true);
+  try {
+    await fetch(`/api/threads/${thread.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roleplay_mode: newMode,
+        rp_char_name: newCharName,
+        rp_char_icon_url: newIconUrl,
+        title: thread.title || "無題",
+      }),
+    });
+    setRoleplayMode(newMode);
+    setRpCharName(newCharName);
+    setRpCharIconUrl(newIconUrl);
+    thread.roleplay_mode = newMode;
+    thread.rp_char_name = newCharName;
+    thread.rp_char_icon_url = newIconUrl;
+  } catch (err) {
+    console.error("なりきりモード保存失敗:", err);
+  } finally {
+    setRpSaving(false);
+  }
+};
+
+// アイコン画像の圧縮（長辺200px・JPEG品質0.85・白背景）
+// ※ ChatInput.tsx の compressImage と同じロジック・アイコン用に強めに圧縮
+async function compressRpIcon(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 200; // アイコンは長辺200pxまで
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(img.src); reject(new Error("画像読み込み失敗")); };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+const handleRpIconChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    alert("画像ファイルを選択してください");
+    return;
+  }
+  setRpIconSaving(true);
+  try {
+    const dataUrl = await compressRpIcon(file);
+    setRpCharIconUrl(dataUrl);
+  } catch {
+    alert("画像の読み込みに失敗しました");
+  } finally {
+    setRpIconSaving(false);
+    if (rpIconInputRef.current) rpIconInputRef.current.value = "";
+  }
+};
+
+// なりきりモードON時にシステムプロンプトが空ならテンプレートを自動挿入
+const handleToggleRoleplayMode = (next: boolean) => {
+  setRoleplayMode(next);
+  if (next && !(thread?.system_prompt?.trim())) {
+    const charNameForTemplate = rpCharNameDraft.trim() || "キャラ名";
+    const template = `あなたは「${charNameForTemplate}」として振る舞ってください。以下の口調や設定を厳密に守り、AIや言語モデルとしてのメタ発言はしないでください。\n\n【キャラクター設定】\n（ここに性格・口調・背景などを記入してください）`;
+    setSystemPromptDraft(template);
+    setShowSystemPrompt(true);
+    setShowRoleplay(false);
+  }
+};
+
 
   // ★ タグ追加
   const handleAddTag = async () => {
@@ -620,6 +737,7 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
                           { label: "↓ CSV",               action: () => { if (messages.length > 0) setExportFormat("csv"); } },
                           { label: isTemporary ? "⚡ 一時モード中 ✓" : "⚡ 一時モード", action: () => onSwitchTemporary(), active: isTemporary },
                           { label: `📋 下書き${drafts.length > 0 ? ` (${drafts.length})` : ""}`, action: () => handleOpenDrafts() },
+                          { label: `🎭 なりきりモード${roleplayMode ? " ✓" : ""}`, action: () => handleOpenRoleplay(), active: roleplayMode },
                         ].map((item) => (
                           <button
                             key={item.label}
@@ -1026,6 +1144,214 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
         </div>
       )}
 
+      {/* ★ なりきりモードドロワー（公開設定ドロワーとは独立した別ブロック） */}
+      {showRoleplay && thread && (
+      <div style={{
+        borderBottom: "1px solid var(--border)",
+        padding: "16px 28px",
+        background: "#fdf4ff",
+        borderTop: "1px solid #e9d5ff",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: "14px", fontWeight: 600, color: "#6b21a8" }}>
+            🎭 なりきりモード
+          </div>
+          <button
+            onClick={() => setShowRoleplay(false)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-muted)", fontSize: "16px", padding: "0 4px" }}
+          >×</button>
+        </div>
+
+        {/* ON/OFFトグル */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+          <button
+            onClick={() => handleToggleRoleplayMode(!roleplayMode)}
+            style={{
+              width: "40px", height: "22px",
+              borderRadius: "11px",
+              border: "none",
+              background: roleplayMode ? "#9333ea" : "var(--border)",
+              cursor: "pointer",
+              position: "relative",
+              transition: "background 0.2s",
+              flexShrink: 0,
+            }}
+          >
+            <span style={{
+              position: "absolute",
+              top: "3px",
+              left: roleplayMode ? "21px" : "3px",
+              width: "16px", height: "16px",
+              borderRadius: "50%",
+              background: "white",
+              transition: "left 0.2s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            }} />
+          </button>
+          <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
+            {roleplayMode ? "ON（なりきりモード有効）" : "OFF"}
+          </span>
+        </div>
+
+        {/* なりきりモードがONの場合のみキャラ設定を表示 */}
+        {roleplayMode && (
+          <>
+            {/* アイコン設定 */}
+            <div style={{ marginBottom: "14px" }}>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "8px", letterSpacing: "0.05em" }}>
+                AIキャラのアイコン
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                {/* アイコンプレビュー */}
+                <div style={{
+                  width: "56px", height: "56px",
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  border: "2px solid #d8b4fe",
+                  background: "#f5f3ff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "26px", flexShrink: 0, userSelect: "none",
+                }}>
+                  {rpCharIconUrl ? (
+                    <img src={rpCharIconUrl} alt="icon" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : "🤖"}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <button
+                    onClick={() => rpIconInputRef.current?.click()}
+                    disabled={rpIconSaving}
+                    style={{
+                      padding: "5px 14px",
+                      borderRadius: "6px",
+                      border: "1px solid #d8b4fe",
+                      background: "white",
+                      color: "#7c3aed",
+                      fontSize: "11px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: rpIconSaving ? "default" : "pointer",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {rpIconSaving ? "⏳ 処理中…" : "📁 画像を選択"}
+                  </button>
+                  {rpCharIconUrl && (
+                    <button
+                      onClick={() => setRpCharIconUrl(null)}
+                      style={{
+                        padding: "5px 14px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        background: "white",
+                        color: "var(--ink-muted)",
+                        fontSize: "11px",
+                        fontFamily: "'JetBrains Mono', monospace",
+                        cursor: "pointer",
+                      }}
+                    >
+                      🗑️ 削除
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={rpIconInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  onChange={handleRpIconChange}
+                  style={{ display: "none" }}
+                />
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginTop: "6px", fontFamily: "'JetBrains Mono', monospace" }}>
+                PNG / JPEG / GIF / WebP · 自動で長辺200pxに圧縮
+              </div>
+            </div>
+
+            {/* キャラ名設定 */}
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "6px", letterSpacing: "0.05em" }}>
+                AIキャラの名前
+              </div>
+              <input
+                value={rpCharNameDraft}
+                onChange={(e) => setRpCharNameDraft(e.target.value.slice(0, 30))}
+                placeholder="例: 魔女アリス、探偵ルシアン…"
+                maxLength={30}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  border: "1px solid #d8b4fe",
+                  borderRadius: "7px",
+                  fontSize: "13px",
+                  fontFamily: "'DM Sans', sans-serif",
+                  color: "var(--ink)",
+                  background: "white",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#9333ea"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#d8b4fe"; }}
+              />
+              <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginTop: "4px", fontFamily: "'JetBrains Mono', monospace" }}>
+                {rpCharNameDraft.length}/30 · You（あなた側）の名前は変更できません
+              </div>
+            </div>
+
+            {/* システムプロンプトへの誘導 */}
+            <div style={{
+              padding: "10px 12px",
+              borderRadius: "8px",
+              background: "#f3e8ff",
+              border: "1px solid #e9d5ff",
+              fontSize: "12px",
+              color: "#6b21a8",
+              fontFamily: "'DM Sans', sans-serif",
+              lineHeight: 1.6,
+              marginBottom: "16px",
+            }}>
+              💡 キャラの人格・口調は <strong>「🤖 プロンプト」</strong> から設定できます。
+              なりきりモードONにすると空のシステムプロンプトにテンプレートが自動挿入されます。
+            </div>
+
+            {/* 注意事項 */}
+            <div style={{
+              padding: "8px 12px",
+              borderRadius: "6px",
+              background: "#fef9c3",
+              border: "1px solid #fde68a",
+              fontSize: "11px",
+              color: "#92400e",
+              fontFamily: "'JetBrains Mono', monospace",
+              lineHeight: 1.6,
+              marginBottom: "16px",
+            }}>
+              ⚠️ このスレッドは公開できません（なりきりモード専用）
+            </div>
+          </>
+        )}
+
+        {/* 保存ボタン */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={() => handleSaveRoleplay(roleplayMode, rpCharNameDraft.trim(), rpCharIconUrl).then(() => setShowRoleplay(false))}
+            disabled={rpSaving}
+            style={{
+              padding: "7px 20px",
+              borderRadius: "7px",
+              border: "none",
+              background: rpSaving ? "var(--border)" : "#9333ea",
+              color: "white",
+              fontSize: "12px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: rpSaving ? "default" : "pointer",
+              transition: "all 0.15s",
+            }}
+          >
+            {rpSaving ? "保存中…" : "保存"}
+          </button>
+        </div>
+      </div>
+      )}
+
+
       {/* スレッドメモドロワー */}
       {showNotes && thread && (
         <div style={{ borderBottom: "1px solid var(--border)", background: "#fafaf7", padding: "16px 28px", maxHeight: "320px", overflowY: "auto" }}>
@@ -1125,60 +1451,74 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
           </div>
         )}
         {messages.map((msg, i) => (
-          <div key={msg.id} id={`msg-${msg.id}`}>
-            <MessageBubble
-              message={msg}
-              isLast={i === lastAssistantIndex}
-              isLoading={isLoading}
-              provider={provider}
-              onRegenerate={onRegenerate}
-              onTrimFrom={onTrimFrom}
-              messageNotes={messageNotes}
-              onAddMessageNote={handleAddMessageNote}
-              onDeleteMessageNote={handleDeleteMessageNote}
-              isHighlighted={searchMatchIds.includes(msg.id)}
-              isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
-              activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
-              onUpdateMessage={onUpdateMessage}  // ← 追加
-            />
-          </div>
-        ))}
-        {isLoading && !streamingContent && <ThinkingBubble />}
-        {isLoading && streamingContent && (
-          // ストリーミング中: プレーンテキスト表示（Gemini指摘②: Markdown不完全チャンクによるUI崩れを防ぐ）
-          <div style={{
-            padding: "16px 0",
-            borderBottom: "1px solid var(--border)",
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              marginBottom: "8px",
-            }}>
-              <div style={{
-                width: "6px", height: "6px", borderRadius: "50%",
-                background: "var(--accent)",
-                animation: "pulse 1s infinite",
-              }} />
-              <span style={{
-                fontSize: "11px",
-                fontFamily: "'JetBrains Mono', monospace",
-                color: "var(--ink-muted)",
-                letterSpacing: "0.05em",
-              }}>生成中…</span>
-            </div>
-            <div style={{
-              fontSize: "14px",
-              lineHeight: 1.75,
-              color: "var(--ink)",
-              whiteSpace: "pre-wrap",
-              fontFamily: "'DM Sans', sans-serif",
-            }}>
-              {streamingContent}
-            </div>
-          </div>
-        )}
+  <div key={msg.id} id={`msg-${msg.id}`}>
+    {roleplayMode && msg.role === "assistant" ? (
+      <RoleplayBubble
+        message={msg}
+        charName={rpCharName || "AI"}
+        charIconUrl={rpCharIconUrl}
+        isLast={i === lastAssistantIndex}
+        isLoading={isLoading}
+        provider={provider}
+        onRegenerate={onRegenerate}
+        onTrimFrom={onTrimFrom}
+        messageNotes={messageNotes}
+        onAddMessageNote={handleAddMessageNote}
+        onDeleteMessageNote={handleDeleteMessageNote}
+        isHighlighted={searchMatchIds.includes(msg.id)}
+        isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
+        activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
+        onUpdateMessage={onUpdateMessage}
+      />
+    ) : (
+      <MessageBubble
+        message={msg}
+        isLast={i === lastAssistantIndex}
+        isLoading={isLoading}
+        provider={provider}
+        onRegenerate={onRegenerate}
+        onTrimFrom={onTrimFrom}
+        messageNotes={messageNotes}
+        onAddMessageNote={handleAddMessageNote}
+        onDeleteMessageNote={handleDeleteMessageNote}
+        isHighlighted={searchMatchIds.includes(msg.id)}
+        isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
+        activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
+        onUpdateMessage={onUpdateMessage}
+      />
+    )}
+  </div>
+))}
+        {isLoading && !streamingContent && (
+  roleplayMode ? (
+    <RoleplayThinkingBubble charName={rpCharName || "AI"} charIconUrl={rpCharIconUrl} />
+  ) : (
+    <ThinkingBubble />
+  )
+)}
+{isLoading && streamingContent && (
+  roleplayMode ? (
+    // なりきりモード: LINEライク吹き出しでストリーミング表示
+    <RoleplayThinkingBubble
+      charName={rpCharName || "AI"}
+      charIconUrl={rpCharIconUrl}
+      streamingContent={streamingContent}
+    />
+  ) : (
+    // 通常モード: 既存のプレーンテキスト表示（変更なし）
+    <div style={{ padding: "16px 0", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+        <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent)", animation: "pulse 1s infinite" }} />
+        <span style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", letterSpacing: "0.05em" }}>生成中…</span>
+      </div>
+      <div style={{ fontSize: "14px", lineHeight: 1.75, color: "var(--ink)", whiteSpace: "pre-wrap", fontFamily: "'DM Sans', sans-serif" }}>
+        {streamingContent}
+      </div>
+    </div>
+  )
+)}
+
+
       </div>
 
       {/* ✅ v62追加: ■停止ボタン（生成中のみ表示） */}

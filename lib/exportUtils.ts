@@ -1,6 +1,8 @@
 // lib/exportUtils.ts
 // ⚠️ このファイルでは [[text]]→████ の変換は一切行わない。
 //    エクスポートは常に生データを出力すること（variant="share" を通さない）。
+// ✅ v63追加: なりきりモードスレッドのエクスポート時に「現実に引き戻す」注記を追加。
+//    キャラ名はエクスポート出力内では一切使用しない。
 
 import JSZip from "jszip";
 import { Message, Thread } from "@/types";
@@ -40,6 +42,33 @@ export const processCsvBlocks = (content: string, omitCsv: boolean): string => {
 
 export type ExportOptions = { omitCsv: boolean };
 
+// ✅ v63追加: なりきりモード注記ヘルパー
+const buildRoleplayNotice = (thread: Thread, format: "txt" | "md" | "csv"): string[] => {
+  if (!thread.roleplay_mode) return [];
+  const charName = thread.rp_char_name?.trim() || "（名前未設定）";
+
+  if (format === "txt") {
+    return [
+      "⚠️ このスレッドはなりきりモードで記録されました。",
+      `   AIキャラ「${charName}」の発言はすべてAI（Claude / Gemini / ChatGPT）による自動生成です。`,
+      "   エクスポートデータ内のロールラベルは実際のAIプロバイダー名に置き換えています。",
+      "",
+    ];
+  }
+  if (format === "md") {
+    return [
+      "> [!WARNING] なりきりモードで記録されたスレッド",
+      `> AIキャラ「${charName}」の発言はすべてAI（Claude / Gemini / ChatGPT）による自動生成です。`,
+      "> エクスポートデータ内のロールラベルは実際のAIプロバイダー名に置き換えています。",
+      "",
+    ];
+  }
+  // csv: ヘッダー行の直後にコメント行として追加
+  return [
+    `# NOTE: roleplay_mode=true char_name="${charName}" (AI-generated content)`,
+  ];
+};
+
 export const buildExportContent = (
   format: "txt" | "md" | "csv",
   thread: Thread,
@@ -76,8 +105,15 @@ export const buildExportContent = (
     exportTags.forEach((tag) => lines.push(`  - ${tag}`));
     lines.push(`message_count: ${messages.length}`);
     lines.push(`system_prompt: "${systemPromptValue.replace(/"/g, '\\"')}"`);
+    // ✅ v63追加: なりきりモードフラグをYAML frontmatterに記録
+    if (thread.roleplay_mode) {
+      lines.push(`roleplay_mode: true`);
+    }
     lines.push("---");
     lines.push("");
+
+    // ✅ v63追加: なりきりモード注記（frontmatterの直後）
+    buildRoleplayNotice(thread, "md").forEach((l) => lines.push(l));
 
     messages.forEach((msg) => {
       const msgContent = processCsvBlocks(msg.content, options.omitCsv);
@@ -90,6 +126,7 @@ export const buildExportContent = (
         lines.push(`> [!QUESTION] You`);
         lines.push(contentLines);
       } else {
+        // ✅ v63: なりきりモードでもキャラ名ではなくAIプロバイダー名を使う
         const aiLabel =
           msg.provider === "gemini" ? "Gemini" :
           msg.provider === "openai" ? "ChatGPT" : "Claude";
@@ -101,12 +138,15 @@ export const buildExportContent = (
 
   } else if (format === "csv") {
     lines.push("\uFEFF" + "timestamp,role,provider,content");
+    // ✅ v63追加: なりきりモード注記（CSVコメント行）
+    buildRoleplayNotice(thread, "csv").forEach((l) => lines.push(l));
     messages.forEach((msg) => {
       const timestamp = new Date(msg.created_at).toLocaleString("ja-JP");
       const rawContent = msg.content.replace(/\n/g, " ");
       const needsQuote = /[,"\n]/.test(rawContent);
       const escapedContent = rawContent.replace(/"/g, '""');
       const content = needsQuote ? `"${escapedContent}"` : escapedContent;
+      // ✅ v63: roleは "user"/"assistant" のまま（キャラ名を使わない）
       lines.push(`${timestamp},${msg.role},${msg.provider ?? "unknown"},${content}`);
     });
 
@@ -115,8 +155,11 @@ export const buildExportContent = (
     lines.push(`# ${thread.title}`);
     lines.push(`エクスポート日時: ${new Date().toLocaleString("ja-JP")}`);
     lines.push("=".repeat(40));
+    // ✅ v63追加: なりきりモード注記（タイトルブロックの直後）
+    buildRoleplayNotice(thread, "txt").forEach((l) => lines.push(l));
     lines.push("");
     messages.forEach((msg) => {
+      // ✅ v63: なりきりモードでもAIプロバイダー名を使う（キャラ名を使わない）
       const aiName =
         msg.provider === "gemini" ? "Gemini" :
         msg.provider === "openai" ? "ChatGPT" :

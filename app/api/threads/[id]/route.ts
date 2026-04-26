@@ -36,6 +36,10 @@ export async function PATCH(
   if (body.share_token !== undefined) updates.share_token = body.share_token;
   if (body.metadata !== undefined) updates.metadata = body.metadata;
   if (body.genre !== undefined) updates.genre = body.genre;
+  // ✅ v63追加: なりきりモード
+  if (body.roleplay_mode !== undefined) updates.roleplay_mode = body.roleplay_mode;
+  if (body.rp_char_name !== undefined) updates.rp_char_name = body.rp_char_name;
+  if (body.rp_char_icon_url !== undefined) updates.rp_char_icon_url = body.rp_char_icon_url;
 
   if (body.needsToken && body.is_public) {
     const { data: existing } = await supabase
@@ -49,14 +53,14 @@ export async function PATCH(
   }
 
   const { data, error } = await supabase
-  .from("threads")
-  .upsert({
-    id: params.id,
-    user_id: user.id,
-    ...updates,
-  })
-  .select()
-  .single();
+    .from("threads")
+    .upsert({
+      id: params.id,
+      user_id: user.id,
+      ...updates,
+    })
+    .select()
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
