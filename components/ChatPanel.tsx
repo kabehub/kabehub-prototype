@@ -1469,6 +1469,7 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
         isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
         activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
         onUpdateMessage={onUpdateMessage}
+        onOpenRoleplaySettings={handleOpenRoleplay} // ✅ 追加
       />
     ) : (
       <MessageBubble

@@ -22,6 +22,7 @@ interface RoleplayBubbleProps {
   messageNotes?: MessageNote[];
   onAddMessageNote?: (messageId: string, content: string) => Promise<void>;
   onDeleteMessageNote?: (noteId: string) => void;
+  onOpenRoleplaySettings?: () => void; // ✅ アイコンクリックで設定を開く
   isHighlighted?: boolean;
   isActiveMatch?: boolean;
   activeFlashKey?: number;
@@ -40,6 +41,7 @@ function RoleplayBubble({
   messageNotes = [],
   onAddMessageNote,
   onDeleteMessageNote,
+  onOpenRoleplaySettings,
   isHighlighted = false,
   isActiveMatch = false,
   activeFlashKey,
@@ -170,8 +172,10 @@ function RoleplayBubble({
         {/* ── LINEライクレイアウト: アイコン + 名前 + 吹き出し ── */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", position: "relative", zIndex: 1, width: "100%" }}>
 
-          {/* アイコン（40×40px 丸型） */}
+          {/* アイコン（40×40px 丸型）✅ クリックで設定を開く */}
           <div
+            onClick={() => onOpenRoleplaySettings?.()}
+            title="クリックしてキャラ設定を変更"
             style={{
               width: "40px",
               height: "40px",
@@ -185,6 +189,16 @@ function RoleplayBubble({
               justifyContent: "center",
               fontSize: "20px",
               userSelect: "none",
+              cursor: "pointer",
+              transition: "opacity 0.15s, transform 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.opacity = "0.75";
+              (e.currentTarget as HTMLDivElement).style.transform = "scale(1.08)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.opacity = "1";
+              (e.currentTarget as HTMLDivElement).style.transform = "scale(1)";
             }}
           >
             {charIconUrl ? (
@@ -224,7 +238,7 @@ function RoleplayBubble({
                 <div
                   onClick={() => { setShowNoteInput((v) => !v); setShowNoteList(false); }}
                   style={{
-                    borderRadius: "4px 12px 12px 12px", // 左上だけ角張らせてLINE風に
+                    borderRadius: "4px 12px 12px 12px",
                     padding: "12px 16px",
                     background: "#ffffff",
                     color: "var(--ink)",
@@ -473,6 +487,7 @@ function RoleplayBubble({
 export default memo(RoleplayBubble);
 
 // ✅ ストリーミング中に使うなりきり版ThinkingBubble
+// ※ このコンポーネントはpropsを受け取らないためアイコンクリック機能は持たない
 export function RoleplayThinkingBubble({
   charName,
   charIconUrl,
@@ -484,7 +499,7 @@ export function RoleplayThinkingBubble({
 }) {
   return (
     <div className="animate-message" style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: "20px" }}>
-      {/* アイコン */}
+      {/* アイコン（ストリーミング中はクリック不可） */}
       <div
         style={{
           width: "40px",
