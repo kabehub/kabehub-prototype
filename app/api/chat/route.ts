@@ -511,8 +511,11 @@ export async function POST(req: NextRequest) {
       }
     },
     cancel() {
-      isAborted = true;
-    },
+    // DB保存済みの場合は中断フラグを立てない
+    if (!dbSaved) {
+    isAborted = true;
+  }
+},
   });
 
   // ✅ waitUntilはwrappedStream定義の後（フォールバック用）
