@@ -476,15 +476,8 @@ export async function POST(req: NextRequest) {
    // ReadableStream with cancel hook（Gemini指摘①への対策）
   const readable = aiStream.pipeThrough(outputStream);
 
-  // ✅ v62: 二重保存防止フラグ（waitUntilより前に宣言が必要）
+  // ✅ v62: 二重保存防止フラグ
   let dbSaved = false;
-
-  // ✅ v62: waitUntil ...
-  waitUntil((async () => {
-    if (!dbSaved) {
-      await saveToDb(isAborted);
-    }
-  })());
 
   // ストリームの完了・中断を監視するラッパー
   const wrappedStream = new ReadableStream<Uint8Array>({
@@ -501,7 +494,7 @@ export async function POST(req: NextRequest) {
           if (done) break;
           controller.enqueue(encoder.encode(value));
         }
-        // 正常完了: start()内で保存（after()のフォールバックより先に完了する通常ケース）
+        // 正常完了: accumulatedTextが溜まった後に保存
         await saveToDb(false);
         dbSaved = true;
       } catch (err) {
@@ -518,11 +511,19 @@ export async function POST(req: NextRequest) {
       }
     },
     cancel() {
-      // フロントがリーダーをキャンセルした場合
-      // after()がフォールバックとして保存するため、ここではフラグだけ立てる
       isAborted = true;
     },
   });
+
+  // ✅ waitUntilはwrappedStream定義の後（フォールバック用）
+  // 正常終了時はdbSaved=trueでスキップ。cancel後のエッジケースをカバー。
+  waitUntil((async () => {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    if (!dbSaved) {
+      await saveToDb(isAborted);
+      dbSaved = true;
+    }
+  })());
 
   return new Response(wrappedStream, {
     headers: {
