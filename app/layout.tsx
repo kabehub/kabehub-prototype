@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://kabehub.com'),  // ← この1行を追加
   title: 'KabeHub',
   description: '思考のGitHub。AIとの壁打ちを保存・公開・引継ぎできるプラットフォーム。',
   openGraph: {
