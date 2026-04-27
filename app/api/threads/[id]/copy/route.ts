@@ -43,6 +43,9 @@ export async function POST(
       user_id: user.id,
       system_prompt: sourceThread.system_prompt,
       copied_from: sourceThreadId,
+      roleplay_mode: false,
+      rp_char_name: null,
+      rp_char_icon_url: null,
     })
     .select()
     .single()
