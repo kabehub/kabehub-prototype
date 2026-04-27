@@ -1451,8 +1451,29 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
           </div>
         )}
         {messages.map((msg, i) => (
-  <div key={msg.id} id={`msg-${msg.id}`}>
-    {roleplayMode && msg.role === "assistant" ? (
+  <div key={msg.id} id={`msg-${msg.id}`}
+    style={roleplayMode && msg.role === "user" ? {
+      display: "flex",
+      justifyContent: "flex-end",   // 右寄せ
+      marginBottom: "12px",
+    } : undefined}
+  >
+    {roleplayMode && msg.role === "user" ? (
+      // なりきりモード中のuserメッセージ：右寄せ吹き出し
+      <div style={{
+        maxWidth: "72%",
+        background: "#dcf8c6",       // LINEっぽい緑（好みで変更可）
+        borderRadius: "12px 4px 12px 12px",
+        padding: "10px 14px",
+        fontSize: "14px",
+        lineHeight: 1.75,
+        color: "var(--ink)",
+        fontFamily: "'DM Sans', sans-serif",
+        whiteSpace: "pre-wrap",
+      }}>
+        {msg.content}
+      </div>
+    ) : roleplayMode && msg.role === "assistant" ? (
       <RoleplayBubble
         message={msg}
         charName={rpCharName || "AI"}
@@ -1469,7 +1490,7 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
         isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
         activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
         onUpdateMessage={onUpdateMessage}
-        onOpenRoleplaySettings={handleOpenRoleplay} // ✅ 追加
+        onOpenRoleplaySettings={handleOpenRoleplay}
       />
     ) : (
       <MessageBubble
