@@ -80,7 +80,7 @@ function ReadOnlyBubble({ message }: { message: Message }) {
           boxShadow: "none",
         }}>
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#888888", marginBottom: "6px", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>YOU</div>
-          <div style={{ fontSize: "14px", color: "#111827", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{message.content}</div>
+          <MarkdownRenderer content={message.content} variant="share" />
         </div>
       </div>
     );
