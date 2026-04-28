@@ -387,13 +387,13 @@ export async function POST(req: NextRequest) {
   const resolvedModelId: ModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
 
   const messagesForApi = [
-    ...messages.map((m: ChatMessage) => ({
+  ...messages
+    .filter((m: ChatMessage) => m.provider !== "memo")  // ← メモを除外
+    .map((m: ChatMessage) => ({
       role: m.role as string,
-      content: m.provider === "memo"
-        ? `【ユーザーの思考メモ（返答不要の前提知識）】\n${m.content}`
-        : m.content,
+      content: m.content,
     })),
-    { role: "user" as string, content: userContent },
+  { role: "user" as string, content: userContent },
   ];
 
   // エラーの場合は非ストリーミングでJSON返却（既存互換）
