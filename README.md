@@ -1,5 +1,7 @@
 # KabeHub（カベハブ）
 
+🌐 [English README](README.en.md)
+
 AIとの壁打ちログを永続保存し、公開・引継ぎできるオープンプラットフォーム。
 
 [![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
