@@ -95,6 +95,8 @@ export default function ChatPanel({
   const [shareSaving, setShareSaving] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
+  const [sharedAt, setSharedAt] = useState<string | null>(null);  // ✅ v76
+  const [pushSaved, setPushSaved] = useState(false);              // ✅ v76: Push完了トースト
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [pendingDefaultTitle, setPendingDefaultTitle] = useState<string | null>(null);
   
@@ -214,6 +216,7 @@ export default function ChatPanel({
     setShareHideMemos(thread?.hide_memos ?? false);
     setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
     setShareToken(thread?.share_token ?? null);
+    setSharedAt(thread?.shared_at ?? null);
     setNotes([]);
     setDrafts([]);
     setMessageNotes([]);
@@ -321,6 +324,7 @@ export default function ChatPanel({
     setShareHideMemos(thread?.hide_memos ?? false);
     setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
     setShareToken(thread?.share_token ?? null);
+    setSharedAt((thread as any)?.shared_at ?? null);  // ✅ v76
     setShareGenre((thread?.genre as string | null) ?? null); // 👈 追加
     setSelectedParentGenreId(null); // 👈 追加
   };
@@ -342,6 +346,7 @@ export default function ChatPanel({
           hide_memos: newHideMemos,
           allow_prompt_fork: newAllowPromptFork,
           needsToken: newPublic,
+          ...(newPublic && { shared_at: new Date().toISOString() }), // ✅ v76: 公開時に現在時刻をスナップショット
           ...(newGenre !== undefined && { genre: newGenre }), // 👈 追加（undefinedの時は送らない）
         }),
       });
@@ -350,6 +355,7 @@ export default function ChatPanel({
       setShareAllowPromptFork(updated.allow_prompt_fork ?? true);
       setShareHideMemos(updated.hide_memos ?? false);
       setShareToken(updated.share_token ?? null);
+      setSharedAt(updated.shared_at ?? null);  // ✅ v76
       setShareGenre(updated.genre ?? null); // 👈 追加
       thread.is_public = updated.is_public;
       thread.hide_memos = updated.hide_memos;
@@ -372,6 +378,28 @@ export default function ChatPanel({
       setTimeout(() => setShareCopied(false), 2000);
     });
   };
+
+  // ✅ v76: Pushボタン — shared_at を現在時刻で更新してスナップショットを更新
+const handlePushLatest = async () => {
+  if (!thread) return;
+  setShareSaving(true);
+  try {
+    const now = new Date().toISOString();
+    const res = await fetch(`/api/threads/${thread.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shared_at: now }),
+    });
+    const updated = await res.json();
+    setSharedAt(updated.shared_at ?? null);
+    setPushSaved(true);
+    setTimeout(() => setPushSaved(false), 2000);
+  } catch (err) {
+    console.error("Push失敗:", err);
+  } finally {
+    setShareSaving(false);
+  }
+};
 
   // ★ システムプロンプトを保存
   const handleSaveSystemPrompt = async () => {
@@ -1140,9 +1168,35 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
                 <button onClick={handleCopyUrl} style={{ padding: "4px 12px", borderRadius: "6px", border: "none", background: shareCopied ? "#16a34a" : "#dcfce7", color: shareCopied ? "white" : "#15803d", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", flexShrink: 0, transition: "all 0.15s" }}>{shareCopied ? "✓ コピー済み" : "📋 コピー"}</button>
               </div>
             )}
+{/* ✅ v76: Pushボタン */}
+            {sharePublic && shareToken && (
+              <div style={{ marginTop: "4px", padding: "10px 12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}>
+                  🔄 共有ページに表示する会話を更新（Push）します。押した時点までの内容が共有ページに反映されます。
+                </div>
+                <button
+                  onClick={handlePushLatest}
+                  disabled={shareSaving}
+                  style={{
+                    padding: "6px 14px", borderRadius: "6px",
+                    border: "none",
+                    background: pushSaved ? "#16a34a" : "#3b82f6",
+                    color: "white", fontSize: "12px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: shareSaving ? "default" : "pointer",
+                    opacity: shareSaving ? 0.6 : 1,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {pushSaved ? "✓ 更新しました" : shareSaving ? "更新中…" : "🚀 最新の会話をPush"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
+    
+
 
       {/* ★ なりきりモードドロワー（公開設定ドロワーとは独立した別ブロック） */}
       {showRoleplay && thread && (

@@ -16,6 +16,8 @@ export interface Thread {
   roleplay_mode?: boolean;
   rp_char_name?: string | null;
   rp_char_icon_url?: string | null; // base64 data URL（長辺200px・JPEG圧縮済み）
+  // ✅ v76追加: スナップショット型共有のPush時刻
+  shared_at?: string | null;
 }
 
 export interface Message {

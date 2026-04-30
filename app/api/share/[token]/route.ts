@@ -10,7 +10,7 @@ export async function GET(
   // 1. share_token でスレッドを検索
   const { data: thread, error: threadError } = await supabase
     .from("threads")
-    .select("id, title, is_public, hide_memos, share_token, created_at, allow_prompt_fork, system_prompt")
+    .select("id, title, is_public, hide_memos, share_token, created_at, allow_prompt_fork, system_prompt, shared_at")
     .eq("share_token", params.token)
     .single();
 
@@ -24,11 +24,18 @@ export async function GET(
   }
 
   // 3. メッセージを取得
-  const { data: allMessages, error: messagesError } = await supabase
+  // ✅ v76: shared_at がある場合のみフィルター（null時は全件・後方互換）
+  let messagesQuery = supabase
     .from("messages")
     .select("id, role, content, provider, created_at, is_hidden")
     .eq("thread_id", thread.id)
     .order("created_at", { ascending: true });
+
+  if (thread.shared_at) {
+    messagesQuery = messagesQuery.lte("created_at", thread.shared_at);
+  }
+
+  const { data: allMessages, error: messagesError } = await messagesQuery;
 
   if (messagesError) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

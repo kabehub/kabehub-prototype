@@ -40,6 +40,8 @@ export async function PATCH(
   if (body.roleplay_mode !== undefined) updates.roleplay_mode = body.roleplay_mode;
   if (body.rp_char_name !== undefined) updates.rp_char_name = body.rp_char_name;
   if (body.rp_char_icon_url !== undefined) updates.rp_char_icon_url = body.rp_char_icon_url;
+  // ✅ v76: スナップショット型共有のPush時刻
+  if (body.shared_at !== undefined) updates.shared_at = body.shared_at;
 
   if (body.needsToken && body.is_public) {
     const { data: existing } = await supabase
