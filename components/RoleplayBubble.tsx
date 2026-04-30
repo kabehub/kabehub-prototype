@@ -236,7 +236,7 @@ function RoleplayBubble({
             <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
               <div style={{ position: "relative", maxWidth: "680px", width: "100%" }}>
                 <div
-                  onClick={() => { setShowNoteInput((v) => !v); setShowNoteList(false); }}
+                  onClick={() => { const sel = window.getSelection(); if (sel && !sel.isCollapsed) return; setShowNoteInput((v) => !v); setShowNoteList(false); }}
                   style={{
                     borderRadius: "4px 12px 12px 12px",
                     padding: "12px 16px",

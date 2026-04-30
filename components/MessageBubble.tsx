@@ -200,7 +200,7 @@ function MessageBubble({
         <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: "row", position: "relative", zIndex: 1 }}>  
           <div style={{ position: "relative", width: "100%" }}>
             <div
-              onClick={() => { setShowNoteInput((v) => !v); setShowNoteList(false); }}
+              onClick={() => { const sel = window.getSelection(); if (sel && !sel.isCollapsed) return; setShowNoteInput((v) => !v); setShowNoteList(false); }}
               style={{
                 width: "100%",
                 maxWidth: "720px",
