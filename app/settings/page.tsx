@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { generateBulkExportZip } from '@/lib/exportUtils'
 import { MODEL_CONFIG, loadModel, saveModel, type Provider, type ModelId } from '@/components/ChatInput'
+import type { McpToken } from '@/types'
 
 type Profile = {
   id: string
@@ -65,6 +66,13 @@ function SettingsContent() {
   const [claudeModel, setClaudeModel] = useState<ModelId>('claude-sonnet-4-5')
   const [geminiModel, setGeminiModel] = useState<ModelId>('gemini-2.5-flash')
 
+  // MCPトークン state
+  const [mcpTokens, setMcpTokens] = useState<McpToken[]>([])
+  const [issuingToken, setIssuingToken] = useState(false)
+  const [newTokenName, setNewTokenName] = useState('')
+  const [revealedToken, setRevealedToken] = useState<string | null>(null)
+  const [tokenCopied, setTokenCopied] = useState(false)
+
   // ① LocalStorageからAPIキーとモデルを読み込む
   useEffect(() => {
     setClaudeKey(localStorage.getItem(LS_KEYS.claude) ?? '')
@@ -73,6 +81,50 @@ function SettingsContent() {
     setClaudeModel(loadModel('claude'))
     setGeminiModel(loadModel('gemini'))
   }, [])
+
+  const fetchMcpTokens = useCallback(async () => {
+    const res = await fetch('/api/mcp-tokens')
+    if (!res.ok) return
+    const json = await res.json()
+    setMcpTokens(json.tokens ?? [])
+  }, [])
+
+  useEffect(() => { fetchMcpTokens() }, [fetchMcpTokens])
+
+  const handleIssueToken = async () => {
+    setIssuingToken(true)
+    setRevealedToken(null)
+    try {
+      const res = await fetch('/api/mcp-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTokenName.trim() || null }),
+      })
+      if (!res.ok) return
+      const json = await res.json()
+      setRevealedToken(json.token)
+      setNewTokenName('')
+      await fetchMcpTokens()
+    } finally {
+      setIssuingToken(false)
+    }
+  }
+
+  const handleDeleteToken = async (id: string) => {
+    if (!window.confirm('このトークンを削除しますか？削除後は使用できなくなります。')) return
+    await fetch('/api/mcp-tokens', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    await fetchMcpTokens()
+  }
+
+  const handleCopyToken = async (token: string) => {
+    await navigator.clipboard.writeText(token)
+    setTokenCopied(true)
+    setTimeout(() => setTokenCopied(false), 2000)
+  }
 
   // ① APIキーとモデルを保存（LocalStorage）
   const handleSaveApiKeys = useCallback(() => {
@@ -489,6 +541,97 @@ function SettingsContent() {
                 </span>
               )}
             </div>
+          </div>
+        </section>
+
+        {/* ClaudeCode連携セクション */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">
+              ClaudeCode連携
+            </h2>
+            <p className="text-xs text-gray-600 mt-1">
+              MCPトークンを発行すると、ClaudeCodeから壁打ちをKabeHubに保存・公開できます。
+            </p>
+          </div>
+
+          <div className="border border-gray-800 rounded-xl p-5 space-y-5">
+
+            {/* トークン発行フォーム */}
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-gray-400">トークン名（任意）</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newTokenName}
+                  onChange={e => setNewTokenName(e.target.value)}
+                  placeholder="例: MacBook Pro"
+                  maxLength={50}
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+                <button
+                  onClick={handleIssueToken}
+                  disabled={issuingToken}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+                >
+                  {issuingToken ? '発行中...' : 'MCPトークンを発行する'}
+                </button>
+              </div>
+            </div>
+
+            {/* 発行直後の生トークン表示 */}
+            {revealedToken && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 space-y-2">
+                <p className="text-xs font-semibold text-amber-400">
+                  このトークンは一度しか表示されません。今すぐコピーしてください。
+                </p>
+                <div className="flex gap-2 items-center">
+                  <code className="flex-1 text-xs font-mono text-amber-200 bg-gray-900 rounded px-3 py-2 break-all">
+                    {revealedToken}
+                  </code>
+                  <button
+                    onClick={() => handleCopyToken(revealedToken)}
+                    className="px-3 py-2 text-xs border border-amber-500/40 hover:bg-amber-500/10 text-amber-300 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    {tokenCopied ? 'コピーしました！' : 'コピー'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 発行済みトークン一覧 */}
+            {mcpTokens.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-400">発行済みトークン</p>
+                <div className="divide-y divide-gray-800">
+                  {mcpTokens.map(token => (
+                    <div key={token.id} className="flex items-center justify-between py-3">
+                      <div className="space-y-0.5">
+                        <p className="text-sm text-gray-200">{token.name ?? '（名前なし）'}</p>
+                        <p className="text-xs text-gray-600">
+                          発行: {new Date(token.created_at).toLocaleDateString('ja-JP')}
+                          {token.last_used_at && (
+                            <span className="ml-3">
+                              最終使用: {new Date(token.last_used_at).toLocaleDateString('ja-JP')}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteToken(token.id)}
+                        className="text-xs text-red-500 hover:text-red-400 border border-red-500/30 hover:border-red-500/60 rounded-lg px-3 py-1.5 transition-colors"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {mcpTokens.length === 0 && !revealedToken && (
+              <p className="text-xs text-gray-600">まだトークンが発行されていません。</p>
+            )}
           </div>
         </section>
 

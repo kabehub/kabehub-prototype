@@ -61,3 +61,11 @@ export interface ThreadTag {
   name: string;
   created_at: string;
 }
+
+export interface McpToken {
+  id: string;
+  user_id: string;
+  name?: string | null;
+  created_at: string;
+  last_used_at?: string | null;
+}

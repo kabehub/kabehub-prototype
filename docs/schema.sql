@@ -1,5 +1,5 @@
 -- KabeHub セルフホスト用DBスキーマ
--- 最終更新: 2026/04/29 (v69)
+-- 最終更新: 2026/04/30 (v78)
 -- Supabase Dashboard > SQL Editor で実行してください
 
 create extension if not exists "uuid-ossp";
@@ -259,6 +259,25 @@ $$ language plpgsql;
 create trigger folder_settings_updated_at
   before update on folder_settings
   for each row execute function update_updated_at_column();
+
+-- ============================================================
+-- mcp_tokens テーブル（v78追加）
+-- ============================================================
+create table if not exists mcp_tokens (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid references auth.users(id) on delete cascade,
+  token_hash   text not null unique,
+  name         text,
+  created_at   timestamptz default now(),
+  last_used_at timestamptz
+);
+
+alter table mcp_tokens enable row level security;
+
+create policy "自分のトークンのみ操作可"
+  on mcp_tokens for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- ============================================================
 -- いいね数・引継ぎ数の増減 RPC（非正規化カラム操作用）
