@@ -1,0 +1,21 @@
+# 依存関係・ビルド成果物
+node_modules/
+.next/
+out/
+
+# ログ
+*.log
+npm-debug.log*
+
+# 過去のマイグレーション（参照は docs/schema.sql だけで十分）
+docs/v63_migration.sql
+
+# OS・エディタ
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+
+# 環境変数（実際の値は絶対に読ませない）
+.env.local
+.env*.local
