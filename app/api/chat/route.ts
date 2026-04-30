@@ -485,6 +485,13 @@ export async function POST(req: NextRequest) {
   // ✅ v62: 二重保存防止フラグ
   let dbSaved = false;
 
+  // ✅ v73修正: Promise BridgeでwrappedStream内のsaveToDb完了をwaitUntilに確実に伝える
+  // POST関数スコープ内に定義することでリクエストごとに独立したPromiseを生成（競合防止）
+  let resolveDbSave!: (saved: boolean) => void;
+  const dbSavePromise = new Promise<boolean>((resolve) => {
+    resolveDbSave = resolve;
+  });
+
   // ストリームの完了・中断を監視するラッパー
   const wrappedStream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -512,6 +519,8 @@ export async function POST(req: NextRequest) {
           encoder.encode(JSON.stringify({ type: "done", aborted: true }) + "\n")
         );
       } finally {
+        // ✅ v73修正: try/catchどちらのパスでも必ずresolveを呼ぶ（waitUntilの永久待機を防ぐ）
+        resolveDbSave(dbSaved);
         controller.close();
       }
     },
@@ -523,11 +532,11 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // ✅ v64修正: waitUntilフォールバックはサービスロールキーで直接REST API呼び出し
-  // レスポンス送信後にsupabaseクライアントが失効してもフォールバック保存を確実に実行
+  // ✅ v73修正: 500ms固定タイマーを廃止。dbSavePromiseでsaveToDb完了を確実に待機してから判定
+  // 保存成功時はスキップ、失敗時のみサービスロールキーでフォールバック保存を実行
   waitUntil((async () => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if (!dbSaved && !isTemporary) {
+    const isSavedInStream = await dbSavePromise;
+    if (!isSavedInStream && !isTemporary) {
       console.warn("[waitUntil] フォールバック保存を実行します (dbSaved=false)");
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
