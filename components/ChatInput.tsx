@@ -228,6 +228,28 @@ export default function ChatInput({
     }
   };
 
+  // ── Ctrl+V スクショ貼り付け対応 ──────────────────────────────────────────
+  // textareaのonPasteに直接アタッチすることで、他の入力欄への誤反応を防ぐ
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (isLoading || disabled) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    // クリップボードから画像ファイルだけを抽出
+    const imageFiles = Array.from(items)
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null);
+
+    // 画像が含まれていない場合は何もしない（通常のテキストペーストはそのまま通す）
+    if (imageFiles.length === 0) return;
+
+    // 画像が含まれている場合のみデフォルト挙動（文字列挿入）を抑制
+    e.preventDefault();
+    await processFiles(imageFiles);
+  };
+
   /** 複数ファイルを処理（テキスト＋画像の混在対応） */
   const processFiles = async (files: FileList | File[]) => {
     setFileError(null);
@@ -583,6 +605,7 @@ export default function ChatInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           disabled={disabled || isLoading}
           placeholder={hasAnyFile ? "ファイルについて質問… (Enter で送信)" : "思考を入力… (Enter で送信 / Shift+Enter で改行)"}
           rows={3}
