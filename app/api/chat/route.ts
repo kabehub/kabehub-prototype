@@ -233,7 +233,7 @@ function streamOpenAI(
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: modelId, messages: msgs, stream: true }),
+          body: JSON.stringify({ model: modelId, messages: msgs, stream: true, max_tokens: 8192 }),
           signal,
         });
 
