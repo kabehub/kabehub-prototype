@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: { token: string } }
 ) {
+  const supabase = await createRouteHandlerSupabaseClient();
   // 1. share_token でスレッドを検索
   const { data: thread, error: threadError } = await supabase
     .from("threads")
