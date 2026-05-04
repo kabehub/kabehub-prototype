@@ -4,10 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { token: string } }
 ) {
-  const supabase = await createRouteHandlerSupabaseClient();
+  const res = NextResponse.next();
+  const supabase = createRouteHandlerSupabaseClient(req, res);
   // 1. share_token でスレッドを検索
   const { data: thread, error: threadError } = await supabase
     .from("threads")
