@@ -49,6 +49,6 @@ export const config = {
     "/",
     "/settings/:path*",
     "/login",
-    "/api/((?!mcp).*)",
+    "/api/((?!mcp|share).*)",
   ],
 };
