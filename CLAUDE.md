@@ -43,7 +43,7 @@ rmdir /s /q node\_modules \&\& npm install \&\& npm run dev
 |認証|Supabase Auth（Google OAuth）+ @supabase/ssr|
 |AI メイン|Anthropic Claude API（claude-sonnet-4-5 / claude-sonnet-4-6）|
 |AI サブ1|Google Gemini API（gemini-2.5-flash / gemini-2.5-pro）|
-|AI サブ2|OpenAI API（gpt-4o）|
+|AI サブ2|OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5）|
 |デプロイ|Vercel（kabehub.com）|
 |Markdown|react-markdown + remark-gfm + @tailwindcss/typography|
 
@@ -166,6 +166,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 |フォルダ名変更の整合性|`threads` と `folder\_settings` 両テーブルを同時に UPDATE する必要あり。片方だけ変えると孤立する|
 |Prompt Caching ヘッダー|`anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache\_controlが無視される|
 |`\[\[text]]` マスク記法|`MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする|
+|OpenAI の max\_tokens|`gpt-4o` は `max\_tokens`、`gpt-5.4-mini` 以降は `max\_completion\_tokens` を使う。混在注意。`streamOpenAI` 内で `modelId === "gpt-4o"` で分岐済み|
 
 \---
 
