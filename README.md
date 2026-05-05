@@ -146,7 +146,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 * [x] GPT-5系モデル対応（gpt-5.4-mini / gpt-5.4 / gpt-5.5）
 * [ ] Branching Mode
 * [ ] マネタイズ（おまかせプラン・クレジット制）
-* [ ] `khub` CLI
 
 ---
 
