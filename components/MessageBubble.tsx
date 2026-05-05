@@ -226,7 +226,7 @@ function MessageBubble({
                 lineHeight: 1.6,
                 boxShadow: "none",
                 fontFamily: "'DM Sans', sans-serif",
-                whiteSpace: isMemo ? "pre-wrap" : undefined,
+                whiteSpace: (isMemo || isUser) ? "pre-wrap" : undefined,
                 cursor: "pointer",
                 opacity: isHidden ? 0.6 : 1,
               }}
