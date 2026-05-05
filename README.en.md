@@ -58,7 +58,7 @@ I'm not an engineer by trade — I'm a tax accountant. I started from nearly zer
 |🌐 **Explore**|Browse, search, and fork public threads from other users|
 |🎭 **Roleplay Mode**|Give your AI a custom name and icon. Chat in a LINE-style UI (private only)|
 |📁 **Project Mode**|Set a default system prompt per folder|
-|🖼️ **Image Upload**|Attach PNG / JPEG / GIF / WebP images (Claude and Gemini supported)|
+|🖼️ **Image Upload**|Attach PNG / JPEG / GIF / WebP images (Claude, Gemini, and ChatGPT supported)|
 |⚡ **Streaming**|AI responses appear in real time. Press Esc to cancel at any time|
 |🔒 **Self-Hostable**|Run with your own API keys. Your data stays in your own Supabase instance|
 
@@ -81,7 +81,7 @@ I'm not an engineer by trade — I'm a tax accountant. I started from nearly zer
 |Auth|Supabase Auth (Google OAuth)|
 |AI (Primary)|Anthropic Claude API (claude-sonnet-4-5 / claude-sonnet-4-6)|
 |AI (Secondary)|Google Gemini API (gemini-2.5-flash / gemini-2.5-pro)|
-|AI (Tertiary)|OpenAI API (gpt-4o)|
+|AI (Tertiary)|OpenAI API (gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5)|
 |Deploy|Vercel|
 
 ---
@@ -98,7 +98,7 @@ I'm not an engineer by trade — I'm a tax accountant. I started from nearly zer
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/kabehub/kabehub-prototype.git
+git clone [https://github.com/kabehub/kabehub-prototype.git](https://github.com/kabehub/kabehub-prototype.git)
 cd kabehub-prototype
 
 # 2. Install dependencies
@@ -111,12 +111,11 @@ cp .env.local.example .env.local
 # 4. Start the development server
 npm run dev
 # → http://localhost:3000
-```
 
 ### Environment Variables
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=[https://your-project.supabase.co](https://your-project.supabase.co)
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
