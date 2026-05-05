@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 interface MarkdownRendererProps {
   content: string;
   variant?: "default" | "share";
+  className?: string;
 }
 
 // [[テキスト]] → ████ に変換（share variant のみ）
@@ -157,14 +158,22 @@ function CodeBlock({
 export default function MarkdownRenderer({
   content,
   variant = "default",
+  className,
 }: MarkdownRendererProps) {
   const isShare = variant === "share";
 
   // share variant のみマスク記法を適用
   const processedContent = isShare ? applyMask(content) : content;
 
+  const wrapperClass = [
+    isShare ? "prose prose-sm max-w-none" : undefined,
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ") || undefined;
+
   return (
-    <div className={isShare ? "prose prose-sm max-w-none" : undefined}>
+    <div className={wrapperClass}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

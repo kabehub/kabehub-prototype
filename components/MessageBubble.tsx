@@ -226,13 +226,16 @@ function MessageBubble({
                 lineHeight: 1.6,
                 boxShadow: "none",
                 fontFamily: "'DM Sans', sans-serif",
-                whiteSpace: (isMemo || isUser) ? "pre-wrap" : undefined,
+                whiteSpace: isMemo ? "pre-wrap" : undefined,
                 cursor: "pointer",
                 opacity: isHidden ? 0.6 : 1,
               }}
             >
               {isMemo ? message.content : (
-                <MarkdownRenderer content={message.content} />
+                <MarkdownRenderer
+                  content={message.content}
+                  className={isUser ? "whitespace-pre-wrap" : undefined}
+                />
               )}
             </div>
 
