@@ -4,7 +4,15 @@
       "Bash(node *)",
       "Skill(update-config)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('mcpServers', {}\\), indent=2\\)\\)\")",
-      "mcp__kabehub__create_thread"
+      "mcp__kabehub__create_thread",
+      "Read(//c/Users/Admin/Desktop/kabehub-mcp/**)",
+      "Bash(npm i *)",
+      "Bash(npm run *)",
+      "mcp__kabehub__add_message",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git commit *)"
     ]
   }
 }

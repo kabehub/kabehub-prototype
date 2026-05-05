@@ -65,6 +65,7 @@ function SettingsContent() {
   // モデル選択 state
   const [claudeModel, setClaudeModel] = useState<ModelId>('claude-sonnet-4-5')
   const [geminiModel, setGeminiModel] = useState<ModelId>('gemini-2.5-flash')
+  const [openaiModel, setOpenaiModel] = useState<ModelId>('gpt-5.4-mini')
 
   // MCPトークン state
   const [mcpTokens, setMcpTokens] = useState<McpToken[]>([])
@@ -80,6 +81,7 @@ function SettingsContent() {
     setOpenaiKey(localStorage.getItem(LS_KEYS.openai) ?? '')
     setClaudeModel(loadModel('claude'))
     setGeminiModel(loadModel('gemini'))
+    setOpenaiModel(loadModel('openai'))
   }, [])
 
   const fetchMcpTokens = useCallback(async () => {
@@ -146,10 +148,11 @@ function SettingsContent() {
     // モデルも保存
     saveModel('claude', claudeModel)
     saveModel('gemini', geminiModel)
+    saveModel('openai', openaiModel)
     // トースト表示
     setApiKeySaved(true)
     setTimeout(() => setApiKeySaved(false), 2500)
-  }, [claudeKey, geminiKey, openaiKey, claudeModel, geminiModel])
+  }, [claudeKey, geminiKey, openaiKey, claudeModel, geminiModel, openaiModel])
 
   const handleBulkExport = async () => {
     setIsExporting(true)
@@ -525,6 +528,24 @@ function SettingsContent() {
               {openaiKey && !showOpenaiKey && (
                 <p className="text-xs text-gray-600 font-mono">{maskKey(openaiKey)}</p>
               )}
+              {/* OpenAIモデル選択 */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs text-gray-500">デフォルトモデル：</span>
+                {MODEL_CONFIG.openai.models.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setOpenaiModel(m.id)}
+                    className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                      openaiModel === m.id
+                        ? 'border-orange-500/60 bg-orange-500/10 text-orange-300'
+                        : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {m.label}
+                    <span className="ml-1 opacity-60">{m.badge === '高性能' ? '↑' : ''}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 保存ボタン＋トースト */}

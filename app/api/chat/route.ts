@@ -11,7 +11,7 @@ type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephem
 
 type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
 type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
-type OpenAIModel = "gpt-4o";
+type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
 type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
 
 const DEFAULT_MODELS: Record<string, ModelId> = {
@@ -220,12 +220,28 @@ function streamOpenAI(
   apiKey: string,
   messages: ChatMessage[],
   systemPrompt?: string,
-  modelId: OpenAIModel = "gpt-4o",
+  modelId: OpenAIModel = "gpt-5.4-mini",
+  imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
 ): ReadableStream<string> {
-  const msgs: { role: string; content: string }[] = [];
+  const msgs: { role: string; content: unknown }[] = [];
   if (systemPrompt?.trim()) msgs.push({ role: "system", content: systemPrompt.trim() });
-  msgs.push(...messages.map((m) => ({ role: m.role, content: m.content })));
+  msgs.push(...messages.map((m, index) => {
+    const isLast = index === messages.length - 1;
+    if (isLast && m.role === "user" && imageBlocks.length > 0) {
+      return {
+        role: m.role,
+        content: [
+          ...imageBlocks.map(b => ({
+            type: "image_url",
+            image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` }
+          })),
+          { type: "text", text: m.content }
+        ]
+      };
+    }
+    return { role: m.role, content: m.content };
+  }));
 
   return new ReadableStream<string>({
     async start(controller) {
@@ -410,7 +426,7 @@ export async function POST(req: NextRequest) {
       aiStream = streamClaude(anthropicKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal);
     } else if (provider === "openai") {
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
-      aiStream = streamOpenAI(openaiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as OpenAIModel, req.signal);
+      aiStream = streamOpenAI(openaiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
     }

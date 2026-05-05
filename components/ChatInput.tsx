@@ -62,7 +62,7 @@ export type Provider = "claude" | "gemini" | "openai";
 
 export type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
 export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
-export type OpenAIModel = "gpt-4o"; // 将来: "gpt-4o-mini" など
+export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
 
 export type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
 
@@ -88,9 +88,12 @@ export const MODEL_CONFIG = {
   openai: {
     label: "ChatGPT",
     models: [
-      { id: "gpt-4o" as OpenAIModel, label: "GPT-4o", badge: "標準" },
+      { id: "gpt-4o" as OpenAIModel, label: "GPT-4o", badge: "旧世代" },
+      { id: "gpt-5.4-mini" as OpenAIModel, label: "GPT-5.4 mini", badge: "標準" },
+      { id: "gpt-5.4" as OpenAIModel, label: "GPT-5.4", badge: "高性能" },
+      { id: "gpt-5.5" as OpenAIModel, label: "GPT-5.5", badge: "最高精度" },
     ],
-    defaultModel: "gpt-4o" as OpenAIModel,
+    defaultModel: "gpt-5.4-mini" as OpenAIModel,
     lsKey: "kabehub_openai_model",
   },
 } as const satisfies Record<Provider, {
@@ -191,21 +194,8 @@ export default function ChatInput({
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
 
   // プロバイダーが変わったらそのプロバイダーの保存済みモデルを読み込む
-  // OpenAI切り替え時は画像を自動クリア＋ObjectURL解放
   useEffect(() => {
     setSelectedModel(loadModel(provider));
-    if (provider === "openai") {
-      setAttachedFiles((prev) => {
-        const hasImage = prev.some((f) => f.kind === "image");
-        if (hasImage) {
-          prev.filter((f) => f.kind === "image").forEach((f) => {
-            URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
-          });
-          return prev.filter((f) => f.kind === "text");
-        }
-        return prev;
-      });
-    }
   }, [provider]);
 
   const handleModelChange = (modelId: ModelId) => {
@@ -266,10 +256,6 @@ export default function ChatInput({
       const isText = ext === "csv" || ext === "txt" || ext === "md";
 
       if (isImage) {
-        if (provider === "openai") {
-          setFileError("画像添付はClaude・Geminiのみ対応です");
-          continue;
-        }
         if (currentImages >= MAX_IMAGES) {
           setFileError(`画像は最大${MAX_IMAGES}枚まで添付できます`);
           continue;

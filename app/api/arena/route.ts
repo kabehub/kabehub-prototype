@@ -9,7 +9,7 @@ type ChatMessage = { role: string; content: string; provider?: string };
 // モデルID型（ChatInput.tsxのMODEL_CONFIGと対応）
 type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
 type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
-type OpenAIModel = "gpt-4o";
+type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
 type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
 
 // デフォルトモデル（modelIdが未指定の場合のフォールバック）
