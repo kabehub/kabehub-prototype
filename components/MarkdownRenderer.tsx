@@ -166,7 +166,7 @@ export default function MarkdownRenderer({
   const processedContent = isShare ? applyMask(content) : content;
 
   const wrapperClass = [
-    isShare ? "prose prose-sm max-w-none" : undefined,
+    "prose prose-sm max-w-none",
     className,
   ]
     .filter(Boolean)
