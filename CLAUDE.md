@@ -71,7 +71,7 @@ rmdir /s /q node\_modules \&\& npm install \&\& npm run dev
 |`components/Sidebar.tsx`|スレッド一覧・フォルダ管理・フォルダ設定モーダル|
 |`components/MessageBubble.tsx`|通常モードのメッセージ表示|
 |`components/RoleplayBubble.tsx`|なりきりモード用メッセージ表示（LINEライクUI）|
-|`components/MarkdownRenderer.tsx`|Markdownレンダリング + `\[\[text]]→████` マスク変換|
+|`components/MarkdownRenderer.tsx`|Markdownレンダリング + `\[\[text]]→████` マスク変換。`prose prose-sm max-w-none` は全 variant（default・share）に適用。`className` プロップで追加クラスを渡せる|
 
 ### Lib
 
@@ -166,6 +166,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 |フォルダ名変更の整合性|`threads` と `folder\_settings` 両テーブルを同時に UPDATE する必要あり。片方だけ変えると孤立する|
 |Prompt Caching ヘッダー|`anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache\_controlが無視される|
 |`\[\[text]]` マスク記法|`MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする|
+|MessageBubble の pre-wrap|`isMemo` のみ `whiteSpace: "pre-wrap"`（プレーンテキスト表示）。user・assistant は `MarkdownRenderer` 経由で prose レンダリング。`isUser` への pre-wrap は除去済み（混在させない）|
 |OpenAI の max\_tokens|`gpt-4o` は `max\_tokens`、`gpt-5.4-mini` 以降は `max\_completion\_tokens` を使う。混在注意。`streamOpenAI` 内で `modelId === "gpt-4o"` で分岐済み|
 
 \---
