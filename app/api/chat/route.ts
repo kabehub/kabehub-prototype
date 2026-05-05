@@ -255,6 +255,7 @@ function streamOpenAI(
 
         if (!response.ok) {
           const err = await response.json();
+          console.error("[OpenAI 400 Error]", JSON.stringify(err));
           throw new Error(err.error?.message ?? "OpenAI API error");
         }
 
