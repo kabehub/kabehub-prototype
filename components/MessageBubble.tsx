@@ -231,11 +231,10 @@ function MessageBubble({
                 opacity: isHidden ? 0.6 : 1,
               }}
             >
-              {isMemo ? message.content : (
-                <MarkdownRenderer
-                  content={message.content}
-                  className={isUser ? "whitespace-pre-wrap" : undefined}
-                />
+              {isMemo ? (
+                message.content
+              ) : (
+                <MarkdownRenderer content={message.content} />
               )}
             </div>
 
