@@ -249,7 +249,7 @@ function streamOpenAI(
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: modelId, ...(modelId === "gpt-4o" ? { max_tokens: 8192 } : { max_completion_tokens: 8192 }), stream: true, messages: msgs }),
+          body: JSON.stringify({ model: modelId, ...(modelId === "gpt-4o" ? { max_tokens: 8192 } : { max_completion_tokens: 8192 }), stream: true, stream_options: { include_usage: true }, messages: msgs }),
           signal,
         });
 
@@ -278,6 +278,12 @@ function streamOpenAI(
               const parsed = JSON.parse(raw);
               const text = parsed.choices?.[0]?.delta?.content;
               if (text) controller.enqueue(text);
+              if (parsed.usage) {
+                const usage = parsed.usage;
+                const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+                const normalTokens = (usage?.prompt_tokens ?? 0) - cachedTokens;
+                console.log("[OpenAI Cache]", { cached: cachedTokens, normal: normalTokens, total: usage?.prompt_tokens });
+              }
             } catch {
               // 無視
             }
