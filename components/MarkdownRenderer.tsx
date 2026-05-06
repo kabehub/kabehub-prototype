@@ -213,7 +213,7 @@ export default function MarkdownRenderer({
           },
           th({ children }) {
             return (
-              <th style={{ border: "1px solid #374151", padding: "6px 12px", background: isShare ? "#f1f5f9" : "#1e293b", fontWeight: 600, textAlign: "left" }}>
+              <th style={{ border: "1px solid #374151", padding: "6px 12px", background: isShare ? "#f1f5f9" : "#1e293b", color: isShare ? "#1e293b" : "#e2e8f0", fontWeight: 600, textAlign: "left" }}>
                 {children}
               </th>
             );
