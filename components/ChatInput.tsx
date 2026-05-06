@@ -211,6 +211,20 @@ export default function ChatInput({
     }
   }, [value]);
 
+  const handleNewline = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newValue = value.substring(0, start) + "\n" + value.substring(end);
+    onChange(newValue);
+    setTimeout(() => {
+      textarea.selectionStart = start + 1;
+      textarea.selectionEnd = start + 1;
+      textarea.focus();
+    }, 0);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -601,7 +615,7 @@ export default function ChatInput({
             border: "none",
             outline: "none",
             background: "transparent",
-            padding: "14px 48px 14px 16px",
+            padding: "14px 84px 14px 16px",
             fontSize: "14px",
             fontFamily: "'DM Sans', sans-serif",
             color: "var(--ink)",
@@ -611,6 +625,41 @@ export default function ChatInput({
             overflowY: "auto",
           }}
         />
+        {/* 改行ボタン（送信ボタン左隣） */}
+        <button
+          onClick={handleNewline}
+          disabled={disabled || isLoading}
+          style={{
+            position: "absolute",
+            right: "48px",
+            bottom: "10px",
+            width: "26px",
+            height: "26px",
+            borderRadius: "6px",
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: disabled || isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+            cursor: disabled || isLoading ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "13px",
+            transition: "background 0.15s, color 0.15s",
+          }}
+          title="改行を挿入"
+          onMouseEnter={(e) => {
+            if (!disabled && !isLoading) {
+              (e.currentTarget as HTMLButtonElement).style.background = "var(--ink-faint)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+            (e.currentTarget as HTMLButtonElement).style.color = disabled || isLoading ? "var(--ink-faint)" : "var(--ink-muted)";
+          }}
+        >
+          ↵
+        </button>
         {/* 送信ボタン（右下） */}
         <button
           onClick={handleSubmit}
