@@ -67,7 +67,7 @@ rmdir /s /q node\_modules \&\& npm install \&\& npm run dev
 |ファイル|役割|
 |-|-|
 |`components/ChatPanel.tsx`|チャット画面のメインコンポーネント。状態管理の大半がここにある|
-|`components/ChatInput.tsx`|入力欄。ファイル添付・画像添付・Ctrl+Vスクショ貼り付け対応|
+|`components/ChatInput.tsx`|入力欄。ファイル添付・画像添付・Ctrl+Vスクショ貼り付け・↵改行ボタン対応|
 |`components/Sidebar.tsx`|スレッド一覧・フォルダ管理・フォルダ設定モーダル|
 |`components/MessageBubble.tsx`|通常モードのメッセージ表示|
 |`components/RoleplayBubble.tsx`|なりきりモード用メッセージ表示（LINEライクUI）|
@@ -168,6 +168,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 |`\[\[text]]` マスク記法|`MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする|
 |MessageBubble の pre-wrap|`isMemo` のみ `whiteSpace: "pre-wrap"`（プレーンテキスト表示）。user・assistant は `MarkdownRenderer` 経由で prose レンダリング。`isUser` への pre-wrap は除去済み（混在させない）|
 |OpenAI の max\_tokens|`gpt-4o` は `max\_tokens`、`gpt-5.4-mini` 以降は `max\_completion\_tokens` を使う。混在注意。`streamOpenAI` 内で `modelId === "gpt-4o"` で分岐済み|
+|OpenAI の stream\_options|`stream\_options: \{ include\_usage: true }` が必須。外すとストリーミング応答に `usage`（キャッシュ統計含む）が含まれず `[OpenAI Cache]` ログが出ない|
 
 \---
 
