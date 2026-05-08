@@ -80,18 +80,13 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
   const content = processCsvBlocks(msg.content, options.omitCsv);
 
-  lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-
-  // 見出しがある場合は目次をCallout内冒頭に挿入
+  // 最初の見出しをCalloutタイトルのサマリーとして使う
   const headings = msg.content.match(/^#{1,6}\s+.+$/gm);
-  if (headings && headings.length > 0) {
-    lines.push(`> **📑 目次**`);
-    headings.forEach(h => {
-      const headingText = h.replace(/^#+\s+/, "");
-      lines.push(`> - [[#${headingText}]]`);
-    });
-    lines.push(`>`);
-  }
+  const firstHeading = headings?.[0]?.replace(/^#+\s+/, "") ?? "";
+  const titleSummary = firstHeading ? ` — ${firstHeading}` : "";
+
+  // [!NOTE]- で折り畳みCallout（デフォルト折り畳み）
+  lines.push(`> [!NOTE]- ${providerLabel}${modelInfo} · ${timestamp}${titleSummary}`);
 
   content.split("\n").forEach(l => lines.push(`> ${l}`));
   return lines.join("\n");
