@@ -113,7 +113,7 @@ export default function ChatPanel({
   const tagInputRef = useRef<HTMLInputElement>(null);
 
   // ★ エクスポートモーダル関連
-  const [exportFormat, setExportFormat] = useState<"txt" | "md" | "csv" | null>(null);
+  const [exportFormat, setExportFormat] = useState<"txt" | "md" | "md2" | "csv" | null>(null);
 
   // ★ ヘッダーメニュー関連
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -665,19 +665,20 @@ const handleToggleRoleplayMode = (next: boolean) => {
 
 
 
-const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { omitCsv: false }) => {
+const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptions = { omitCsv: false }) => {
   if (!thread || messages.length === 0) return;
   const content = buildExportContent(format, thread, messages, options);
   const mimeType =
-    format === "md" ? "text/markdown;charset=utf-8" :
+    format === "md" || format === "md2" ? "text/markdown;charset=utf-8" :
     format === "csv" ? "text/csv;charset=utf-8" :
     "text/plain;charset=utf-8";
   const filename = thread.title.replace(/[/\\?%*:|"<>]/g, "_");
+  const ext = format === "md2" ? "md" : format;
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${filename}.${format}`;
+  a.download = `${filename}.${ext}`;
   a.click();
   URL.revokeObjectURL(url);
 };
@@ -762,6 +763,7 @@ const handleExport = (format: "txt" | "md" | "csv", options: ExportOptions = { o
                           { label: "🔑 APIキー",           action: () => handleOpenApiKeys() },
                           { label: "↓ TXT",               action: () => { if (messages.length > 0) setExportFormat("txt"); } },
                           { label: "↓ MD",                action: () => { if (messages.length > 0) setExportFormat("md"); } },
+                          { label: "↓ MD v2",             action: () => { if (messages.length > 0) setExportFormat("md2"); } },
                           { label: "↓ CSV",               action: () => { if (messages.length > 0) setExportFormat("csv"); } },
                           { label: isTemporary ? "⚡ 一時モード中 ✓" : "⚡ 一時モード", action: () => onSwitchTemporary(), active: isTemporary },
                           { label: `📋 下書き${drafts.length > 0 ? ` (${drafts.length})` : ""}`, action: () => handleOpenDrafts() },

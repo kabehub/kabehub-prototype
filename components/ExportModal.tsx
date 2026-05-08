@@ -7,20 +7,22 @@ export interface ExportOptions {
 }
 
 interface ExportModalProps {
-  format: "txt" | "md" | "csv" | null;
+  format: "txt" | "md" | "md2" | "csv" | null;
   onClose: () => void;
-  onExport: (format: "txt" | "md" | "csv", options: ExportOptions) => void;
+  onExport: (format: "txt" | "md" | "md2" | "csv", options: ExportOptions) => void;
 }
 
-const FORMAT_LABEL: Record<"txt" | "md" | "csv", string> = {
+const FORMAT_LABEL: Record<"txt" | "md" | "md2" | "csv", string> = {
   txt: "TXT",
   md: "Markdown",
+  md2: "Markdown v2（Obsidian目次対応）",
   csv: "CSV",
 };
 
-const FORMAT_NOTE: Record<"txt" | "md" | "csv", string> = {
+const FORMAT_NOTE: Record<"txt" | "md" | "md2" | "csv", string> = {
   txt: "プレーンテキスト形式でダウンロードします。",
   md: "Obsidian対応のMarkdown形式でダウンロードします。",
+  md2: "目次・タイムスタンプ付きMarkdown形式です。Obsidianでの振り返りに最適化されています。",
   csv: "Excel対応のCSV形式でダウンロードします。",
 };
 

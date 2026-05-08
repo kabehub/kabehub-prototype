@@ -40,7 +40,62 @@ export const processCsvBlocks = (content: string, omitCsv: boolean): string => {
 // エクスポートコンテンツ生成（ChatPanel.tsx から移動）
 // ============================================================
 
+export type ExportFormat = "txt" | "md" | "md2" | "csv";
 export type ExportOptions = { omitCsv: boolean };
+
+// タイムスタンプフォーマット（例: 2026-05-06 07:36）
+const formatTimestamp = (isoString: string): string => {
+  const d = new Date(isoString);
+  const yyyy = d.getFullYear();
+  const MM = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const HH = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${MM}-${dd} ${HH}:${mm}`;
+};
+
+// MD2用メッセージブロック生成
+const buildMd2Message = (msg: Message, options: ExportOptions): string => {
+  const timestamp = formatTimestamp(msg.created_at);
+  const lines: string[] = [];
+
+  if (msg.provider === "memo") {
+    const content = processCsvBlocks(msg.content, options.omitCsv);
+    lines.push(`> [!MEMO] 📝 Memo · ${timestamp}`);
+    content.split("\n").forEach(l => lines.push(`> ${l}`));
+    return lines.join("\n");
+  }
+
+  if (msg.role === "user") {
+    const content = processCsvBlocks(msg.content, options.omitCsv);
+    lines.push(`> [!QUESTION] You · ${timestamp}`);
+    content.split("\n").forEach(l => lines.push(`> ${l}`));
+    return lines.join("\n");
+  }
+
+  // AIメッセージ
+  const providerLabel =
+    msg.provider === "gemini" ? "Gemini" :
+    msg.provider === "openai" ? "ChatGPT" : "Claude";
+  const modelInfo = msg.provider ? ` (${msg.provider})` : "";
+  const content = processCsvBlocks(msg.content, options.omitCsv);
+
+  lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
+
+  // 見出しがある場合は目次をCallout内冒頭に挿入
+  const headings = msg.content.match(/^#{1,6}\s+.+$/gm);
+  if (headings && headings.length > 0) {
+    lines.push(`> **📑 目次**`);
+    headings.forEach(h => {
+      const headingText = h.replace(/^#+\s+/, "");
+      lines.push(`> - [[#${headingText}]]`);
+    });
+    lines.push(`>`);
+  }
+
+  content.split("\n").forEach(l => lines.push(`> ${l}`));
+  return lines.join("\n");
+};
 
 // ✅ v63追加: なりきりモード注記ヘルパー
 const buildRoleplayNotice = (thread: Thread, format: "txt" | "md" | "csv"): string[] => {
@@ -70,12 +125,57 @@ const buildRoleplayNotice = (thread: Thread, format: "txt" | "md" | "csv"): stri
 };
 
 export const buildExportContent = (
-  format: "txt" | "md" | "csv",
+  format: "txt" | "md" | "md2" | "csv",
   thread: Thread,
   messages: Message[],
   options: ExportOptions = { omitCsv: false }
 ): string => {
   const lines: string[] = [];
+
+  if (format === "md2") {
+    const createdAt = messages.length > 0
+      ? new Date(messages[0].created_at).toISOString()
+      : new Date(thread.created_at).toISOString();
+    const modifiedAt = messages.length > 0
+      ? new Date(messages[messages.length - 1].created_at).toISOString()
+      : new Date(thread.updated_at ?? thread.created_at).toISOString();
+
+    const usedAIs = Array.from(
+      new Set(
+        messages
+          .map((m) => m.provider)
+          .filter((p) => p === "claude" || p === "gemini" || p === "openai")
+      )
+    );
+    const exportTags = ["ai-conversation", "obsidian-toc", ...usedAIs];
+    const safeTitle = thread.title.replace(/"/g, '\\"');
+    const systemPromptValue = thread.system_prompt?.trim() ?? "";
+
+    lines.push("---");
+    lines.push(`title: "${safeTitle}"`);
+    lines.push(`source: kabehub`);
+    lines.push(`created: ${createdAt}`);
+    lines.push(`modified: ${modifiedAt}`);
+    lines.push(`tags:`);
+    exportTags.forEach((tag) => lines.push(`  - ${tag}`));
+    lines.push(`message_count: ${messages.length}`);
+    lines.push(`system_prompt: "${systemPromptValue.replace(/"/g, '\\"')}"`);
+    if (thread.roleplay_mode) lines.push(`roleplay_mode: true`);
+    if (thread.share_token) {
+      lines.push(`thread_url: "https://kabehub.com/share/${thread.share_token}"`);
+    }
+    lines.push("---");
+    lines.push("");
+
+    buildRoleplayNotice(thread, "md").forEach((l) => lines.push(l));
+
+    messages.forEach((msg) => {
+      lines.push(buildMd2Message(msg, options));
+      lines.push("");
+    });
+
+    return lines.join("\n");
+  }
 
   if (format === "md") {
     const createdAt = messages.length > 0
