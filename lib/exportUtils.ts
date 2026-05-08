@@ -81,9 +81,8 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const providerLabel =
     msg.provider === "gemini" ? "Gemini" :
     msg.provider === "openai" ? "ChatGPT" : "Claude";
-  const modelInfo = msg.model_id
-    ? ` (${msg.model_id})`
-    : msg.provider ? ` (${msg.provider})` : "";
+  const modelLabel = msg.model_id ? msg.model_id : providerLabel;
+  const modelInfo = ` (${modelLabel})`;
 
   const aiLines = content.split("\n");
   const firstLine = aiLines[0].replace(/^#+\s*/, "").replace(/[*_`]/g, "");
@@ -250,7 +249,7 @@ export const buildExportContent = (
     });
 
   } else if (format === "csv") {
-    lines.push("\uFEFF" + "timestamp,role,provider,content");
+    lines.push("\uFEFF" + "timestamp,role,provider,model_id,content");
     // ✅ v63追加: なりきりモード注記（CSVコメント行）
     buildRoleplayNotice(thread, "csv").forEach((l) => lines.push(l));
     messages.forEach((msg) => {
@@ -260,7 +259,7 @@ export const buildExportContent = (
       const escapedContent = rawContent.replace(/"/g, '""');
       const content = needsQuote ? `"${escapedContent}"` : escapedContent;
       // ✅ v63: roleは "user"/"assistant" のまま（キャラ名を使わない）
-      lines.push(`${timestamp},${msg.role},${msg.provider ?? "unknown"},${content}`);
+      lines.push(`${timestamp},${msg.role},${msg.provider ?? "unknown"},${msg.model_id ?? ""},${content}`);
     });
 
   } else {
@@ -277,10 +276,11 @@ export const buildExportContent = (
         msg.provider === "gemini" ? "Gemini" :
         msg.provider === "openai" ? "ChatGPT" :
         msg.provider === "claude" ? "Claude" : "AI";
+      const aiLabel = msg.model_id ? `${aiName} (${msg.model_id})` : aiName;
       const roleLabel =
         msg.provider === "memo" ? "【📝 メモ】" :
         msg.role === "user" ? "【あなた】" :
-        `【${aiName}】`;
+        `【${aiLabel}】`;
       const time = new Date(msg.created_at).toLocaleString("ja-JP");
       lines.push(`${roleLabel} ${time}`);
       lines.push(processCsvBlocks(msg.content, options.omitCsv));

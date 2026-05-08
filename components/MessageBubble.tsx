@@ -62,11 +62,15 @@ function MessageBubble({
 
   const aiLabel = () => {
     const p = message.provider ?? provider ?? "AI";
-    if (p === "claude") return "Claude";
-    if (p === "gemini") return "Gemini";
-    if (p === "openai") return "ChatGPT";
-    if (p === "memo") return "メモ";
-    return "AI";
+    const providerName =
+      p === "claude" ? "Claude" :
+      p === "gemini" ? "Gemini" :
+      p === "openai" ? "ChatGPT" :
+      p === "memo" ? "メモ" : "AI";
+    // model_idがあれば "Claude · claude-sonnet-4-6" のように表示
+    return message.model_id
+      ? `${providerName} · ${message.model_id}`
+      : providerName;
   };
 
   const ALL_PROVIDERS = ["claude", "gemini", "openai"] as const;
