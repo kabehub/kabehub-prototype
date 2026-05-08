@@ -68,7 +68,9 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
 
   if (msg.role === "user") {
     const content = processCsvBlocks(msg.content, options.omitCsv);
-    lines.push(`> [!QUESTION] You · ${timestamp}`);
+    const lineCount = content.split("\n").filter(l => l.trim() !== "").length;
+    const isLong = lineCount >= 5;
+    lines.push(`> [!QUESTION]${isLong ? "-" : ""} You · ${timestamp}`);
     content.split("\n").forEach(l => lines.push(`> ${l}`));
     return lines.join("\n");
   }
