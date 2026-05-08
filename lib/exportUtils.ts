@@ -58,39 +58,47 @@ const formatTimestamp = (isoString: string): string => {
 const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const timestamp = formatTimestamp(msg.created_at);
   const lines: string[] = [];
+  const content = processCsvBlocks(msg.content, options.omitCsv);
 
   if (msg.provider === "memo") {
-    const content = processCsvBlocks(msg.content, options.omitCsv);
     lines.push(`> [!MEMO] 📝 Memo · ${timestamp}`);
     content.split("\n").forEach(l => lines.push(`> ${l}`));
     return lines.join("\n");
   }
 
   if (msg.role === "user") {
-    const content = processCsvBlocks(msg.content, options.omitCsv);
-    const lineCount = content.split("\n").filter(l => l.trim() !== "").length;
-    const isLong = lineCount >= 5;
-    lines.push(`> [!QUESTION]${isLong ? "-" : ""} You · ${timestamp}`);
+    // 折り畳みなし
+    lines.push(`> [!QUESTION] You · ${timestamp}`);
     content.split("\n").forEach(l => lines.push(`> ${l}`));
     return lines.join("\n");
   }
 
-  // AIメッセージ
+  // AIメッセージ：見出しの前後で分割する
   const providerLabel =
     msg.provider === "gemini" ? "Gemini" :
     msg.provider === "openai" ? "ChatGPT" : "Claude";
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
-  const content = processCsvBlocks(msg.content, options.omitCsv);
 
-  // 最初の見出しをCalloutタイトルのサマリーとして使う
-  const headings = msg.content.match(/^#{1,6}\s+.+$/gm);
-  const firstHeading = headings?.[0]?.replace(/^#+\s+/, "") ?? "";
-  const titleSummary = firstHeading ? ` — ${firstHeading}` : "";
+  const contentLines = content.split("\n");
+  // 最初の見出し行のインデックスを探す
+  const firstHeadingIndex = contentLines.findIndex(l => /^#{1,6}\s+/.test(l));
 
-  // [!NOTE]- で折り畳みCallout（デフォルト折り畳み）
-  lines.push(`> [!NOTE]- ${providerLabel}${modelInfo} · ${timestamp}${titleSummary}`);
+  if (firstHeadingIndex === -1) {
+    // 見出しがない場合：全文をCallout内に収める
+    lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
+    contentLines.forEach(l => lines.push(`> ${l}`));
+    return lines.join("\n");
+  }
 
-  content.split("\n").forEach(l => lines.push(`> ${l}`));
+  // 見出しより前の導入文をCallout内に
+  const intro = contentLines.slice(0, firstHeadingIndex);
+  lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
+  intro.forEach(l => lines.push(`> ${l}`));
+
+  // 見出し以降はCalloutの外に出す
+  lines.push("");
+  contentLines.slice(firstHeadingIndex).forEach(l => lines.push(l));
+
   return lines.join("\n");
 };
 
@@ -163,6 +171,20 @@ export const buildExportContent = (
     }
     lines.push("---");
     lines.push("");
+
+    // 全AIメッセージから見出しを抽出してTOCを生成
+    const allHeadings = messages
+      .filter(m => m.role === "assistant")
+      .flatMap(m => m.content.match(/^#{1,6}\s+.+$/gm) ?? [])
+      .map(h => h.replace(/^#+\s+/, ""));
+
+    if (allHeadings.length > 0) {
+      lines.push("## 📑 この会話のアウトライン");
+      allHeadings.forEach(h => lines.push(`- [[#${h}]]`));
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+    }
 
     buildRoleplayNotice(thread, "md").forEach((l) => lines.push(l));
 
