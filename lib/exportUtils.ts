@@ -67,29 +67,23 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   }
 
   if (msg.role === "user") {
-    // 折り畳みなし
+    const userLines = content.split("\n");
+    lines.push(`# ${userLines[0]}`);
     lines.push(`> [!QUESTION] You · ${timestamp}`);
-    content.split("\n").forEach(l => lines.push(`> ${l}`));
+    userLines.forEach(l => lines.push(`> ${l}`));
     return lines.join("\n");
   }
 
-  // AIメッセージ：見出しの前後で分割する
+  // AIメッセージ
   const providerLabel =
     msg.provider === "gemini" ? "Gemini" :
     msg.provider === "openai" ? "ChatGPT" : "Claude";
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
 
+  const aiLines = content.split("\n");
+  lines.push(`# ${aiLines[0].replace(/^#+\s*/, "")}`);
   lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-  content.split("\n").forEach(l => lines.push(`> ${l}`));
-
-  // Callout外にH2見出しを再出力（Obsidianサイドバー用）
-  const h2Lines = content
-    .split("\n")
-    .filter(l => /^## /.test(l));
-  if (h2Lines.length > 0) {
-    lines.push("");
-    h2Lines.forEach(l => lines.push(l));
-  }
+  aiLines.forEach(l => lines.push(`> ${l}`));
 
   return lines.join("\n");
 };
