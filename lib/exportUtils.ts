@@ -81,7 +81,9 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const providerLabel =
     msg.provider === "gemini" ? "Gemini" :
     msg.provider === "openai" ? "ChatGPT" : "Claude";
-  const modelInfo = msg.provider ? ` (${msg.provider})` : "";
+  const modelInfo = msg.model_id
+    ? ` (${msg.model_id})`
+    : msg.provider ? ` (${msg.provider})` : "";
 
   const aiLines = content.split("\n");
   const firstLine = aiLines[0].replace(/^#+\s*/, "").replace(/[*_`]/g, "");

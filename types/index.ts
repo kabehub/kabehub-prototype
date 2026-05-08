@@ -26,6 +26,7 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   provider?: "claude" | "gemini" | "openai" | "user" | "memo" | "unknown";
+  model_id?: string | null;
   created_at: string;
   parent_id?: string | null;
   is_hidden?: boolean;

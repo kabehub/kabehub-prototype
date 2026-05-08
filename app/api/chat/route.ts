@@ -311,6 +311,7 @@ async function saveAssistantMessage(
   content: string,
   provider: string,
   messageId: string,
+  modelId?: string,
 ): Promise<boolean> {
   // ✅ v64修正: upsertで重複INSERT（duplicate key）を防ぐ
   // 同じIDで2回保存が走った場合は既存レコードを上書き
@@ -321,6 +322,7 @@ async function saveAssistantMessage(
     content,
     provider,
     user_id: userId,
+    ...(modelId ? { model_id: modelId } : {}),
   }, { onConflict: "id" });
   if (error) {
     console.error("[saveAssistantMessage] DB保存失敗:", error);
@@ -453,7 +455,7 @@ export async function POST(req: NextRequest) {
       created_at: new Date().toISOString(),
     };
     if (!isTemporary) {
-      await saveAssistantMessage(supabase, threadId, userId, content, usedProvider, assistantMessageId);
+      await saveAssistantMessage(supabase, threadId, userId, content, usedProvider, assistantMessageId, resolvedModelId);
     }
     return new Response(JSON.stringify({ userMessage, assistantMessage }), {
       headers: { "Content-Type": "application/json" },
@@ -499,7 +501,7 @@ export async function POST(req: NextRequest) {
     const contentToSave = aborted
       ? accumulatedText + "\n\n[生成中断]"
       : accumulatedText;
-    return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId);
+    return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId, resolvedModelId);
   };
 
   const readable = aiStream.pipeThrough(outputStream);
@@ -581,6 +583,7 @@ export async function POST(req: NextRequest) {
             content: contentToSave,
             provider: usedProvider,
             user_id: userId,
+            model_id: resolvedModelId,
           }),
         });
         if (res.ok) {
