@@ -84,6 +84,16 @@ rmdir /s /q node\_modules \&\& npm install \&\& npm run dev
 |`lib/genres.ts`|ジャンルマスタ定数（10大分類・44中分類）|
 |`lib/exportUtils.ts`|TXT/MD/CSVエクスポートのロジック|
 
+### Docs
+
+|ファイル|役割|
+|-|-|
+|`docs/schema.sql`|テーブル定義の全体スナップショット|
+|`docs/v78_mcp_tokens_migration.sql`|mcp\_tokensテーブル追加マイグレーション|
+|`docs/v89_migration.sql`|messagesテーブルへのmodel\_idカラム追加（v89）|
+
+新しいマイグレーションは `docs/v{バージョン番号}_migration.sql` として追加し、Supabase Dashboard > SQL Editor で手動実行する。
+
 \---
 
 ## 指示フォーマット
@@ -118,6 +128,7 @@ Acceptance criteria:
 * **INSERT は使わず upsert を使う**。スレッド・メッセージともに競合リスクがある
 * `app/api/threads/\[id]/route.ts` の PATCH は `.upsert()` 方式（新規スレッドはDB行がない状態でPATCHが来ることがある）
 * `saveAssistantMessage` も upsert（`onConflict: "id"`）。再生成やタイミング競合で同じIDのINSERTが2回走る
+* `messages` テーブルのカラム: `id / thread_id / role / content / provider / user_id / created_at / parent_id / is_hidden / model_id`（v89追加）
 
 ### ストリーミング（chat/route.ts）
 
