@@ -67,11 +67,8 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   }
 
   if (msg.role === "user") {
-    const userLines = content.split("\n");
-    const userH1 = userLines[0].replace(/[*_`#]/g, "").slice(0, 40);
-    lines.push(`# ${userH1}`);
     lines.push(`> [!QUESTION] You · ${timestamp}`);
-    userLines.forEach(l => lines.push(`> ${l}`));
+    content.split("\n").forEach(l => lines.push(`> ${l}`));
     return lines.join("\n");
   }
 
@@ -82,11 +79,8 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
 
   const aiLines = content.split("\n");
-  const firstLine = aiLines[0].replace(/^#+\s*/, "").replace(/[*_`]/g, "");
-  lines.push(`# ${firstLine.slice(0, 40)}`);
   lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-  // 1行目はH1として出力済みのためCallout内ではスキップ
-  aiLines.slice(1).forEach(l => lines.push(`> ${l}`));
+  aiLines.forEach(l => lines.push(`> ${l}`));
 
   // Callout外にH2を再出力（Obsidianサイドバー用）
   // ##はH2のまま・###はH2に格上げして出力
@@ -96,7 +90,7 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
       ? l.replace(/^###\s+/, "## ")
       : l
     )
-    .map(l => l.replace(/[*_`]/g, "").slice(0, 40));
+    .map(l => l.replace(/[*_`]/g, ""));
   if (headingLines.length > 0) {
     lines.push("");
     headingLines.forEach(l => lines.push(l));
