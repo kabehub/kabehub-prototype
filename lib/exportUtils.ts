@@ -61,14 +61,19 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const content = processCsvBlocks(msg.content, options.omitCsv);
 
   if (msg.provider === "memo") {
-    lines.push(`> [!MEMO] 📝 Memo · ${timestamp}`);
-    content.split("\n").forEach(l => lines.push(`> ${l}`));
+    lines.push(`# 📝 メモ`);
+    lines.push(`*${timestamp}*`);
+    lines.push("");
+    content.split("\n").forEach(l => lines.push(l));
     return lines.join("\n");
   }
 
   if (msg.role === "user") {
-    lines.push(`> [!QUESTION] You · ${timestamp}`);
-    content.split("\n").forEach(l => lines.push(`> ${l}`));
+    const firstLine = content.split("\n")[0].replace(/[*_`#]/g, "");
+    lines.push(`# 🙋 ${firstLine}`);
+    lines.push(`*You · ${timestamp}*`);
+    lines.push("");
+    content.split("\n").forEach(l => lines.push(l));
     return lines.join("\n");
   }
 
@@ -79,22 +84,26 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
 
   const aiLines = content.split("\n");
-  lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-  aiLines.forEach(l => lines.push(`> ${l}`));
+  const firstLine = aiLines[0].replace(/^#+\s*/, "").replace(/[*_`]/g, "");
 
-  // Callout外にH2を再出力（Obsidianサイドバー用）
-  // ##はH2のまま・###はH2に格上げして出力
-  const headingLines = aiLines
-    .filter(l => /^#{2,3}\s+/.test(l))
-    .map(l => l.startsWith("### ")
-      ? l.replace(/^###\s+/, "## ")
-      : l
-    )
-    .map(l => l.replace(/[*_`]/g, ""));
-  if (headingLines.length > 0) {
-    lines.push("");
-    headingLines.forEach(l => lines.push(l));
-  }
+  // AI絵文字をプロバイダーで出し分け
+  const aiEmoji =
+    msg.provider === "gemini" ? "✨" :
+    msg.provider === "openai" ? "💬" : "🤖";
+
+  lines.push(`# ${aiEmoji} ${firstLine}`);
+  lines.push(`*${providerLabel}${modelInfo} · ${timestamp}*`);
+  lines.push("");
+
+  // 1行目（タイトル行）はスキップして本文から出力
+  aiLines.slice(1).forEach(l => {
+    // ##はそのまま・###はH2に格上げ（サイドバー用）
+    if (l.startsWith("### ")) {
+      lines.push(l.replace(/^###\s+/, "## "));
+    } else {
+      lines.push(l);
+    }
+  });
 
   return lines.join("\n");
 };
