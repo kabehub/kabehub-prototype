@@ -79,23 +79,8 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
     msg.provider === "openai" ? "ChatGPT" : "Claude";
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
 
-  const contentLines = content.split("\n");
-  const firstHeadingIndex = contentLines.findIndex(l => /^#{1,6}\s+/.test(l));
-
   lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-
-  if (firstHeadingIndex === -1) {
-    // 見出しがない場合：全文をCallout内に収める
-    contentLines.forEach(l => lines.push(`> ${l}`));
-  } else {
-    // 導入文はCallout内（> 付き）
-    const intro = contentLines.slice(0, firstHeadingIndex);
-    intro.forEach(l => lines.push(`> ${l}`));
-
-    // 見出し以降はCallout外（> なし）
-    lines.push("");
-    contentLines.slice(firstHeadingIndex).forEach(l => lines.push(l));
-  }
+  content.split("\n").forEach(l => lines.push(`> ${l}`));
 
   return lines.join("\n");
 };
