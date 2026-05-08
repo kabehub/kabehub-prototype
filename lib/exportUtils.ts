@@ -80,24 +80,22 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
 
   const contentLines = content.split("\n");
-  // 最初の見出し行のインデックスを探す
-  const firstHeadingIndex = contentLines.findIndex(l => /^#{1,6}\s+/.test(l));
+  const firstHeadingIndex = contentLines.findIndex(l => /^#{2,6}\s+/.test(l));
+
+  lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
 
   if (firstHeadingIndex === -1) {
     // 見出しがない場合：全文をCallout内に収める
-    lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
     contentLines.forEach(l => lines.push(`> ${l}`));
-    return lines.join("\n");
+  } else {
+    // 導入文はCallout内（> 付き）
+    const intro = contentLines.slice(0, firstHeadingIndex);
+    intro.forEach(l => lines.push(`> ${l}`));
+
+    // 見出し以降はCallout外（> なし）
+    lines.push("");
+    contentLines.slice(firstHeadingIndex).forEach(l => lines.push(l));
   }
-
-  // 見出しより前の導入文をCallout内に
-  const intro = contentLines.slice(0, firstHeadingIndex);
-  lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-  intro.forEach(l => lines.push(`> ${l}`));
-
-  // 見出し以降はCalloutの外に出す
-  lines.push("");
-  contentLines.slice(firstHeadingIndex).forEach(l => lines.push(l));
 
   return lines.join("\n");
 };
@@ -175,8 +173,13 @@ export const buildExportContent = (
     // 全AIメッセージから見出しを抽出してTOCを生成
     const allHeadings = messages
       .filter(m => m.role === "assistant")
-      .flatMap(m => m.content.match(/^#{1,6}\s+.+$/gm) ?? [])
-      .map(h => h.replace(/^#+\s+/, ""));
+      .flatMap(m => m.content.match(/^#{2,6}\s+.+$/gm) ?? [])
+      .map(h => {
+        const rawText = h.replace(/^#+\s+/, "");
+        // Obsidianのアンカー仕様に合わせて装飾記号を除去
+        const cleanAnchor = rawText.replace(/[*_~`]/g, "");
+        return cleanAnchor;
+      });
 
     if (allHeadings.length > 0) {
       lines.push("## 📑 この会話のアウトライン");
