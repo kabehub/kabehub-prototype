@@ -150,7 +150,7 @@ export const buildExportContent = (
           .filter((p) => p === "claude" || p === "gemini" || p === "openai")
       )
     );
-    const exportTags = ["ai-conversation", "obsidian-toc", ...usedAIs];
+    const exportTags = ["ai-conversation", ...usedAIs];
     const safeTitle = thread.title.replace(/"/g, '\\"');
     const systemPromptValue = thread.system_prompt?.trim() ?? "";
 
@@ -169,25 +169,6 @@ export const buildExportContent = (
     }
     lines.push("---");
     lines.push("");
-
-    // 全AIメッセージから見出しを抽出してTOCを生成
-    const allHeadings = messages
-      .filter(m => m.role === "assistant")
-      .flatMap(m => m.content.match(/^#{2,6}\s+.+$/gm) ?? [])
-      .map(h => {
-        const rawText = h.replace(/^#+\s+/, "");
-        // Obsidianのアンカー仕様に合わせて装飾記号を除去
-        const cleanAnchor = rawText.replace(/[*_~`]/g, "");
-        return cleanAnchor;
-      });
-
-    if (allHeadings.length > 0) {
-      lines.push("## 📑 この会話のアウトライン");
-      allHeadings.forEach(h => lines.push(`- [[#${h}]]`));
-      lines.push("");
-      lines.push("---");
-      lines.push("");
-    }
 
     buildRoleplayNotice(thread, "md").forEach((l) => lines.push(l));
 
