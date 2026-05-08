@@ -82,6 +82,15 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
   content.split("\n").forEach(l => lines.push(`> ${l}`));
 
+  // Callout外にH2見出しを再出力（Obsidianサイドバー用）
+  const h2Lines = content
+    .split("\n")
+    .filter(l => /^## /.test(l));
+  if (h2Lines.length > 0) {
+    lines.push("");
+    h2Lines.forEach(l => lines.push(l));
+  }
+
   return lines.join("\n");
 };
 
