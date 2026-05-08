@@ -80,7 +80,7 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
 
   const contentLines = content.split("\n");
-  const firstHeadingIndex = contentLines.findIndex(l => /^#{2,6}\s+/.test(l));
+  const firstHeadingIndex = contentLines.findIndex(l => /^#{1,6}\s+/.test(l));
 
   lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
 
