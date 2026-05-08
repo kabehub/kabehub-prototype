@@ -85,7 +85,22 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const firstLine = aiLines[0].replace(/^#+\s*/, "").replace(/[*_`]/g, "");
   lines.push(`# ${firstLine.slice(0, 40)}`);
   lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-  aiLines.forEach(l => lines.push(`> ${l}`));
+  // 1行目はH1として出力済みのためCallout内ではスキップ
+  aiLines.slice(1).forEach(l => lines.push(`> ${l}`));
+
+  // Callout外にH2を再出力（Obsidianサイドバー用）
+  // ##はH2のまま・###はH2に格上げして出力
+  const headingLines = aiLines
+    .filter(l => /^#{2,3}\s+/.test(l))
+    .map(l => l.startsWith("### ")
+      ? l.replace(/^###\s+/, "## ")
+      : l
+    )
+    .map(l => l.replace(/[*_`]/g, "").slice(0, 40));
+  if (headingLines.length > 0) {
+    lines.push("");
+    headingLines.forEach(l => lines.push(l));
+  }
 
   return lines.join("\n");
 };
