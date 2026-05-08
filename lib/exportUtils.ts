@@ -68,9 +68,9 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
 
   if (msg.role === "user") {
     const userLines = content.split("\n");
-    lines.push(`# ${userLines[0]}`);
+    lines.push(`# ${userLines[0].slice(0, 40)}`);
     lines.push(`> [!QUESTION] You · ${timestamp}`);
-    userLines.forEach(l => lines.push(`> ${l}`));
+    userLines.slice(1).forEach(l => lines.push(`> ${l}`));
     return lines.join("\n");
   }
 
@@ -81,9 +81,24 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const modelInfo = msg.provider ? ` (${msg.provider})` : "";
 
   const aiLines = content.split("\n");
-  lines.push(`# ${aiLines[0].replace(/^#+\s*/, "")}`);
+  const firstLine = aiLines[0].replace(/^#+\s*/, "");
+  lines.push(`# ${firstLine.slice(0, 40)}`);
   lines.push(`> [!NOTE] ${providerLabel}${modelInfo} · ${timestamp}`);
-  aiLines.forEach(l => lines.push(`> ${l}`));
+  aiLines.slice(1).forEach(l => lines.push(`> ${l}`));
+
+  // Callout外にH2/H3を再出力（Obsidianサイドバー用）
+  // ##はそのままH2・###はH2に格上げして出力
+  const headingLines = aiLines
+    .filter(l => /^#{2,3}\s+/.test(l))
+    .map(l => l.startsWith("### ")
+      ? l.replace(/^###\s+/, "## ")
+      : l
+    )
+    .map(l => l.slice(0, 40));
+  if (headingLines.length > 0) {
+    lines.push("");
+    headingLines.forEach(l => lines.push(l));
+  }
 
   return lines.join("\n");
 };
