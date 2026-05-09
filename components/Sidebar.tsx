@@ -15,6 +15,7 @@ interface SidebarProps {
   user: User | null;
   onLogout: () => void;
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
+  onNewThreadInFolder: (folderName: string) => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -396,9 +397,10 @@ interface FolderSectionProps {
   onDeleteThread: (id: string) => void;
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
   onEditFolderSettings?: (folderName: string) => void;
+  onNewThreadInFolder?: (folderName: string) => void;
 }
 
-function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditFolderSettings, defaultCollapsed }: FolderSectionProps & { defaultCollapsed: boolean }) {
+function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditFolderSettings, onNewThreadInFolder, defaultCollapsed }: FolderSectionProps & { defaultCollapsed: boolean }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hovered, setHovered] = useState(false);
 
@@ -439,6 +441,35 @@ function FolderSection({ folderName, threads, activeThreadId, existingFolders, o
             {threads.length}
           </span>
         </button>
+
+        {/* ＋ 新規スレッドボタン（フォルダ名ありかつホバー時のみ表示） */}
+        {folderName && onNewThreadInFolder && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onNewThreadInFolder(folderName); }}
+            title={`「${folderName}」に新しいスレッドを作成`}
+            style={{
+              opacity: hovered ? 1 : 0,
+              transition: "opacity 0.1s",
+              width: "20px",
+              height: "20px",
+              borderRadius: "4px",
+              border: "1px solid var(--border)",
+              background: "white",
+              color: "var(--ink-muted)",
+              fontSize: "14px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              flexShrink: 0,
+              marginRight: "2px",
+              lineHeight: 1,
+            }}
+          >
+            +
+          </button>
+        )}
 
         {/* ⚙️ フォルダ設定ボタン（フォルダ名ありかつホバー時のみ表示） */}
         {folderName && onEditFolderSettings && (
@@ -501,6 +532,7 @@ export default function Sidebar({
   user,
   onLogout,
   onUpdateFolder,
+  onNewThreadInFolder,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<"title" | "message" | "both">("both");
@@ -509,6 +541,10 @@ export default function Sidebar({
   // フォルダ設定モーダル
   const [folderSettingsModal, setFolderSettingsModal] = useState<{ folderName: string; systemPrompt: string } | null>(null);
   const [folderSettingsSaving, setFolderSettingsSaving] = useState(false);
+
+  const handleNewThreadInFolder = useCallback((folderName: string) => {
+    onNewThreadInFolder(folderName);
+  }, [onNewThreadInFolder]);
 
   const handleEditFolderSettings = useCallback(async (folderName: string) => {
     try {
@@ -669,6 +705,7 @@ export default function Sidebar({
               onDeleteThread={onDeleteThread}
               onUpdateFolder={onUpdateFolder}
               onEditFolderSettings={handleEditFolderSettings}
+              onNewThreadInFolder={handleNewThreadInFolder}
               defaultCollapsed={!hasActive}
             />
           );
@@ -830,15 +867,15 @@ export default function Sidebar({
           )}
         </div>
       </div>
-      {/* フォルダ設定モーダル */}
+      {/* フォルダ設定ドロワー */}
       {folderSettingsModal && (
         <div
           onClick={() => setFolderSettingsModal(null)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 200 }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ background: "white", borderRadius: "12px", padding: "24px", width: "420px", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}
+            style={{ position: "fixed", top: 0, right: 0, width: "480px", height: "100vh", background: "white", boxShadow: "-4px 0 24px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column", padding: "24px", overflowY: "auto", boxSizing: "border-box" }}
           >
             <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, marginBottom: "4px", color: "var(--ink)" }}>
               📁 {folderSettingsModal.folderName}
@@ -851,10 +888,13 @@ export default function Sidebar({
               value={folderSettingsModal.systemPrompt}
               onChange={(e) => setFolderSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
               placeholder={`例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
-              style={{ width: "100%", minHeight: "120px", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
+              style={{ width: "100%", minHeight: "calc(100vh - 220px)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
               onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
             />
+            <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "6px", textAlign: "right", fontFamily: "'DM Sans', sans-serif" }}>
+              {folderSettingsModal.systemPrompt.length.toLocaleString()}文字 / 約{Math.ceil(folderSettingsModal.systemPrompt.length / 2).toLocaleString()}トークン（概算）
+            </div>
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
               💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
             </div>

@@ -197,6 +197,32 @@ export default function Home() {
     localStorage.removeItem("lastActiveThreadId");
   }, [isTemporary, temporaryMessages]);
 
+  const handleNewThreadInFolder = useCallback(async (folderName: string) => {
+    if (isTemporary && temporaryMessages.length > 0) {
+      const ok = window.confirm("保存されていない一時メッセージは消去されます。よろしいですか？");
+      if (!ok) return;
+    }
+    setIsTemporary(false);
+    setTemporaryMessages([]);
+    const id = uuidv4();
+    try {
+      await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "新しい壁打ち", folder_name: folderName }),
+      });
+      await fetchThreads();
+      setActiveThreadId(id);
+      setMessages([]);
+      setInputValue("");
+      setSearchMatchIds([]);
+      setSearchMatchIndex(0);
+      localStorage.setItem("lastActiveThreadId", id);
+    } catch (err) {
+      console.error("フォルダ内スレッド作成失敗:", err);
+    }
+  }, [isTemporary, temporaryMessages, fetchThreads]);
+
   const handleDeleteThread = useCallback(
     async (id: string) => {
       try {
@@ -666,6 +692,7 @@ export default function Home() {
         user={user}
         onLogout={handleLogout}
         onUpdateFolder={handleUpdateFolder}
+        onNewThreadInFolder={handleNewThreadInFolder}
       />
       <ChatPanel
         thread={activeThread}
