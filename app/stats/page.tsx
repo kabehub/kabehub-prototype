@@ -50,12 +50,12 @@ export default function StatsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStats = useCallback(async (p: Period) => {
+  const fetchStats = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const res = await fetch(`/api/stats?period=${p}&tz=${encodeURIComponent(tz)}`);
+      const res = await fetch(`/api/stats?period=${period}&tz=${encodeURIComponent(tz)}`);
       if (res.status === 401) {
         router.push("/login");
         return;
@@ -67,11 +67,21 @@ export default function StatsPage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, period]);
 
+  // period 変更時・初回マウント時に fetch
   useEffect(() => {
-    fetchStats(period);
-  }, [period, fetchStats]);
+    fetchStats();
+  }, [fetchStats]);
+
+  // フォーカス復帰時に再 fetch
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") fetchStats();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [fetchStats]);
 
   // 時間帯グラフの最大値
   const maxHourly = data ? Math.max(...Object.values(data.hourly), 1) : 1;
