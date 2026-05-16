@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { calcCost, formatUSD, getPricing } from "@/lib/pricing";
 
 type Period = "today" | "week" | "month" | "all";
 
 interface ModelStat {
   key: string;
   count: number;
-  input_tokens: number;
-  output_tokens: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
 }
 
 interface StatsData {
@@ -85,6 +86,20 @@ export default function StatsPage() {
 
   // 時間帯グラフの最大値
   const maxHourly = data ? Math.max(...Object.values(data.hourly), 1) : 1;
+
+  const estimatedTotalCost: number | null = useMemo(() => {
+    if (!data) return null;
+    let total = 0;
+    let hasAny = false;
+    for (const row of data.by_model) {
+      const cost = calcCost(row.input_tokens, row.output_tokens, row.key);
+      if (cost !== null) {
+        total += cost;
+        hasAny = true;
+      }
+    }
+    return hasAny ? total : null;
+  }, [data]);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--page-bg, #f9f9f7)", fontFamily: "'DM Sans', sans-serif" }}>
@@ -162,8 +177,8 @@ export default function StatsPage() {
                   {data.total_tokens === 0 ? "—" : formatK(data.total_tokens)}
                 </div>
                 {(() => {
-                  const totalInput = data.by_model.reduce((s, m) => s + m.input_tokens, 0);
-                  const totalOutput = data.by_model.reduce((s, m) => s + m.output_tokens, 0);
+                  const totalInput = data.by_model.reduce((s, m) => s + (m.input_tokens ?? 0), 0);
+                  const totalOutput = data.by_model.reduce((s, m) => s + (m.output_tokens ?? 0), 0);
                   return (totalInput > 0 || totalOutput > 0) ? (
                     <div style={{ fontSize: "11px", color: "var(--ink-faint, #bbb)", marginTop: "3px" }}>
                       入力 {formatK(totalInput)} / 出力 {formatK(totalOutput)}
@@ -178,6 +193,23 @@ export default function StatsPage() {
                     ※ v92以降のデータのみ集計
                   </div>
                 )}
+              </div>
+
+              <div style={{ background: "white", borderRadius: "10px", border: "1px solid var(--border, #e8e6e1)", padding: "20px 24px" }}>
+                <div style={{ fontSize: "11px", color: "var(--ink-faint, #bbb)", fontFamily: "'JetBrains Mono', monospace", marginBottom: "8px", letterSpacing: "0.05em" }}>
+                  EST. COST
+                </div>
+                <div style={{ fontSize: "32px", fontWeight: 700, color: "var(--ink, #1a1a1a)", lineHeight: 1 }}>
+                  {estimatedTotalCost !== null ? formatUSD(estimatedTotalCost) : "—"}
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--ink-muted, #888)", marginTop: "4px" }}>
+                  推定コスト
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--ink-faint, #bbb)", marginTop: "3px" }}>
+                  {estimatedTotalCost !== null
+                    ? "※ トークン記録済み分のみ"
+                    : "トークンデータなし（v92以前）"}
+                </div>
               </div>
             </div>
 
@@ -284,6 +316,7 @@ export default function StatsPage() {
                       <th style={{ padding: "10px 16px", textAlign: "right", fontSize: "11px", color: "var(--ink-faint, #bbb)", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace" }}>AI返答</th>
                       <th style={{ padding: "10px 16px", textAlign: "right", fontSize: "11px", color: "var(--ink-faint, #bbb)", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace" }}>入力tok</th>
                       <th style={{ padding: "10px 24px 10px 16px", textAlign: "right", fontSize: "11px", color: "var(--ink-faint, #bbb)", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace" }}>出力tok</th>
+                      <th style={{ padding: "10px 24px 10px 16px", textAlign: "right", fontSize: "11px", color: "var(--ink-faint, #bbb)", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace" }}>推定コスト</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -296,10 +329,21 @@ export default function StatsPage() {
                           {m.count}
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: "right", color: "var(--ink-muted, #888)" }}>
-                          {formatK(m.input_tokens)}
+                          {formatK(m.input_tokens ?? 0)}
                         </td>
                         <td style={{ padding: "12px 24px 12px 16px", textAlign: "right", color: "var(--ink-muted, #888)" }}>
-                          {formatK(m.output_tokens)}
+                          {formatK(m.output_tokens ?? 0)}
+                        </td>
+                        <td style={{ padding: "12px 24px 12px 16px", textAlign: "right", color: "var(--ink, #1a1a1a)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px" }}>
+                          {(() => {
+                            const cost = calcCost(m.input_tokens, m.output_tokens, m.key);
+                            const pricing = getPricing(m.key);
+                            return (
+                              <span title={pricing ? `$${pricing.inputPerMTok}/in · $${pricing.outputPerMTok}/out per MTok` : "単価不明"}>
+                                {cost !== null ? formatUSD(cost) : "—"}
+                              </span>
+                            );
+                          })()}
                         </td>
                       </tr>
                     ))}
