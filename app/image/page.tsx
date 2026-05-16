@@ -114,7 +114,7 @@ export default function ImageGenPage() {
             ))}
           </div>
           <div style={{ fontSize: '12px', color: '#4b5563', marginTop: '6px' }}>
-            {provider === 'gemini' ? 'gemini-2.5-flash-image' : 'gpt-image-1'}
+            {provider === 'gemini' ? 'gemini-2.5-flash-image' : 'gpt-image-2'}
           </div>
         </div>
 
