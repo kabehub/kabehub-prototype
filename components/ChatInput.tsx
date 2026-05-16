@@ -60,7 +60,7 @@ async function compressImage(file: File): Promise<{ base64: string; mediaType: "
 // ── モデル定数（将来の拡張はここに1行追加するだけ）──────────────────
 export type Provider = "claude" | "gemini" | "openai";
 
-export type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
+export type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
 export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
 export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
 
@@ -72,6 +72,7 @@ export const MODEL_CONFIG = {
     models: [
       { id: "claude-sonnet-4-5" as ClaudeModel, label: "Sonnet 4.5", badge: "標準" },
       { id: "claude-sonnet-4-6" as ClaudeModel, label: "Sonnet 4.6", badge: "高性能" },
+      { id: "claude-haiku-4-5-20251001" as ClaudeModel, label: "Haiku 4.5", badge: "軽量・爆速" },
     ],
     defaultModel: "claude-sonnet-4-5" as ClaudeModel,
     lsKey: "kabehub_claude_model",

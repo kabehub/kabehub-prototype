@@ -10,7 +10,7 @@ type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string;
 type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
 
-type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
+type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
 type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
 type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
 type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
