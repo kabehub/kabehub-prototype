@@ -21,9 +21,19 @@ interface StatsData {
 }
 
 function formatK(n: number): string {
+  if (n === 0) return "—";
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
+}
+
+function formatModelKey(key: string): string {
+  const slash = key.indexOf("/");
+  if (slash === -1) return key;
+  const provider = key.slice(0, slash);
+  const model = key.slice(slash + 1);
+  if (model === "unknown") return `${provider} （旧データ）`;
+  return key;
 }
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -138,11 +148,25 @@ export default function StatsPage() {
                   TOKENS
                 </div>
                 <div style={{ fontSize: "32px", fontWeight: 700, color: "var(--ink, #1a1a1a)", lineHeight: 1 }}>
-                  {formatK(data.total_tokens)}
+                  {data.total_tokens === 0 ? "—" : formatK(data.total_tokens)}
                 </div>
+                {(() => {
+                  const totalInput = data.by_model.reduce((s, m) => s + m.input_tokens, 0);
+                  const totalOutput = data.by_model.reduce((s, m) => s + m.output_tokens, 0);
+                  return (totalInput > 0 || totalOutput > 0) ? (
+                    <div style={{ fontSize: "11px", color: "var(--ink-faint, #bbb)", marginTop: "3px" }}>
+                      入力 {formatK(totalInput)} / 出力 {formatK(totalOutput)}
+                    </div>
+                  ) : null;
+                })()}
                 <div style={{ fontSize: "12px", color: "var(--ink-muted, #888)", marginTop: "4px" }}>
                   合計トークン数
                 </div>
+                {data.total_tokens === 0 && (period === "month" || period === "all") && (
+                  <div style={{ fontSize: "10px", color: "var(--ink-faint, #bbb)", marginTop: "6px" }}>
+                    ※ v92以降のデータのみ集計
+                  </div>
+                )}
               </div>
             </div>
 
@@ -205,7 +229,7 @@ export default function StatsPage() {
                     {data.by_model.map((m, i) => (
                       <tr key={m.key} style={{ borderTop: i > 0 ? "1px solid var(--border, #e8e6e1)" : undefined }}>
                         <td style={{ padding: "12px 24px", color: "var(--ink, #1a1a1a)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px" }}>
-                          {m.key}
+                          {formatModelKey(m.key)}
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: "right", color: "var(--ink, #1a1a1a)", fontWeight: 500 }}>
                           {m.count}
