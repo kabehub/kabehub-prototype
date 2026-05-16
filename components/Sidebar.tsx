@@ -1,7 +1,7 @@
 "use client";
 
 import { Thread } from "@/types";
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 
 interface SidebarProps {
@@ -538,6 +538,23 @@ export default function Sidebar({
   const [searchTarget, setSearchTarget] = useState<"title" | "message" | "both">("both");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 今日の利用統計
+  const [todayStats, setTodayStats] = useState<{ sends: number; total_tokens: number } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/stats?period=today");
+        if (!res.ok) return;
+        const d = await res.json();
+        setTodayStats({ sends: d.sends, total_tokens: d.total_tokens });
+      } catch {
+        // サイドバーが壊れないよう握りつぶす
+      }
+    })();
+  }, [user]);
+
   // フォルダ設定モーダル
   const [folderSettingsModal, setFolderSettingsModal] = useState<{ folderName: string; systemPrompt: string } | null>(null);
   const [folderSettingsSaving, setFolderSettingsSaving] = useState(false);
@@ -868,6 +885,19 @@ export default function Sidebar({
         </a>
 
         {/* フッター：スレッド数 + ユーザー情報・ログアウト */}
+        {todayStats && (
+          <a
+            href="/stats"
+            style={{ display: "block", fontSize: "10px", color: "var(--ink-faint)", marginBottom: "6px", textDecoration: "none", letterSpacing: "0.03em", transition: "color 0.12s" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-faint)"; }}
+          >
+            今日 {todayStats.sends}回 · 約{" "}
+            {todayStats.total_tokens >= 1000
+              ? `${Math.round(todayStats.total_tokens / 1000)}K`
+              : todayStats.total_tokens} tok →
+          </a>
+        )}
         <div style={{ marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontSize: "10px", color: "var(--ink-faint)", letterSpacing: "0.05em" }}>
             {isSearching

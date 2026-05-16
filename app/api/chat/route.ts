@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 type ChatMessage = { role: string; content: string; provider?: string };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
+type UsageData = { input_tokens: number | null; output_tokens: number | null };
 
 type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6";
 type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
@@ -30,6 +31,7 @@ function streamClaude(
   modelId: ClaudeModel = "claude-sonnet-4-5",
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
+  onUsage?: (u: UsageData) => void,
 ): ReadableStream<string> {
   const systemBlock = systemPrompt?.trim()
     ? [{ type: "text" as const, text: systemPrompt.trim(), cache_control: { type: "ephemeral" as const } }]
@@ -81,54 +83,66 @@ function streamClaude(
 
         // SSEパース: message_start でキャッシュ統計取得
         let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        let inputTokens: number | null = null;
+        let outputTokens: number | null = null;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
 
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim();
-            if (raw === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(raw);
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim();
+              if (raw === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(raw);
 
-              // ✅ v62: キャッシュ統計ログ（Gemini指摘③: message_start + message_delta 両方拾う）
-              if (process.env.NODE_ENV === "development") {
+                // ✅ v62: キャッシュ統計ログ（Gemini指摘③: message_start + message_delta 両方拾う）
                 if (parsed.type === "message_start") {
-                  // 入力トークン + キャッシュヒット/作成トークン
                   const u = parsed.message?.usage ?? {};
-                  console.log("[Cache input]", {
-                    input_tokens:                u.input_tokens                   ?? 0,
-                    cache_creation_input_tokens: u.cache_creation_input_tokens    ?? 0,
-                    cache_read_input_tokens:     u.cache_read_input_tokens        ?? 0,
-                  });
+                  inputTokens = u.input_tokens ?? null;
+                  if (process.env.NODE_ENV === "development") {
+                    console.log("[Cache input]", {
+                      input_tokens:                u.input_tokens                   ?? 0,
+                      cache_creation_input_tokens: u.cache_creation_input_tokens    ?? 0,
+                      cache_read_input_tokens:     u.cache_read_input_tokens        ?? 0,
+                    });
+                  }
                 }
                 if (parsed.type === "message_delta") {
-                  // 出力トークン（ストリーム終盤に届く）
                   const u = parsed.usage ?? {};
-                  console.log("[Cache output]", {
-                    output_tokens: u.output_tokens ?? 0,
-                  });
+                  outputTokens = u.output_tokens ?? null;
+                  if (process.env.NODE_ENV === "development") {
+                    console.log("[Cache output]", { output_tokens: u.output_tokens ?? 0 });
+                  }
                 }
-              }
 
-              // テキストチャンクをenqueue
-              if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-                controller.enqueue(parsed.delta.text);
+                // テキストチャンクをenqueue
+                if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
+                  controller.enqueue(parsed.delta.text);
+                }
+              } catch {
+                // JSON parseエラーは無視
               }
-            } catch {
-              // JSON parseエラーは無視
             }
           }
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          controller.close();
+        } catch (err) {
+          // AbortErrorはキャンセル扱い（エラーとして伝播させない）
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          if ((err as Error).name !== "AbortError") {
+            controller.error(err);
+          } else {
+            controller.close();
+          }
         }
-
-        controller.close();
       } catch (err) {
-        // AbortErrorはキャンセル扱い（エラーとして伝播させない）
+        // fetch失敗など外側のエラー
         if ((err as Error).name !== "AbortError") {
           controller.error(err);
         } else {
@@ -147,6 +161,7 @@ function streamGemini(
   modelId: GeminiModel = "gemini-2.5-flash",
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
+  onUsage?: (u: UsageData) => void,
 ): ReadableStream<string> {
   const contents = messages.map((m, index) => {
     const isLast = index === messages.length - 1;
@@ -180,30 +195,45 @@ function streamGemini(
         const reader = response.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let inputTokens: number | null = null;
+        let outputTokens: number | null = null;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim();
-            if (!raw) continue;
-            try {
-              const parsed = JSON.parse(raw);
-              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text) controller.enqueue(text);
-            } catch {
-              // 無視
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim();
+              if (!raw) continue;
+              try {
+                const parsed = JSON.parse(raw);
+                const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) controller.enqueue(text);
+                // 最終チャンクにusageMetadataが含まれる
+                if (parsed.usageMetadata) {
+                  inputTokens = parsed.usageMetadata.promptTokenCount ?? null;
+                  outputTokens = parsed.usageMetadata.candidatesTokenCount ?? null;
+                }
+              } catch {
+                // 無視
+              }
             }
           }
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          controller.close();
+        } catch (err) {
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          if ((err as Error).name !== "AbortError") {
+            controller.error(err);
+          } else {
+            controller.close();
+          }
         }
-
-        controller.close();
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           controller.error(err);
@@ -223,6 +253,7 @@ function streamOpenAI(
   modelId: OpenAIModel = "gpt-5.4-mini",
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
+  onUsage?: (u: UsageData) => void,
 ): ReadableStream<string> {
   const msgs: { role: string; content: unknown }[] = [];
   if (systemPrompt?.trim()) msgs.push({ role: "system", content: systemPrompt.trim() });
@@ -261,36 +292,49 @@ function streamOpenAI(
         const reader = response.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let inputTokens: number | null = null;
+        let outputTokens: number | null = null;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim();
-            if (raw === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(raw);
-              const text = parsed.choices?.[0]?.delta?.content;
-              if (text) controller.enqueue(text);
-              if (parsed.usage) {
-                const usage = parsed.usage;
-                const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
-                const normalTokens = (usage?.prompt_tokens ?? 0) - cachedTokens;
-                console.log("[OpenAI Cache]", { cached: cachedTokens, normal: normalTokens, total: usage?.prompt_tokens });
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim();
+              if (raw === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(raw);
+                const text = parsed.choices?.[0]?.delta?.content;
+                if (text) controller.enqueue(text);
+                // 最終チャンクにusageが含まれる（stream_options.include_usage=true が必須）
+                if (parsed.usage) {
+                  const usage = parsed.usage;
+                  inputTokens = usage.prompt_tokens ?? null;
+                  outputTokens = usage.completion_tokens ?? null;
+                  const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+                  const normalTokens = (usage?.prompt_tokens ?? 0) - cachedTokens;
+                  console.log("[OpenAI Cache]", { cached: cachedTokens, normal: normalTokens, total: usage?.prompt_tokens });
+                }
+              } catch {
+                // 無視
               }
-            } catch {
-              // 無視
             }
           }
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          controller.close();
+        } catch (err) {
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          if ((err as Error).name !== "AbortError") {
+            controller.error(err);
+          } else {
+            controller.close();
+          }
         }
-
-        controller.close();
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           controller.error(err);
@@ -312,6 +356,8 @@ async function saveAssistantMessage(
   provider: string,
   messageId: string,
   modelId?: string,
+  inputTokens?: number | null,
+  outputTokens?: number | null,
 ): Promise<boolean> {
   // ✅ v64修正: upsertで重複INSERT（duplicate key）を防ぐ
   // 同じIDで2回保存が走った場合は既存レコードを上書き
@@ -323,6 +369,8 @@ async function saveAssistantMessage(
     provider,
     user_id: userId,
     ...(modelId ? { model_id: modelId } : {}),
+    ...(inputTokens != null ? { input_tokens: inputTokens } : {}),
+    ...(outputTokens != null ? { output_tokens: outputTokens } : {}),
   }, { onConflict: "id" });
   if (error) {
     console.error("[saveAssistantMessage] DB保存失敗:", error);
@@ -425,16 +473,20 @@ export async function POST(req: NextRequest) {
   let errorMessage: string | null = null;
   const usedProvider = provider;
 
+  // ✅ v92: ストリーム完了後にトークン数を回収するためのref
+  const usageRef: UsageData = { input_tokens: null, output_tokens: null };
+  const handleUsage = (u: UsageData) => { usageRef.input_tokens = u.input_tokens; usageRef.output_tokens = u.output_tokens; };
+
   try {
     if (provider === "gemini") {
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
-      aiStream = streamGemini(geminiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as GeminiModel, imageBlocksForApi, req.signal);
+      aiStream = streamGemini(geminiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as GeminiModel, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      aiStream = streamClaude(anthropicKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal);
+      aiStream = streamClaude(anthropicKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "openai") {
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
-      aiStream = streamOpenAI(openaiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal);
+      aiStream = streamOpenAI(openaiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal, handleUsage);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
     }
@@ -501,7 +553,7 @@ export async function POST(req: NextRequest) {
     const contentToSave = aborted
       ? accumulatedText + "\n\n[生成中断]"
       : accumulatedText;
-    return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId, resolvedModelId);
+    return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId, resolvedModelId, usageRef.input_tokens, usageRef.output_tokens);
   };
 
   const readable = aiStream.pipeThrough(outputStream);
@@ -584,6 +636,8 @@ export async function POST(req: NextRequest) {
             provider: usedProvider,
             user_id: userId,
             model_id: resolvedModelId,
+            ...(usageRef.input_tokens != null ? { input_tokens: usageRef.input_tokens } : {}),
+            ...(usageRef.output_tokens != null ? { output_tokens: usageRef.output_tokens } : {}),
           }),
         });
         if (res.ok) {

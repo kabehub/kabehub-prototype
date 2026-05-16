@@ -715,9 +715,21 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             {/* 1行目: タイトル + ボタン群 */}
             <div style={{ display: "flex", alignItems: "center", gap: "12px", minHeight: "36px" }}>
               <div style={{ width: "4px", height: "18px", background: "var(--accent)", borderRadius: "2px", flexShrink: 0 }} />
-              <h1 style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 500, color: "var(--ink)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                {thread.title}
-              </h1>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h1 style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 500, color: "var(--ink)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {thread.title}
+                </h1>
+                {(() => {
+                  const userCount = messages.filter((m) => m.role === "user" && m.provider !== "memo").length;
+                  const aiCount = messages.filter((m) => m.role === "assistant").length;
+                  if (userCount === 0) return null;
+                  return (
+                    <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginTop: "1px", fontFamily: "'JetBrains Mono', monospace" }}>
+                      あなた {userCount}回 / AI {aiCount}回
+                    </div>
+                  );
+                })()}
+              </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
 
