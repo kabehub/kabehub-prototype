@@ -54,7 +54,8 @@ export default function StatsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/stats?period=${p}`);
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await fetch(`/api/stats?period=${p}&tz=${encodeURIComponent(tz)}`);
       if (res.status === 401) {
         router.push("/login");
         return;

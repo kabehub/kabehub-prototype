@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const period = req.nextUrl.searchParams.get("period") ?? "today";
+  const tz = req.nextUrl.searchParams.get("tz") ?? "Asia/Tokyo";
 
   const now = new Date();
   let since: Date;
@@ -74,7 +75,10 @@ export async function GET(req: NextRequest) {
   if (period === "today") {
     for (const r of rows) {
       if (r.role !== "user" || r.provider === "memo") continue;
-      const hour = new Date(r.created_at).getHours();
+      const hour = parseInt(
+        new Date(r.created_at).toLocaleString("en-US", { timeZone: tz, hour: "numeric", hour12: false }),
+        10,
+      ) % 24;
       hourly[hour] = (hourly[hour] ?? 0) + 1;
     }
   }
