@@ -191,33 +191,83 @@ export default function StatsPage() {
                   <div style={{ textAlign: "center", padding: "20px 0", color: "var(--ink-faint, #bbb)", fontSize: "12px" }}>
                     今日はまだメッセージがありません
                   </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: "3px", height: "80px" }}>
-                    {Array.from({ length: 24 }, (_, h) => {
-                      const count = data.hourly[h] ?? 0;
-                      const height = count > 0 ? Math.max(4, Math.round((count / maxHourly) * 72)) : 2;
-                      return (
-                        <div key={h} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-                          <div
-                            title={`${h}時: ${count}回`}
-                            style={{
-                              width: "100%",
-                              height: `${height}px`,
-                              background: count > 0 ? "var(--accent, #6d28d9)" : "var(--border, #e8e6e1)",
-                              borderRadius: "2px",
-                              opacity: count > 0 ? 0.85 : 0.4,
-                              transition: "opacity 0.1s",
-                              cursor: count > 0 ? "default" : undefined,
-                            }}
-                          />
-                          {h % 6 === 0 && (
-                            <span style={{ fontSize: "9px", color: "var(--ink-faint, #bbb)" }}>{h}</span>
-                          )}
+                ) : (() => {
+                  const CHART_H = 96;
+                  const Y_AXIS_W = 28;
+                  const ticks = Array.from(new Set([
+                    0,
+                    Math.ceil(maxHourly / 3),
+                    Math.ceil(maxHourly * 2 / 3),
+                    maxHourly,
+                  ]));
+                  return (
+                    <>
+                      {/* Y軸 + 棒グラフ */}
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {/* Y軸ラベル */}
+                        <div style={{ position: "relative", width: `${Y_AXIS_W}px`, height: `${CHART_H}px`, flexShrink: 0 }}>
+                          {ticks.map((tick) => (
+                            <span key={tick} style={{
+                              position: "absolute",
+                              right: 0,
+                              bottom: `${(tick / maxHourly) * 100}%`,
+                              fontSize: "9px",
+                              color: "var(--ink-faint, #bbb)",
+                              lineHeight: 1,
+                              transform: "translateY(50%)",
+                            }}>{tick}</span>
+                          ))}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+
+                        {/* 棒グラフ本体 */}
+                        <div style={{ flex: 1, position: "relative", height: `${CHART_H}px` }}>
+                          {/* グリッド線 */}
+                          {ticks.map((tick) => (
+                            <div key={tick} style={{
+                              position: "absolute",
+                              bottom: `${(tick / maxHourly) * 100}%`,
+                              width: "100%",
+                              borderTop: "1px solid rgba(128,128,128,0.2)",
+                            }} />
+                          ))}
+                          {/* 棒 */}
+                          <div style={{ display: "flex", alignItems: "flex-end", height: "100%", gap: "2px" }}>
+                            {Array.from({ length: 24 }, (_, h) => {
+                              const count = data.hourly[h] ?? 0;
+                              return (
+                                <div
+                                  key={h}
+                                  title={`${h}時: ${count}回`}
+                                  style={{
+                                    flex: 1,
+                                    height: count > 0 ? `${Math.max(3, (count / maxHourly) * 100)}%` : "2px",
+                                    background: count > 0 ? "var(--accent, #6d28d9)" : "var(--border, #e8e6e1)",
+                                    borderRadius: "2px 2px 0 0",
+                                    opacity: count > 0 ? 0.85 : 0.4,
+                                    transition: "height 0.2s",
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* X軸ラベル（棒グラフエリアと独立） */}
+                      <div style={{ position: "relative", height: "16px", marginLeft: `${Y_AXIS_W + 8}px`, marginTop: "2px" }}>
+                        {[0, 6, 12, 18].map((h) => (
+                          <span key={h} style={{
+                            position: "absolute",
+                            left: `${(h / 23) * 100}%`,
+                            fontSize: "9px",
+                            color: "var(--ink-faint, #bbb)",
+                            transform: "translateX(-50%)",
+                          }}>{h}</span>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
