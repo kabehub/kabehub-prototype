@@ -368,6 +368,7 @@ export default function Home() {
     let assistantThreadId = "";
     let assistantProvider = "";
     let assistantCreatedAt = "";
+    let assistantModelId = "";
     let accumulatedText = "";
     let aborted = false;
 
@@ -392,6 +393,7 @@ export default function Home() {
               assistantThreadId = parsed.threadId;
               assistantProvider = parsed.provider;
               assistantCreatedAt = parsed.createdAt;
+              assistantModelId = parsed.modelId || "";
             } else if (parsed.type === "chunk") {
               accumulatedText += parsed.text;
               onChunk(accumulatedText); // リアルタイム表示更新
@@ -419,6 +421,7 @@ export default function Home() {
       content: accumulatedText,
       provider: (assistantProvider || "unknown") as "user" | "claude" | "gemini" | "openai" | "memo" | "unknown",
       created_at: assistantCreatedAt || new Date().toISOString(),
+      model_id: assistantModelId || null,
     };
 
     return {

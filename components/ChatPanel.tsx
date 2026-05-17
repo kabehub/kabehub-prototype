@@ -1582,7 +1582,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         provider={provider}
         onRegenerate={onRegenerate}
         onTrimFrom={onTrimFrom}
-        onDelete={onDeleteMessage}
         onMemoize={onMemoizeMessage}
         messageNotes={messageNotes}
         onAddMessageNote={handleAddMessageNote}

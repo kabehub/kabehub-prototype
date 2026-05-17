@@ -11,7 +11,6 @@ interface MessageBubbleProps {
   provider?: string;
   onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message) => void;
   onTrimFrom?: (message: Message) => void;
-  onDelete?: (message: Message) => void;
   onMemoize?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   messageNotes?: MessageNote[];
@@ -30,7 +29,6 @@ function MessageBubble({
   provider,
   onRegenerate,
   onTrimFrom,
-  onDelete,
   onMemoize,
   onUpdateMessage,
   messageNotes = [],
@@ -359,7 +357,7 @@ function MessageBubble({
             )}
 
             {/* ⋮ コンテキストメニュートリガー */}
-            {!isLoading && (onDelete || onMemoize || onRegenerate) && (
+            {!isLoading && (onTrimFrom || onMemoize || onRegenerate) && (
               <button
                 onClick={handleOpenMenu}
                 style={{
@@ -595,13 +593,13 @@ function MessageBubble({
               📝 メモ化
             </button>
           )}
-          {/* 削除（全種別） */}
-          {onDelete && (
+          {/* 削除（このメッセージ以降を全て削除） */}
+          {onTrimFrom && (
             <button
               onClick={() => {
                 setMenuOpen(false);
-                if (window.confirm("このメッセージを削除しますか？")) {
-                  onDelete(message);
+                if (window.confirm("このメッセージ以降を全て削除しますか？")) {
+                  onTrimFrom(message);
                 }
               }}
               style={{ ...menuItemStyle, color: "#e53e3e" }}

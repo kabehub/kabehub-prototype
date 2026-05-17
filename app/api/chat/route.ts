@@ -527,6 +527,7 @@ export async function POST(req: NextRequest) {
     threadId,
     provider: usedProvider,
     createdAt: now,
+    modelId: resolvedModelId,
   }) + "\n";
 
   let accumulatedText = "";
