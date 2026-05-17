@@ -16,7 +16,7 @@ interface RoleplayBubbleProps {
   isLast?: boolean;
   isLoading?: boolean;
   provider?: string;
-  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai") => void;
+  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message) => void;
   onTrimFrom?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   messageNotes?: MessageNote[];
@@ -470,7 +470,7 @@ function RoleplayBubble({
             {regenTargets.map((p) => (
               <button
                 key={p}
-                onClick={() => onRegenerate(p)}
+                onClick={() => onRegenerate(p, message)}
                 style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}

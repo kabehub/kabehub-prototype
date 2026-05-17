@@ -22,8 +22,10 @@ interface ChatPanelProps {
   provider: "claude" | "gemini" | "openai";
   onProviderChange: (p: "claude" | "gemini" | "openai") => void;
   onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
-  onRegenerate: (targetProvider: "claude" | "gemini" | "openai") => void;
+  onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message) => void;
   onTrimFrom: (message: Message) => void;
+  onDeleteMessage?: (message: Message) => void;
+  onMemoizeMessage?: (message: Message) => void;
   isTemporary: boolean;
   onSwitchTemporary: () => void;
   onCopyThread: (threadId: string) => void;
@@ -49,6 +51,8 @@ export default function ChatPanel({
   onTitleUpdate,
   onRegenerate,
   onTrimFrom,
+  onDeleteMessage,
+  onMemoizeMessage,
   isTemporary,
   onSwitchTemporary,
   onCopyThread,
@@ -1578,6 +1582,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         provider={provider}
         onRegenerate={onRegenerate}
         onTrimFrom={onTrimFrom}
+        onDelete={onDeleteMessage}
+        onMemoize={onMemoizeMessage}
         messageNotes={messageNotes}
         onAddMessageNote={handleAddMessageNote}
         onDeleteMessageNote={handleDeleteMessageNote}

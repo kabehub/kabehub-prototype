@@ -341,6 +341,7 @@ export default function Home() {
   ): Promise<{
     userMessage: Message;
     assistantMessage: Message;
+    aborted: boolean;
   }> => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -411,15 +412,11 @@ export default function Home() {
       }
     }
 
-    const finalContent = aborted
-      ? accumulatedText + "\n\n[生成中断]"
-      : accumulatedText;
-
     const assistantMessage: Message = {
       id: assistantMessageId || uuidv4(),
       thread_id: assistantThreadId || "",
       role: "assistant",
-      content: finalContent,
+      content: accumulatedText,
       provider: (assistantProvider || "unknown") as "user" | "claude" | "gemini" | "openai" | "memo" | "unknown",
       created_at: assistantCreatedAt || new Date().toISOString(),
     };
@@ -434,6 +431,7 @@ export default function Home() {
         created_at: new Date().toISOString(),
       },
       assistantMessage,
+      aborted,
     };
   }, []);
 
@@ -496,7 +494,7 @@ export default function Home() {
 
     // 通常モード: ストリーミング
     try {
-      const { userMessage, assistantMessage } = await fetchWithStreaming(
+      const { userMessage, assistantMessage, aborted } = await fetchWithStreaming(
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
@@ -513,7 +511,29 @@ export default function Home() {
         },
       );
 
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      if (aborted && userMessage.id && assistantMessage.id) {
+        // Escキャンセル時: 両メッセージをmemoとして楽観的更新
+        setMessages((prev) => [
+          ...prev,
+          { ...userMessage, provider: "memo" as const },
+          { ...assistantMessage, provider: "memo" as const },
+        ]);
+        // DB側も非同期でmemoに更新（fire-and-forget）
+        Promise.all([
+          fetch(`/api/threads/${activeThreadId}/messages/${userMessage.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: "memo" }),
+          }),
+          fetch(`/api/threads/${activeThreadId}/messages/${assistantMessage.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: "memo" }),
+          }),
+        ]).catch((err) => console.error("中断メモ化失敗:", err));
+      } else {
+        setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      }
       await fetchThreads();
     } catch (err) {
       console.error("送信エラー:", err);
@@ -568,29 +588,47 @@ export default function Home() {
   }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
 
   // ── 再生成 ────────────────────────────────────────────────
-  const handleRegenerate = useCallback(async (targetProvider: "claude" | "gemini" | "openai") => {
+  const handleRegenerate = useCallback(async (
+    targetProvider: "claude" | "gemini" | "openai",
+    assistantMsg?: Message,
+  ) => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
     setStreamingContent("");
     try {
-      const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
-      const latestMessages: Message[] = await res.json();
+      let lastAssistant: Message;
+      let lastUser: Message | null = null;
+      let newMessages: Message[];
 
-      let lastAssistantIndex = -1;
-      for (let i = latestMessages.length - 1; i >= 0; i--) {
-        if (latestMessages[i].role === "assistant") { lastAssistantIndex = i; break; }
+      if (assistantMsg) {
+        // コンテキストメニューから: ローカルstateを使用
+        lastAssistant = assistantMsg;
+        const idx = messages.findIndex((m) => m.id === assistantMsg.id);
+        for (let i = idx - 1; i >= 0; i--) {
+          if (messages[i].role === "user") { lastUser = messages[i]; break; }
+        }
+        if (!lastUser) { setIsLoading(false); return; }
+        newMessages = messages.filter((m) => m.id !== lastAssistant.id);
+      } else {
+        // isLastボタンから: DBから最新を取得（既存挙動を維持）
+        const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+        const latestMessages: Message[] = await res.json();
+
+        let lastAssistantIndex = -1;
+        for (let i = latestMessages.length - 1; i >= 0; i--) {
+          if (latestMessages[i].role === "assistant") { lastAssistantIndex = i; break; }
+        }
+        if (lastAssistantIndex === -1) { setIsLoading(false); return; }
+
+        lastAssistant = latestMessages[lastAssistantIndex];
+        for (let i = lastAssistantIndex - 1; i >= 0; i--) {
+          if (latestMessages[i].role === "user") { lastUser = latestMessages[i]; break; }
+        }
+        if (!lastUser) { setIsLoading(false); return; }
+        newMessages = latestMessages.filter((m) => m.id !== lastAssistant.id);
       }
-      if (lastAssistantIndex === -1) { setIsLoading(false); return; }
 
-      const lastAssistant = latestMessages[lastAssistantIndex];
-      let lastUser = null;
-      for (let i = lastAssistantIndex - 1; i >= 0; i--) {
-        if (latestMessages[i].role === "user") { lastUser = latestMessages[i]; break; }
-      }
-      if (!lastUser) { setIsLoading(false); return; }
-
-      await fetch(`/api/messages/${lastAssistant.id}`, { method: "DELETE" });
-      const newMessages = latestMessages.filter((m) => m.id !== lastAssistant.id);
+      await fetch(`/api/threads/${activeThreadId}/messages/${lastAssistant.id}`, { method: "DELETE" });
       setMessages(newMessages);
 
       const { assistantMessage } = await fetchWithStreaming(
@@ -616,7 +654,7 @@ export default function Home() {
       setIsLoading(false);
       setStreamingContent("");
     }
-  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming]);
+  }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming]);
 
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
@@ -642,6 +680,34 @@ export default function Home() {
       setIsLoading(false);
     }
   }, [activeThreadId, messages]);
+
+  // ── メッセージ単体削除 ──────────────────────────────────
+  const handleDeleteMessage = useCallback(async (message: Message) => {
+    if (!activeThreadId) return;
+    setMessages((prev) => prev.filter((m) => m.id !== message.id));
+    try {
+      await fetch(`/api/threads/${activeThreadId}/messages/${message.id}`, { method: "DELETE" });
+    } catch (err) {
+      console.error("メッセージ削除失敗:", err);
+    }
+  }, [activeThreadId]);
+
+  // ── メッセージをメモ化 ──────────────────────────────────
+  const handleMemoizeMessage = useCallback(async (message: Message) => {
+    if (!activeThreadId) return;
+    setMessages((prev) =>
+      prev.map((m) => m.id === message.id ? { ...m, provider: "memo" as const } : m)
+    );
+    try {
+      await fetch(`/api/threads/${activeThreadId}/messages/${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "memo" }),
+      });
+    } catch (err) {
+      console.error("メモ化失敗:", err);
+    }
+  }, [activeThreadId]);
 
   // ── セルフコピペ ──────────────────────────────────────────
   const handleCopyThread = useCallback(async (threadId: string) => {
@@ -710,6 +776,8 @@ export default function Home() {
         onTitleUpdate={handleTitleUpdate}
         onRegenerate={handleRegenerate}
         onTrimFrom={handleTrimFrom}
+        onDeleteMessage={handleDeleteMessage}
+        onMemoizeMessage={handleMemoizeMessage}
         isTemporary={isTemporary}
         onSwitchTemporary={handleSwitchTemporary}
         onCopyThread={handleCopyThread}

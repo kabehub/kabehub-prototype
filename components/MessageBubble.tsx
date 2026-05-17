@@ -2,15 +2,17 @@
 
 import MarkdownRenderer from "./MarkdownRenderer";
 import { Message, MessageNote } from "@/types";
-import { useState, memo } from "react";
+import { useState, memo, useEffect, useRef } from "react";
 
 interface MessageBubbleProps {
   message: Message;
   isLast?: boolean;
   isLoading?: boolean;
   provider?: string;
-  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai") => void;
+  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message) => void;
   onTrimFrom?: (message: Message) => void;
+  onDelete?: (message: Message) => void;
+  onMemoize?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   messageNotes?: MessageNote[];
   onAddMessageNote?: (messageId: string, content: string) => Promise<void>;
@@ -28,6 +30,8 @@ function MessageBubble({
   provider,
   onRegenerate,
   onTrimFrom,
+  onDelete,
+  onMemoize,
   onUpdateMessage,
   messageNotes = [],
   onAddMessageNote,
@@ -52,6 +56,40 @@ function MessageBubble({
   // is_hidden の楽観的更新用
   const [isHidden, setIsHidden] = useState(message.is_hidden ?? false);
   const [isSavingHidden, setIsSavingHidden] = useState(false);
+
+  // ⋮ コンテキストメニュー
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const [isContainerHovered, setIsContainerHovered] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
+
+  const showContextTrigger = isTouchDevice || isContainerHovered;
+
+  const handleOpenMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+    // メニューをボタンの右下に配置、画面端でクリップしないよう調整
+    const x = Math.min(rect.right, window.innerWidth - 180);
+    const y = rect.bottom + 4;
+    setMenuPos({ x, y });
+    setMenuOpen(true);
+  };
 
   const myNotes = messageNotes.filter((n) => n.message_id === message.id);
 
@@ -134,6 +172,25 @@ function MessageBubble({
     }, 0);
   };
 
+  const menuItemStyle: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    padding: "8px 14px",
+    border: "none",
+    background: "none",
+    textAlign: "left",
+    fontSize: "13px",
+    fontFamily: "'DM Sans', sans-serif",
+    color: "var(--ink)",
+    cursor: "pointer",
+    transition: "background 0.1s",
+    whiteSpace: "nowrap",
+  };
+
+  const regenProvider =
+    message.provider === "claude" || message.provider === "gemini" || message.provider === "openai"
+      ? message.provider
+      : "claude";
 
   return (
     <>
@@ -155,16 +212,14 @@ function MessageBubble({
           opacity: isHidden ? 0.5 : 1,
         }}
         onMouseEnter={(e) => {
-          const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
-          if (btn) btn.style.opacity = "1";
+          setIsContainerHovered(true);
           const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
           if (copyBtn) copyBtn.style.opacity = "1";
           const maskBtn = (e.currentTarget as HTMLDivElement).querySelector(".mask-btn") as HTMLButtonElement | null;
           if (maskBtn) maskBtn.style.opacity = "1";
         }}
         onMouseLeave={(e) => {
-          const btn = (e.currentTarget as HTMLDivElement).querySelector(".trim-btn") as HTMLButtonElement | null;
-          if (btn) btn.style.opacity = "0";
+          setIsContainerHovered(false);
           const copyBtn = (e.currentTarget as HTMLDivElement).querySelector(".copy-btn") as HTMLButtonElement | null;
           if (copyBtn && !copied) copyBtn.style.opacity = "0";
           const maskBtn = (e.currentTarget as HTMLDivElement).querySelector(".mask-btn") as HTMLButtonElement | null;
@@ -203,7 +258,7 @@ function MessageBubble({
         </div>
 
         {/* バブル＋メモアイコン行 */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: "row", position: "relative", zIndex: 1 }}>  
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: "row", position: "relative", zIndex: 1 }}>
           <div style={{ position: "relative", width: "100%" }}>
             <div
               onClick={() => { const sel = window.getSelection(); if (sel && !sel.isCollapsed) return; setShowNoteInput((v) => !v); setShowNoteList(false); }}
@@ -300,6 +355,37 @@ function MessageBubble({
                 title={isHidden ? "公開に戻す" : "共有ページで非公開にする"}
               >
                 🔒
+              </button>
+            )}
+
+            {/* ⋮ コンテキストメニュートリガー */}
+            {!isLoading && (onDelete || onMemoize || onRegenerate) && (
+              <button
+                onClick={handleOpenMenu}
+                style={{
+                  position: "absolute",
+                  bottom: "-10px",
+                  right: "-8px",
+                  opacity: showContextTrigger ? 1 : 0,
+                  width: "24px",
+                  height: "24px",
+                  borderRadius: "50%",
+                  border: "1px solid var(--border)",
+                  background: "white",
+                  color: "var(--ink-muted)",
+                  fontSize: "16px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+                  transition: "opacity 0.15s",
+                  zIndex: 2,
+                }}
+                title="操作メニュー"
+              >
+                ⋮
               </button>
             )}
           </div>
@@ -452,26 +538,13 @@ function MessageBubble({
           </div>
         )}
 
-        {/* ✂️ 削除ボタン */}
-        {!isLoading && onTrimFrom && (
-          <button
-            className="trim-btn"
-            onClick={() => { if (window.confirm("このメッセージ以降を全て削除しますか？")) { onTrimFrom(message); } }}
-            style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: "-80px", opacity: 0, padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "opacity 0.15s", whiteSpace: "nowrap", zIndex: 2 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#e53e3e"; (e.currentTarget as HTMLButtonElement).style.color = "#e53e3e"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
-          >
-            ✂️ 削除
-          </button>
-        )}
-
-        {/* 再生成ボタン */}
+        {/* 再生成ボタン（isLast の場合のみ） */}
         {!isUser && !isMemo && isLast && !isLoading && onRegenerate && (
           <div style={{ display: "flex", gap: "6px", marginTop: "6px", position: "relative", zIndex: 1 }}>
             {regenTargets.map((p) => (
               <button
                 key={p}
-                onClick={() => onRegenerate(p)}
+                onClick={() => onRegenerate(p, message)}
                 style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
@@ -482,6 +555,64 @@ function MessageBubble({
           </div>
         )}
       </div>
+
+      {/* ⋮ コンテキストメニュー（position: fixed） */}
+      {menuOpen && (
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: menuPos.y,
+            left: menuPos.x,
+            zIndex: 9999,
+            background: "white",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            minWidth: "160px",
+            overflow: "hidden",
+          }}
+        >
+          {/* 再生成（assistantのみ） */}
+          {!isUser && !isMemo && onRegenerate && (
+            <button
+              onClick={() => { setMenuOpen(false); onRegenerate(regenProvider, message); }}
+              style={menuItemStyle}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+            >
+              🔄 再生成
+            </button>
+          )}
+          {/* メモ化（userとassistantのみ、memoは除外） */}
+          {!isMemo && onMemoize && (
+            <button
+              onClick={() => { setMenuOpen(false); onMemoize(message); }}
+              style={menuItemStyle}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+            >
+              📝 メモ化
+            </button>
+          )}
+          {/* 削除（全種別） */}
+          {onDelete && (
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                if (window.confirm("このメッセージを削除しますか？")) {
+                  onDelete(message);
+                }
+              }}
+              style={{ ...menuItemStyle, color: "#e53e3e" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+            >
+              🗑️ 削除
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }

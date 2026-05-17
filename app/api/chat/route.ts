@@ -550,9 +550,7 @@ export async function POST(req: NextRequest) {
   // dbSavedは保存「成功」時のみtrueにする（失敗を隠蔽しない）
   const saveToDb = async (aborted: boolean, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
     if (isTemporary) return true;
-    const contentToSave = aborted
-      ? accumulatedText + "\n\n[生成中断]"
-      : accumulatedText;
+    const contentToSave = accumulatedText;
     return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId, resolvedModelId, usageRef.input_tokens, usageRef.output_tokens);
   };
 
@@ -617,9 +615,7 @@ export async function POST(req: NextRequest) {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceKey) {
-        const contentToSave = isAborted
-          ? accumulatedText + "\n\n[生成中断]"
-          : accumulatedText;
+        const contentToSave = accumulatedText;
         const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
           method: "POST",
           headers: {
