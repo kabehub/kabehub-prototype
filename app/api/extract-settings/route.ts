@@ -46,10 +46,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const apiKey = req.headers.get('x-anthropic-api-key')
-  if (!apiKey) {
-    return NextResponse.json({ error: 'x-anthropic-api-key header is required' }, { status: 400 })
+  const anthropicKey = req.headers.get('x-anthropic-api-key')
+  const geminiKey    = req.headers.get('x-gemini-api-key')
+  const openaiKey    = req.headers.get('x-openai-api-key')
+
+  const provider =
+    anthropicKey ? 'claude' :
+    geminiKey    ? 'gemini' :
+    openaiKey    ? 'openai' :
+    null
+
+  if (!provider) {
+    return NextResponse.json({ error: 'API key is required (x-anthropic-api-key, x-gemini-api-key, or x-openai-api-key)' }, { status: 400 })
   }
+
+  const systemPrompt = `会話から登場人物・勢力・用語を抽出してください。
+必ず以下のJSONスキーマのみを返してください。
+説明文・コードフェンス（\`\`\`）は一切不要です。JSONのみ返してください。
+スキーマ:
+{
+  "characters": [{"name":string,"role":string,"faction":string,"status":string,"notes":string}],
+  "factions":   [{"name":string,"description":string,"members":string[]}],
+  "glossary":   [{"term":string,"description":string}]
+}`
 
   try {
     const { threadId, messages, folderName } = await req.json()
@@ -58,37 +77,75 @@ export async function POST(req: NextRequest) {
       .map(m => `role: ${m.role}\ncontent: ${m.content}`)
       .join('\n\n---\n\n')
 
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: `会話から登場人物・勢力・用語を抽出してください。
-必ず以下のJSONスキーマのみを返してください。
-説明文・コードフェンス（\`\`\`）は一切不要です。JSONのみ返してください。
-スキーマ:
-{
-  "characters": [{"name":string,"role":string,"faction":string,"status":string,"notes":string}],
-  "factions":   [{"name":string,"description":string,"members":string[]}],
-  "glossary":   [{"term":string,"description":string}]
-}`,
-        messages: [{ role: 'user', content: userContent }],
-      }),
-    })
+    let rawText: string
 
-    if (!claudeRes.ok) {
-      const errText = await claudeRes.text()
-      console.error('[extract-settings] Claude API error:', claudeRes.status, errText)
-      return NextResponse.json({ error: 'Claude API error', detail: errText }, { status: 500 })
+    if (provider === 'claude') {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': anthropicKey!,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userContent }],
+        }),
+      })
+      if (!res.ok) {
+        const errText = await res.text()
+        console.error('[extract-settings] Claude API error:', res.status, errText)
+        return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+      }
+      const data = await res.json()
+      rawText = data.content[0].text
+
+    } else if (provider === 'gemini') {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          }),
+        }
+      )
+      if (!res.ok) {
+        const errText = await res.text()
+        console.error('[extract-settings] Gemini API error:', res.status, errText)
+        return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+      }
+      const data = await res.json()
+      rawText = data.candidates[0].content.parts[0].text
+
+    } else {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userContent },
+          ],
+        }),
+      })
+      if (!res.ok) {
+        const errText = await res.text()
+        console.error('[extract-settings] OpenAI API error:', res.status, errText)
+        return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+      }
+      const data = await res.json()
+      rawText = data.choices[0].message.content
     }
 
-    const claudeData = await claudeRes.json()
-    const rawText: string = claudeData.content[0].text
     const cleanText = rawText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -100,7 +157,7 @@ export async function POST(req: NextRequest) {
       parsed = JSON.parse(cleanText)
     } catch (parseErr) {
       console.error('[extract-settings] JSON parse error:', parseErr, '\nrawText:', rawText)
-      return NextResponse.json({ error: 'parse_error', raw: rawText }, { status: 500 })
+      return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
     }
 
     const { error: upsertError } = await supabase
@@ -116,12 +173,12 @@ export async function POST(req: NextRequest) {
 
     if (upsertError) {
       console.error('[extract-settings] Supabase upsert error:', upsertError)
-      return NextResponse.json({ error: upsertError.message }, { status: 500 })
+      return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
     }
 
     return NextResponse.json(parsed)
   } catch (err) {
-    console.error('[extract-settings] エラー詳細:', err)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    console.error('[extract-settings] エラー:', err)
+    return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
   }
 }
