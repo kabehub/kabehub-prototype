@@ -6,9 +6,16 @@ import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
 import OutlinePane from "@/components/OutlinePane";
+import NovelSettingsPane from "@/components/NovelSettingsPane";
 import { supabase } from "@/lib/supabase/client";
 import { loadModel, type ModelId, type AttachedImageFile } from "@/components/ChatInput";
 import type { User } from "@supabase/supabase-js";
+
+type NovelSettingsData = {
+  characters: { name: string; role: string; faction: string; status: string; notes: string }[];
+  factions: { name: string; description: string; members: string[] }[];
+  glossary: { term: string; description: string }[];
+};
 
 export default function Home() {
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -24,6 +31,9 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
 
   const [isOutlineOpen, setIsOutlineOpen] = useState(false);
+  const [isNovelPaneOpen, setIsNovelPaneOpen] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [novelSettingsData, setNovelSettingsData] = useState<NovelSettingsData | null>(null);
 
   // 一時モード関連
   const [isTemporary, setIsTemporary] = useState(false);
@@ -178,6 +188,23 @@ export default function Home() {
     }, 50);
     return () => clearTimeout(timeoutId);
   }, [searchMatchIndex, searchMatchIds]);
+
+  // スレッド切り替え時: NovelSettingsペインのリセット＆キャッシュフェッチ
+  useEffect(() => {
+    setNovelSettingsData(null);
+    setIsExtracting(false);
+    if (activeThreadId) {
+      fetch(`/api/extract-settings?thread_id=${activeThreadId}`)
+        .then(r => r.json())
+        .then(data => {
+          const hasData = (data.characters?.length ?? 0) > 0
+                       || (data.factions?.length ?? 0) > 0
+                       || (data.glossary?.length ?? 0) > 0;
+          if (hasData) setNovelSettingsData(data);
+        })
+        .catch(() => {});
+    }
+  }, [activeThreadId]);
 
   const handleClearSearch = useCallback(() => {
     setSearchMatchIds([]);
@@ -728,6 +755,43 @@ export default function Home() {
     }
   }, [fetchThreads, selectThread]);
 
+  // ── Novel設定抽出 ──────────────────────────────────────────
+  const handleExtractSettings = async () => {
+    if (isExtracting || !activeThreadId) return;
+    const anthropicKey = localStorage.getItem("kabehub_anthropic_key") ?? "";
+    if (!anthropicKey) {
+      alert("AnthropicのAPIキーを設定してください（ヘッダーの「🔑 APIキー」から設定できます）");
+      return;
+    }
+    setIsExtracting(true);
+    setIsNovelPaneOpen(true);
+    setIsOutlineOpen(false);
+    try {
+      const res = await fetch("/api/extract-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-anthropic-api-key": anthropicKey,
+        },
+        body: JSON.stringify({
+          threadId: activeThreadId,
+          messages: messages
+            .filter(m => m.provider !== "memo")
+            .map(m => ({ role: m.role, content: m.content })),
+          folderName: threads.find(t => t.id === activeThreadId)?.folder_name ?? undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("抽出失敗");
+      const data = await res.json();
+      setNovelSettingsData(data);
+    } catch (err) {
+      console.error("設定抽出失敗:", err);
+      alert("設定の抽出に失敗しました。APIキーとネットワーク接続を確認してください。");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   // ── メッセージ更新（is_hidden / content マスク編集）──────────
   const handleUpdateMessage = useCallback(async (messageId: string, updates: { content?: string; is_hidden?: boolean }) => {
     const res = await fetch(`/api/messages/${messageId}`, {
@@ -740,6 +804,11 @@ export default function Home() {
       prev.map((m) => m.id === messageId ? { ...m, ...updates } : m)
     );
   }, []);
+
+  const handleNovelPaneToggle = () => {
+    setIsNovelPaneOpen(v => !v);
+    if (!isNovelPaneOpen) setIsOutlineOpen(false);
+  };
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -798,7 +867,18 @@ export default function Home() {
       <OutlinePane
         messages={messages}
         isOpen={isOutlineOpen}
-        onToggle={() => setIsOutlineOpen((v) => !v)}
+        onToggle={() => {
+          setIsOutlineOpen((v) => !v);
+          setIsNovelPaneOpen(false);
+        }}
+      />
+      <NovelSettingsPane
+        threadId={activeThreadId}
+        isOpen={isNovelPaneOpen}
+        onToggle={handleNovelPaneToggle}
+        isExtracting={isExtracting}
+        settingsData={novelSettingsData}
+        onExtract={handleExtractSettings}
       />
     </div>
   );
