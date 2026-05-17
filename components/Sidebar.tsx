@@ -398,9 +398,10 @@ interface FolderSectionProps {
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
   onEditFolderSettings?: (folderName: string) => void;
   onNewThreadInFolder?: (folderName: string) => void;
+  folderType?: string | null;
 }
 
-function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditFolderSettings, onNewThreadInFolder, defaultCollapsed }: FolderSectionProps & { defaultCollapsed: boolean }) {
+function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditFolderSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hovered, setHovered] = useState(false);
 
@@ -437,6 +438,9 @@ function FolderSection({ folderName, threads, activeThreadId, existingFolders, o
           <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--ink-muted)", flex: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {folderName ?? "未分類"}
           </span>
+          {folderType === "novel" && (
+            <span style={{ background: "#fef3c7", color: "#92400e", fontSize: "9px", padding: "1px 5px", borderRadius: "3px", flexShrink: 0, marginRight: "2px" }}>📖</span>
+          )}
           <span style={{ fontSize: "10px", color: "var(--ink-faint)", flexShrink: 0 }}>
             {threads.length}
           </span>
@@ -555,8 +559,28 @@ export default function Sidebar({
     })();
   }, [user]);
 
+  const [folderTypes, setFolderTypes] = useState<Record<string, string | null>>({});
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/folder-settings");
+        if (!res.ok) return;
+        const arr = await res.json();
+        const map: Record<string, string | null> = {};
+        for (const item of arr) {
+          map[item.folder_name] = item.folder_type ?? null;
+        }
+        setFolderTypes(map);
+      } catch {
+        // サイドバーが壊れないよう握りつぶす
+      }
+    })();
+  }, [user]);
+
   // フォルダ設定モーダル
-  const [folderSettingsModal, setFolderSettingsModal] = useState<{ folderName: string; systemPrompt: string } | null>(null);
+  const [folderSettingsModal, setFolderSettingsModal] = useState<{ folderName: string; systemPrompt: string; folderType: string | null } | null>(null);
   const [folderSettingsSaving, setFolderSettingsSaving] = useState(false);
 
   const handleNewThreadInFolder = useCallback((folderName: string) => {
@@ -567,9 +591,9 @@ export default function Sidebar({
     try {
       const res = await fetch(`/api/folder-settings?folder_name=${encodeURIComponent(folderName)}`);
       const data = await res.json();
-      setFolderSettingsModal({ folderName, systemPrompt: data?.system_prompt ?? "" });
+      setFolderSettingsModal({ folderName, systemPrompt: data?.system_prompt ?? "", folderType: data?.folder_type ?? null });
     } catch {
-      setFolderSettingsModal({ folderName, systemPrompt: "" });
+      setFolderSettingsModal({ folderName, systemPrompt: "", folderType: null });
     }
   }, []);
 
@@ -583,8 +607,10 @@ export default function Sidebar({
         body: JSON.stringify({
           folder_name: folderSettingsModal.folderName,
           system_prompt: folderSettingsModal.systemPrompt,
+          folder_type: folderSettingsModal.folderType ?? null,
         }),
       });
+      setFolderTypes(prev => ({ ...prev, [folderSettingsModal.folderName]: folderSettingsModal.folderType ?? null }));
       setFolderSettingsModal(null);
     } catch (err) {
       console.error("フォルダ設定保存失敗:", err);
@@ -724,6 +750,7 @@ export default function Sidebar({
               onEditFolderSettings={handleEditFolderSettings}
               onNewThreadInFolder={handleNewThreadInFolder}
               defaultCollapsed={!hasActive}
+              folderType={group.folderName ? folderTypes[group.folderName] ?? null : null}
             />
           );
         })}
@@ -939,22 +966,57 @@ export default function Sidebar({
             style={{ position: "fixed", top: 0, right: 0, width: "480px", height: "100vh", background: "white", boxShadow: "-4px 0 24px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column", padding: "24px", overflowY: "auto", boxSizing: "border-box" }}
           >
             <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, marginBottom: "4px", color: "var(--ink)" }}>
-              📁 {folderSettingsModal.folderName}
+              {folderSettingsModal.folderType === "novel" ? "📖" : "📁"} {folderSettingsModal.folderName}
             </div>
             <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "16px", fontFamily: "'JetBrains Mono', monospace" }}>
               フォルダのシステムプロンプト
             </div>
+            {/* 小説プロジェクトモードトグル */}
+            <div style={{ border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", marginBottom: "12px", background: folderSettingsModal.folderType === "novel" ? "#fffbeb" : "white", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)" }}>📖 小説プロジェクトモード</div>
+                <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "2px" }}>Prompt Cachingを活用した長編執筆に最適化</div>
+              </div>
+              <button
+                onClick={() => setFolderSettingsModal(prev => prev ? { ...prev, folderType: prev.folderType === "novel" ? null : "novel" } : null)}
+                style={{ position: "relative", width: "40px", height: "22px", borderRadius: "11px", border: "none", background: folderSettingsModal.folderType === "novel" ? "#7c3aed" : "var(--border)", cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}
+              >
+                <span style={{ position: "absolute", top: "3px", left: folderSettingsModal.folderType === "novel" ? "21px" : "3px", width: "16px", height: "16px", borderRadius: "50%", background: "white", transition: "left 0.2s", display: "block" }} />
+              </button>
+            </div>
+            {folderSettingsModal.folderType === "novel" && (
+              <button
+                onClick={() => {
+                  const template = `---\n## 世界観設定\n（地理・歴史・魔法体系・社会構造など）\n\n## 登場人物一覧\n（名前・年齢・外見・性格・動機・他キャラとの関係）\n\n## あらすじ（全体）\n（起承転結の骨格）\n\n## 現在の執筆状況\n（何章まで書いたか・未回収の伏線・次に書くシーン）\n\n## 執筆スタイル指定\n（文体・一人称/三人称・禁止表現など）\n\n---\n`;
+                  setFolderSettingsModal(prev => prev ? { ...prev, systemPrompt: template + prev.systemPrompt } : null);
+                }}
+                style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "12px", cursor: "pointer", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}
+              >
+                📋 小説テンプレートを先頭に挿入
+              </button>
+            )}
             <textarea
               autoFocus
               value={folderSettingsModal.systemPrompt}
               onChange={(e) => setFolderSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
-              placeholder={`例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
-              style={{ width: "100%", minHeight: "calc(100vh - 220px)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
+              placeholder={folderSettingsModal.folderType === "novel"
+                ? `例：あなたは優秀な小説の共同執筆者です。世界観・登場人物・文体の一貫性を保ちながら、指示された内容を執筆してください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`
+                : `例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
+              style={{ width: "100%", minHeight: "calc(100vh - 320px)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
               onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
             />
-            <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "6px", textAlign: "right", fontFamily: "'DM Sans', sans-serif" }}>
-              {folderSettingsModal.systemPrompt.length.toLocaleString()}文字 / 約{Math.ceil(folderSettingsModal.systemPrompt.length / 2).toLocaleString()}トークン（概算）
+            <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "6px", display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'DM Sans', sans-serif" }}>
+              <span>
+                {folderSettingsModal.systemPrompt.length.toLocaleString()}文字 / 約{Math.ceil(folderSettingsModal.systemPrompt.length * 1.2).toLocaleString()}トークン（概算）
+              </span>
+              {folderSettingsModal.folderType === "novel" && (
+                folderSettingsModal.systemPrompt.length >= 5000 ? (
+                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#d1fae5", color: "#065f46" }}>⚡ Caching 有効</span>
+                ) : (
+                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#fef3c7", color: "#92400e" }}>△ あと{(5000 - folderSettingsModal.systemPrompt.length).toLocaleString()}文字でCaching有効</span>
+                )
+              )}
             </div>
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
               💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
