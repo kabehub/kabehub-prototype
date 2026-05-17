@@ -18,6 +18,7 @@ interface MessageBubbleProps {
   isHighlighted?: boolean;
   isActiveMatch?: boolean;
   activeFlashKey?: number;
+  messageNumber?: number;
 }
 
 function MessageBubble({
@@ -34,6 +35,7 @@ function MessageBubble({
   isHighlighted = false,
   isActiveMatch = false,
   activeFlashKey,
+  messageNumber,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -60,17 +62,17 @@ function MessageBubble({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const aiLabel = () => {
+  const aiLabel = (num?: number) => {
     const p = message.provider ?? provider ?? "AI";
     const providerName =
       p === "claude" ? "Claude" :
       p === "gemini" ? "Gemini" :
       p === "openai" ? "ChatGPT" :
       p === "memo" ? "メモ" : "AI";
-    // model_idがあれば "Claude · claude-sonnet-4-6" のように表示
+    const numStr = num ? ` · #${num}` : '';
     return message.model_id
-      ? `${providerName} · ${message.model_id}`
-      : providerName;
+      ? `${providerName}${numStr} · ${message.model_id}`
+      : `${providerName}${numStr}`;
   };
 
   const ALL_PROVIDERS = ["claude", "gemini", "openai"] as const;
@@ -192,7 +194,7 @@ function MessageBubble({
           alignItems: "center",
           gap: "6px",
         }}>
-          {isMemo ? "📝 Memo" : isUser ? "You" : aiLabel()}
+          {isMemo ? "📝 Memo" : isUser ? (messageNumber ? `You · #${messageNumber}` : "You") : aiLabel(messageNumber)}
           {isHidden && (
             <span style={{ fontSize: "9px", background: "#fef2f2", border: "1px solid #fecaca", color: "#ef4444", borderRadius: "3px", padding: "0 4px" }}>
               🔒 非公開

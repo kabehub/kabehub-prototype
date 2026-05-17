@@ -706,6 +706,15 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
 
+  let msgCounter = 0;
+  const messageNumbers = messages.reduce<Record<string, number>>((acc, msg) => {
+    if (msg.provider !== 'memo') {
+      msgCounter++;
+      acc[msg.id] = msgCounter;
+    }
+    return acc;
+  }, {});
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: isTemporary ? "#f1f1f0" : "var(--chat-bg)", overflow: "hidden" }}>
       {/* Header */}
@@ -1559,6 +1568,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
         onUpdateMessage={onUpdateMessage}
         onOpenRoleplaySettings={handleOpenRoleplay}
+        messageNumber={messageNumbers[msg.id]}
       />
     ) : (
       <MessageBubble
@@ -1575,6 +1585,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         isActiveMatch={searchMatchIds[searchMatchIndex] === msg.id}
         activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
         onUpdateMessage={onUpdateMessage}
+        messageNumber={messageNumbers[msg.id]}
       />
     )}
   </div>

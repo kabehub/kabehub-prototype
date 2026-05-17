@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
+import OutlinePane from "@/components/OutlinePane";
 import { supabase } from "@/lib/supabase/client";
 import { loadModel, type ModelId, type AttachedImageFile } from "@/components/ChatInput";
 import type { User } from "@supabase/supabase-js";
@@ -21,6 +22,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [provider, setProvider] = useState<"claude" | "gemini" | "openai">("claude");
   const [user, setUser] = useState<User | null>(null);
+
+  const [isOutlineOpen, setIsOutlineOpen] = useState(false);
 
   // 一時モード関連
   const [isTemporary, setIsTemporary] = useState(false);
@@ -718,6 +721,11 @@ export default function Home() {
         // ✅ v62追加
         streamingContent={streamingContent}
         onAbort={handleAbort}
+      />
+      <OutlinePane
+        messages={messages}
+        isOpen={isOutlineOpen}
+        onToggle={() => setIsOutlineOpen((v) => !v)}
       />
     </div>
   );

@@ -26,6 +26,7 @@ interface RoleplayBubbleProps {
   isHighlighted?: boolean;
   isActiveMatch?: boolean;
   activeFlashKey?: number;
+  messageNumber?: number;
 }
 
 function RoleplayBubble({
