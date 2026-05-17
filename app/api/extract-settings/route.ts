@@ -146,18 +146,24 @@ export async function POST(req: NextRequest) {
       rawText = data.choices[0].message.content
     }
 
+    console.log('[extract-settings] rawText の先頭200文字:', rawText.slice(0, 200))
+
     const cleanText = rawText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
       .replace(/```\s*$/i, '')
       .trim()
 
+    console.log('[extract-settings] cleanText の先頭200文字:', cleanText.slice(0, 200))
+
     let parsed: { characters?: unknown[]; factions?: unknown[]; glossary?: unknown[] }
     try {
       parsed = JSON.parse(cleanText)
+      console.log('[extract-settings] パース成功')
     } catch (parseErr) {
-      console.error('[extract-settings] JSON parse error:', parseErr, '\nrawText:', rawText)
-      return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+      console.error('[extract-settings] JSONパース失敗:', parseErr)
+      console.error('[extract-settings] cleanText 全文:', cleanText)
+      return NextResponse.json({ error: 'parse_error' }, { status: 500 })
     }
 
     const { error: upsertError } = await supabase
