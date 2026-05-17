@@ -99,6 +99,26 @@ function MessageBubble({
     setRegenSubOpen(true);
   };
 
+  // サブメニューが画面端にはみ出す場合にフリップ補正
+  useEffect(() => {
+    if (!regenSubOpen || !subMenuRef.current) return;
+    const el = subMenuRef.current;
+    requestAnimationFrame(() => {
+      const rect = el.getBoundingClientRect();
+
+      // 縦方向: 画面下にはみ出す場合は上方向にずらす
+      if (rect.bottom > window.innerHeight) {
+        el.style.top = Math.max(4, window.innerHeight - rect.height) + "px";
+      }
+
+      // 横方向: 画面右にはみ出す場合はメインメニューの左側に表示
+      if (rect.right > window.innerWidth && menuRef.current) {
+        const menuRect = menuRef.current.getBoundingClientRect();
+        el.style.left = Math.max(4, menuRect.left - rect.width - 4) + "px";
+      }
+    });
+  }, [regenSubOpen]);
+
   const handleOpenMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
@@ -649,7 +669,8 @@ function MessageBubble({
             borderRadius: "8px",
             boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
             minWidth: "210px",
-            overflow: "hidden",
+            maxHeight: "80vh",
+            overflowY: "auto",
           }}
         >
           {(Object.keys(MODEL_CONFIG) as Array<keyof typeof MODEL_CONFIG>).map((providerKey, sectionIdx) => {
