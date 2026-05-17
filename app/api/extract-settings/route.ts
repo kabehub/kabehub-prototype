@@ -178,8 +178,8 @@ export async function POST(req: NextRequest) {
       )
 
     if (upsertError) {
-      console.error('[extract-settings] Supabase upsert error:', upsertError)
-      return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+      console.error('[extract-settings] upsert失敗:', upsertError)
+      return NextResponse.json({ error: 'db_error', detail: upsertError.message }, { status: 500 })
     }
 
     return NextResponse.json(parsed)
