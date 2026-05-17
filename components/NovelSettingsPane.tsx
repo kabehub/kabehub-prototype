@@ -10,6 +10,7 @@ type NovelSettingsData = {
 
 interface NovelSettingsPaneProps {
   threadId: string | null;
+  threadTitle?: string;
   isOpen: boolean;
   onToggle: () => void;
   isExtracting: boolean;
@@ -19,6 +20,7 @@ interface NovelSettingsPaneProps {
 
 export default function NovelSettingsPane({
   threadId,
+  threadTitle,
   isOpen,
   onToggle,
   isExtracting,
@@ -27,6 +29,92 @@ export default function NovelSettingsPane({
 }: NovelSettingsPaneProps) {
   const [isWide, setIsWide] = useState(true);
   const [expandedCharIdx, setExpandedCharIdx] = useState<number | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const downloadFile = (content: string, ext: string) => {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${threadTitle ?? "novel-settings"}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportMD = () => {
+    if (!settingsData) return;
+    const lines: string[] = [
+      "# キャラクター設定DB",
+      `生成日時: ${new Date().toLocaleString("ja-JP")}`,
+      "",
+    ];
+    if (settingsData.characters.length > 0) {
+      lines.push("## 👤 キャラクター", "");
+      for (const c of settingsData.characters) {
+        lines.push(
+          `### ${c.name}`,
+          `- **役割**: ${c.role}`,
+          `- **勢力**: ${c.faction}`,
+          `- **状態**: ${c.status}`,
+          `- **備考**: ${c.notes}`,
+          "",
+        );
+      }
+    }
+    if (settingsData.factions.length > 0) {
+      lines.push("## ⚔️ 勢力", "");
+      for (const f of settingsData.factions) {
+        lines.push(
+          `### ${f.name}`,
+          f.description,
+          `**メンバー**: ${f.members.join("、")}`,
+          "",
+        );
+      }
+    }
+    if (settingsData.glossary.length > 0) {
+      lines.push("## 📖 用語集", "");
+      for (const g of settingsData.glossary) {
+        lines.push(`### ${g.term}`, g.description, "");
+      }
+    }
+    downloadFile(lines.join("\n"), "md");
+  };
+
+  const handleExportTXT = () => {
+    if (!settingsData) return;
+    const lines: string[] = [
+      "キャラクター設定DB",
+      `生成日時: ${new Date().toLocaleString("ja-JP")}`,
+      "",
+    ];
+    if (settingsData.characters.length > 0) {
+      lines.push("=== キャラクター ===", "");
+      for (const c of settingsData.characters) {
+        lines.push(
+          c.name,
+          `役割: ${c.role}`,
+          `勢力: ${c.faction}`,
+          `状態: ${c.status}`,
+          `備考: ${c.notes}`,
+          "",
+        );
+      }
+    }
+    if (settingsData.factions.length > 0) {
+      lines.push("=== 勢力 ===", "");
+      for (const f of settingsData.factions) {
+        lines.push(f.name, f.description, `メンバー: ${f.members.join("、")}`, "");
+      }
+    }
+    if (settingsData.glossary.length > 0) {
+      lines.push("=== 用語集 ===", "");
+      for (const g of settingsData.glossary) {
+        lines.push(g.term, g.description, "");
+      }
+    }
+    downloadFile(lines.join("\n"), "txt");
+  };
 
   useEffect(() => {
     const check = () => setIsWide(window.innerWidth >= 1280);
@@ -106,18 +194,68 @@ export default function NovelSettingsPane({
               >
                 Novel DB
               </span>
-              <button
-                onClick={onExtract}
-                disabled={isExtracting || !threadId}
-                className="text-[9px] px-2 py-0.5 rounded border disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                style={{ borderColor: "var(--border)", color: "var(--ink-muted)" }}
-              >
-                {isExtracting ? (
-                  <span className="animate-pulse">抽出中…</span>
-                ) : (
-                  "🔄 更新"
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={onExtract}
+                  disabled={isExtracting || !threadId}
+                  className="text-[9px] px-2 py-0.5 rounded border disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ borderColor: "var(--border)", color: "var(--ink-muted)" }}
+                >
+                  {isExtracting ? (
+                    <span className="animate-pulse">抽出中…</span>
+                  ) : (
+                    "🔄 更新"
+                  )}
+                </button>
+                {settingsData && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowExportMenu(v => !v)}
+                      className="text-[9px] px-2 py-0.5 rounded border transition-colors"
+                      style={{ borderColor: "var(--border)", color: "var(--ink-muted)" }}
+                      title="エクスポート"
+                    >
+                      ↓
+                    </button>
+                    {showExportMenu && (
+                      <>
+                        <div
+                          onClick={() => setShowExportMenu(false)}
+                          style={{ position: "fixed", inset: 0, zIndex: 49 }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "calc(100% + 4px)",
+                            right: 0,
+                            background: "white",
+                            border: "1px solid var(--border)",
+                            borderRadius: "8px",
+                            padding: "4px",
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+                            zIndex: 50,
+                          }}
+                        >
+                          <button
+                            onClick={() => { handleExportMD(); setShowExportMenu(false); }}
+                            className="block w-full text-left text-[10px] px-3 py-1.5 rounded hover:bg-gray-50"
+                            style={{ color: "var(--ink-muted)" }}
+                          >
+                            MD
+                          </button>
+                          <button
+                            onClick={() => { handleExportTXT(); setShowExportMenu(false); }}
+                            className="block w-full text-left text-[10px] px-3 py-1.5 rounded hover:bg-gray-50"
+                            style={{ color: "var(--ink-muted)" }}
+                          >
+                            TXT
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
 
             {/* ボディ */}

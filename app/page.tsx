@@ -874,6 +874,7 @@ export default function Home() {
       />
       <NovelSettingsPane
         threadId={activeThreadId}
+        threadTitle={threads.find(t => t.id === activeThreadId)?.title ?? undefined}
         isOpen={isNovelPaneOpen}
         onToggle={handleNovelPaneToggle}
         isExtracting={isExtracting}
