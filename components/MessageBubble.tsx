@@ -2,6 +2,7 @@
 
 import MarkdownRenderer from "./MarkdownRenderer";
 import { Message, MessageNote } from "@/types";
+import { MODEL_CONFIG } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
 
 interface MessageBubbleProps {
@@ -9,7 +10,7 @@ interface MessageBubbleProps {
   isLast?: boolean;
   isLoading?: boolean;
   provider?: string;
-  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message) => void;
+  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message, modelId?: string) => void;
   onTrimFrom?: (message: Message) => void;
   onMemoize?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
@@ -61,6 +62,10 @@ function MessageBubble({
   const [isContainerHovered, setIsContainerHovered] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [regenSubOpen, setRegenSubOpen] = useState(false);
+  const [subPos, setSubPos] = useState({ x: 0, y: 0 });
+  const regenBtnRef = useRef<HTMLButtonElement>(null);
+  const subMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
@@ -69,8 +74,11 @@ function MessageBubble({
   useEffect(() => {
     if (!menuOpen) return;
     const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const inMenu = menuRef.current?.contains(e.target as Node);
+      const inSub = subMenuRef.current?.contains(e.target as Node);
+      if (!inMenu && !inSub) {
         setMenuOpen(false);
+        setRegenSubOpen(false);
       }
     };
     document.addEventListener("mousedown", close);
@@ -78,6 +86,18 @@ function MessageBubble({
   }, [menuOpen]);
 
   const showContextTrigger = isTouchDevice || isContainerHovered;
+
+  const openSubMenu = () => {
+    if (!regenBtnRef.current) return;
+    const rect = regenBtnRef.current.getBoundingClientRect();
+    if (isTouchDevice) {
+      setSubPos({ x: rect.left, y: rect.bottom + 2 });
+    } else {
+      const subX = Math.min(rect.right + 4, window.innerWidth - 220);
+      setSubPos({ x: subX, y: rect.top });
+    }
+    setRegenSubOpen(true);
+  };
 
   const handleOpenMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -571,23 +591,25 @@ function MessageBubble({
             overflow: "hidden",
           }}
         >
-          {/* 再生成（assistantのみ） */}
+          {/* 再生成（assistantのみ） — サブメニュートリガー */}
           {!isUser && !isMemo && onRegenerate && (
             <button
-              onClick={() => { setMenuOpen(false); onRegenerate(regenProvider, message); }}
-              style={menuItemStyle}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5"; }}
+              ref={regenBtnRef}
+              onClick={isTouchDevice ? () => { regenSubOpen ? setRegenSubOpen(false) : openSubMenu(); } : openSubMenu}
+              style={{ ...menuItemStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5"; if (!isTouchDevice) openSubMenu(); }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
             >
-              🔄 再生成
+              <span>🔄 再生成</span>
+              <span style={{ fontSize: "10px", color: "var(--ink-faint)", marginLeft: "16px" }}>▶</span>
             </button>
           )}
           {/* メモ化（userとassistantのみ、memoは除外） */}
           {!isMemo && onMemoize && (
             <button
-              onClick={() => { setMenuOpen(false); onMemoize(message); }}
+              onClick={() => { setMenuOpen(false); setRegenSubOpen(false); onMemoize(message); }}
               style={menuItemStyle}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5"; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5"; setRegenSubOpen(false); }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
             >
               📝 メモ化
@@ -598,17 +620,86 @@ function MessageBubble({
             <button
               onClick={() => {
                 setMenuOpen(false);
+                setRegenSubOpen(false);
                 if (window.confirm("このメッセージ以降を全て削除しますか？")) {
                   onTrimFrom(message);
                 }
               }}
               style={{ ...menuItemStyle, color: "#e53e3e" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5"; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5"; setRegenSubOpen(false); }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
             >
               🗑️ 削除
             </button>
           )}
+        </div>
+      )}
+
+      {/* 🔄 再生成 サブメニュー（position: fixed） */}
+      {menuOpen && regenSubOpen && (
+        <div
+          ref={subMenuRef}
+          style={{
+            position: "fixed",
+            top: subPos.y,
+            left: subPos.x,
+            zIndex: 10000,
+            background: "white",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            minWidth: "210px",
+            overflow: "hidden",
+          }}
+        >
+          {(Object.keys(MODEL_CONFIG) as Array<keyof typeof MODEL_CONFIG>).map((providerKey, sectionIdx) => {
+            const config = MODEL_CONFIG[providerKey];
+            return (
+              <div key={providerKey}>
+                <div style={{
+                  padding: "5px 14px 3px",
+                  fontSize: "10px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: "var(--ink-faint)",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  background: "#f9f9f8",
+                  ...(sectionIdx > 0 ? { borderTop: "1px solid var(--border)" } : {}),
+                }}>
+                  {config.label}
+                </div>
+                {config.models.map((model) => {
+                  const isCurrent = message.model_id === model.id;
+                  return (
+                    <button
+                      key={model.id}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setRegenSubOpen(false);
+                        onRegenerate!(providerKey, message, model.id);
+                      }}
+                      style={{
+                        ...menuItemStyle,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        paddingLeft: "20px",
+                        background: isCurrent ? "#f0f9ff" : "none",
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = isCurrent ? "#e0f2fe" : "#f7f7f5"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = isCurrent ? "#f0f9ff" : "none"; }}
+                    >
+                      <span style={{ flex: 1 }}>{model.label}</span>
+                      <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "3px", background: "#f3f4f6", color: "#6b7280", fontFamily: "'JetBrains Mono', monospace" }}>{model.badge}</span>
+                      {isCurrent && (
+                        <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "3px", background: "#dbeafe", color: "#2563eb", fontFamily: "'JetBrains Mono', monospace", marginLeft: "2px" }}>現在</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       )}
     </>

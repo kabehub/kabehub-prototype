@@ -22,7 +22,7 @@ interface ChatPanelProps {
   provider: "claude" | "gemini" | "openai";
   onProviderChange: (p: "claude" | "gemini" | "openai") => void;
   onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
-  onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message) => void;
+  onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message, modelId?: string) => void;
   onTrimFrom: (message: Message) => void;
   onDeleteMessage?: (message: Message) => void;
   onMemoizeMessage?: (message: Message) => void;

@@ -594,6 +594,7 @@ export default function Home() {
   const handleRegenerate = useCallback(async (
     targetProvider: "claude" | "gemini" | "openai",
     assistantMsg?: Message,
+    modelId?: string,
   ) => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
@@ -642,6 +643,7 @@ export default function Home() {
           messages: newMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent: lastUser.content,
           provider: targetProvider,
+          modelId: modelId,
           isRegenerate: true,
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
