@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = 'force-dynamic';
 
-type ChatMessage = { role: string; content: string; provider?: string };
+type ChatMessage = { role: string; content: string; provider?: string; model_id?: string | null };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
@@ -459,13 +459,14 @@ export async function POST(req: NextRequest) {
   const resolvedModelId: ModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
 
   const messagesForApi = [
-  ...messages
-    .filter((m: ChatMessage) => m.provider !== "memo")  // ← メモを除外
-    .map((m: ChatMessage) => ({
-      role: m.role as string,
-      content: m.content,
-    })),
-  { role: "user" as string, content: userContent },
+    ...messages
+      .filter((m: ChatMessage) => m.provider !== "memo")
+      .map((m: ChatMessage) => {
+        if (m.role !== "assistant") return { role: m.role as string, content: m.content };
+        const label = m.model_id ?? m.provider ?? "assistant";
+        return { role: "assistant" as string, content: `[${label}]\n${m.content}` };
+      }),
+    { role: "user" as string, content: userContent },
   ];
 
   // エラーの場合は非ストリーミングでJSON返却（既存互換）
@@ -477,16 +478,21 @@ export async function POST(req: NextRequest) {
   const usageRef: UsageData = { input_tokens: null, output_tokens: null };
   const handleUsage = (u: UsageData) => { usageRef.input_tokens = u.input_tokens; usageRef.output_tokens = u.output_tokens; };
 
+  const labelNote = "\n\n※会話履歴の文頭にある[model-id]はシステムが付与した発言者ラベルです。あなたの返答にはこのラベルを含めないでください。";
+  const systemPromptWithLabel = resolvedSystemPrompt
+    ? resolvedSystemPrompt + labelNote
+    : labelNote.trim();
+
   try {
     if (provider === "gemini") {
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
-      aiStream = streamGemini(geminiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as GeminiModel, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamGemini(geminiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as GeminiModel, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      aiStream = streamClaude(anthropicKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "openai") {
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
-      aiStream = streamOpenAI(openaiKey, messagesForApi, resolvedSystemPrompt, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamOpenAI(openaiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal, handleUsage);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
     }
