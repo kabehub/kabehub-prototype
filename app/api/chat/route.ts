@@ -478,7 +478,7 @@ export async function POST(req: NextRequest) {
   const usageRef: UsageData = { input_tokens: null, output_tokens: null };
   const handleUsage = (u: UsageData) => { usageRef.input_tokens = u.input_tokens; usageRef.output_tokens = u.output_tokens; };
 
-  const labelNote = "\n\n※会話履歴の文頭にある[model-id]はシステムが付与した発言者ラベルです。あなたの返答にはこのラベルを含めないでください。";
+  const labelNote = "\n\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。";
   const systemPromptWithLabel = resolvedSystemPrompt
     ? resolvedSystemPrompt + labelNote
     : labelNote.trim();
