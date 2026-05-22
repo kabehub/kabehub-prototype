@@ -121,7 +121,7 @@ export function saveModel(provider: Provider, modelId: ModelId) {
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId, attachedImages?: AttachedImageFile[]) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
@@ -193,10 +193,16 @@ export default function ChatInput({
 
   // モデル選択 state（LocalStorageから初期値を読み込む）
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
+  const [isDeepThinking, setIsDeepThinking] = useState(false);
 
   // プロバイダーが変わったらそのプロバイダーの保存済みモデルを読み込む
   useEffect(() => {
     setSelectedModel(loadModel(provider));
+  }, [provider]);
+
+  // Claude以外に切り替わったらDeep Thinkingをリセット
+  useEffect(() => {
+    if (provider !== "claude") setIsDeepThinking(false);
   }, [provider]);
 
   const handleModelChange = (modelId: ModelId) => {
@@ -372,7 +378,7 @@ export default function ChatInput({
     }
 
     onChange("");
-    onSubmit(finalContent, selectedModel, imageFiles.length > 0 ? imageFiles : undefined);
+    onSubmit(finalContent, selectedModel, imageFiles.length > 0 ? imageFiles : undefined, isDeepThinking);
     // ObjectURLを解放してからstateをクリア
     attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
       URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
@@ -721,6 +727,33 @@ export default function ChatInput({
           >
             📝 メモ
           </button>
+
+          {/* 🧠 深く考えるボタン（Claudeのみ） */}
+          {provider === "claude" && (
+            <button
+              onClick={() => setIsDeepThinking((v) => !v)}
+              disabled={selectedModel === "claude-haiku-4-5-20251001" || isLoading || !!disabled}
+              title={selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" : "Extended Thinking: AIが回答前に深く考えます"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "4px 12px",
+                borderRadius: "20px",
+                border: "1px solid",
+                borderColor: isDeepThinking ? "var(--accent)" : "var(--border)",
+                background: isDeepThinking ? "rgba(196,98,45,0.12)" : "transparent",
+                color: isDeepThinking ? "var(--accent)" : selectedModel === "claude-haiku-4-5-20251001" || isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: selectedModel === "claude-haiku-4-5-20251001" || isLoading || disabled ? "not-allowed" : "pointer",
+                transition: "all 0.15s",
+                letterSpacing: "0.03em",
+              }}
+            >
+              🧠 深く考える
+            </button>
+          )}
 
           {/* 📎 ファイル添付ボタン */}
           <button
