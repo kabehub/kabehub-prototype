@@ -1,0 +1,123 @@
+import { NextRequest } from "next/server";
+import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+
+export const dynamic = 'force-dynamic';
+
+export async function POST(req: NextRequest) {
+  const res = new Response();
+  const supabase = createRouteHandlerSupabaseClient(req, res as never);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+
+  const geminiKey = req.headers.get("x-gemini-api-key");
+  if (!geminiKey) {
+    return new Response(JSON.stringify({ error: "Gemini APIキーが設定されていません。" }), { status: 400 });
+  }
+
+  const { texts, modelId, checkItems } = await req.json() as {
+    texts: { name: string; content: string }[];
+    modelId: string;
+    checkItems: string[];
+  };
+
+  const combined = texts
+    .map((t) => `<file name="${t.name}">\n${t.content}\n</file>`)
+    .join("\n");
+
+  const totalChars = texts.reduce((sum, t) => sum + t.content.length, 0);
+  const estimatedTokens = Math.ceil(totalChars * 1.2);
+
+  const checkList = checkItems.map((item, i) => `${i + 1}. ${item}`).join("\n");
+
+  const prompt = `以下の原稿を読み、整合性チェックを行ってください。
+
+【重要：出力制約】
+- 修正案の全文書き直しは絶対にしないでください
+- 問題のある箇所のみを箇条書きで簡潔に指摘してください
+- 各指摘には「ファイル名・該当箇所の引用（30文字以内）・問題の説明」を含めてください
+
+【チェック項目】
+${checkList}
+
+【原稿】
+${combined}`;
+
+  const body = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: 8192 },
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const encoder = new TextEncoder();
+
+      controller.enqueue(encoder.encode(
+        JSON.stringify({ type: "meta", totalChars, estimatedTokens }) + "\n"
+      ));
+
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse&key=${geminiKey}`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        );
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error?.message ?? "Gemini API error");
+        }
+
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+            try {
+              const parsed = JSON.parse(raw);
+              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                controller.enqueue(encoder.encode(
+                  JSON.stringify({ type: "chunk", text }) + "\n"
+                ));
+              }
+            } catch {
+              // 無視
+            }
+          }
+        }
+
+        controller.enqueue(encoder.encode(
+          JSON.stringify({ type: "done", aborted: false }) + "\n"
+        ));
+        controller.close();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "不明なエラー";
+        controller.enqueue(encoder.encode(
+          JSON.stringify({ type: "chunk", text: `\n\n（エラー: ${msg}）` }) + "\n"
+        ));
+        controller.enqueue(encoder.encode(
+          JSON.stringify({ type: "done", aborted: true }) + "\n"
+        ));
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}

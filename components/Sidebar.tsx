@@ -926,7 +926,7 @@ export default function Sidebar({
             fontSize: "11px",
             fontFamily: "'JetBrains Mono', monospace",
             textDecoration: "none",
-            marginBottom: "8px",
+            marginBottom: "6px",
             transition: "all 0.12s",
           }}
           onMouseEnter={(e) => {
@@ -940,6 +940,37 @@ export default function Sidebar({
         >
           <span>📅</span>
           <span>カレンダー</span>
+        </a>
+
+        {/* 整合性チェックリンク */}
+        <a
+          href="/novel-check"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 8px",
+            borderRadius: "6px",
+            border: "1px solid var(--border)",
+            background: "white",
+            color: "var(--ink-muted)",
+            fontSize: "11px",
+            fontFamily: "'JetBrains Mono', monospace",
+            textDecoration: "none",
+            marginBottom: "8px",
+            transition: "all 0.12s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "var(--sidebar-bg)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "white";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
+          }}
+        >
+          <span>📖</span>
+          <span>整合性チェック</span>
         </a>
 
         {/* フッター：スレッド数 + ユーザー情報・ログアウト */}
