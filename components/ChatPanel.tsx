@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble } from "./MessageBubble";
-import ChatInput from "./ChatInput";
+import ChatInput, { type ModelId, type AttachedImageFile } from "./ChatInput";
 import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
@@ -16,7 +16,8 @@ interface ChatPanelProps {
   messages: Message[];
   inputValue: string;
   onInputChange: (val: string) => void;
-  onSubmit: (content: string) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => void;
+  thinkingContents?: Record<string, string>;
   onMemoSubmit: () => void;
   isLoading: boolean;
   provider: "claude" | "gemini" | "openai";
@@ -63,6 +64,7 @@ export default function ChatPanel({
   onUpdateMessage,
   streamingContent = "",  // ✅ v62追加
   onAbort,               // ✅ v62追加
+  thinkingContents,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1591,6 +1593,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         activeFlashKey={searchMatchIds[searchMatchIndex] === msg.id ? searchMatchIndex : undefined}
         onUpdateMessage={onUpdateMessage}
         messageNumber={messageNumbers[msg.id]}
+        thinkingContent={thinkingContents?.[msg.id]}
       />
     )}
   </div>

@@ -32,6 +32,7 @@ function streamClaude(
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
   onUsage?: (u: UsageData) => void,
+  isDeepThinking?: boolean,
 ): ReadableStream<string> {
   const systemBlock = systemPrompt?.trim()
     ? [{ type: "text" as const, text: systemPrompt.trim(), cache_control: { type: "ephemeral" as const } }]
@@ -53,9 +54,14 @@ function streamClaude(
   const body: Record<string, unknown> = {
     model: modelId,
     max_tokens: 8192,
-    stream: true, // ← ストリーミング有効化
+    stream: true,
     messages: messagesForAPI,
   };
+  if (isDeepThinking) {
+    body.thinking = { type: "enabled", budget_tokens: 10000 };
+    body.max_tokens = 16000;
+    // temperatureは指定しない（thinking有効時はtemperature固定のためリクエストに含めてはいけない）
+  }
   if (systemBlock) body.system = systemBlock;
 
   return new ReadableStream<string>({
@@ -121,9 +127,17 @@ function streamClaude(
                   }
                 }
 
-                // テキストチャンクをenqueue
-                if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-                  controller.enqueue(parsed.delta.text);
+                // テキスト・思考チャンクをenqueue
+                if (parsed.type === "content_block_delta") {
+                  if (isDeepThinking) {
+                    if (parsed.delta?.type === "text_delta") {
+                      controller.enqueue(JSON.stringify({ kind: "text", text: parsed.delta.text }) + "\n");
+                    } else if (parsed.delta?.type === "thinking_delta") {
+                      controller.enqueue(JSON.stringify({ kind: "thinking", text: parsed.delta.thinking }) + "\n");
+                    }
+                  } else if (parsed.delta?.type === "text_delta") {
+                    controller.enqueue(parsed.delta.text);
+                  }
                 }
               } catch {
                 // JSON parseエラーは無視
@@ -390,7 +404,7 @@ export async function POST(req: NextRequest) {
 
   const {
     threadId, messages, userContent, provider, modelId,
-    isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages,
+    isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
   } = await req.json();
 
   const imageBlocksForApi: ImageBlock[] = (attachedImages ?? []).map(
@@ -489,7 +503,7 @@ export async function POST(req: NextRequest) {
       aiStream = streamGemini(geminiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as GeminiModel, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage, isDeepThinking ?? false);
     } else if (provider === "openai") {
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
       aiStream = streamOpenAI(openaiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal, handleUsage);
@@ -534,6 +548,7 @@ export async function POST(req: NextRequest) {
     provider: usedProvider,
     createdAt: now,
     modelId: resolvedModelId,
+    isDeepThinking: isDeepThinking ?? false,
   }) + "\n";
 
   let accumulatedText = "";
@@ -541,8 +556,15 @@ export async function POST(req: NextRequest) {
 
   const outputStream = new TransformStream<string, string>({
     transform(chunk, controller) {
-      accumulatedText += chunk;
-      // フロントに逐次送信: JSON行形式
+      if (isDeepThinking) {
+        // JSON行形式: テキスト部分のみDBに蓄積、thinking部分は含めない
+        try {
+          const inner = JSON.parse(chunk.trimEnd());
+          if (inner.kind === "text") accumulatedText += inner.text;
+        } catch { /* 分割チャンクは無視 */ }
+      } else {
+        accumulatedText += chunk;
+      }
       controller.enqueue(JSON.stringify({ type: "chunk", text: chunk }) + "\n");
     },
     flush(controller) {

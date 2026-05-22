@@ -43,6 +43,7 @@ export default function Home() {
   // ✅ v62追加: ストリーミング関連
   // streamingContentはChatPanelに渡してリアルタイム表示する
   const [streamingContent, setStreamingContent] = useState<string>("");
+  const [thinkingContents, setThinkingContents] = useState<Record<string, string>>({});
   // AbortControllerをrefで管理（stateにするとre-renderが多すぎる）
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -369,6 +370,7 @@ export default function Home() {
     userMessage: Message;
     assistantMessage: Message;
     aborted: boolean;
+    thinkingContent?: string;
   }> => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -398,6 +400,8 @@ export default function Home() {
     let assistantModelId = "";
     let accumulatedText = "";
     let aborted = false;
+    let deepThinkingMode = false;
+    let thinkingAccumulated = "";
 
     try {
       while (true) {
@@ -421,9 +425,18 @@ export default function Home() {
               assistantProvider = parsed.provider;
               assistantCreatedAt = parsed.createdAt;
               assistantModelId = parsed.modelId || "";
+              deepThinkingMode = parsed.isDeepThinking ?? false;
             } else if (parsed.type === "chunk") {
-              accumulatedText += parsed.text;
-              onChunk(accumulatedText); // リアルタイム表示更新
+              if (deepThinkingMode) {
+                try {
+                  const inner = JSON.parse(parsed.text);
+                  if (inner.kind === "text") { accumulatedText += inner.text; onChunk(accumulatedText); }
+                  else if (inner.kind === "thinking") { thinkingAccumulated += inner.text; }
+                } catch { /* 分割チャンクは無視 */ }
+              } else {
+                accumulatedText += parsed.text;
+                onChunk(accumulatedText);
+              }
             } else if (parsed.type === "done") {
               aborted = parsed.aborted;
             }
@@ -462,11 +475,12 @@ export default function Home() {
       },
       assistantMessage,
       aborted,
+      thinkingContent: thinkingAccumulated || undefined,
     };
   }, []);
 
   // ── 通常送信 ──────────────────────────────────────────────
-  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: AttachedImageFile[]) => {
+  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => {
     if (!userContent.trim() || !activeThreadId || isLoading) return;
     setInputValue("");
     setIsLoading(true);
@@ -524,7 +538,7 @@ export default function Home() {
 
     // 通常モード: ストリーミング
     try {
-      const { userMessage, assistantMessage, aborted } = await fetchWithStreaming(
+      const { userMessage, assistantMessage, aborted, thinkingContent } = await fetchWithStreaming(
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
@@ -535,11 +549,16 @@ export default function Home() {
           modelId: resolvedModelId,
           systemPrompt: activeThread?.system_prompt ?? "",
           attachedImages: attachedImages ?? [],
+          isDeepThinking: isDeepThinking ?? false,
         }),
         (accumulated) => {
           setStreamingContent(accumulated);
         },
       );
+
+      if (thinkingContent && assistantMessage.id) {
+        setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
+      }
 
       if (aborted && userMessage.id && assistantMessage.id) {
         // Escキャンセル時: 両メッセージをmemoとして楽観的更新
@@ -863,6 +882,7 @@ export default function Home() {
         // ✅ v62追加
         streamingContent={streamingContent}
         onAbort={handleAbort}
+        thinkingContents={thinkingContents}
       />
       <OutlinePane
         messages={messages}

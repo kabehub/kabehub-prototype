@@ -21,6 +21,7 @@ interface MessageBubbleProps {
   isActiveMatch?: boolean;
   activeFlashKey?: number;
   messageNumber?: number;
+  thinkingContent?: string;
 }
 
 function MessageBubble({
@@ -39,6 +40,7 @@ function MessageBubble({
   isActiveMatch = false,
   activeFlashKey,
   messageNumber,
+  thinkingContent,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -55,6 +57,8 @@ function MessageBubble({
   // is_hidden の楽観的更新用
   const [isHidden, setIsHidden] = useState(message.is_hidden ?? false);
   const [isSavingHidden, setIsSavingHidden] = useState(false);
+
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
   // ⋮ コンテキストメニュー
   const [menuOpen, setMenuOpen] = useState(false);
@@ -294,6 +298,49 @@ function MessageBubble({
             </span>
           )}
         </div>
+
+        {/* 🧠 思考プロセス（Extended Thinking） */}
+        {thinkingContent && !isUser && !isMemo && (
+          <div style={{ marginBottom: "6px", position: "relative", zIndex: 1, maxWidth: "720px" }}>
+            <button
+              onClick={() => setThinkingExpanded(v => !v)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "3px 8px",
+                border: "1px solid #d1d5db",
+                borderRadius: "6px",
+                background: "#f3f4f6",
+                color: "#6b7280",
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: "pointer",
+                transition: "background 0.15s",
+              }}
+            >
+              🧠 思考プロセス {thinkingExpanded ? "▲" : "▼"}
+            </button>
+            {thinkingExpanded && (
+              <div style={{
+                marginTop: "4px",
+                padding: "10px 14px",
+                background: "#f3f4f6",
+                border: "1px solid #d1d5db",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontFamily: "'DM Sans', sans-serif",
+                color: "#374151",
+                lineHeight: 1.6,
+                whiteSpace: "pre-wrap",
+                maxHeight: "400px",
+                overflowY: "auto",
+              }}>
+                {thinkingContent}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* バブル＋メモアイコン行 */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flexDirection: "row", position: "relative", zIndex: 1 }}>
