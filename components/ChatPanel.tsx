@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
-import MessageBubble, { ThinkingBubble } from "./MessageBubble";
+import MessageBubble, { ThinkingBubble, BranchBubble } from "./MessageBubble";
 import ChatInput, { type ModelId, type AttachedImageFile } from "./ChatInput";
 import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
@@ -37,6 +37,7 @@ interface ChatPanelProps {
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
+  onRestoreBranch?: (message: Message) => void;
 }
 
 export default function ChatPanel({
@@ -65,6 +66,7 @@ export default function ChatPanel({
   streamingContent = "",  // ✅ v62追加
   onAbort,               // ✅ v62追加
   thinkingContents,
+  onRestoreBranch,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1534,7 +1536,18 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             最初のメッセージを入力してください。
           </div>
         )}
-        {activeMessages.map((msg, i) => (
+        {messages.map((msg, i) => {
+  if (msg.is_active === false) {
+    return (
+      <BranchBubble
+        key={msg.id}
+        message={msg}
+        onRestore={onRestoreBranch}
+      />
+    );
+  }
+  const activeIdx = activeMessages.indexOf(msg);
+  return (
   <div key={msg.id} id={`msg-${msg.id}`}
     style={roleplayMode && msg.role === "user" ? {
       display: "flex",
@@ -1562,7 +1575,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         message={msg}
         charName={rpCharName || "AI"}
         charIconUrl={rpCharIconUrl}
-        isLast={i === lastAssistantIndex}
+        isLast={activeIdx === lastAssistantIndex}
         isLoading={isLoading}
         provider={provider}
         onRegenerate={onRegenerate}
@@ -1580,7 +1593,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     ) : (
       <MessageBubble
         message={msg}
-        isLast={i === lastAssistantIndex}
+        isLast={activeIdx === lastAssistantIndex}
         isLoading={isLoading}
         provider={provider}
         onRegenerate={onRegenerate}
@@ -1598,7 +1611,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       />
     )}
   </div>
-))}
+  );
+})}
         {isLoading && !streamingContent && (
   roleplayMode ? (
     <RoleplayThinkingBubble charName={rpCharName || "AI"} charIconUrl={rpCharIconUrl} />

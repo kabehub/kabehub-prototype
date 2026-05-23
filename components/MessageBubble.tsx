@@ -788,3 +788,104 @@ export function ThinkingBubble() {
     </div>
   );
 }
+
+interface BranchBubbleProps {
+  message: Message;
+  onRestore?: (message: Message) => void;
+}
+
+export function BranchBubble({ message, onRestore }: BranchBubbleProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const providerLabel =
+    message.provider === "claude" ? "Claude" :
+    message.provider === "gemini" ? "Gemini" :
+    message.provider === "openai" ? "ChatGPT" : "AI";
+
+  const modelLabel = message.model_id ? ` · ${message.model_id}` : "";
+
+  return (
+    <div style={{
+      marginBottom: "8px",
+      borderRadius: "8px",
+      border: "1px dashed var(--border)",
+      background: "#fafaf9",
+      overflow: "hidden",
+    }}>
+      <div
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "6px 12px",
+          cursor: "pointer",
+          userSelect: "none",
+        }}
+      >
+        <span style={{ fontSize: "10px", color: "var(--ink-faint)" }}>
+          {expanded ? "▼" : "▶"}
+        </span>
+        <span style={{
+          fontSize: "10px",
+          fontFamily: "'JetBrains Mono', monospace",
+          color: "var(--ink-faint)",
+          letterSpacing: "0.05em",
+        }}>
+          ボツ案 · {providerLabel}{modelLabel}
+        </span>
+        <span style={{
+          marginLeft: "auto",
+          fontSize: "10px",
+          color: "var(--ink-faint)",
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {expanded ? "閉じる" : "展開"}
+        </span>
+      </div>
+
+      {expanded && (
+        <div style={{
+          padding: "10px 14px 12px",
+          borderTop: "1px dashed var(--border)",
+        }}>
+          <div style={{
+            fontSize: "13px",
+            lineHeight: 1.7,
+            color: "var(--ink-muted)",
+            fontFamily: "'DM Sans', sans-serif",
+            whiteSpace: "pre-wrap",
+            marginBottom: "10px",
+            opacity: 0.75,
+          }}>
+            {message.content}
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onRestore?.(message); }}
+            style={{
+              padding: "4px 12px",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: "white",
+              color: "var(--ink-muted)",
+              fontSize: "11px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+            }}
+          >
+            ↩ この回答を採用する
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
