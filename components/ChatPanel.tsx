@@ -705,7 +705,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     setShowDialog(false);
   };
 
-  const lastAssistantIndex = messages.reduce(
+  const activeMessages = messages.filter(msg => msg.is_active !== false);
+  const lastAssistantIndex = activeMessages.reduce(
     (last, msg, i) => (msg.role === "assistant" ? i : last),
     -1
   );
@@ -713,7 +714,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
 
   let msgCounter = 0;
-  const messageNumbers = messages.reduce<Record<string, number>>((acc, msg) => {
+  const messageNumbers = activeMessages.reduce<Record<string, number>>((acc, msg) => {
     if (msg.provider !== 'memo') {
       msgCounter++;
       acc[msg.id] = msgCounter;
@@ -1533,7 +1534,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             最初のメッセージを入力してください。
           </div>
         )}
-        {messages.map((msg, i) => (
+        {activeMessages.map((msg, i) => (
   <div key={msg.id} id={`msg-${msg.id}`}
     style={roleplayMode && msg.role === "user" ? {
       display: "flex",

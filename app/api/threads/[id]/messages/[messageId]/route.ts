@@ -33,6 +33,8 @@ export async function PATCH(
   const body = await req.json();
   const updates: Record<string, unknown> = {};
   if (typeof body.provider === "string") updates.provider = body.provider;
+  if (typeof body.is_active === "boolean") updates.is_active = body.is_active;
+  if (body.branch_id !== undefined) updates.branch_id = body.branch_id;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });

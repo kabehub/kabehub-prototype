@@ -30,6 +30,8 @@ export interface Message {
   created_at: string;
   parent_id?: string | null;
   is_hidden?: boolean;
+  is_active?: boolean;
+  branch_id?: string | null;
 }
 
 export interface ThreadNote {

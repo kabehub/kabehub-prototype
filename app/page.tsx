@@ -543,7 +543,9 @@ export default function Home() {
         getApiKeyHeaders(),
         JSON.stringify({
           threadId: activeThreadId,
-          messages: messages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
+          messages: messages
+            .filter(m => m.is_active !== false)
+            .map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent,
           provider,
           modelId: resolvedModelId,
@@ -663,30 +665,48 @@ export default function Home() {
         // isLastボタンから: DBから最新を取得（既存挙動を維持）
         const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
         const latestMessages: Message[] = await res.json();
+        const activeLatestMessages = latestMessages.filter(m => m.is_active !== false);
 
         let lastAssistantIndex = -1;
-        for (let i = latestMessages.length - 1; i >= 0; i--) {
-          if (latestMessages[i].role === "assistant") { lastAssistantIndex = i; break; }
+        for (let i = activeLatestMessages.length - 1; i >= 0; i--) {
+          if (activeLatestMessages[i].role === "assistant") { lastAssistantIndex = i; break; }
         }
         if (lastAssistantIndex === -1) { setIsLoading(false); return; }
 
-        lastAssistant = latestMessages[lastAssistantIndex];
+        lastAssistant = activeLatestMessages[lastAssistantIndex];
         for (let i = lastAssistantIndex - 1; i >= 0; i--) {
-          if (latestMessages[i].role === "user") { lastUser = latestMessages[i]; break; }
+          if (activeLatestMessages[i].role === "user") { lastUser = activeLatestMessages[i]; break; }
         }
         if (!lastUser) { setIsLoading(false); return; }
-        newMessages = latestMessages.filter((m) => m.id !== lastAssistant.id);
+        newMessages = activeLatestMessages.filter((m) => m.id !== lastAssistant.id);
       }
 
-      await fetch(`/api/threads/${activeThreadId}/messages/${lastAssistant.id}`, { method: "DELETE" });
-      setMessages(newMessages);
+      const branchId = crypto.randomUUID();
+
+      // DBで is_active: false に更新（削除しない）
+      await fetch(`/api/threads/${activeThreadId}/messages/${lastAssistant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: false, branch_id: branchId }),
+      });
+
+      // フロントのstateでも is_active: false に更新（削除しない）
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === lastAssistant.id
+            ? { ...m, is_active: false, branch_id: branchId }
+            : m
+        )
+      );
 
       const { assistantMessage } = await fetchWithStreaming(
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
           threadId: activeThreadId,
-          messages: newMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
+          messages: newMessages
+            .filter(m => m.is_active !== false)
+            .map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent: lastUser.content,
           provider: targetProvider,
           modelId: modelId,
@@ -698,7 +718,7 @@ export default function Home() {
         },
       );
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => [...prev, { ...assistantMessage, branch_id: branchId, is_active: true }]);
     } catch (err) {
       console.error("再生成失敗:", err);
     } finally {
