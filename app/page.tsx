@@ -782,27 +782,40 @@ export default function Home() {
 
   // ── ブランチ復元 ──────────────────────────────────────────
   const handleRestoreBranch = useCallback(async (targetMessage: Message) => {
-    if (!activeThreadId || !targetMessage.branch_id) return;
+    if (!activeThreadId) return;
 
-    const branchId = targetMessage.branch_id;
+    const currentActive = messages.find(
+      m => m.branch_id === targetMessage.branch_id
+        && m.id !== targetMessage.id
+        && m.is_active === true
+        && m.role === "assistant"
+    );
 
     setMessages(prev =>
       prev.map(m => {
-        if (m.branch_id !== branchId) return m;
-        return { ...m, is_active: m.id === targetMessage.id };
+        if (m.id === targetMessage.id) return { ...m, is_active: true };
+        if (m.id === currentActive?.id) return { ...m, is_active: false };
+        return m;
       })
     );
 
-    const branchMessages = messages.filter(m => m.branch_id === branchId);
-    await Promise.all(
-      branchMessages.map(m =>
-        fetch(`/api/threads/${activeThreadId}/messages/${m.id}`, {
+    const patches: Promise<Response>[] = [
+      fetch(`/api/threads/${activeThreadId}/messages/${targetMessage.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: true }),
+      }),
+    ];
+    if (currentActive) {
+      patches.push(
+        fetch(`/api/threads/${activeThreadId}/messages/${currentActive.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_active: m.id === targetMessage.id }),
+          body: JSON.stringify({ is_active: false }),
         })
-      )
-    );
+      );
+    }
+    await Promise.all(patches);
   }, [activeThreadId, messages]);
 
   // ── セルフコピペ ──────────────────────────────────────────
