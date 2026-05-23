@@ -416,14 +416,23 @@ export async function POST(req: NextRequest) {
 
   // フォルダのシステムプロンプトを解決
   let resolvedSystemPrompt: string | undefined = systemPrompt || undefined;
-  if (!resolvedSystemPrompt && !isTemporary) {
+  let loreTargetFolder: string | null = null;
+  let loreEnabled = false;
+
+  if (!isTemporary) {
     const { data: thread } = await supabase
       .from('threads').select('folder_name, user_id').eq('id', threadId).single();
     if (thread?.folder_name) {
       const { data: folderSetting } = await supabase
-        .from('folder_settings').select('system_prompt')
+        .from('folder_settings').select('system_prompt, folder_type')
         .eq('user_id', userId).eq('folder_name', thread.folder_name).maybeSingle();
-      resolvedSystemPrompt = folderSetting?.system_prompt ?? undefined;
+      if (!resolvedSystemPrompt) {
+        resolvedSystemPrompt = folderSetting?.system_prompt ?? undefined;
+      }
+      if (folderSetting?.folder_type === "novel") {
+        loreTargetFolder = thread.folder_name;
+        loreEnabled = true;
+      }
     }
   }
 
@@ -469,6 +478,32 @@ export async function POST(req: NextRequest) {
   const anthropicKey = req.headers.get("x-anthropic-api-key");
   const geminiKey    = req.headers.get("x-gemini-api-key");
   const openaiKey    = req.headers.get("x-openai-api-key");
+
+  // Lore Book 自動注入（novel フォルダ + openaiKey がある場合のみ）
+  if (loreEnabled && openaiKey && loreTargetFolder) {
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      const cookieHeader = req.headers.get("cookie") ?? "";
+      const searchRes = await fetch(`${appUrl}/api/lore/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-openai-api-key": openaiKey,
+          ...(cookieHeader ? { cookie: cookieHeader } : {}),
+        },
+        body: JSON.stringify({ query: userContent, folderName: loreTargetFolder, topK: 3 }),
+      });
+      if (searchRes.ok) {
+        const { chunks } = await searchRes.json();
+        if (Array.isArray(chunks) && chunks.length > 0) {
+          const loreNote = "\n\n【関連設定（Lore Book より自動注入）】\n" + chunks.join("\n\n---\n\n");
+          resolvedSystemPrompt = (resolvedSystemPrompt ?? "") + loreNote;
+        }
+      }
+    } catch {
+      // Lore注入失敗はベストエフォートで握りつぶし
+    }
+  }
 
   const resolvedModelId: ModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
 

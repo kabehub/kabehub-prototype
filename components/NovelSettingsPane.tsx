@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type NovelSettingsData = {
   characters: { name: string; role: string; faction: string; status: string; notes: string }[];
@@ -8,9 +8,22 @@ type NovelSettingsData = {
   glossary: { term: string; description: string }[];
 };
 
+type LoreChunk = { id: string; chunk_text: string; created_at: string };
+
+function splitIntoChunks(text: string, chunkSize = 400, overlap = 80): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    chunks.push(text.slice(start, start + chunkSize));
+    start += chunkSize - overlap;
+  }
+  return chunks;
+}
+
 interface NovelSettingsPaneProps {
   threadId: string | null;
   threadTitle?: string;
+  folderName?: string | null;
   isOpen: boolean;
   onToggle: () => void;
   isExtracting: boolean;
@@ -21,6 +34,7 @@ interface NovelSettingsPaneProps {
 export default function NovelSettingsPane({
   threadId,
   threadTitle,
+  folderName,
   isOpen,
   onToggle,
   isExtracting,
@@ -30,6 +44,10 @@ export default function NovelSettingsPane({
   const [isWide, setIsWide] = useState(true);
   const [expandedCharIdx, setExpandedCharIdx] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [activeTab, setActiveTab] = useState<"db" | "lore">("db");
+  const [loreText, setLoreText] = useState("");
+  const [loreChunks, setLoreChunks] = useState<LoreChunk[]>([]);
+  const [isEmbedding, setIsEmbedding] = useState(false);
 
   const downloadFile = (content: string, ext: string) => {
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
@@ -116,6 +134,78 @@ export default function NovelSettingsPane({
     downloadFile(lines.join("\n"), "txt");
   };
 
+  const fetchLoreChunks = useCallback(async () => {
+    if (!folderName) return;
+    try {
+      const res = await fetch(`/api/lore/chunks?folder_name=${encodeURIComponent(folderName)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLoreChunks(data.chunks ?? []);
+      }
+    } catch { /* 無視 */ }
+  }, [folderName]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === "lore") fetchLoreChunks();
+  }, [isOpen, activeTab, fetchLoreChunks]);
+
+  const handleEmbed = async (text: string) => {
+    if (!folderName || !text.trim()) return;
+    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
+    if (!openaiKey) {
+      alert("OpenAI APIキーが設定されていません。右上の「🔑 APIキー」から設定してください。");
+      return;
+    }
+    setIsEmbedding(true);
+    try {
+      const chunks = splitIntoChunks(text).map(t => ({ text: t }));
+      const res = await fetch("/api/lore/embed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-openai-api-key": openaiKey },
+        body: JSON.stringify({ folderName, chunks }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`登録エラー: ${err.error ?? "不明なエラー"}`);
+      } else {
+        await fetchLoreChunks();
+      }
+    } catch {
+      alert("登録中にエラーが発生しました。");
+    } finally {
+      setIsEmbedding(false);
+    }
+  };
+
+  const handleGenerateFromDB = async () => {
+    if (!settingsData) {
+      alert("先にキャラクターDBを抽出してください。");
+      return;
+    }
+    const parts: string[] = [];
+    for (const c of settingsData.characters) {
+      parts.push(`[キャラクター: ${c.name}]\n役割: ${c.role}\n勢力: ${c.faction}\n状態: ${c.status}\n備考: ${c.notes}`);
+    }
+    for (const f of settingsData.factions) {
+      parts.push(`[勢力: ${f.name}]\n${f.description}\nメンバー: ${f.members.join("、")}`);
+    }
+    for (const g of settingsData.glossary) {
+      parts.push(`[用語: ${g.term}]\n${g.description}`);
+    }
+    if (parts.length === 0) {
+      alert("DBにデータがありません。");
+      return;
+    }
+    await handleEmbed(parts.join("\n\n"));
+  };
+
+  const handleDeleteChunk = async (id: string) => {
+    try {
+      const res = await fetch(`/api/lore/chunks/${id}`, { method: "DELETE" });
+      if (res.ok) setLoreChunks(prev => prev.filter(c => c.id !== id));
+    } catch { /* 無視 */ }
+  };
+
   useEffect(() => {
     const check = () => setIsWide(window.innerWidth >= 1280);
     check();
@@ -195,71 +285,166 @@ export default function NovelSettingsPane({
                 Novel DB
               </span>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={onExtract}
-                  disabled={isExtracting || !threadId}
-                  className="text-[9px] px-2 py-0.5 rounded border disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  style={{ borderColor: "var(--border)", color: "var(--ink-muted)" }}
-                >
-                  {isExtracting ? (
-                    <span className="animate-pulse">抽出中…</span>
-                  ) : (
-                    "🔄 更新"
-                  )}
-                </button>
-                {settingsData && (
-                  <div className="relative">
+                {activeTab === "db" && (
+                  <>
                     <button
-                      onClick={() => setShowExportMenu(v => !v)}
-                      className="text-[9px] px-2 py-0.5 rounded border transition-colors"
+                      onClick={onExtract}
+                      disabled={isExtracting || !threadId}
+                      className="text-[9px] px-2 py-0.5 rounded border disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       style={{ borderColor: "var(--border)", color: "var(--ink-muted)" }}
-                      title="エクスポート"
                     >
-                      ↓
+                      {isExtracting ? (
+                        <span className="animate-pulse">抽出中…</span>
+                      ) : (
+                        "🔄 更新"
+                      )}
                     </button>
-                    {showExportMenu && (
-                      <>
-                        <div
-                          onClick={() => setShowExportMenu(false)}
-                          style={{ position: "fixed", inset: 0, zIndex: 49 }}
-                        />
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "calc(100% + 4px)",
-                            right: 0,
-                            background: "white",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                            padding: "4px",
-                            boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
-                            zIndex: 50,
-                          }}
+                    {settingsData && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowExportMenu(v => !v)}
+                          className="text-[9px] px-2 py-0.5 rounded border transition-colors"
+                          style={{ borderColor: "var(--border)", color: "var(--ink-muted)" }}
+                          title="エクスポート"
                         >
-                          <button
-                            onClick={() => { handleExportMD(); setShowExportMenu(false); }}
-                            className="block w-full text-left text-[10px] px-3 py-1.5 rounded hover:bg-gray-50"
-                            style={{ color: "var(--ink-muted)" }}
-                          >
-                            MD
-                          </button>
-                          <button
-                            onClick={() => { handleExportTXT(); setShowExportMenu(false); }}
-                            className="block w-full text-left text-[10px] px-3 py-1.5 rounded hover:bg-gray-50"
-                            style={{ color: "var(--ink-muted)" }}
-                          >
-                            TXT
-                          </button>
-                        </div>
-                      </>
+                          ↓
+                        </button>
+                        {showExportMenu && (
+                          <>
+                            <div
+                              onClick={() => setShowExportMenu(false)}
+                              style={{ position: "fixed", inset: 0, zIndex: 49 }}
+                            />
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "calc(100% + 4px)",
+                                right: 0,
+                                background: "white",
+                                border: "1px solid var(--border)",
+                                borderRadius: "8px",
+                                padding: "4px",
+                                boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+                                zIndex: 50,
+                              }}
+                            >
+                              <button
+                                onClick={() => { handleExportMD(); setShowExportMenu(false); }}
+                                className="block w-full text-left text-[10px] px-3 py-1.5 rounded hover:bg-gray-50"
+                                style={{ color: "var(--ink-muted)" }}
+                              >
+                                MD
+                              </button>
+                              <button
+                                onClick={() => { handleExportTXT(); setShowExportMenu(false); }}
+                                className="block w-full text-left text-[10px] px-3 py-1.5 rounded hover:bg-gray-50"
+                                style={{ color: "var(--ink-muted)" }}
+                              >
+                                TXT
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
             </div>
 
+            {/* タブ切り替え */}
+            <div className="flex shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+              {(["db", "lore"] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className="flex-1 text-[10px] py-1.5 transition-colors"
+                  style={{
+                    color: activeTab === tab ? "var(--accent)" : "var(--ink-faint)",
+                    borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
+                    background: "none",
+                    fontWeight: activeTab === tab ? 600 : 400,
+                  }}
+                >
+                  {tab === "db" ? "DB" : "📚 Lore"}
+                </button>
+              ))}
+            </div>
+
             {/* ボディ */}
             <div className="flex-1 overflow-y-auto">
+              {/* Loreタブ */}
+              {activeTab === "lore" && (
+                <div className="flex flex-col gap-2 p-3">
+                  <div className="text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                    {loreChunks.length} chunk{loreChunks.length !== 1 ? "s" : ""} registered
+                  </div>
+
+                  <textarea
+                    value={loreText}
+                    onChange={e => setLoreText(e.target.value)}
+                    placeholder="設定資料をここに貼り付け…"
+                    rows={6}
+                    className="w-full text-[11px] rounded border resize-y p-2 leading-relaxed"
+                    style={{
+                      borderColor: "var(--border)",
+                      color: "var(--ink)",
+                      background: "#fafaf9",
+                      outline: "none",
+                    }}
+                  />
+
+                  <button
+                    onClick={() => handleEmbed(loreText)}
+                    disabled={isEmbedding || !loreText.trim() || !folderName}
+                    className="w-full text-[11px] py-1.5 rounded border font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "none" }}
+                  >
+                    {isEmbedding ? "同期中..." : "📚 Lore Bookに登録"}
+                  </button>
+
+                  <button
+                    onClick={handleGenerateFromDB}
+                    disabled={isEmbedding || !settingsData || !folderName}
+                    className="w-full text-[11px] py-1.5 rounded border font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    style={{ borderColor: "var(--border)", color: "var(--ink-muted)", background: "none" }}
+                  >
+                    {isEmbedding ? "同期中..." : "🎭 キャラDBから生成"}
+                  </button>
+
+                  {loreChunks.length > 0 && (
+                    <div className="mt-1">
+                      <div className="text-[9px] font-mono uppercase tracking-widest mb-1" style={{ color: "var(--ink-faint)" }}>
+                        登録済みチャンク
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {loreChunks.map(chunk => (
+                          <div
+                            key={chunk.id}
+                            className="flex items-center gap-1 rounded px-2 py-1"
+                            style={{ background: "#f5f5f3", border: "1px solid var(--border)" }}
+                          >
+                            <span className="flex-1 text-[10px] truncate" style={{ color: "var(--ink-muted)" }} title={chunk.chunk_text}>
+                              {chunk.chunk_text.slice(0, 40)}{chunk.chunk_text.length > 40 ? "…" : ""}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteChunk(chunk.id)}
+                              className="shrink-0 text-[9px] px-1 rounded hover:bg-red-50"
+                              style={{ color: "var(--ink-faint)" }}
+                              title="削除"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* DBタブ（既存コンテンツ） */}
+              {activeTab === "db" && <>
               {/* ローディング */}
               {isExtracting && (
                 <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
@@ -420,6 +605,7 @@ export default function NovelSettingsPane({
                   )}
                 </div>
               )}
+              </>}
             </div>
           </div>
         )}

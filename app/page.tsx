@@ -895,6 +895,7 @@ export default function Home() {
       <NovelSettingsPane
         threadId={activeThreadId}
         threadTitle={threads.find(t => t.id === activeThreadId)?.title ?? undefined}
+        folderName={threads.find(t => t.id === activeThreadId)?.folder_name ?? null}
         isOpen={isNovelPaneOpen}
         onToggle={handleNovelPaneToggle}
         isExtracting={isExtracting}
