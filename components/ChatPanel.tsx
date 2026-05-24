@@ -204,11 +204,6 @@ export default function ChatPanel({
     setShowShare(false);
   };
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, isLoading]);
 
   // ✅ v26: スクロールuseEffectはpage.tsxに移動済み。
   // ChatPanel側では searchMatchIds の変化を検知する必要はない。
