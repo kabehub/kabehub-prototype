@@ -507,13 +507,26 @@ export async function POST(req: NextRequest) {
 
   const resolvedModelId: ModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
 
+  const participants = [
+    ...new Map(
+      messages
+        .filter((m: ChatMessage) => m.role === "assistant" && m.provider)
+        .map((m: ChatMessage) => [m.model_id ?? m.provider, m.model_id ?? m.provider])
+    ).values()
+  ] as string[];
+
+  const participantNote = participants.length >= 2
+    ? `\n\n【会話の参加者】このスレッドには複数のAIが参加しています：${participants.join("、")}`
+    : "";
+
   const messagesForApi = [
     ...messages
       .filter((m: ChatMessage) => m.provider !== "memo")
       .map((m: ChatMessage) => {
         if (m.role !== "assistant") return { role: m.role as string, content: m.content };
         const label = m.model_id ?? m.provider ?? "assistant";
-        return { role: "assistant" as string, content: `[${label}]\n${m.content}` };
+        const cleanContent = m.content.replace(/^(\[.*?\]\n)+/, "");
+        return { role: "assistant" as string, content: `[${label}]\n${cleanContent}` };
       }),
     { role: "user" as string, content: userContent },
   ];
@@ -529,8 +542,8 @@ export async function POST(req: NextRequest) {
 
   const labelNote = "\n\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。";
   const systemPromptWithLabel = resolvedSystemPrompt
-    ? resolvedSystemPrompt + labelNote
-    : labelNote.trim();
+    ? resolvedSystemPrompt + participantNote + labelNote
+    : (participantNote + labelNote).trim();
 
   try {
     if (provider === "gemini") {
@@ -614,7 +627,7 @@ export async function POST(req: NextRequest) {
   // dbSavedは保存「成功」時のみtrueにする（失敗を隠蔽しない）
   const saveToDb = async (aborted: boolean, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
     if (isTemporary) return true;
-    const contentToSave = accumulatedText;
+    const contentToSave = accumulatedText.replace(/^(\[.*?\]\n)+/, "");
     return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId, resolvedModelId, usageRef.input_tokens, usageRef.output_tokens);
   };
 
