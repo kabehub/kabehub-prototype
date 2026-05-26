@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = 'force-dynamic';
 
-type ChatMessage = { role: string; content: string; provider?: string; model_id?: string | null };
+type ChatMessage = { role: string; content: string; provider?: string; model_id?: string | null; is_active?: boolean };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
