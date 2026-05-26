@@ -11,7 +11,8 @@ type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephem
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
 
 type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
-type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
+// TODO: types/index.ts へ集約予定
+type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite";
 type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
 type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
 

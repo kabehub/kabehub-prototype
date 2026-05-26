@@ -61,7 +61,8 @@ async function compressImage(file: File): Promise<{ base64: string; mediaType: "
 export type Provider = "claude" | "gemini" | "openai";
 
 export type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
-export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
+// TODO: types/index.ts へ集約予定
+export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite";
 export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
 
 export type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
@@ -82,6 +83,8 @@ export const MODEL_CONFIG = {
     models: [
       { id: "gemini-2.5-flash" as GeminiModel, label: "2.5 Flash", badge: "標準" },
       { id: "gemini-2.5-pro" as GeminiModel, label: "2.5 Pro", badge: "高性能" },
+      { id: "gemini-3.5-flash" as GeminiModel, label: "3.5 Flash", badge: "高性能" },
+      { id: "gemini-3.1-flash-lite" as GeminiModel, label: "3.1 Flash Lite", badge: "軽量・爆速" },
     ],
     defaultModel: "gemini-2.5-flash" as GeminiModel,
     lsKey: "kabehub_gemini_model",
