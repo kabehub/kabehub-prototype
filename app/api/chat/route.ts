@@ -523,11 +523,15 @@ export async function POST(req: NextRequest) {
   const messagesForApi = [
     ...messages
       .filter((m: ChatMessage) => m.provider !== "memo")
+      .filter((m: ChatMessage) => m.is_active !== false)
       .map((m: ChatMessage) => {
         if (m.role !== "assistant") return { role: m.role as string, content: m.content };
-        const label = m.model_id ?? m.provider ?? "assistant";
-        const cleanContent = m.content.replace(/^(\[.*?\]\n)+/, "");
-        return { role: "assistant" as string, content: `[${label}]\n${cleanContent}` };
+        // 改行あり・なし・スペース区切りすべてのラベルパターンを除去
+        // 既存DBの汚染データ（[claude][claude]...）も一網打尽にする
+        const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
+        // ⚠️ [${label}]\n の付与をやめる
+        // AIへの発言者情報の伝達は participantNote（systemPrompt末尾の参加者リスト）で担う
+        return { role: "assistant" as string, content: cleanContent };
       }),
     { role: "user" as string, content: userContent },
   ];
