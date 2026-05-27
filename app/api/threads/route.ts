@@ -17,8 +17,7 @@ export async function GET(req: NextRequest) {
     .from("threads")
     .select("*")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .order("created_at", { ascending: false });
   if (error) {
     return NextResponse.json([], { status: 500 });
   }
