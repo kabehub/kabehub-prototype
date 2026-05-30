@@ -25,13 +25,20 @@ export interface Message {
   thread_id: string;
   role: "user" | "assistant";
   content: string;
-  provider?: "claude" | "gemini" | "openai" | "user" | "memo" | "unknown";
+  provider?: "claude" | "gemini" | "openai" | "user" | "memo" | "image_gen" | "unknown";
   model_id?: string | null;
   created_at: string;
   parent_id?: string | null;
   is_hidden?: boolean;
   is_active?: boolean;
   branch_id?: string | null;
+  metadata?: {
+    storagePath?: string;      // [userId]/[threadId]/[imageId].png
+    width?: number;
+    height?: number;
+    seed?: number;
+    image_deleted?: boolean;   // 削除済みトゥームストーンフラグ
+  };
 }
 
 export interface ThreadNote {

@@ -4,6 +4,7 @@ import MarkdownRenderer from "./MarkdownRenderer";
 import { Message, MessageNote } from "@/types";
 import { MODEL_CONFIG } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
+import { supabase } from "@/lib/supabase/client";
 
 interface MessageBubbleProps {
   message: Message;
@@ -44,6 +45,7 @@ function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
+  const isImageGen = message.provider === "image_gen";
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [showNoteList, setShowNoteList] = useState(false);
@@ -70,6 +72,7 @@ function MessageBubble({
   const [subPos, setSubPos] = useState({ x: 0, y: 0 });
   const regenBtnRef = useRef<HTMLButtonElement>(null);
   const subMenuRef = useRef<HTMLDivElement>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
@@ -123,6 +126,17 @@ function MessageBubble({
     });
   }, [regenSubOpen]);
 
+  useEffect(() => {
+    if (!isImageGen || !message.metadata?.storagePath || message.metadata?.image_deleted) return;
+    // TODO: 将来的にAPI Route経由の画像配信に変更し、Next.js <Image> のキャッシュを効かせる
+    supabase.storage
+      .from("generated-images")
+      .createSignedUrl(message.metadata.storagePath, 3600)
+      .then(({ data }) => {
+        if (data?.signedUrl) setImageUrl(data.signedUrl);
+      });
+  }, [isImageGen, message.metadata?.storagePath, message.metadata?.image_deleted]);
+
   const handleOpenMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
@@ -137,7 +151,8 @@ function MessageBubble({
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await navigator.clipboard.writeText(message.content);
+    const textToCopy = isImageGen ? message.content : message.content;
+    await navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -148,7 +163,8 @@ function MessageBubble({
       p === "claude" ? "Claude" :
       p === "gemini" ? "Gemini" :
       p === "openai" ? "ChatGPT" :
-      p === "memo" ? "メモ" : "AI";
+      p === "memo" ? "メモ" :
+      p === "image_gen" ? "🖼️ 画像生成" : "AI";
     const numStr = num ? ` · #${num}` : '';
     return message.model_id
       ? `${providerName}${numStr} · ${message.model_id}`
@@ -379,6 +395,26 @@ function MessageBubble({
             >
               {isMemo ? (
                 message.content
+              ) : isImageGen ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {message.metadata?.image_deleted ? (
+                    <div style={{ color: "var(--ink-faint)", fontSize: "13px", fontStyle: "italic" }}>
+                      🖼️ 画像は削除されました
+                    </div>
+                  ) : imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={message.content}
+                      style={{ maxWidth: "100%", borderRadius: "6px", display: "block" }}
+                    />
+                  ) : (
+                    <div style={{ color: "var(--ink-faint)", fontSize: "13px" }}>🖼️ 読み込み中...</div>
+                  )}
+                  {/* 💬 Discuss with AI ボタンはここに追加予定（Step 4以降） */}
+                  <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace", marginTop: "4px" }}>
+                    プロンプト: {message.content}
+                  </div>
+                </div>
               ) : (
                 <MarkdownRenderer content={message.content} />
               )}
@@ -686,17 +722,27 @@ function MessageBubble({
           {onTrimFrom && (
             <button
               onClick={() => {
+                if (isImageGen) return;
                 setMenuOpen(false);
                 setRegenSubOpen(false);
                 if (window.confirm("このメッセージ以降を全て削除しますか？")) {
                   onTrimFrom(message);
                 }
               }}
-              style={{ ...menuItemStyle, color: "#e53e3e" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5"; setRegenSubOpen(false); }}
+              disabled={isImageGen}
+              style={{
+                ...menuItemStyle,
+                color: isImageGen ? "var(--ink-faint)" : "#e53e3e",
+                cursor: isImageGen ? "not-allowed" : "pointer",
+              }}
+              onMouseEnter={(e) => {
+                if (!isImageGen) (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5";
+                setRegenSubOpen(false);
+              }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+              title={isImageGen ? "画像削除は準備中です" : undefined}
             >
-              🗑️ 削除
+              {isImageGen ? "🗑️ 削除（準備中）" : "🗑️ 削除"}
             </button>
           )}
         </div>

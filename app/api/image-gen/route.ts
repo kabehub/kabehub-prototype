@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
 
 const ALLOWED_GEMINI_IMAGE_MODELS = [
   'gemini-2.5-flash-image',
@@ -11,16 +12,17 @@ const ALLOWED_IDEOGRAM_MODELS = ['ideogram-v3']
 const ALLOWED_OPENROUTER_MODELS = ['black-forest-labs/flux.2-pro']
 
 type ImageResult = { imageData: string; mimeType: string }
+type HandlerResult = { result: ImageResult; error: null } | { result: null; error: string }
 
-async function handleGemini(req: NextRequest, prompt: string, modelId: string | undefined): Promise<NextResponse> {
+async function handleGemini(req: NextRequest, prompt: string, modelId: string | undefined): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-gemini-api-key')
   if (!apiKey) {
-    return NextResponse.json({ error: 'APIキーが設定されていません' }, { status: 400 })
+    return { result: null, error: 'APIキーが設定されていません' }
   }
 
   const geminiModel = modelId ?? 'gemini-2.5-flash-image'
   if (!ALLOWED_GEMINI_IMAGE_MODELS.includes(geminiModel)) {
-    return NextResponse.json({ error: '不正なモデルIDです' }, { status: 400 })
+    return { result: null, error: '不正なモデルIDです' }
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`
@@ -37,27 +39,29 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
 
   if (!res.ok) {
     const err = await res.text()
-    return NextResponse.json({ error: `Gemini API エラー: ${err}` }, { status: res.status })
+    return { result: null, error: `Gemini API エラー: ${err}` }
   }
 
   const data = await res.json()
   const parts = data?.candidates?.[0]?.content?.parts ?? []
   const imagePart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData)
   if (!imagePart) {
-    return NextResponse.json({ error: '画像データが返ってきませんでした' }, { status: 500 })
+    return { result: null, error: '画像データが返ってきませんでした' }
   }
 
-  const result: ImageResult = {
-    imageData: imagePart.inlineData.data,
-    mimeType: imagePart.inlineData.mimeType,
+  return {
+    result: {
+      imageData: imagePart.inlineData.data,
+      mimeType: imagePart.inlineData.mimeType,
+    },
+    error: null,
   }
-  return NextResponse.json(result)
 }
 
-async function handleOpenAI(req: NextRequest, prompt: string): Promise<NextResponse> {
+async function handleOpenAI(req: NextRequest, prompt: string): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-openai-api-key')
   if (!apiKey) {
-    return NextResponse.json({ error: 'APIキーが設定されていません' }, { status: 400 })
+    return { result: null, error: 'APIキーが設定されていません' }
   }
 
   const res = await fetch('https://api.openai.com/v1/images/generations', {
@@ -76,23 +80,22 @@ async function handleOpenAI(req: NextRequest, prompt: string): Promise<NextRespo
 
   if (!res.ok) {
     const err = await res.text()
-    return NextResponse.json({ error: `OpenAI API エラー: ${err}` }, { status: res.status })
+    return { result: null, error: `OpenAI API エラー: ${err}` }
   }
 
   const data = await res.json()
   const b64 = data?.data?.[0]?.b64_json
   if (!b64) {
-    return NextResponse.json({ error: '画像データが返ってきませんでした' }, { status: 500 })
+    return { result: null, error: '画像データが返ってきませんでした' }
   }
 
-  const result: ImageResult = { imageData: b64, mimeType: 'image/png' }
-  return NextResponse.json(result)
+  return { result: { imageData: b64, mimeType: 'image/png' }, error: null }
 }
 
-async function handleIdeogram(req: NextRequest, prompt: string): Promise<NextResponse> {
+async function handleIdeogram(req: NextRequest, prompt: string): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-ideogram-api-key')
   if (!apiKey) {
-    return NextResponse.json({ error: 'APIキーが設定されていません' }, { status: 400 })
+    return { result: null, error: 'APIキーが設定されていません' }
   }
 
   const formData = new FormData()
@@ -108,32 +111,31 @@ async function handleIdeogram(req: NextRequest, prompt: string): Promise<NextRes
 
   if (!res.ok) {
     const err = await res.text()
-    return NextResponse.json({ error: `Ideogram API エラー: ${err}` }, { status: res.status })
+    return { result: null, error: `Ideogram API エラー: ${err}` }
   }
 
   const data = await res.json()
   const imageUrl = data?.data?.[0]?.url
   if (!imageUrl) {
-    return NextResponse.json({ error: '画像データが返ってきませんでした' }, { status: 500 })
+    return { result: null, error: '画像データが返ってきませんでした' }
   }
 
   const imgRes = await fetch(imageUrl)
   if (!imgRes.ok) {
-    return NextResponse.json({ error: '画像の取得に失敗しました' }, { status: 500 })
+    return { result: null, error: '画像の取得に失敗しました' }
   }
 
   const arrayBuffer = await imgRes.arrayBuffer()
   const base64 = Buffer.from(arrayBuffer).toString('base64')
   const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
 
-  const result: ImageResult = { imageData: base64, mimeType: contentType }
-  return NextResponse.json(result)
+  return { result: { imageData: base64, mimeType: contentType }, error: null }
 }
 
-async function handleOpenRouter(req: NextRequest, prompt: string): Promise<NextResponse> {
+async function handleOpenRouter(req: NextRequest, prompt: string): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-openrouter-api-key')
   if (!apiKey) {
-    return NextResponse.json({ error: 'APIキーが設定されていません' }, { status: 400 })
+    return { result: null, error: 'APIキーが設定されていません' }
   }
 
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -151,31 +153,89 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<NextR
 
   if (!res.ok) {
     const err = await res.text()
-    return NextResponse.json({ error: `OpenRouter API エラー: ${err}` }, { status: res.status })
+    return { result: null, error: `OpenRouter API エラー: ${err}` }
   }
 
   const data = await res.json()
   const imageDataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url
   if (!imageDataUrl) {
-    return NextResponse.json({ error: '画像データが返ってきませんでした' }, { status: 500 })
+    return { result: null, error: '画像データが返ってきませんでした' }
   }
 
   const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '')
   const mimeType = imageDataUrl.match(/^data:(\w+\/\w+);/)?.[1] ?? 'image/png'
 
-  const result: ImageResult = { imageData: base64, mimeType }
-  return NextResponse.json(result)
+  return { result: { imageData: base64, mimeType }, error: null }
 }
 
 export async function POST(req: NextRequest) {
-  const { provider, prompt, modelId } = await req.json()
+  const { provider, prompt, modelId, threadId } = await req.json()
 
+  let handlerResult: HandlerResult
   switch (provider) {
-    case 'gemini':     return handleGemini(req, prompt, modelId)
-    case 'openai':     return handleOpenAI(req, prompt)
-    case 'ideogram':   return handleIdeogram(req, prompt)
-    case 'openrouter': return handleOpenRouter(req, prompt)
+    case 'gemini':     handlerResult = await handleGemini(req, prompt, modelId); break
+    case 'openai':     handlerResult = await handleOpenAI(req, prompt); break
+    case 'ideogram':   handlerResult = await handleIdeogram(req, prompt); break
+    case 'openrouter': handlerResult = await handleOpenRouter(req, prompt); break
     default:           return NextResponse.json({ error: '不正なproviderです' }, { status: 400 })
   }
-}
 
+  if (handlerResult.error !== null) {
+    return NextResponse.json({ error: handlerResult.error }, { status: 500 })
+  }
+
+  const { imageData, mimeType } = handlerResult.result
+
+  // threadId なし → 従来通り imageData/mimeType のみ返す
+  if (!threadId) {
+    return NextResponse.json({ imageData, mimeType })
+  }
+
+  // threadId あり → 認証チェック → Storage アップロード → DB保存
+  const nextRes = NextResponse.next()
+  const supabase = createRouteHandlerSupabaseClient(req, nextRes)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+  }
+
+  const userId = user.id
+  const storagePath = `${userId}/${threadId}/${crypto.randomUUID()}.png`
+
+  const buffer = Buffer.from(imageData, 'base64')
+  const { error: uploadError } = await supabase.storage
+    .from('generated-images')
+    .upload(storagePath, buffer, { contentType: mimeType })
+
+  if (uploadError) {
+    return NextResponse.json({ error: `Storage アップロード失敗: ${uploadError.message}` }, { status: 500 })
+  }
+
+  // TODO: sharp による WebP 圧縮対応（現在は未圧縮のままアップロード）
+
+  const { data: message, error: dbError } = await supabase
+    .from('messages')
+    .insert({
+      thread_id: threadId,
+      user_id: userId,
+      role: 'assistant',
+      provider: 'image_gen',
+      content: prompt,
+      metadata: {
+        storagePath,
+        mimeType,
+        image_deleted: false,
+        width: null,
+        height: null,
+        seed: null,
+      },
+    })
+    .select('id')
+    .single()
+
+  if (dbError) {
+    return NextResponse.json({ error: `DB保存失敗: ${dbError.message}` }, { status: 500 })
+  }
+
+  return NextResponse.json({ messageId: message.id, storagePath, imageData, mimeType })
+}
