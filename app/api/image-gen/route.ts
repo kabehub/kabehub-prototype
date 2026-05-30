@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
 
   const actualPath = uploadData?.path ?? storagePath
   console.log("actualPath:", actualPath)
-  console.log("inserting metadata:", JSON.stringify({ storagePath: actualPath, mimeType }))
+  console.log("inserting metadata:", JSON.stringify({ storagePath: actualPath, mimeType: mimeType, image_deleted: false }))
   const { data: message, error: dbError } = await supabase
     .from('messages')
     .insert({
@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
       content: prompt,
       metadata: {
         storagePath: actualPath,
-        mimeType,
+        mimeType: mimeType,
         image_deleted: false,
         width: null,
         height: null,
