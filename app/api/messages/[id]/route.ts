@@ -30,6 +30,33 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
+
+  // 画像削除アクション
+  if (body.action === "delete_image") {
+    const { data: existing, error: fetchError } = await supabase
+      .from("messages")
+      .select("metadata")
+      .eq("id", params.id)
+      .eq("user_id", user.id)
+      .single();
+    if (fetchError) return NextResponse.json({ error: fetchError }, { status: 500 });
+
+    const storagePath = existing?.metadata?.storagePath;
+    if (storagePath) {
+      await supabase.storage.from("generated-images").remove([storagePath]);
+    }
+
+    const newMetadata = { ...(existing?.metadata ?? {}), storagePath: null, image_deleted: true };
+    const { error: updateError } = await supabase
+      .from("messages")
+      .update({ metadata: newMetadata })
+      .eq("id", params.id)
+      .eq("user_id", user.id);
+    if (updateError) return NextResponse.json({ error: updateError }, { status: 500 });
+
+    return NextResponse.json({ success: true });
+  }
+
   // 許可するフィールドのみ更新（content / is_hidden）
   const updates: Record<string, unknown> = {};
   if (typeof body.content === "string") updates.content = body.content;

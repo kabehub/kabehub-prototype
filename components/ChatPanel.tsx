@@ -26,6 +26,7 @@ interface ChatPanelProps {
   onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message, modelId?: string) => void;
   onTrimFrom: (message: Message) => void;
   onDeleteMessage?: (message: Message) => void;
+  onDeleteImage?: (message: Message) => void;
   onMemoizeMessage?: (message: Message) => void;
   isTemporary: boolean;
   onSwitchTemporary: () => void;
@@ -60,6 +61,7 @@ export default function ChatPanel({
   onRegenerate,
   onTrimFrom,
   onDeleteMessage,
+  onDeleteImage,
   onMemoizeMessage,
   isTemporary,
   onSwitchTemporary,
@@ -1606,6 +1608,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         onRegenerate={onRegenerate}
         onTrimFrom={onTrimFrom}
         onMemoize={onMemoizeMessage}
+        onDeleteImage={onDeleteImage}
         messageNotes={messageNotes}
         onAddMessageNote={handleAddMessageNote}
         onDeleteMessageNote={handleDeleteMessageNote}

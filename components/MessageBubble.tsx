@@ -24,6 +24,7 @@ interface MessageBubbleProps {
   messageNumber?: number;
   thinkingContent?: string;
   onDiscuss?: (messageId: string) => void;
+  onDeleteImage?: (message: Message) => void;
 }
 
 function MessageBubble({
@@ -44,6 +45,7 @@ function MessageBubble({
   messageNumber,
   thinkingContent,
   onDiscuss,
+  onDeleteImage,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -746,31 +748,42 @@ function MessageBubble({
               📝 メモ化
             </button>
           )}
-          {/* 削除（このメッセージ以降を全て削除） */}
+          {/* 削除（このメッセージ以降を全て削除 / 画像削除 / tombstone除去） */}
           {onTrimFrom && (
             <button
               onClick={() => {
-                if (isImageGen) return;
                 setMenuOpen(false);
                 setRegenSubOpen(false);
-                if (window.confirm("このメッセージ以降を全て削除しますか？")) {
-                  onTrimFrom(message);
+                if (isImageGen && !message.metadata?.image_deleted) {
+                  if (window.confirm("画像ファイルを削除しますか？プロンプトテキストはスレッドに残ります。")) {
+                    onDeleteImage?.(message);
+                  }
+                } else if (isImageGen && message.metadata?.image_deleted) {
+                  if (window.confirm("この会話履歴をスレッドから削除しますか？")) {
+                    onTrimFrom(message);
+                  }
+                } else {
+                  if (window.confirm("このメッセージ以降を全て削除しますか？")) {
+                    onTrimFrom(message);
+                  }
                 }
               }}
-              disabled={isImageGen}
               style={{
                 ...menuItemStyle,
-                color: isImageGen ? "var(--ink-faint)" : "#e53e3e",
-                cursor: isImageGen ? "not-allowed" : "pointer",
+                color: "#e53e3e",
+                cursor: "pointer",
               }}
               onMouseEnter={(e) => {
-                if (!isImageGen) (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5";
+                (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5";
                 setRegenSubOpen(false);
               }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
-              title={isImageGen ? "画像削除は準備中です" : undefined}
             >
-              {isImageGen ? "🗑️ 削除（準備中）" : "🗑️ 削除"}
+              {isImageGen && !message.metadata?.image_deleted
+                ? "🗑️ 画像を削除"
+                : isImageGen && message.metadata?.image_deleted
+                ? "🗑️ 削除（スレッドから除去）"
+                : "🗑️ 削除"}
             </button>
           )}
         </div>

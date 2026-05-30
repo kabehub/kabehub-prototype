@@ -881,6 +881,35 @@ export default function Home() {
     }
   }, [activeThreadId]);
 
+  // ── 画像ファイル削除（tombstone）──────────────────────────
+  const handleDeleteImage = useCallback(async (message: Message) => {
+    const prevMetadata = message.metadata;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === message.id
+          ? { ...m, metadata: { ...m.metadata, storagePath: null, image_deleted: true } }
+          : m
+      )
+    );
+    if (imageContextId === message.id) {
+      setImageContextId(null);
+      setIsImagePinned(false);
+    }
+    try {
+      const res = await fetch(`/api/messages/${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_image" }),
+      });
+      if (!res.ok) throw new Error("画像削除失敗");
+    } catch (err) {
+      console.error("画像削除失敗:", err);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === message.id ? { ...m, metadata: prevMetadata } : m))
+      );
+    }
+  }, [imageContextId]);
+
   // ── メッセージをメモ化 ──────────────────────────────────
   const handleMemoizeMessage = useCallback(async (message: Message) => {
     if (!activeThreadId) return;
@@ -1046,6 +1075,7 @@ export default function Home() {
         onRegenerate={handleRegenerate}
         onTrimFrom={handleTrimFrom}
         onDeleteMessage={handleDeleteMessage}
+        onDeleteImage={handleDeleteImage}
         onMemoizeMessage={handleMemoizeMessage}
         isTemporary={isTemporary}
         onSwitchTemporary={handleSwitchTemporary}
