@@ -26,6 +26,8 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gemini-2.5-flash":       { inputPerMTok: 0.30,  outputPerMTok:  2.50 },
   "gemini-3.5-flash":       { inputPerMTok: 1.50,  outputPerMTok:  9.00 },
   "gemini-3.1-flash-lite":  { inputPerMTok: 0.25,  outputPerMTok:  1.50 },
+  "gemini-3.1-flash-image": { inputPerMTok: 0.50,  outputPerMTok: 60.00 },
+  "gemini-3-pro-image":     { inputPerMTok: 2.00,  outputPerMTok: 120.00 },
 
   // ── OpenAI ──────────────────────────────────────────────
   "gpt-5.5":                { inputPerMTok: 5.00,  outputPerMTok: 30.00 },

@@ -10,9 +10,16 @@ const LS_KEYS = {
 
 type Provider = 'gemini' | 'openai'
 
+const GEMINI_IMAGE_MODELS = [
+  { id: 'gemini-2.5-flash-image', label: '2.5 Flash Image', badge: '既存' },
+  { id: 'gemini-3.1-flash-image', label: '3.1 Flash Image', badge: '新' },
+  { id: 'gemini-3-pro-image',     label: '3 Pro Image',     badge: '高性能' },
+]
+
 export default function ImageGenPage() {
   const router = useRouter()
   const [provider, setProvider] = useState<Provider>('gemini')
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash-image')
   const [prompt, setPrompt] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,7 +57,7 @@ export default function ImageGenPage() {
       const res = await fetch('/api/image-gen', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ provider, prompt }),
+        body: JSON.stringify({ provider, prompt, modelId: provider === 'gemini' ? geminiModel : undefined }),
       })
 
       const json = await res.json()
@@ -113,8 +120,44 @@ export default function ImageGenPage() {
               </button>
             ))}
           </div>
+          {/* Gemini サブモデル選択 */}
+          {provider === 'gemini' && (
+            <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+              {GEMINI_IMAGE_MODELS.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setGeminiModel(m.id)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: geminiModel === m.id ? '1px solid #6366f1' : '1px solid #374151',
+                    background: geminiModel === m.id ? '#1e1b4b' : '#111827',
+                    color: geminiModel === m.id ? '#a5b4fc' : '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: geminiModel === m.id ? 600 : 400,
+                    transition: 'all 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  {m.label}
+                  <span style={{
+                    fontSize: '10px',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: m.badge === '新' ? '#14532d' : m.badge === '高性能' ? '#312e81' : '#1f2937',
+                    color: m.badge === '新' ? '#86efac' : m.badge === '高性能' ? '#c7d2fe' : '#6b7280',
+                  }}>
+                    {m.badge}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{ fontSize: '12px', color: '#4b5563', marginTop: '6px' }}>
-            {provider === 'gemini' ? 'gemini-2.5-flash-image' : 'gpt-image-2'}
+            {provider === 'gemini' ? geminiModel : 'gpt-image-2'}
           </div>
         </div>
 

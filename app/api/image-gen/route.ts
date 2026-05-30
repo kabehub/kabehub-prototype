@@ -2,8 +2,14 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 
+const ALLOWED_GEMINI_IMAGE_MODELS = [
+  'gemini-2.5-flash-image',
+  'gemini-3.1-flash-image',
+  'gemini-3-pro-image',
+]
+
 export async function POST(req: NextRequest) {
-  const { provider, prompt } = await req.json()
+  const { provider, prompt, modelId } = await req.json()
 
   if (provider === 'gemini') {
     const apiKey = req.headers.get('x-gemini-api-key')
@@ -11,7 +17,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'APIキーが設定されていません' }, { status: 400 })
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`
+    const geminiModel = modelId ?? 'gemini-2.5-flash-image'
+    if (!ALLOWED_GEMINI_IMAGE_MODELS.includes(geminiModel)) {
+      return NextResponse.json({ error: '不正なモデルIDです' }, { status: 400 })
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
