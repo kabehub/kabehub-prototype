@@ -43,7 +43,13 @@ export async function PATCH(
 
     const storagePath = existing?.metadata?.storagePath;
     if (storagePath) {
-      await supabase.storage.from("generated-images").remove([storagePath]);
+      const { error: storageError } = await supabase.storage
+        .from("generated-images")
+        .remove([storagePath]);
+      if (storageError) {
+        console.error("Storage削除エラー:", JSON.stringify(storageError));
+        return NextResponse.json({ error: storageError.message }, { status: 500 });
+      }
     }
 
     const newMetadata = { ...(existing?.metadata ?? {}), storagePath: null, image_deleted: true };
