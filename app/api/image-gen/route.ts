@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
 
   // TODO: sharp による WebP 圧縮対応（現在は未圧縮のままアップロード）
 
+  console.log("inserting metadata:", JSON.stringify({ storagePath, mimeType }))
   const { data: message, error: dbError } = await supabase
     .from('messages')
     .insert({
