@@ -204,9 +204,10 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(imageData, 'base64')
   console.log("uploading to storagePath:", storagePath)
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError, data: uploadData } = await supabase.storage
     .from('generated-images')
     .upload(storagePath, buffer, { contentType: mimeType })
+  console.log("upload result:", JSON.stringify({ uploadData, uploadError }))
 
   if (uploadError) {
     return NextResponse.json({ error: `Storage アップロード失敗: ${uploadError.message}` }, { status: 500 })
@@ -214,7 +215,9 @@ export async function POST(req: NextRequest) {
 
   // TODO: sharp による WebP 圧縮対応（現在は未圧縮のままアップロード）
 
-  console.log("inserting metadata:", JSON.stringify({ storagePath, mimeType }))
+  const actualPath = uploadData?.path ?? storagePath
+  console.log("actualPath:", actualPath)
+  console.log("inserting metadata:", JSON.stringify({ storagePath: actualPath, mimeType }))
   const { data: message, error: dbError } = await supabase
     .from('messages')
     .insert({
@@ -224,7 +227,7 @@ export async function POST(req: NextRequest) {
       provider: 'image_gen',
       content: prompt,
       metadata: {
-        storagePath,
+        storagePath: actualPath,
         mimeType,
         image_deleted: false,
         width: null,
@@ -239,5 +242,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `DB保存失敗: ${dbError.message}` }, { status: 500 })
   }
 
-  return NextResponse.json({ messageId: message.id, storagePath, imageData, mimeType })
+  return NextResponse.json({ messageId: message.id, storagePath: actualPath, imageData, mimeType })
 }
