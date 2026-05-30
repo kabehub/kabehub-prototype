@@ -203,6 +203,7 @@ export async function POST(req: NextRequest) {
   const storagePath = `${userId}/${threadId}/${crypto.randomUUID()}.png`
 
   const buffer = Buffer.from(imageData, 'base64')
+  console.log("uploading to storagePath:", storagePath)
   const { error: uploadError } = await supabase.storage
     .from('generated-images')
     .upload(storagePath, buffer, { contentType: mimeType })
