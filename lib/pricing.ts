@@ -38,6 +38,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5":                  { inputPerMTok: 1.25,  outputPerMTok: 10.00 },
   "gpt-4o-mini":            { inputPerMTok: 0.15,  outputPerMTok:  0.60 },
   "gpt-4o":                 { inputPerMTok: 2.50,  outputPerMTok: 10.00 },
+
+  // ── 画像生成（トークン課金外・/stats では「—」表示）──────────────
+  "ideogram-v3":                  { inputPerMTok: 0, outputPerMTok: 0.08 },
+  "black-forest-labs/flux.2-pro": { inputPerMTok: 0, outputPerMTok: 0.055 },
 };
 
 /** "gemini/" "openai/" "claude/" プレフィックスを除去して正規化 */

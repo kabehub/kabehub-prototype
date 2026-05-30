@@ -18,9 +18,11 @@ type Profile = {
 
 // ① APIキーのLocalStorageキー名（壁打ち画面と統一）
 const LS_KEYS = {
-  claude: 'kabehub_anthropic_key',
-  gemini: 'kabehub_gemini_key',
-  openai: 'kabehub_openai_key',
+  claude:     'kabehub_anthropic_key',
+  gemini:     'kabehub_gemini_key',
+  openai:     'kabehub_openai_key',
+  ideogram:   'kabehub_ideogram_key',
+  openrouter: 'kabehub_openrouter_key',
 } as const
 
 function validateHandle(value: string): string | null {
@@ -57,9 +59,13 @@ function SettingsContent() {
   const [claudeKey, setClaudeKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
   const [openaiKey, setOpenaiKey] = useState('')
+  const [ideogramKey, setIdeogramKey] = useState('')
+  const [openrouterKey, setOpenrouterKey] = useState('')
   const [showClaudeKey, setShowClaudeKey] = useState(false)
   const [showGeminiKey, setShowGeminiKey] = useState(false)
   const [showOpenaiKey, setShowOpenaiKey] = useState(false)
+  const [showIdeogramKey, setShowIdeogramKey] = useState(false)
+  const [showOpenrouterKey, setShowOpenrouterKey] = useState(false)
   const [apiKeySaved, setApiKeySaved] = useState(false)
 
   // モデル選択 state
@@ -79,6 +85,8 @@ function SettingsContent() {
     setClaudeKey(localStorage.getItem(LS_KEYS.claude) ?? '')
     setGeminiKey(localStorage.getItem(LS_KEYS.gemini) ?? '')
     setOpenaiKey(localStorage.getItem(LS_KEYS.openai) ?? '')
+    setIdeogramKey(localStorage.getItem(LS_KEYS.ideogram) ?? '')
+    setOpenrouterKey(localStorage.getItem(LS_KEYS.openrouter) ?? '')
     setClaudeModel(loadModel('claude'))
     setGeminiModel(loadModel('gemini'))
     setOpenaiModel(loadModel('openai'))
@@ -145,6 +153,16 @@ function SettingsContent() {
     } else {
       localStorage.removeItem(LS_KEYS.openai)
     }
+    if (ideogramKey.trim()) {
+      localStorage.setItem(LS_KEYS.ideogram, ideogramKey.trim())
+    } else {
+      localStorage.removeItem(LS_KEYS.ideogram)
+    }
+    if (openrouterKey.trim()) {
+      localStorage.setItem(LS_KEYS.openrouter, openrouterKey.trim())
+    } else {
+      localStorage.removeItem(LS_KEYS.openrouter)
+    }
     // モデルも保存
     saveModel('claude', claudeModel)
     saveModel('gemini', geminiModel)
@@ -152,7 +170,7 @@ function SettingsContent() {
     // トースト表示
     setApiKeySaved(true)
     setTimeout(() => setApiKeySaved(false), 2500)
-  }, [claudeKey, geminiKey, openaiKey, claudeModel, geminiModel, openaiModel])
+  }, [claudeKey, geminiKey, openaiKey, ideogramKey, openrouterKey, claudeModel, geminiModel, openaiModel])
 
   const handleBulkExport = async () => {
     setIsExporting(true)
@@ -546,6 +564,57 @@ function SettingsContent() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Ideogram */}
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-gray-400">
+                Ideogram
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type={showIdeogramKey ? 'text' : 'password'}
+                  value={ideogramKey}
+                  onChange={e => setIdeogramKey(e.target.value)}
+                  placeholder="APIキーを入力"
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+                />
+                <button
+                  onClick={() => setShowIdeogramKey(v => !v)}
+                  className="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg transition-colors"
+                >
+                  {showIdeogramKey ? '隠す' : '表示'}
+                </button>
+              </div>
+              {ideogramKey && !showIdeogramKey && (
+                <p className="text-xs text-gray-600 font-mono">{maskKey(ideogramKey)}</p>
+              )}
+            </div>
+
+            {/* OpenRouter (Flux 2 Pro) */}
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-gray-400">
+                OpenRouter（Flux等）
+                <span className="ml-2 text-gray-600 font-normal">sk-or-v1-... で始まるキー</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type={showOpenrouterKey ? 'text' : 'password'}
+                  value={openrouterKey}
+                  onChange={e => setOpenrouterKey(e.target.value)}
+                  placeholder="sk-or-v1-..."
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+                />
+                <button
+                  onClick={() => setShowOpenrouterKey(v => !v)}
+                  className="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg transition-colors"
+                >
+                  {showOpenrouterKey ? '隠す' : '表示'}
+                </button>
+              </div>
+              {openrouterKey && !showOpenrouterKey && (
+                <p className="text-xs text-gray-600 font-mono">{maskKey(openrouterKey)}</p>
+              )}
             </div>
 
             {/* 保存ボタン＋トースト */}

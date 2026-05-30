@@ -4,17 +4,42 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 const LS_KEYS = {
-  gemini: 'kabehub_gemini_key',
-  openai: 'kabehub_openai_key',
+  gemini:     'kabehub_gemini_key',
+  openai:     'kabehub_openai_key',
+  ideogram:   'kabehub_ideogram_key',
+  openrouter: 'kabehub_openrouter_key',
 } as const
 
-type Provider = 'gemini' | 'openai'
+type Provider = 'gemini' | 'openai' | 'ideogram' | 'openrouter'
+
+const PROVIDER_LABELS: Record<Provider, string> = {
+  gemini:     '✦ Gemini',
+  openai:     '⬡ OpenAI',
+  ideogram:   '◈ Ideogram',
+  openrouter: '⬡ Flux 2 Pro',
+}
+
+const HEADER_KEYS: Record<Provider, string> = {
+  gemini:     'x-gemini-api-key',
+  openai:     'x-openai-api-key',
+  ideogram:   'x-ideogram-api-key',
+  openrouter: 'x-openrouter-api-key',
+}
 
 const GEMINI_IMAGE_MODELS = [
   { id: 'gemini-2.5-flash-image', label: '2.5 Flash Image', badge: '既存' },
   { id: 'gemini-3.1-flash-image', label: '3.1 Flash Image', badge: '新' },
   { id: 'gemini-3-pro-image',     label: '3 Pro Image',     badge: '高性能' },
 ]
+
+function getModelId(provider: Provider, geminiModel: string): string {
+  switch (provider) {
+    case 'gemini':     return geminiModel
+    case 'openai':     return 'gpt-image-2'
+    case 'ideogram':   return 'ideogram-v3'
+    case 'openrouter': return 'black-forest-labs/flux.2-pro'
+  }
+}
 
 export default function ImageGenPage() {
   const router = useRouter()
@@ -37,7 +62,7 @@ export default function ImageGenPage() {
 
     const apiKey = localStorage.getItem(LS_KEYS[provider]) ?? ''
     if (!apiKey) {
-      setError(`${provider === 'gemini' ? 'Gemini' : 'OpenAI'} の APIキーが設定されていません。設定ページで登録してください。`)
+      setError(`${PROVIDER_LABELS[provider]} の APIキーが設定されていません。設定ページで登録してください。`)
       return
     }
 
@@ -51,13 +76,14 @@ export default function ImageGenPage() {
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (provider === 'gemini') headers['x-gemini-api-key'] = apiKey
-      if (provider === 'openai') headers['x-openai-api-key'] = apiKey
+      headers[HEADER_KEYS[provider]] = apiKey
+
+      const modelId = getModelId(provider, geminiModel)
 
       const res = await fetch('/api/image-gen', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ provider, prompt, modelId: provider === 'gemini' ? geminiModel : undefined }),
+        body: JSON.stringify({ provider, prompt, modelId }),
       })
 
       const json = await res.json()
@@ -99,8 +125,8 @@ export default function ImageGenPage() {
         {/* プロバイダー選択 */}
         <div>
           <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px' }}>モデル</div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {(['gemini', 'openai'] as Provider[]).map(p => (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {(['gemini', 'openai', 'ideogram', 'openrouter'] as Provider[]).map(p => (
               <button
                 key={p}
                 onClick={() => setProvider(p)}
@@ -116,7 +142,7 @@ export default function ImageGenPage() {
                   transition: 'all 0.15s',
                 }}
               >
-                {p === 'gemini' ? '✦ Gemini' : '⬡ OpenAI'}
+                {PROVIDER_LABELS[p]}
               </button>
             ))}
           </div>
@@ -157,7 +183,7 @@ export default function ImageGenPage() {
             </div>
           )}
           <div style={{ fontSize: '12px', color: '#4b5563', marginTop: '6px' }}>
-            {provider === 'gemini' ? geminiModel : 'gpt-image-2'}
+            {getModelId(provider, geminiModel)}
           </div>
         </div>
 
