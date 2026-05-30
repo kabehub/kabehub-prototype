@@ -170,6 +170,7 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
 
 export async function POST(req: NextRequest) {
   const { provider, prompt, modelId, threadId } = await req.json()
+  console.log("image-gen called with threadId:", threadId)
 
   let handlerResult: HandlerResult
   switch (provider) {
