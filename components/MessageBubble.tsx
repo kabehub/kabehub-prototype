@@ -23,6 +23,7 @@ interface MessageBubbleProps {
   activeFlashKey?: number;
   messageNumber?: number;
   thinkingContent?: string;
+  onDiscuss?: (messageId: string) => void;
 }
 
 function MessageBubble({
@@ -42,6 +43,7 @@ function MessageBubble({
   activeFlashKey,
   messageNumber,
   thinkingContent,
+  onDiscuss,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -410,7 +412,33 @@ function MessageBubble({
                   ) : (
                     <div style={{ color: "var(--ink-faint)", fontSize: "13px" }}>🖼️ 読み込み中...</div>
                   )}
-                  {/* 💬 Discuss with AI ボタンはここに追加予定（Step 4以降） */}
+                  {imageUrl && onDiscuss && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDiscuss(message.id); }}
+                      style={{
+                        alignSelf: "flex-start",
+                        padding: "5px 12px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        background: "white",
+                        color: "var(--ink-muted)",
+                        fontSize: "11px",
+                        fontFamily: "'JetBrains Mono', monospace",
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+                        (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                        (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+                      }}
+                    >
+                      💬 Discuss with AI
+                    </button>
+                  )}
                   <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace", marginTop: "4px" }}>
                     プロンプト: {message.content}
                   </div>

@@ -406,6 +406,7 @@ export async function POST(req: NextRequest) {
   const {
     threadId, messages, userContent, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
+    imageContextId,
   } = await req.json();
 
   const imageBlocksForApi: ImageBlock[] = (attachedImages ?? []).map(
@@ -535,6 +536,47 @@ export async function POST(req: NextRequest) {
       }),
     { role: "user" as string, content: userContent },
   ];
+
+  // imageContextId がある場合: DBから画像を取得してマルチモーダルコンテキストに追加
+  if (imageContextId) {
+    try {
+      const { data: imgMsg } = await supabase
+        .from('messages')
+        .select('content, metadata')
+        .eq('id', imageContextId)
+        .single()
+
+      const storagePath = imgMsg?.metadata?.storagePath
+      const mimeType = imgMsg?.metadata?.mimeType ?? 'image/png'
+      const originalPrompt = imgMsg?.content ?? ''
+
+      if (storagePath && !imgMsg?.metadata?.image_deleted) {
+        const { data: blob } = await supabase.storage
+          .from('generated-images')
+          .download(storagePath)
+
+        if (blob) {
+          const arrayBuffer = await blob.arrayBuffer()
+          const base64 = Buffer.from(arrayBuffer).toString('base64')
+
+          const contextBlock: ImageBlock = {
+            type: 'image',
+            source: { type: 'base64', media_type: mimeType, data: base64 },
+          }
+          // 既存の「最後のuserメッセージにimageBlocksを結合する」ロジックに乗せる
+          imageBlocksForApi.unshift(contextBlock)
+
+          // 最後のuserメッセージに生成プロンプト文脈を付与
+          const lastMsg = messagesForApi[messagesForApi.length - 1]
+          if (lastMsg && lastMsg.role === 'user') {
+            lastMsg.content = `Review this image generated from prompt: "${originalPrompt}"\n\n${lastMsg.content}`
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[imageContextId] 画像取得失敗（握りつぶし）:', err)
+    }
+  }
 
   // エラーの場合は非ストリーミングでJSON返却（既存互換）
   let aiStream: ReadableStream<string> | null = null;

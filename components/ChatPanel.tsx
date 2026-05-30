@@ -39,6 +39,11 @@ interface ChatPanelProps {
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
   onRestoreBranch?: (message: Message) => void;
   onImageGenerate?: (prompt: string, imageProvider?: string) => void;
+  onDiscuss?: (messageId: string) => void;
+  imageContextId?: string | null;
+  isImagePinned?: boolean;
+  onImagePinToggle?: () => void;
+  onImageContextClear?: () => void;
 }
 
 export default function ChatPanel({
@@ -69,6 +74,11 @@ export default function ChatPanel({
   thinkingContents,
   onRestoreBranch,
   onImageGenerate,
+  onDiscuss,
+  imageContextId,
+  isImagePinned,
+  onImagePinToggle,
+  onImageContextClear,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1605,6 +1615,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         onUpdateMessage={onUpdateMessage}
         messageNumber={messageNumbers[msg.id]}
         thinkingContent={thinkingContents?.[msg.id]}
+        onDiscuss={onDiscuss}
       />
     )}
   </div>
@@ -1705,6 +1716,10 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         provider={provider}
         onProviderChange={onProviderChange}
         onImageGenerate={onImageGenerate}
+        imageContextId={imageContextId}
+        isImagePinned={isImagePinned}
+        onImagePinToggle={onImagePinToggle}
+        onImageContextClear={onImageContextClear}
       />
 
       {/* エクスポートモーダル */}

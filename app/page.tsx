@@ -40,6 +40,9 @@ export default function Home() {
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [imageContextId, setImageContextId] = useState<string | null>(null)
+  const [isImagePinned, setIsImagePinned] = useState(false)
+
   // ✅ v62追加: ストリーミング関連
   // streamingContentはChatPanelに渡してリアルタイム表示する
   const [streamingContent, setStreamingContent] = useState<string>("");
@@ -552,6 +555,7 @@ export default function Home() {
           systemPrompt: activeThread?.system_prompt ?? "",
           attachedImages: attachedImages ?? [],
           isDeepThinking: isDeepThinking ?? false,
+          imageContextId: imageContextId ?? undefined,
         }),
         (accumulated) => {
           setStreamingContent(accumulated);
@@ -561,6 +565,8 @@ export default function Home() {
       if (thinkingContent && assistantMessage.id) {
         setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
       }
+
+      if (!isImagePinned) setImageContextId(null)
 
       if (aborted && userMessage.id && assistantMessage.id) {
         // Escキャンセル時: 両メッセージをmemoとして楽観的更新
@@ -592,7 +598,7 @@ export default function Home() {
       setIsLoading(false);
       setStreamingContent("");
     }
-  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming]);
+  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming, imageContextId, isImagePinned]);
 
   // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {
@@ -744,6 +750,11 @@ export default function Home() {
       setIsLoading(false)
     }
   }, [isLoading, activeThreadId, provider, getApiKeyHeaders, fetchThreads])
+
+  const handleDiscuss = useCallback((messageId: string) => {
+    setImageContextId(messageId)
+    setIsImagePinned(false)
+  }, [])
 
   // ── 再生成 ────────────────────────────────────────────────
   const handleRegenerate = useCallback(async (
@@ -1050,6 +1061,11 @@ export default function Home() {
         thinkingContents={thinkingContents}
         onRestoreBranch={handleRestoreBranch}
         onImageGenerate={handleImageGenerate}
+        onDiscuss={handleDiscuss}
+        imageContextId={imageContextId}
+        isImagePinned={isImagePinned}
+        onImagePinToggle={() => setIsImagePinned(v => !v)}
+        onImageContextClear={() => { setImageContextId(null); setIsImagePinned(false) }}
       />
       <OutlinePane
         messages={messages}

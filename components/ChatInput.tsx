@@ -131,6 +131,10 @@ interface ChatInputProps {
   provider: Provider;
   onProviderChange: (p: Provider) => void;
   onImageGenerate?: (prompt: string, imageProvider?: string) => void;
+  imageContextId?: string | null;
+  isImagePinned?: boolean;
+  onImagePinToggle?: () => void;
+  onImageContextClear?: () => void;
 }
 
 const FILE_SIZE_LIMIT_KB = 500;
@@ -185,6 +189,10 @@ export default function ChatInput({
   provider,
   onProviderChange,
   onImageGenerate,
+  imageContextId,
+  isImagePinned,
+  onImagePinToggle,
+  onImageContextClear,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -514,6 +522,57 @@ export default function ChatInput({
           </button>
         ))}
       </div>
+
+      {/* 画像コンテキストピル */}
+      {imageContextId && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          marginBottom: "8px",
+          padding: "4px 10px",
+          borderRadius: "6px",
+          border: `1px solid ${isImagePinned ? "var(--accent)" : "var(--border)"}`,
+          background: isImagePinned ? "rgba(196,98,45,0.08)" : "#f0f9ff",
+          fontSize: "11px",
+          fontFamily: "'JetBrains Mono', monospace",
+          alignSelf: "flex-start",
+        }}>
+          <span style={{ color: isImagePinned ? "var(--accent)" : "var(--ink-muted)" }}>
+            🖼️ 画像を参照中{isImagePinned ? "（固定）" : ""}
+          </span>
+          <button
+            onClick={onImagePinToggle}
+            title={isImagePinned ? "固定を解除" : "送信後も保持する"}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "12px",
+              padding: "0 2px",
+              color: isImagePinned ? "var(--accent)" : "var(--ink-faint)",
+              transition: "color 0.15s",
+            }}
+          >
+            📌
+          </button>
+          <button
+            onClick={onImageContextClear}
+            title="参照を解除"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "12px",
+              padding: "0 2px",
+              color: "var(--ink-faint)",
+              transition: "color 0.15s",
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* 添付ファイルプレビューエリア（画像サムネイル＋テキストファイル） */}
       {hasAnyFile && (
