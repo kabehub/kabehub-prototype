@@ -46,6 +46,7 @@ export async function PATCH(
       const { error: storageError } = await supabase.storage
         .from("generated-images")
         .remove([storagePath]);
+      console.log("storage remove:", storagePath, JSON.stringify({ storageError }));
       if (storageError) {
         console.error("Storage削除エラー:", JSON.stringify(storageError));
         return NextResponse.json({ error: storageError.message }, { status: 500 });
