@@ -170,7 +170,6 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
 
 export async function POST(req: NextRequest) {
   const { provider, prompt, modelId, threadId } = await req.json()
-  console.log("image-gen called with threadId:", threadId)
 
   let handlerResult: HandlerResult
   switch (provider) {
@@ -204,11 +203,9 @@ export async function POST(req: NextRequest) {
   const storagePath = `${userId}/${threadId}/${crypto.randomUUID()}.png`
 
   const buffer = Buffer.from(imageData, 'base64')
-  console.log("uploading to storagePath:", storagePath)
   const { error: uploadError, data: uploadData } = await supabase.storage
     .from('generated-images')
     .upload(storagePath, buffer, { contentType: mimeType })
-  console.log("upload result:", JSON.stringify({ uploadData, uploadError }))
 
   if (uploadError) {
     return NextResponse.json({ error: `Storage アップロード失敗: ${uploadError.message}` }, { status: 500 })
@@ -217,8 +214,6 @@ export async function POST(req: NextRequest) {
   // TODO: sharp による WebP 圧縮対応（現在は未圧縮のままアップロード）
 
   const actualPath = uploadData?.path ?? storagePath
-  console.log("actualPath:", actualPath)
-  console.log("inserting metadata:", JSON.stringify({ storagePath: actualPath, mimeType: mimeType, image_deleted: false }))
   const { data: message, error: dbError } = await supabase
     .from('messages')
     .insert({
