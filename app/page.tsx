@@ -638,6 +638,113 @@ export default function Home() {
     }
   }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
 
+  // ── 画像生成（/image コマンド）────────────────────────────
+  const handleImageGenerate = useCallback(async (prompt: string, imageProvider?: string) => {
+    if (isLoading || !activeThreadId) return
+    setIsLoading(true)
+
+    const PROVIDER_MAP: Record<string, string> = {
+      gemini: 'gemini',
+      openai: 'openai',
+      ideogram: 'ideogram',
+      flux: 'openrouter',
+    }
+    const rawProvider = imageProvider
+      ?? localStorage.getItem('kabehub_image_provider')
+      ?? 'openai'
+    const resolvedProvider = PROVIDER_MAP[rawProvider] ?? 'openai'
+
+    const MODEL_MAP: Record<string, string> = {
+      gemini: 'gemini-2.5-flash-image',
+      openai: 'gpt-image-2',
+      ideogram: 'ideogram-v3',
+      openrouter: 'black-forest-labs/flux.2-pro',
+    }
+    const modelId = MODEL_MAP[resolvedProvider]
+
+    const headers: Record<string, string> = {
+      ...getApiKeyHeaders(),
+      'x-ideogram-api-key': localStorage.getItem('kabehub_ideogram_key') ?? '',
+      'x-openrouter-api-key': localStorage.getItem('kabehub_openrouter_key') ?? '',
+    }
+
+    try {
+      // ユーザー入力ログをDBに保存
+      const memoRes = await fetch('/api/chat', {
+        method: 'POST',
+        headers: getApiKeyHeaders(),
+        body: JSON.stringify({
+          threadId: activeThreadId,
+          messages: [],
+          userContent: `/image ${prompt}`,
+          provider,
+          isMemo: true,
+        }),
+      })
+      if (memoRes.ok) {
+        const { userMessage } = await memoRes.json()
+        setMessages(prev => [...prev, userMessage])
+      }
+
+      // 仮メッセージ（生成中表示）
+      const pendingId = 'image-gen-pending'
+      const pendingMessage: Message = {
+        id: pendingId,
+        thread_id: activeThreadId,
+        role: 'assistant',
+        provider: 'image_gen',
+        content: prompt,
+        created_at: new Date().toISOString(),
+        metadata: { storagePath: null },
+      }
+      setMessages(prev => [...prev, pendingMessage])
+
+      // 画像生成API呼び出し
+      const res = await fetch('/api/image-gen', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          provider: resolvedProvider,
+          prompt,
+          modelId,
+          threadId: activeThreadId,
+        }),
+      })
+
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setMessages(prev => prev.filter(m => m.id !== pendingId))
+        console.error('画像生成失敗:', json.error)
+        return
+      }
+
+      // 仮メッセージを正規メッセージに置換
+      const realMessage: Message = {
+        id: json.messageId,
+        thread_id: activeThreadId,
+        role: 'assistant',
+        provider: 'image_gen',
+        content: prompt,
+        created_at: new Date().toISOString(),
+        metadata: {
+          storagePath: json.storagePath,
+          mimeType: json.mimeType,
+          image_deleted: false,
+          width: null,
+          height: null,
+          seed: null,
+        },
+      }
+      setMessages(prev => prev.map(m => m.id === pendingId ? realMessage : m))
+      await fetchThreads()
+    } catch (err) {
+      console.error('画像生成エラー:', err)
+      setMessages(prev => prev.filter(m => m.id !== 'image-gen-pending'))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [isLoading, activeThreadId, provider, getApiKeyHeaders, fetchThreads])
+
   // ── 再生成 ────────────────────────────────────────────────
   const handleRegenerate = useCallback(async (
     targetProvider: "claude" | "gemini" | "openai",
@@ -942,6 +1049,7 @@ export default function Home() {
         onAbort={handleAbort}
         thinkingContents={thinkingContents}
         onRestoreBranch={handleRestoreBranch}
+        onImageGenerate={handleImageGenerate}
       />
       <OutlinePane
         messages={messages}

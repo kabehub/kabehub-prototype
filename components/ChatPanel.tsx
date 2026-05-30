@@ -38,6 +38,7 @@ interface ChatPanelProps {
   streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
   onRestoreBranch?: (message: Message) => void;
+  onImageGenerate?: (prompt: string, imageProvider?: string) => void;
 }
 
 export default function ChatPanel({
@@ -67,6 +68,7 @@ export default function ChatPanel({
   onAbort,               // ✅ v62追加
   thinkingContents,
   onRestoreBranch,
+  onImageGenerate,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1702,6 +1704,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         disabled={!thread}
         provider={provider}
         onProviderChange={onProviderChange}
+        onImageGenerate={onImageGenerate}
       />
 
       {/* エクスポートモーダル */}

@@ -33,10 +33,11 @@ export interface Message {
   is_active?: boolean;
   branch_id?: string | null;
   metadata?: {
-    storagePath?: string;      // [userId]/[threadId]/[imageId].png
-    width?: number;
-    height?: number;
-    seed?: number;
+    storagePath?: string | null; // [userId]/[threadId]/[imageId].png
+    mimeType?: string | null;
+    width?: number | null;
+    height?: number | null;
+    seed?: number | null;
     image_deleted?: boolean;   // 削除済みトゥームストーンフラグ
   };
 }

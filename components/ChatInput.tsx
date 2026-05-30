@@ -130,6 +130,7 @@ interface ChatInputProps {
   disabled?: boolean;
   provider: Provider;
   onProviderChange: (p: Provider) => void;
+  onImageGenerate?: (prompt: string, imageProvider?: string) => void;
 }
 
 const FILE_SIZE_LIMIT_KB = 500;
@@ -183,6 +184,7 @@ export default function ChatInput({
   disabled,
   provider,
   onProviderChange,
+  onImageGenerate,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -363,6 +365,29 @@ export default function ChatInput({
   };
 
   const handleSubmit = () => {
+    // /image コマンド処理
+    if (value.trim().startsWith('/image ')) {
+      const rest = value.trim().slice('/image '.length).trim()
+      const PROVIDERS = ['gemini', 'openai', 'ideogram', 'flux']
+      const tokens = rest.split(' ')
+      let imageProvider: string | undefined
+      let prompt: string
+
+      if (tokens[0] && PROVIDERS.includes(tokens[0].toLowerCase())) {
+        imageProvider = tokens[0].toLowerCase()
+        prompt = tokens.slice(1).join(' ').trim()
+      } else {
+        imageProvider = undefined
+        prompt = rest
+      }
+
+      if (prompt && onImageGenerate) {
+        onChange('')
+        onImageGenerate(prompt, imageProvider)
+      }
+      return
+    }
+
     const textFiles = attachedFiles.filter((f): f is AttachedTextFile => f.kind === "text");
     const imageFiles = attachedFiles.filter((f): f is AttachedImageFile => f.kind === "image");
     if (!value.trim() && attachedFiles.length === 0) return;
