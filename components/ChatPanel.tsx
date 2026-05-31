@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble, BranchBubble } from "./MessageBubble";
-import ChatInput, { type ModelId, type AttachedImageFile } from "./ChatInput";
+import ChatInput, { type ModelId, type AttachedImageFile, type Provider } from "./ChatInput";
 import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
@@ -20,8 +20,8 @@ interface ChatPanelProps {
   thinkingContents?: Record<string, string>;
   onMemoSubmit: () => void;
   isLoading: boolean;
-  provider: "claude" | "gemini" | "openai";
-  onProviderChange: (p: "claude" | "gemini" | "openai") => void;
+  provider: Provider;
+  onProviderChange: (p: Provider) => void;
   onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
   onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message, modelId?: string) => void;
   onTrimFrom: (message: Message) => void;

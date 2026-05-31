@@ -58,14 +58,15 @@ async function compressImage(file: File): Promise<{ base64: string; mediaType: "
 }
 
 // ── モデル定数（将来の拡張はここに1行追加するだけ）──────────────────
-export type Provider = "claude" | "gemini" | "openai";
+export type Provider = "claude" | "gemini" | "openai" | "image_gen";
 
 export type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
 // TODO: types/index.ts へ集約予定
 export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite";
 export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
+export type ImageGenModel = "gpt-image-2" | "gemini-2.5-flash-image" | "ideogram-v3" | "black-forest-labs/flux.2-pro";
 
-export type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
+export type ModelId = ClaudeModel | GeminiModel | OpenAIModel | ImageGenModel;
 
 export const MODEL_CONFIG = {
   claude: {
@@ -99,6 +100,17 @@ export const MODEL_CONFIG = {
     ],
     defaultModel: "gpt-5.4-mini" as OpenAIModel,
     lsKey: "kabehub_openai_model",
+  },
+  image_gen: {
+    label: "画像生成",
+    models: [
+      { id: "gpt-image-2" as ImageGenModel, label: "GPT Image 2", badge: "OpenAI" },
+      { id: "gemini-2.5-flash-image" as ImageGenModel, label: "Gemini Image", badge: "Google" },
+      { id: "ideogram-v3" as ImageGenModel, label: "Ideogram V3", badge: "Ideogram" },
+      { id: "black-forest-labs/flux.2-pro" as ImageGenModel, label: "Flux 2 Pro", badge: "OpenRouter" },
+    ],
+    defaultModel: "gpt-image-2" as ImageGenModel,
+    lsKey: "kabehub_image_provider",
   },
 } as const satisfies Record<Provider, {
   label: string;
@@ -177,6 +189,7 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   claude: "Claude",
   gemini: "Gemini",
   openai: "ChatGPT",
+  image_gen: "🎨 画像",
 };
 
 export default function ChatInput({
@@ -396,6 +409,22 @@ export default function ChatInput({
       return
     }
 
+    // 画像生成モード
+    if (provider === "image_gen") {
+      if (value.trim() && onImageGenerate) {
+        const MODEL_TO_PROVIDER: Record<string, string> = {
+          "gpt-image-2": "openai",
+          "gemini-2.5-flash-image": "gemini",
+          "ideogram-v3": "ideogram",
+          "black-forest-labs/flux.2-pro": "openrouter",
+        }
+        const imageProvider = MODEL_TO_PROVIDER[selectedModel as string] ?? "openai"
+        onChange('')
+        onImageGenerate(value.trim(), imageProvider)
+      }
+      return
+    }
+
     const textFiles = attachedFiles.filter((f): f is AttachedTextFile => f.kind === "text");
     const imageFiles = attachedFiles.filter((f): f is AttachedImageFile => f.kind === "image");
     if (!value.trim() && attachedFiles.length === 0) return;
@@ -470,7 +499,7 @@ export default function ChatInput({
       {/* AI切り替えボタン＋モデル選択 */}
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", flexWrap: "wrap" }}>
         {/* プロバイダー選択 */}
-        {(["claude", "gemini", "openai"] as const).map((p) => (
+        {(["claude", "gemini", "openai", "image_gen"] as const).map((p) => (
           <button
             key={p}
             onClick={() => onProviderChange(p)}
@@ -701,7 +730,7 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           disabled={disabled || isLoading}
-          placeholder={hasAnyFile ? "ファイルについて質問… (Enter で送信)" : "思考を入力… (Enter で送信 / Shift+Enter で改行)"}
+          placeholder={provider === "image_gen" ? "画像生成のプロンプトを入力… (Enter で生成)" : hasAnyFile ? "ファイルについて質問… (Enter で送信)" : "思考を入力… (Enter で送信 / Shift+Enter で改行)"}
           rows={3}
           style={{
             width: "100%",
@@ -791,6 +820,7 @@ export default function ChatInput({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           {/* 📝 メモボタン */}
+          {provider !== "image_gen" && (
           <button
             onClick={onMemoSubmit}
             disabled={!value.trim() || isLoading || disabled}
@@ -814,6 +844,7 @@ export default function ChatInput({
           >
             📝 メモ
           </button>
+          )}
 
           {/* 🧠 深く考えるボタン（Claudeのみ） */}
           {provider === "claude" && (

@@ -807,7 +807,7 @@ function MessageBubble({
             overflowY: "auto",
           }}
         >
-          {(Object.keys(MODEL_CONFIG) as Array<keyof typeof MODEL_CONFIG>).map((providerKey, sectionIdx) => {
+          {(Object.keys(MODEL_CONFIG) as Array<keyof typeof MODEL_CONFIG>).filter(k => k !== "image_gen").map((providerKey, sectionIdx) => {
             const config = MODEL_CONFIG[providerKey];
             return (
               <div key={providerKey}>

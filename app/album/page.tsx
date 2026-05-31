@@ -1,0 +1,428 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
+
+interface AlbumItem {
+  id: string;
+  thread_id: string;
+  created_at: string;
+  content: string;
+  metadata: {
+    storagePath: string | null;
+    mimeType?: string;
+    image_deleted?: boolean;
+  };
+  signedUrl: string | null;
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${y}/${mo}/${day} ${h}:${mi}`;
+}
+
+function SkeletonCard() {
+  return (
+    <div style={{
+      borderRadius: "10px",
+      border: "1px solid var(--border)",
+      background: "white",
+      overflow: "hidden",
+      animation: "pulse 1.5s ease-in-out infinite",
+    }}>
+      <div style={{ width: "100%", aspectRatio: "1", background: "#e5e7eb" }} />
+      <div style={{ padding: "10px 12px" }}>
+        <div style={{ height: "10px", background: "#e5e7eb", borderRadius: "4px", marginBottom: "6px", width: "80%" }} />
+        <div style={{ height: "10px", background: "#e5e7eb", borderRadius: "4px", width: "50%" }} />
+        <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
+          <div style={{ height: "26px", background: "#e5e7eb", borderRadius: "6px", flex: 1 }} />
+          <div style={{ height: "26px", background: "#e5e7eb", borderRadius: "6px", flex: 1 }} />
+          <div style={{ height: "26px", background: "#e5e7eb", borderRadius: "6px", flex: 1 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlbumCard({
+  item,
+  onDelete,
+}: {
+  item: AlbumItem;
+  onDelete: () => void;
+}) {
+  return (
+    <div style={{
+      borderRadius: "10px",
+      border: "1px solid var(--border)",
+      background: "white",
+      overflow: "hidden",
+      boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+      transition: "box-shadow 0.15s",
+    }}
+    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)"; }}
+    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 1px 4px rgba(0,0,0,0.06)"; }}
+    >
+      {/* 画像サムネイル */}
+      <div style={{ width: "100%", aspectRatio: "1", overflow: "hidden", background: "#f3f4f6" }}>
+        {item.signedUrl ? (
+          <img
+            src={item.signedUrl}
+            alt={item.content}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            loading="lazy"
+          />
+        ) : (
+          <div style={{
+            width: "100%", height: "100%",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "var(--ink-faint)", fontSize: "28px",
+          }}>
+            🖼️
+          </div>
+        )}
+      </div>
+
+      {/* カード本体 */}
+      <div style={{ padding: "10px 12px" }}>
+        {/* プロンプト */}
+        <p style={{
+          margin: "0 0 4px",
+          fontSize: "11px",
+          color: "var(--ink)",
+          fontFamily: "'DM Sans', sans-serif",
+          lineHeight: 1.4,
+          overflow: "hidden",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+        }}>
+          {item.content}
+        </p>
+        {/* 日時 */}
+        <p style={{
+          margin: "0 0 10px",
+          fontSize: "10px",
+          color: "var(--ink-faint)",
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {formatDate(item.created_at)}
+        </p>
+
+        {/* ボタン群 */}
+        <div style={{ display: "flex", gap: "5px" }}>
+          {/* ⬇️ ダウンロード */}
+          {item.signedUrl && (
+            <a
+              href={item.signedUrl}
+              download={`kabehub-${item.id}.${item.metadata.mimeType?.split("/")[1] ?? "jpg"}`}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "3px",
+                padding: "5px 0",
+                borderRadius: "6px",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--ink-muted)",
+                fontSize: "10px",
+                fontFamily: "'JetBrains Mono', monospace",
+                textDecoration: "none",
+                cursor: "pointer",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--accent)";
+                (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--border)";
+                (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
+              }}
+              title="ダウンロード"
+            >
+              ⬇️
+            </a>
+          )}
+
+          {/* 💬 会話を見る */}
+          <a
+            href={`/?thread=${item.thread_id}&msg=${item.id}`}
+            style={{
+              flex: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "3px",
+              padding: "5px 0",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--ink-muted)",
+              fontSize: "10px",
+              fontFamily: "'JetBrains Mono', monospace",
+              textDecoration: "none",
+              cursor: "pointer",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--accent)";
+              (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--border)";
+              (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
+            }}
+            title="会話を見る"
+          >
+            💬 会話
+          </a>
+
+          {/* 🗑️ 削除 */}
+          <button
+            onClick={onDelete}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "5px 0",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--ink-muted)",
+              fontSize: "10px",
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: "pointer",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "#ef4444";
+              (e.currentTarget as HTMLButtonElement).style.color = "#ef4444";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+            }}
+            title="削除"
+          >
+            🗑️
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AlbumPage() {
+  const router = useRouter();
+  const [items, setItems] = useState<AlbumItem[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const isLoadingRef = useRef(false);
+
+  // 認証確認
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) router.push("/login");
+    });
+  }, [router]);
+
+  const fetchPage = useCallback(async (pageNum: number) => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/album?page=${pageNum}`);
+      if (!res.ok) throw new Error("アルバム取得失敗");
+      const data = await res.json();
+      if (pageNum === 0) {
+        setItems(data.items);
+      } else {
+        setItems(prev => [...prev, ...data.items]);
+      }
+      hasMoreRef.current = data.hasMore;
+      setHasMore(data.hasMore);
+      pageRef.current = pageNum + 1;
+      setPage(pageNum + 1);
+    } catch (err) {
+      console.error("アルバム取得失敗:", err);
+    } finally {
+      isLoadingRef.current = false;
+      setIsLoading(false);
+      setIsInitialLoad(false);
+    }
+  }, []);
+
+  // 初回ロード
+  useEffect(() => {
+    fetchPage(0);
+  }, [fetchPage]);
+
+  // 無限スクロール（IntersectionObserver）
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMoreRef.current && !isLoadingRef.current) {
+          fetchPage(pageRef.current);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchPage]);
+
+  const handleDelete = async (item: AlbumItem) => {
+    setDeletedIds(prev => new Set([...prev, item.id]));
+    try {
+      const res = await fetch(`/api/messages/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_image" }),
+      });
+      if (!res.ok) throw new Error("削除失敗");
+    } catch (err) {
+      console.error("画像削除失敗:", err);
+      setDeletedIds(prev => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  };
+
+  const visibleItems = items.filter(item => !deletedIds.has(item.id));
+
+  return (
+    <>
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        @media (max-width: 768px) {
+          .album-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+      `}</style>
+      <div style={{ minHeight: "100vh", background: "#f9fafb", padding: "24px" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+          {/* ヘッダー */}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+            <a
+              href="/"
+              style={{
+                color: "var(--ink-muted)",
+                textDecoration: "none",
+                fontSize: "13px",
+                fontFamily: "'JetBrains Mono', monospace",
+                transition: "color 0.12s",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)"; }}
+            >
+              ← 戻る
+            </a>
+            <h1 style={{
+              fontFamily: "'Lora', serif",
+              fontSize: "20px",
+              fontWeight: 600,
+              color: "var(--ink)",
+              margin: 0,
+              letterSpacing: "-0.02em",
+            }}>
+              🖼️ 画像アルバム
+            </h1>
+          </div>
+
+          {/* グリッド or 空状態 */}
+          {isInitialLoad ? (
+            <div
+              className="album-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: "16px",
+              }}
+            >
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
+          ) : visibleItems.length === 0 ? (
+            <div style={{
+              textAlign: "center",
+              padding: "80px 24px",
+              color: "var(--ink-muted)",
+              fontSize: "14px",
+              fontFamily: "'DM Sans', sans-serif",
+              lineHeight: 1.8,
+            }}>
+              <div style={{ fontSize: "40px", marginBottom: "12px" }}>🎨</div>
+              <div>まだ生成画像がありません</div>
+              <div style={{ fontSize: "12px", color: "var(--ink-faint)", marginTop: "6px" }}>
+                チャット画面で「🎨 画像」プロバイダーを選択して画像を生成してみましょう
+              </div>
+            </div>
+          ) : (
+            <>
+              <div
+                className="album-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: "16px",
+                }}
+              >
+                {visibleItems.map(item => (
+                  <AlbumCard
+                    key={item.id}
+                    item={item}
+                    onDelete={() => handleDelete(item)}
+                  />
+                ))}
+                {/* ローディングスケルトン（追加ページ読み込み中） */}
+                {isLoading && !isInitialLoad &&
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <SkeletonCard key={`skel-${i}`} />
+                  ))
+                }
+              </div>
+
+              {/* 無限スクロールセンチネル */}
+              <div ref={sentinelRef} style={{ height: "40px", marginTop: "16px" }} />
+
+              {!hasMore && visibleItems.length > 0 && (
+                <div style={{
+                  textAlign: "center",
+                  padding: "20px",
+                  fontSize: "11px",
+                  color: "var(--ink-faint)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  全 {visibleItems.length} 件表示済み
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}

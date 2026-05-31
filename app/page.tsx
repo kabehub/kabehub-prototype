@@ -8,7 +8,7 @@ import ChatPanel from "@/components/ChatPanel";
 import OutlinePane from "@/components/OutlinePane";
 import NovelSettingsPane from "@/components/NovelSettingsPane";
 import { supabase } from "@/lib/supabase/client";
-import { loadModel, type ModelId, type AttachedImageFile } from "@/components/ChatInput";
+import { loadModel, type ModelId, type AttachedImageFile, type Provider } from "@/components/ChatInput";
 import type { User } from "@supabase/supabase-js";
 
 type NovelSettingsData = {
@@ -27,7 +27,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [provider, setProvider] = useState<"claude" | "gemini" | "openai">("claude");
+  const [provider, setProvider] = useState<Provider>("claude");
   const [user, setUser] = useState<User | null>(null);
 
   const [isOutlineOpen, setIsOutlineOpen] = useState(false);
@@ -150,6 +150,14 @@ export default function Home() {
         url.searchParams.delete("fork");
         window.history.replaceState({}, "", url.toString());
         selectThread(forkId);
+      }
+      const threadParam = url.searchParams.get("thread");
+      const msgParam = url.searchParams.get("msg");
+      if (threadParam) {
+        url.searchParams.delete("thread");
+        if (msgParam) url.searchParams.delete("msg");
+        window.history.replaceState({}, "", url.toString());
+        await selectThread(threadParam, msgParam ? [msgParam] : undefined);
       }
     };
     init();
@@ -485,6 +493,7 @@ export default function Home() {
   // ── 通常送信 ──────────────────────────────────────────────
   const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => {
     if (!userContent.trim() || !activeThreadId || isLoading) return;
+    if (provider === "image_gen") return;
     setInputValue("");
     setIsLoading(true);
     setStreamingContent(""); // ストリーミング表示をリセット
