@@ -117,7 +117,7 @@ async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: Ima
   if (imageInput) {
     const buffer = Buffer.from(imageInput.base64, 'base64')
     const blob = new Blob([buffer], { type: imageInput.mimeType })
-    formData.append('image_file', blob, 'base_image.png')
+    formData.append('image', blob, 'base_image.png')
     endpoint = 'https://api.ideogram.ai/v1/ideogram-v3/remix'
   }
 
