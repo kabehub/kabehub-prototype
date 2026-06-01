@@ -103,6 +103,11 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
 }
 
 async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: ImageInput): Promise<HandlerResult> {
+  if (imageInput) {
+    console.log('[Ideogram] imageInput.mimeType:', imageInput.mimeType)
+    console.log('[Ideogram] base64 length:', imageInput.base64.length)
+  }
+
   const apiKey = req.headers.get('x-ideogram-api-key')
   if (!apiKey) {
     return { result: null, error: 'APIキーが設定されていません' }
