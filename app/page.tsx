@@ -43,6 +43,7 @@ export default function Home() {
   const [imageContextId, setImageContextId] = useState<string | null>(null)
   const [isImagePinned, setIsImagePinned] = useState(false)
   const [imageRefId, setImageRefId] = useState<string | null>(null)
+  const [imageRefUpload, setImageRefUpload] = useState<{ base64: string; mimeType: string; previewUrl: string } | null>(null)
 
   // ✅ v62追加: ストリーミング関連
   // streamingContentはChatPanelに渡してリアルタイム表示する
@@ -655,7 +656,7 @@ export default function Home() {
   }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
 
   // ── 画像生成（/image コマンド）────────────────────────────
-  const handleImageGenerate = useCallback(async (prompt: string, imageProvider?: string, imageRefId?: string) => {
+  const handleImageGenerate = useCallback(async (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => {
     if (isLoading || !activeThreadId) return
     setIsLoading(true)
 
@@ -725,9 +726,16 @@ export default function Home() {
           modelId,
           threadId: activeThreadId,
           imageRefId: imageRefId ?? undefined,
+          imageRefUpload: imageRefUpload
+            ? { base64: imageRefUpload.base64, mimeType: imageRefUpload.mimeType }
+            : undefined,
         }),
       })
       setImageRefId(null)
+      setImageRefUpload(prev => {
+        if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
+        return null
+      })
 
       const json = await res.json()
       if (!res.ok || json.error) {
@@ -770,6 +778,16 @@ export default function Home() {
 
   const handleImageRef = useCallback((messageId: string) => {
     setImageRefId(messageId)
+    setImageRefUpload(prev => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
+      return null
+    })
+    setProvider('image_gen')
+  }, [])
+
+  const handleImageRefUpload = useCallback((data: { base64: string; mimeType: string; previewUrl: string }) => {
+    setImageRefUpload(data)
+    setImageRefId(null)
     setProvider('image_gen')
   }, [])
 
@@ -1116,6 +1134,12 @@ export default function Home() {
         onImageRef={handleImageRef}
         imageRefId={imageRefId}
         onImageRefClear={() => setImageRefId(null)}
+        imageRefUpload={imageRefUpload}
+        onImageRefUpload={handleImageRefUpload}
+        onImageRefUploadClear={() => setImageRefUpload(prev => {
+          if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
+          return null
+        })}
       />
       <OutlinePane
         messages={messages}

@@ -142,13 +142,16 @@ interface ChatInputProps {
   disabled?: boolean;
   provider: Provider;
   onProviderChange: (p: Provider) => void;
-  onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string) => void;
+  onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => void;
   imageContextId?: string | null;
   isImagePinned?: boolean;
   onImagePinToggle?: () => void;
   onImageContextClear?: () => void;
   imageRefId?: string | null;
   onImageRefClear?: () => void;
+  imageRefUpload?: { base64: string; mimeType: string; previewUrl: string } | null;
+  onImageRefUpload?: (data: { base64: string; mimeType: string; previewUrl: string }) => void;
+  onImageRefUploadClear?: () => void;
 }
 
 const FILE_SIZE_LIMIT_KB = 500;
@@ -210,9 +213,13 @@ export default function ChatInput({
   onImageContextClear,
   imageRefId,
   onImageRefClear,
+  imageRefUpload,
+  onImageRefUpload,
+  onImageRefUploadClear,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageRefUploadInputRef = useRef<HTMLInputElement>(null);
 
   // 複数ファイル対応（テキスト＋画像の混在）
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -224,6 +231,15 @@ export default function ChatInput({
   // モデル選択 state（LocalStorageから初期値を読み込む）
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
   const [isDeepThinking, setIsDeepThinking] = useState(false);
+
+  // imageRefUpload の ObjectURL をコンポーネントアンマウント時に解放
+  useEffect(() => {
+    return () => {
+      if (imageRefUpload?.previewUrl) {
+        URL.revokeObjectURL(imageRefUpload.previewUrl)
+      }
+    }
+  }, [imageRefUpload?.previewUrl])
 
   // プロバイダーが変わったらそのプロバイダーの保存済みモデルを読み込む
   useEffect(() => {
@@ -362,6 +378,34 @@ export default function ChatInput({
     if (files && files.length > 0) await processFiles(files);
   };
 
+  const handleImageRefUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (imageRefUploadInputRef.current) imageRefUploadInputRef.current.value = ''
+
+    if (file.size > 10 * 1024 * 1024) {
+      setFileError('参照画像は10MB以下にしてください')
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    try {
+      setIsCompressing(true)
+      const { base64, mediaType, sizeKB } = await compressImage(file)
+      if (sizeKB > 3 * 1024) {
+        URL.revokeObjectURL(previewUrl)
+        setFileError('参照画像の圧縮後サイズが大きすぎます。より小さい画像を使用してください')
+        return
+      }
+      onImageRefUpload?.({ base64, mimeType: mediaType, previewUrl })
+    } catch {
+      URL.revokeObjectURL(previewUrl)
+      setFileError('参照画像の読み込みに失敗しました')
+    } finally {
+      setIsCompressing(false)
+    }
+  }
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     if (!isLoading && !disabled) setIsDragging(true);
@@ -378,7 +422,36 @@ export default function ChatInput({
     setIsDragging(false);
     if (isLoading || disabled) return;
     const files = e.dataTransfer.files;
-    if (files && files.length > 0) await processFiles(files);
+    if (!files || files.length === 0) return;
+
+    if (provider === 'image_gen') {
+      const imageFile = Array.from(files).find(f => f.type.startsWith('image/'))
+      if (imageFile) {
+        if (imageFile.size > 10 * 1024 * 1024) {
+          setFileError('参照画像は10MB以下にしてください')
+          return
+        }
+        const previewUrl = URL.createObjectURL(imageFile)
+        try {
+          setIsCompressing(true)
+          const { base64, mediaType, sizeKB } = await compressImage(imageFile)
+          if (sizeKB > 3 * 1024) {
+            URL.revokeObjectURL(previewUrl)
+            setFileError('参照画像の圧縮後サイズが大きすぎます。より小さい画像を使用してください')
+            return
+          }
+          onImageRefUpload?.({ base64, mimeType: mediaType, previewUrl })
+        } catch {
+          URL.revokeObjectURL(previewUrl)
+          setFileError('参照画像の読み込みに失敗しました')
+        } finally {
+          setIsCompressing(false)
+        }
+      }
+      return
+    }
+
+    await processFiles(files);
   };
 
   const handleRemoveFile = (index: number) => {
@@ -424,7 +497,7 @@ export default function ChatInput({
         }
         const imageProvider = MODEL_TO_PROVIDER[selectedModel as string] ?? "openai"
         onChange('')
-        onImageGenerate(value.trim(), imageProvider, imageRefId ?? undefined)
+        onImageGenerate(value.trim(), imageProvider, imageRefId ?? undefined, imageRefUpload ?? undefined)
       }
       return
     }
@@ -530,7 +603,7 @@ export default function ChatInput({
 
         {/* モデル選択（現在のプロバイダーのモデルのみ表示） */}
         {MODEL_CONFIG[provider].models.map((m) => {
-          const isImg2imgDisabled = !!imageRefId && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro")
+          const isImg2imgDisabled = (!!imageRefId || !!imageRefUpload) && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro")
           return (
             <button
               key={m.id}
@@ -612,7 +685,7 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* img2img 参照画像ピル */}
+      {/* img2img 参照画像ピル（チャット内生成画像） */}
       {imageRefId && (
         <div style={{
           display: "flex",
@@ -630,6 +703,44 @@ export default function ChatInput({
           <span style={{ color: "#7c3aed" }}>🎨 参照画像あり（img2img）</span>
           <button
             onClick={onImageRefClear}
+            title="参照を解除"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "12px",
+              padding: "0 2px",
+              color: "#7c3aed",
+              opacity: 0.7,
+              transition: "opacity 0.15s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "0.7"; }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* img2img ローカルアップロード参照画像ピル */}
+      {imageRefUpload && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          marginBottom: "8px",
+          padding: "4px 10px",
+          borderRadius: "6px",
+          border: "1px solid #c4b5fd",
+          background: "#f5f3ff",
+          fontSize: "11px",
+          fontFamily: "'JetBrains Mono', monospace",
+          alignSelf: "flex-start",
+        }}>
+          <img src={imageRefUpload.previewUrl} alt="参照画像" style={{ width: 16, height: 16, objectFit: "cover", borderRadius: "2px" }} />
+          <span style={{ color: "#7c3aed" }}>🖼️ ローカル参照画像（img2img）</span>
+          <button
+            onClick={onImageRefUploadClear}
             title="参照を解除"
             style={{
               background: "none",
@@ -919,6 +1030,33 @@ export default function ChatInput({
             </button>
           )}
 
+          {/* 🖼️ 参照画像ボタン（image_gen モード時のみ） */}
+          {provider === "image_gen" && (
+            <button
+              onClick={() => imageRefUploadInputRef.current?.click()}
+              disabled={isLoading || disabled}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "4px 12px",
+                borderRadius: "20px",
+                border: "1px solid",
+                borderColor: imageRefUpload ? "#c4b5fd" : "var(--border)",
+                background: imageRefUpload ? "#f5f3ff" : "transparent",
+                color: imageRefUpload ? "#7c3aed" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: isLoading || disabled ? "default" : "pointer",
+                transition: "all 0.15s",
+                letterSpacing: "0.03em",
+              }}
+              title="ローカル画像をimg2imgの参照元として使用"
+            >
+              🖼️ 参照画像
+            </button>
+          )}
+
           {/* 📎 ファイル添付ボタン */}
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -950,6 +1088,13 @@ export default function ChatInput({
             accept=".csv,.txt,.md,image/png,image/jpeg,image/gif,image/webp"
             multiple
             onChange={handleFileChange}
+            style={{ display: "none" }}
+          />
+          <input
+            ref={imageRefUploadInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            onChange={handleImageRefUploadChange}
             style={{ display: "none" }}
           />
         </div>

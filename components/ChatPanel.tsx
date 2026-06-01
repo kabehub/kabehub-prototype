@@ -39,7 +39,7 @@ interface ChatPanelProps {
   streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
   onRestoreBranch?: (message: Message) => void;
-  onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string) => void;
+  onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => void;
   onDiscuss?: (messageId: string) => void;
   imageContextId?: string | null;
   isImagePinned?: boolean;
@@ -48,6 +48,9 @@ interface ChatPanelProps {
   onImageRef?: (messageId: string) => void;
   imageRefId?: string | null;
   onImageRefClear?: () => void;
+  imageRefUpload?: { base64: string; mimeType: string; previewUrl: string } | null;
+  onImageRefUpload?: (data: { base64: string; mimeType: string; previewUrl: string }) => void;
+  onImageRefUploadClear?: () => void;
 }
 
 export default function ChatPanel({
@@ -87,6 +90,9 @@ export default function ChatPanel({
   onImageRef,
   imageRefId,
   onImageRefClear,
+  imageRefUpload,
+  onImageRefUpload,
+  onImageRefUploadClear,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1732,6 +1738,9 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         onImageContextClear={onImageContextClear}
         imageRefId={imageRefId}
         onImageRefClear={onImageRefClear}
+        imageRefUpload={imageRefUpload}
+        onImageRefUpload={onImageRefUpload}
+        onImageRefUploadClear={onImageRefUploadClear}
       />
 
       {/* エクスポートモーダル */}

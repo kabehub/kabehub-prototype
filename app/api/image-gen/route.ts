@@ -187,7 +187,7 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
 }
 
 export async function POST(req: NextRequest) {
-  const { provider, prompt, modelId, threadId, imageRefId } = await req.json()
+  const { provider, prompt, modelId, threadId, imageRefId, imageRefUpload } = await req.json()
 
   if (imageRefId && !threadId) {
     return NextResponse.json({ error: 'imageRefIdを使用する場合はthreadIdが必要です' }, { status: 400 })
@@ -220,6 +220,11 @@ export async function POST(req: NextRequest) {
     imageInput = {
       base64: downloaded.base64,
       mimeType: (refMessage.metadata.mimeType as string) || downloaded.mimeType,
+    }
+  } else if (imageRefUpload) {
+    imageInput = {
+      base64: imageRefUpload.base64,
+      mimeType: imageRefUpload.mimeType,
     }
   }
 
