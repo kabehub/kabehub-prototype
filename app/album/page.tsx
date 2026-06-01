@@ -53,24 +53,39 @@ function SkeletonCard() {
 function AlbumCard({
   item,
   onDelete,
+  isSelectMode,
+  isSelected,
+  onToggleSelect,
 }: {
   item: AlbumItem;
   onDelete: () => void;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   return (
-    <div style={{
-      borderRadius: "10px",
-      border: "1px solid var(--border)",
-      background: "white",
-      overflow: "hidden",
-      boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-      transition: "box-shadow 0.15s",
-    }}
-    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)"; }}
-    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 1px 4px rgba(0,0,0,0.06)"; }}
+    <div
+      style={{
+        borderRadius: "10px",
+        border: `1px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
+        background: isSelected ? "rgba(196,98,45,0.04)" : "white",
+        overflow: "hidden",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+        transition: "box-shadow 0.15s, border-color 0.15s, background 0.15s",
+        cursor: isSelectMode ? "pointer" : "default",
+      }}
+      onMouseEnter={(e) => {
+        if (!isSelectMode) (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
+      }}
+      onMouseLeave={(e) => {
+        if (!isSelectMode) (e.currentTarget as HTMLDivElement).style.boxShadow = "0 1px 4px rgba(0,0,0,0.06)";
+      }}
+      onClick={() => {
+        if (isSelectMode && onToggleSelect) onToggleSelect();
+      }}
     >
       {/* 画像サムネイル */}
-      <div style={{ width: "100%", aspectRatio: "1", overflow: "hidden", background: "#f3f4f6" }}>
+      <div style={{ width: "100%", aspectRatio: "1", overflow: "hidden", background: "#f3f4f6", position: "relative" }}>
         {item.signedUrl ? (
           <img
             src={item.signedUrl}
@@ -85,6 +100,21 @@ function AlbumCard({
             color: "var(--ink-faint)", fontSize: "28px",
           }}>
             🖼️
+          </div>
+        )}
+        {/* 選択チェックオーバーレイ */}
+        {isSelectMode && (
+          <div style={{
+            position: "absolute",
+            top: "8px", left: "8px",
+            width: "22px", height: "22px",
+            borderRadius: "50%",
+            border: `2px solid ${isSelected ? "var(--accent)" : "white"}`,
+            background: isSelected ? "var(--accent)" : "rgba(0,0,0,0.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "white", fontSize: "12px", fontWeight: "bold",
+          }}>
+            {isSelected ? "✓" : ""}
           </div>
         )}
       </div>
@@ -115,15 +145,52 @@ function AlbumCard({
           {formatDate(item.created_at)}
         </p>
 
-        {/* ボタン群 */}
-        <div style={{ display: "flex", gap: "5px" }}>
-          {/* ⬇️ ダウンロード */}
-          {item.signedUrl && (
+        {/* ボタン群（選択モード中は非表示） */}
+        {!isSelectMode && (
+          <div style={{ display: "flex", gap: "5px" }}>
+            {/* ⬇️ ダウンロード */}
+            {item.signedUrl && (
+              <a
+                href={item.signedUrl}
+                download={`kabehub-${item.id}.${item.metadata.mimeType?.split("/")[1] ?? "jpg"}`}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "3px",
+                  padding: "5px 0",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border)",
+                  background: "transparent",
+                  color: "var(--ink-muted)",
+                  fontSize: "10px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  textDecoration: "none",
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--accent)";
+                  (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--border)";
+                  (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
+                }}
+                title="ダウンロード"
+              >
+                ⬇️
+              </a>
+            )}
+
+            {/* 💬 会話を見る */}
             <a
-              href={item.signedUrl}
-              download={`kabehub-${item.id}.${item.metadata.mimeType?.split("/")[1] ?? "jpg"}`}
+              href={`/?thread=${item.thread_id}&msg=${item.id}`}
+              onClick={(e) => e.stopPropagation()}
               style={{
-                flex: 1,
+                flex: 2,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -147,76 +214,43 @@ function AlbumCard({
                 (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--border)";
                 (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
               }}
-              title="ダウンロード"
+              title="会話を見る"
             >
-              ⬇️
+              💬 会話
             </a>
-          )}
 
-          {/* 💬 会話を見る */}
-          <a
-            href={`/?thread=${item.thread_id}&msg=${item.id}`}
-            style={{
-              flex: 2,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "3px",
-              padding: "5px 0",
-              borderRadius: "6px",
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--ink-muted)",
-              fontSize: "10px",
-              fontFamily: "'JetBrains Mono', monospace",
-              textDecoration: "none",
-              cursor: "pointer",
-              transition: "all 0.12s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--accent)";
-              (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--border)";
-              (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
-            }}
-            title="会話を見る"
-          >
-            💬 会話
-          </a>
-
-          {/* 🗑️ 削除 */}
-          <button
-            onClick={onDelete}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "5px 0",
-              borderRadius: "6px",
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--ink-muted)",
-              fontSize: "10px",
-              fontFamily: "'JetBrains Mono', monospace",
-              cursor: "pointer",
-              transition: "all 0.12s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "#ef4444";
-              (e.currentTarget as HTMLButtonElement).style.color = "#ef4444";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
-            }}
-            title="削除"
-          >
-            🗑️
-          </button>
-        </div>
+            {/* 🗑️ 削除 */}
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "5px 0",
+                borderRadius: "6px",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--ink-muted)",
+                fontSize: "10px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: "pointer",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "#ef4444";
+                (e.currentTarget as HTMLButtonElement).style.color = "#ef4444";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+              }}
+              title="削除"
+            >
+              🗑️
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -230,6 +264,9 @@ export default function AlbumPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef(0);
   const hasMoreRef = useRef(true);
@@ -290,6 +327,9 @@ export default function AlbumPage() {
   }, [fetchPage]);
 
   const handleDelete = async (item: AlbumItem) => {
+    const preview = item.content.length > 40 ? item.content.slice(0, 40) + "…" : item.content;
+    if (!window.confirm(`この画像を削除しますか？\n\nプロンプト:「${preview}」\n\nStorage上のファイルも削除されます。`)) return;
+
     setDeletedIds(prev => new Set([...prev, item.id]));
     try {
       const res = await fetch(`/api/messages/${item.id}`, {
@@ -306,6 +346,51 @@ export default function AlbumPage() {
         return next;
       });
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`選択した ${selectedIds.size} 件の画像を削除しますか？\n\nStorage上のファイルも削除されます。`)) return;
+
+    setIsBulkDeleting(true);
+    const idsArray = Array.from(selectedIds);
+
+    // 楽観的UI: 先に全件非表示
+    setDeletedIds(prev => new Set([...prev, ...idsArray]));
+
+    const failedIds: string[] = [];
+    const chunkSize = 5;
+
+    for (let i = 0; i < idsArray.length; i += chunkSize) {
+      const chunk = idsArray.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map(async (id) => {
+          try {
+            const res = await fetch(`/api/messages/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "delete_image" }),
+            });
+            if (!res.ok) failedIds.push(id);
+          } catch {
+            failedIds.push(id);
+          }
+        })
+      );
+    }
+
+    // 失敗分をロールバック
+    if (failedIds.length > 0) {
+      setDeletedIds(prev => {
+        const next = new Set(prev);
+        failedIds.forEach(id => next.delete(id));
+        return next;
+      });
+      alert(`${failedIds.length} 件の削除に失敗しました。`);
+    }
+
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    setIsBulkDeleting(false);
   };
 
   const visibleItems = items.filter(item => !deletedIds.has(item.id));
@@ -349,6 +434,73 @@ export default function AlbumPage() {
             }}>
               🖼️ 画像アルバム
             </h1>
+            {/* 選択モードボタン群 */}
+            <div style={{ marginLeft: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
+              {isSelectMode ? (
+                <>
+                  <button
+                    onClick={() => { setIsSelectMode(false); setSelectedIds(new Set()); }}
+                    disabled={isBulkDeleting}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--ink-muted)",
+                      fontSize: "12px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: isBulkDeleting ? "not-allowed" : "pointer",
+                      opacity: isBulkDeleting ? 0.5 : 1,
+                    }}
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={selectedIds.size === 0 || isBulkDeleting}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background: selectedIds.size > 0 && !isBulkDeleting ? "#ef4444" : "var(--ink-faint)",
+                      color: "white",
+                      fontSize: "12px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: selectedIds.size === 0 || isBulkDeleting ? "not-allowed" : "pointer",
+                      opacity: selectedIds.size === 0 || isBulkDeleting ? 0.6 : 1,
+                      transition: "background 0.12s",
+                    }}
+                  >
+                    {isBulkDeleting ? "削除中…" : `🗑️ ${selectedIds.size}件を削除`}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setIsSelectMode(true)}
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border)",
+                    background: "transparent",
+                    color: "var(--ink-muted)",
+                    fontSize: "12px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: "pointer",
+                    transition: "all 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+                  }}
+                >
+                  選択
+                </button>
+              )}
+            </div>
           </div>
 
           {/* グリッド or 空状態 */}
@@ -395,6 +547,15 @@ export default function AlbumPage() {
                     key={item.id}
                     item={item}
                     onDelete={() => handleDelete(item)}
+                    isSelectMode={isSelectMode}
+                    isSelected={selectedIds.has(item.id)}
+                    onToggleSelect={() => {
+                      setSelectedIds(prev => {
+                        const next = new Set(prev);
+                        next.has(item.id) ? next.delete(item.id) : next.add(item.id);
+                        return next;
+                      });
+                    }}
                   />
                 ))}
                 {/* ローディングスケルトン（追加ページ読み込み中） */}
