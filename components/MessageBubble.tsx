@@ -25,6 +25,7 @@ interface MessageBubbleProps {
   thinkingContent?: string;
   onDiscuss?: (messageId: string) => void;
   onDeleteImage?: (message: Message) => void;
+  onImageRef?: (messageId: string) => void;
 }
 
 function MessageBubble({
@@ -46,6 +47,7 @@ function MessageBubble({
   thinkingContent,
   onDiscuss,
   onDeleteImage,
+  onImageRef,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -414,32 +416,63 @@ function MessageBubble({
                   ) : (
                     <div style={{ color: "var(--ink-faint)", fontSize: "13px" }}>🖼️ 読み込み中...</div>
                   )}
-                  {imageUrl && onDiscuss && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDiscuss(message.id); }}
-                      style={{
-                        alignSelf: "flex-start",
-                        padding: "5px 12px",
-                        borderRadius: "6px",
-                        border: "1px solid var(--border)",
-                        background: "white",
-                        color: "var(--ink-muted)",
-                        fontSize: "11px",
-                        fontFamily: "'JetBrains Mono', monospace",
-                        cursor: "pointer",
-                        transition: "all 0.15s",
-                      }}
-                      onMouseEnter={e => {
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
-                        (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
-                      }}
-                      onMouseLeave={e => {
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-                        (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
-                      }}
-                    >
-                      💬 Discuss with AI
-                    </button>
+                  {imageUrl && (onDiscuss || onImageRef) && (
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      {onDiscuss && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDiscuss(message.id); }}
+                          style={{
+                            alignSelf: "flex-start",
+                            padding: "5px 12px",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border)",
+                            background: "white",
+                            color: "var(--ink-muted)",
+                            fontSize: "11px",
+                            fontFamily: "'JetBrains Mono', monospace",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                          }}
+                          onMouseEnter={e => {
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+                            (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+                          }}
+                          onMouseLeave={e => {
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+                          }}
+                        >
+                          💬 Discuss with AI
+                        </button>
+                      )}
+                      {onImageRef && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onImageRef(message.id); }}
+                          style={{
+                            alignSelf: "flex-start",
+                            padding: "5px 12px",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border)",
+                            background: "white",
+                            color: "var(--ink-muted)",
+                            fontSize: "11px",
+                            fontFamily: "'JetBrains Mono', monospace",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                          }}
+                          onMouseEnter={e => {
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = "#8b5cf6";
+                            (e.currentTarget as HTMLButtonElement).style.color = "#8b5cf6";
+                          }}
+                          onMouseLeave={e => {
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+                          }}
+                        >
+                          🎨 この画像をベースに生成
+                        </button>
+                      )}
+                    </div>
                   )}
                   <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace", marginTop: "4px" }}>
                     プロンプト: {message.content}

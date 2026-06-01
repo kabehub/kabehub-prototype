@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 
 const ALLOWED_GEMINI_IMAGE_MODELS = [
   'gemini-2.5-flash-image',
@@ -13,8 +14,9 @@ const ALLOWED_OPENROUTER_MODELS = ['black-forest-labs/flux.2-pro']
 
 type ImageResult = { imageData: string; mimeType: string }
 type HandlerResult = { result: ImageResult; error: null } | { result: null; error: string }
+type ImageInput = { base64: string; mimeType: string }
 
-async function handleGemini(req: NextRequest, prompt: string, modelId: string | undefined): Promise<HandlerResult> {
+async function handleGemini(req: NextRequest, prompt: string, modelId: string | undefined, imageInput?: ImageInput): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-gemini-api-key')
   if (!apiKey) {
     return { result: null, error: 'APIキーが設定されていません' }
@@ -27,7 +29,12 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`
   const body = {
-    contents: [{ parts: [{ text: prompt }] }],
+    contents: [{
+      parts: [
+        ...(imageInput ? [{ inlineData: { mimeType: imageInput.mimeType, data: imageInput.base64 } }] : []),
+        { text: prompt },
+      ],
+    }],
     generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
   }
 
@@ -58,7 +65,10 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
   }
 }
 
-async function handleOpenAI(req: NextRequest, prompt: string): Promise<HandlerResult> {
+async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: ImageInput): Promise<HandlerResult> {
+  if (imageInput) {
+    return { result: null, error: 'OpenAIはimg2imgに非対応です' }
+  }
   const apiKey = req.headers.get('x-openai-api-key')
   if (!apiKey) {
     return { result: null, error: 'APIキーが設定されていません' }
@@ -92,7 +102,7 @@ async function handleOpenAI(req: NextRequest, prompt: string): Promise<HandlerRe
   return { result: { imageData: b64, mimeType: 'image/png' }, error: null }
 }
 
-async function handleIdeogram(req: NextRequest, prompt: string): Promise<HandlerResult> {
+async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: ImageInput): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-ideogram-api-key')
   if (!apiKey) {
     return { result: null, error: 'APIキーが設定されていません' }
@@ -103,7 +113,15 @@ async function handleIdeogram(req: NextRequest, prompt: string): Promise<Handler
   formData.append('rendering_speed', 'TURBO')
   formData.append('style_type', 'AUTO')
 
-  const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+  let endpoint = 'https://api.ideogram.ai/v1/ideogram-v3/generate'
+  if (imageInput) {
+    const buffer = Buffer.from(imageInput.base64, 'base64')
+    const blob = new Blob([buffer], { type: imageInput.mimeType })
+    formData.append('image_file', blob, 'base_image.png')
+    endpoint = 'https://api.ideogram.ai/v1/ideogram-v3/remix'
+  }
+
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Api-Key': apiKey },
     body: formData,
@@ -169,13 +187,47 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
 }
 
 export async function POST(req: NextRequest) {
-  const { provider, prompt, modelId, threadId } = await req.json()
+  const { provider, prompt, modelId, threadId, imageRefId } = await req.json()
+
+  if (imageRefId && !threadId) {
+    return NextResponse.json({ error: 'imageRefIdを使用する場合はthreadIdが必要です' }, { status: 400 })
+  }
+
+  let imageInput: ImageInput | undefined
+
+  // Supabaseクライアントは imageRefId または threadId があれば必要
+  const supabaseRes = NextResponse.next()
+  const supabase = (imageRefId || threadId)
+    ? createRouteHandlerSupabaseClient(req, supabaseRes)
+    : null
+
+  if (imageRefId) {
+    const { data: refMessage, error: refError } = await supabase!
+      .from('messages')
+      .select('metadata')
+      .eq('id', imageRefId)
+      .single()
+
+    if (refError || !refMessage?.metadata?.storagePath) {
+      return NextResponse.json({ error: '参照画像が見つかりません' }, { status: 404 })
+    }
+
+    const downloaded = await downloadImageAsBase64(supabase!, refMessage.metadata.storagePath)
+    if (!downloaded) {
+      return NextResponse.json({ error: '参照画像のダウンロードに失敗しました' }, { status: 500 })
+    }
+
+    imageInput = {
+      base64: downloaded.base64,
+      mimeType: (refMessage.metadata.mimeType as string) || downloaded.mimeType,
+    }
+  }
 
   let handlerResult: HandlerResult
   switch (provider) {
-    case 'gemini':     handlerResult = await handleGemini(req, prompt, modelId); break
-    case 'openai':     handlerResult = await handleOpenAI(req, prompt); break
-    case 'ideogram':   handlerResult = await handleIdeogram(req, prompt); break
+    case 'gemini':     handlerResult = await handleGemini(req, prompt, modelId, imageInput); break
+    case 'openai':     handlerResult = await handleOpenAI(req, prompt, imageInput); break
+    case 'ideogram':   handlerResult = await handleIdeogram(req, prompt, imageInput); break
     case 'openrouter': handlerResult = await handleOpenRouter(req, prompt); break
     default:           return NextResponse.json({ error: '不正なproviderです' }, { status: 400 })
   }
@@ -192,9 +244,7 @@ export async function POST(req: NextRequest) {
   }
 
   // threadId あり → 認証チェック → Storage アップロード → DB保存
-  const nextRes = NextResponse.next()
-  const supabase = createRouteHandlerSupabaseClient(req, nextRes)
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase!.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
   }
@@ -203,7 +253,7 @@ export async function POST(req: NextRequest) {
   const storagePath = `${userId}/${threadId}/${crypto.randomUUID()}.png`
 
   const buffer = Buffer.from(imageData, 'base64')
-  const { error: uploadError, data: uploadData } = await supabase.storage
+  const { error: uploadError, data: uploadData } = await supabase!.storage
     .from('generated-images')
     .upload(storagePath, buffer, { contentType: mimeType })
 
@@ -214,7 +264,7 @@ export async function POST(req: NextRequest) {
   // TODO: sharp による WebP 圧縮対応（現在は未圧縮のままアップロード）
 
   const actualPath = uploadData?.path ?? storagePath
-  const { data: message, error: dbError } = await supabase
+  const { data: message, error: dbError } = await supabase!
     .from('messages')
     .insert({
       thread_id: threadId,

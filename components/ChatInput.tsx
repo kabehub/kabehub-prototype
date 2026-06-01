@@ -142,11 +142,13 @@ interface ChatInputProps {
   disabled?: boolean;
   provider: Provider;
   onProviderChange: (p: Provider) => void;
-  onImageGenerate?: (prompt: string, imageProvider?: string) => void;
+  onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string) => void;
   imageContextId?: string | null;
   isImagePinned?: boolean;
   onImagePinToggle?: () => void;
   onImageContextClear?: () => void;
+  imageRefId?: string | null;
+  onImageRefClear?: () => void;
 }
 
 const FILE_SIZE_LIMIT_KB = 500;
@@ -206,6 +208,8 @@ export default function ChatInput({
   isImagePinned,
   onImagePinToggle,
   onImageContextClear,
+  imageRefId,
+  onImageRefClear,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -420,7 +424,7 @@ export default function ChatInput({
         }
         const imageProvider = MODEL_TO_PROVIDER[selectedModel as string] ?? "openai"
         onChange('')
-        onImageGenerate(value.trim(), imageProvider)
+        onImageGenerate(value.trim(), imageProvider, imageRefId ?? undefined)
       }
       return
     }
@@ -525,31 +529,36 @@ export default function ChatInput({
         <span style={{ color: "var(--border)", fontSize: "12px", margin: "0 2px" }}>|</span>
 
         {/* モデル選択（現在のプロバイダーのモデルのみ表示） */}
-        {MODEL_CONFIG[provider].models.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => handleModelChange(m.id)}
-            title={m.badge}
-            style={{
-              padding: "4px 10px",
-              borderRadius: "20px",
-              border: "1px solid",
-              borderColor: selectedModel === m.id ? "var(--accent)" : "var(--border)",
-              background: selectedModel === m.id ? "rgba(196,98,45,0.12)" : "transparent",
-              color: selectedModel === m.id ? "var(--accent)" : "var(--ink-muted)",
-              fontSize: "10px",
-              fontFamily: "'JetBrains Mono', monospace",
-              cursor: "pointer",
-              transition: "all 0.15s",
-              letterSpacing: "0.03em",
-            }}
-          >
-            {m.label}
-            {m.badge === "高性能" && (
-              <span style={{ marginLeft: "3px", fontSize: "8px", opacity: 0.7 }}>↑</span>
-            )}
-          </button>
-        ))}
+        {MODEL_CONFIG[provider].models.map((m) => {
+          const isImg2imgDisabled = !!imageRefId && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro")
+          return (
+            <button
+              key={m.id}
+              onClick={() => !isImg2imgDisabled && handleModelChange(m.id)}
+              title={isImg2imgDisabled ? "このモデルはimg2imgに非対応です" : m.badge}
+              disabled={isImg2imgDisabled}
+              style={{
+                padding: "4px 10px",
+                borderRadius: "20px",
+                border: "1px solid",
+                borderColor: isImg2imgDisabled ? "var(--border)" : selectedModel === m.id ? "var(--accent)" : "var(--border)",
+                background: isImg2imgDisabled ? "transparent" : selectedModel === m.id ? "rgba(196,98,45,0.12)" : "transparent",
+                color: isImg2imgDisabled ? "var(--ink-faint)" : selectedModel === m.id ? "var(--accent)" : "var(--ink-muted)",
+                fontSize: "10px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: isImg2imgDisabled ? "not-allowed" : "pointer",
+                transition: "all 0.15s",
+                letterSpacing: "0.03em",
+                opacity: isImg2imgDisabled ? 0.4 : 1,
+              }}
+            >
+              {m.label}
+              {m.badge === "高性能" && !isImg2imgDisabled && (
+                <span style={{ marginLeft: "3px", fontSize: "8px", opacity: 0.7 }}>↑</span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* 画像コンテキストピル */}
@@ -597,6 +606,43 @@ export default function ChatInput({
               color: "var(--ink-faint)",
               transition: "color 0.15s",
             }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* img2img 参照画像ピル */}
+      {imageRefId && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          marginBottom: "8px",
+          padding: "4px 10px",
+          borderRadius: "6px",
+          border: "1px solid #c4b5fd",
+          background: "#f5f3ff",
+          fontSize: "11px",
+          fontFamily: "'JetBrains Mono', monospace",
+          alignSelf: "flex-start",
+        }}>
+          <span style={{ color: "#7c3aed" }}>🎨 参照画像あり（img2img）</span>
+          <button
+            onClick={onImageRefClear}
+            title="参照を解除"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "12px",
+              padding: "0 2px",
+              color: "#7c3aed",
+              opacity: 0.7,
+              transition: "opacity 0.15s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "0.7"; }}
           >
             ×
           </button>

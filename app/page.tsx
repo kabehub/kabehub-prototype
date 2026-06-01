@@ -42,6 +42,7 @@ export default function Home() {
 
   const [imageContextId, setImageContextId] = useState<string | null>(null)
   const [isImagePinned, setIsImagePinned] = useState(false)
+  const [imageRefId, setImageRefId] = useState<string | null>(null)
 
   // ✅ v62追加: ストリーミング関連
   // streamingContentはChatPanelに渡してリアルタイム表示する
@@ -654,7 +655,7 @@ export default function Home() {
   }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
 
   // ── 画像生成（/image コマンド）────────────────────────────
-  const handleImageGenerate = useCallback(async (prompt: string, imageProvider?: string) => {
+  const handleImageGenerate = useCallback(async (prompt: string, imageProvider?: string, imageRefId?: string) => {
     if (isLoading || !activeThreadId) return
     setIsLoading(true)
 
@@ -723,8 +724,10 @@ export default function Home() {
           prompt,
           modelId,
           threadId: activeThreadId,
+          imageRefId: imageRefId ?? undefined,
         }),
       })
+      setImageRefId(null)
 
       const json = await res.json()
       if (!res.ok || json.error) {
@@ -763,6 +766,11 @@ export default function Home() {
   const handleDiscuss = useCallback((messageId: string) => {
     setImageContextId(messageId)
     setIsImagePinned(false)
+  }, [])
+
+  const handleImageRef = useCallback((messageId: string) => {
+    setImageRefId(messageId)
+    setProvider('image_gen')
   }, [])
 
   // ── 再生成 ────────────────────────────────────────────────
@@ -1105,6 +1113,9 @@ export default function Home() {
         isImagePinned={isImagePinned}
         onImagePinToggle={() => setIsImagePinned(v => !v)}
         onImageContextClear={() => { setImageContextId(null); setIsImagePinned(false) }}
+        onImageRef={handleImageRef}
+        imageRefId={imageRefId}
+        onImageRefClear={() => setImageRefId(null)}
       />
       <OutlinePane
         messages={messages}

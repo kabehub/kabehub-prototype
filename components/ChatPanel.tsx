@@ -39,12 +39,15 @@ interface ChatPanelProps {
   streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
   onRestoreBranch?: (message: Message) => void;
-  onImageGenerate?: (prompt: string, imageProvider?: string) => void;
+  onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string) => void;
   onDiscuss?: (messageId: string) => void;
   imageContextId?: string | null;
   isImagePinned?: boolean;
   onImagePinToggle?: () => void;
   onImageContextClear?: () => void;
+  onImageRef?: (messageId: string) => void;
+  imageRefId?: string | null;
+  onImageRefClear?: () => void;
 }
 
 export default function ChatPanel({
@@ -81,6 +84,9 @@ export default function ChatPanel({
   isImagePinned,
   onImagePinToggle,
   onImageContextClear,
+  onImageRef,
+  imageRefId,
+  onImageRefClear,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -1619,6 +1625,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         messageNumber={messageNumbers[msg.id]}
         thinkingContent={thinkingContents?.[msg.id]}
         onDiscuss={onDiscuss}
+        onImageRef={onImageRef}
       />
     )}
   </div>
@@ -1723,6 +1730,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         isImagePinned={isImagePinned}
         onImagePinToggle={onImagePinToggle}
         onImageContextClear={onImageContextClear}
+        imageRefId={imageRefId}
+        onImageRefClear={onImageRefClear}
       />
 
       {/* エクスポートモーダル */}
