@@ -103,11 +103,6 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
 }
 
 async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: ImageInput): Promise<HandlerResult> {
-  if (imageInput) {
-    console.log('[Ideogram] imageInput.mimeType:', imageInput.mimeType)
-    console.log('[Ideogram] base64 length:', imageInput.base64.length)
-  }
-
   const apiKey = req.headers.get('x-ideogram-api-key')
   if (!apiKey) {
     return { result: null, error: 'APIキーが設定されていません' }
@@ -123,6 +118,7 @@ async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: Ima
     const buffer = Buffer.from(imageInput.base64, 'base64')
     const blob = new Blob([buffer], { type: imageInput.mimeType })
     formData.append('image', blob, 'base_image.png')
+    formData.append('image_weight', '80')
     endpoint = 'https://api.ideogram.ai/v1/ideogram-v3/remix'
   }
 
