@@ -24,21 +24,22 @@ export async function GET(req: NextRequest) {
   const threadIds = new Set<string>();
   const matchedMsgMap = new Map<string, string[]>();
 
-  // タイトル検索
-  if (target === "title" || target === "both") {
-    const { data } = await supabase
-      .from("threads")
-      .select("id")
-      .ilike("title", pattern);
+  if (target === "both") {
+    const [titleRes, msgRes] = await Promise.all([
+      supabase.from("threads").select("id").ilike("title", pattern),
+      supabase.from("messages").select("id, thread_id").ilike("content", pattern),
+    ]);
+    (titleRes.data ?? []).forEach((t) => threadIds.add(t.id));
+    (msgRes.data ?? []).forEach((m) => {
+      threadIds.add(m.thread_id);
+      const existing = matchedMsgMap.get(m.thread_id) ?? [];
+      matchedMsgMap.set(m.thread_id, [...existing, m.id]);
+    });
+  } else if (target === "title") {
+    const { data } = await supabase.from("threads").select("id").ilike("title", pattern);
     (data ?? []).forEach((t) => threadIds.add(t.id));
-  }
-
-  // メッセージ内容検索
-  if (target === "message" || target === "both") {
-    const { data } = await supabase
-      .from("messages")
-      .select("id, thread_id")
-      .ilike("content", pattern);
+  } else if (target === "message") {
+    const { data } = await supabase.from("messages").select("id, thread_id").ilike("content", pattern);
     (data ?? []).forEach((m) => {
       threadIds.add(m.thread_id);
       const existing = matchedMsgMap.get(m.thread_id) ?? [];

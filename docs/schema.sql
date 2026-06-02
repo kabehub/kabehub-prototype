@@ -56,6 +56,7 @@ create index if not exists threads_user_id_idx      on threads(user_id);
 create index if not exists threads_created_at_idx   on threads(created_at desc);
 create index if not exists threads_share_token_idx  on threads(share_token);
 create index if not exists threads_is_public_idx    on threads(is_public);
+create index if not exists threads_likes_id_idx     on threads(likes_count desc, id desc);
 
 alter table threads enable row level security;
 

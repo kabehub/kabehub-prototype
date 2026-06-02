@@ -123,6 +123,7 @@ export async function GET(req: NextRequest) {
       id,
       title,
       genre,
+      likes_count,
       share_token,
       created_at,
       updated_at,
@@ -140,6 +141,10 @@ export async function GET(req: NextRequest) {
       { ascending: false }
     )
     .limit(limit + 1);
+
+  if (sort === "popular") {
+    dbQuery = dbQuery.order("id", { ascending: false });
+  }
 
   if (query) {
     dbQuery = dbQuery.ilike("title", `%${query}%`);
@@ -168,8 +173,12 @@ if (genre) {
 
   if (cursor) {
     if (sort === "popular") {
-      // popular はoffsetベース
-      dbQuery = dbQuery.range(parseInt(cursor, 10), parseInt(cursor, 10) + limit);
+      const decoded = JSON.parse(Buffer.from(cursor, "base64").toString());
+      const cursorLikes: number = decoded.l;
+      const cursorId: string = decoded.i;
+      dbQuery = dbQuery.or(
+        `likes_count.lt.${cursorLikes},and(likes_count.eq.${cursorLikes},id.lt.${cursorId})`
+      );
     } else {
       dbQuery = dbQuery.lt("created_at", cursor);
     }
@@ -187,57 +196,33 @@ if (genre) {
   const items = hasMore ? rows.slice(0, limit) : rows;
 
   const threadIds = items.map((t) => t.id);
+  const userIds = items.map((t) => (t as any).user_id).filter(Boolean);
+
   let forkCounts: Record<string, number> = {};
-
-  if (threadIds.length > 0) {
-    const { data: forkData } = await supabase
-      .from("threads")
-      .select("forked_from_id")
-      .in("forked_from_id", threadIds);
-
-    if (forkData) {
-      for (const row of forkData) {
-        if (row.forked_from_id) {
-          forkCounts[row.forked_from_id] = (forkCounts[row.forked_from_id] ?? 0) + 1;
-        }
-      }
-    }
-  }
-
-  // like_count を別クエリで取得
   let likeCounts: Record<string, number> = {};
   let likedByMe: Record<string, boolean> = {};
-
-  if (threadIds.length > 0) {
-    const { data: likeData } = await supabase
-      .from("likes")
-      .select("thread_id, user_id")
-      .in("thread_id", threadIds);
-
-    if (likeData) {
-      for (const row of likeData) {
-        likeCounts[row.thread_id] = (likeCounts[row.thread_id] ?? 0) + 1;
-        if (user && row.user_id === user.id) {
-          likedByMe[row.thread_id] = true;
-        }
-      }
-    }
-  }
-
-  // profiles を別クエリで取得
-  const userIds = items.map((t) => (t as any).user_id).filter(Boolean);
   let profileMap: Record<string, { handle: string | null; display_name: string | null }> = {};
 
-  if (userIds.length > 0) {
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("id, handle, display_name")
-      .in("id", userIds);
+  if (threadIds.length > 0) {
+    const [forkRes, likeRes, profileRes] = await Promise.all([
+      supabase.from("threads").select("forked_from_id").in("forked_from_id", threadIds),
+      supabase.from("likes").select("thread_id, user_id").in("thread_id", threadIds),
+      supabase.from("profiles").select("id, handle, display_name").in("id", userIds),
+    ]);
 
-    if (profileData) {
-      for (const p of profileData) {
-        profileMap[p.id] = { handle: p.handle, display_name: p.display_name };
+    for (const row of forkRes.data ?? []) {
+      if (row.forked_from_id) {
+        forkCounts[row.forked_from_id] = (forkCounts[row.forked_from_id] ?? 0) + 1;
       }
+    }
+    for (const row of likeRes.data ?? []) {
+      likeCounts[row.thread_id] = (likeCounts[row.thread_id] ?? 0) + 1;
+      if (user && row.user_id === user.id) {
+        likedByMe[row.thread_id] = true;
+      }
+    }
+    for (const p of profileRes.data ?? []) {
+      profileMap[p.id] = { handle: p.handle, display_name: p.display_name };
     }
   }
 
@@ -258,10 +243,11 @@ if (genre) {
     liked_by_me: likedByMe[t.id] ?? false,
   }));
 
+  const lastItem = items[items.length - 1];
   const nextCursor = hasMore
     ? sort === "popular"
-      ? String((cursor ? parseInt(cursor, 10) : 0) + limit)
-      : items[items.length - 1].created_at
+      ? Buffer.from(JSON.stringify({ l: (lastItem as any).likes_count, i: lastItem.id })).toString("base64")
+      : lastItem.created_at
     : null;
 
   return NextResponse.json({ items: result, nextCursor, hasMore });
