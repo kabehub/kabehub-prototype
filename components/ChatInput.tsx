@@ -60,7 +60,13 @@ async function compressImage(file: File): Promise<{ base64: string; mediaType: "
 // ── モデル定数（将来の拡張はここに1行追加するだけ）──────────────────
 export type Provider = "claude" | "gemini" | "openai" | "image_gen";
 
-export type ClaudeModel = "claude-sonnet-4-5" | "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
+export type ClaudeModel =
+  | "claude-opus-4-8"
+  | "claude-opus-4-7"
+  | "claude-opus-4-6"
+  | "claude-sonnet-4-5"
+  | "claude-sonnet-4-6"
+  | "claude-haiku-4-5-20251001";
 // TODO: types/index.ts へ集約予定
 export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite";
 export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
@@ -72,9 +78,12 @@ export const MODEL_CONFIG = {
   claude: {
     label: "Claude",
     models: [
-      { id: "claude-sonnet-4-5" as ClaudeModel, label: "Sonnet 4.5", badge: "標準" },
-      { id: "claude-sonnet-4-6" as ClaudeModel, label: "Sonnet 4.6", badge: "高性能" },
-      { id: "claude-haiku-4-5-20251001" as ClaudeModel, label: "Haiku 4.5", badge: "軽量・爆速" },
+      { id: "claude-opus-4-8" as ClaudeModel,           label: "Opus 4.8",   badge: "最高精度" },
+      { id: "claude-opus-4-7" as ClaudeModel,           label: "Opus 4.7",   badge: "高精度" },
+      { id: "claude-opus-4-6" as ClaudeModel,           label: "Opus 4.6",   badge: "高精度" },
+      { id: "claude-sonnet-4-5" as ClaudeModel,         label: "Sonnet 4.5", badge: "標準" },
+      { id: "claude-sonnet-4-6" as ClaudeModel,         label: "Sonnet 4.6", badge: "高性能" },
+      { id: "claude-haiku-4-5-20251001" as ClaudeModel, label: "Haiku 4.5",  badge: "軽量・爆速" },
     ],
     defaultModel: "claude-sonnet-4-5" as ClaudeModel,
     lsKey: "kabehub_claude_model",
