@@ -655,6 +655,10 @@ export default function Home() {
     }
   }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
 
+  const handleSendMemoToAI = useCallback((content: string) => {
+    setInputValue((prev) => (prev.trim() ? `${prev}\n\n${content}` : content));
+  }, []);
+
   // ── 画像生成（/image コマンド）────────────────────────────
   const handleImageGenerate = useCallback(async (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => {
     if (isLoading || !activeThreadId) return
@@ -1123,6 +1127,7 @@ export default function Home() {
         // ✅ v62追加
         streamingContent={streamingContent}
         onAbort={handleAbort}
+        onSendMemoToAI={handleSendMemoToAI}
         thinkingContents={thinkingContents}
         onRestoreBranch={handleRestoreBranch}
         onImageGenerate={handleImageGenerate}

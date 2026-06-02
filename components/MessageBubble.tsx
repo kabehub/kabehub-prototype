@@ -26,6 +26,7 @@ interface MessageBubbleProps {
   onDiscuss?: (messageId: string) => void;
   onDeleteImage?: (message: Message) => void;
   onImageRef?: (messageId: string) => void;
+  onSendMemoToAI?: (content: string) => void;
 }
 
 function MessageBubble({
@@ -48,6 +49,7 @@ function MessageBubble({
   onDiscuss,
   onDeleteImage,
   onImageRef,
+  onSendMemoToAI,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -600,6 +602,29 @@ function MessageBubble({
             </button>
           )}
         </div>
+
+        {message.provider === "memo" && onSendMemoToAI && (
+          <div style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={() => onSendMemoToAI(message.content)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                border: "1px solid #d69e2e",
+                background: "#fefce8",
+                color: "#92400e",
+                fontSize: "11px",
+                cursor: "pointer",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            >
+              ▶ AIに投げる
+            </button>
+          </div>
+        )}
 
         {/* ✏️ マスク編集UI（onUpdateMessage がある場合のみ表示） */}
         {onUpdateMessage && !isMemo && (

@@ -38,6 +38,7 @@ interface ChatPanelProps {
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
+  onSendMemoToAI?: (content: string) => void;
   onRestoreBranch?: (message: Message) => void;
   onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => void;
   onDiscuss?: (messageId: string) => void;
@@ -79,6 +80,7 @@ export default function ChatPanel({
   onUpdateMessage,
   streamingContent = "",  // ✅ v62追加
   onAbort,               // ✅ v62追加
+  onSendMemoToAI,
   thinkingContents,
   onRestoreBranch,
   onImageGenerate,
@@ -1632,6 +1634,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         thinkingContent={thinkingContents?.[msg.id]}
         onDiscuss={onDiscuss}
         onImageRef={onImageRef}
+        onSendMemoToAI={onSendMemoToAI}
       />
     )}
   </div>
