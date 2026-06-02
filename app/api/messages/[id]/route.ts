@@ -13,7 +13,8 @@ export async function DELETE(
   const { error } = await supabase
     .from("messages")
     .delete()
-    .eq("id", params.id);
+    .eq("id", params.id)
+    .eq("user_id", user.id);
   if (error) return NextResponse.json({ error }, { status: 500 });
   return NextResponse.json({ success: true });
 }

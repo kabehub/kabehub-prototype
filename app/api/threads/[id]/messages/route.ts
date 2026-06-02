@@ -29,6 +29,8 @@ export async function DELETE(
 ) {
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { fromCreatedAt } = await req.json();
 
@@ -36,6 +38,7 @@ export async function DELETE(
     .from("messages")
     .delete()
     .eq("thread_id", params.id)
+    .eq("user_id", user.id)
     .gte("created_at", fromCreatedAt);
 
   if (error) return NextResponse.json({ error }, { status: 500 });

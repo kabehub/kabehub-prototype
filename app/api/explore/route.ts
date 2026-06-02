@@ -8,11 +8,7 @@ export async function GET(req: NextRequest) {
   const supabase = createRouteHandlerSupabaseClient(req, res);
 
   // 認証チェック（未ログインでも閲覧可・ただし liked_by_me は false 固定）
-  // ✅ 変更後
-  const {
-  data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";

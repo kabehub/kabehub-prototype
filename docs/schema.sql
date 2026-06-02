@@ -25,7 +25,7 @@ create policy "自分のプロフィールのみ更新可"
 
 create policy "プロフィールは全員閲覧可"
   on profiles for select
-  using (true);
+  using (handle is not null);
 
 -- ============================================================
 -- threads テーブル
@@ -161,6 +161,16 @@ create policy "自分のタグのみ操作可"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+create policy "公開スレッドのタグは全員閲覧可"
+  on thread_tags for select
+  using (
+    exists (
+      select 1 from threads
+      where threads.id = thread_tags.thread_id
+        and threads.is_public = true
+    )
+  );
+
 -- ============================================================
 -- drafts テーブル
 -- ============================================================
@@ -221,7 +231,7 @@ alter table reports enable row level security;
 create policy "通報は認証ユーザーのみ投稿可"
   on reports for insert
   to authenticated
-  with check (true);
+  with check (reporter_user_id = auth.uid());
 
 create policy "自分の通報のみ閲覧可"
   on reports for select
@@ -283,16 +293,48 @@ create policy "自分のトークンのみ操作可"
 -- いいね数・引継ぎ数の増減 RPC（非正規化カラム操作用）
 -- ============================================================
 create or replace function increment_likes_count(p_thread_id uuid)
-returns void as $$
-  update threads set likes_count = likes_count + 1 where id = p_thread_id;
-$$ language sql;
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update threads
+  set likes_count = likes_count + 1
+  where id = p_thread_id
+    and exists (
+      select 1 from likes
+      where likes.thread_id = p_thread_id
+        and likes.user_id = auth.uid()
+    );
+end;
+$$;
 
 create or replace function decrement_likes_count(p_thread_id uuid)
-returns void as $$
-  update threads set likes_count = greatest(likes_count - 1, 0) where id = p_thread_id;
-$$ language sql;
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update threads
+  set likes_count = greatest(likes_count - 1, 0)
+  where id = p_thread_id
+    and exists (
+      select 1 from likes
+      where likes.thread_id = p_thread_id
+        and likes.user_id = auth.uid()
+    );
+end;
+$$;
 
 create or replace function increment_fork_count(p_thread_id uuid)
-returns void as $$
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Unauthorized';
+  end if;
   update threads set fork_count = fork_count + 1 where id = p_thread_id;
-$$ language sql;
+end;
+$$;

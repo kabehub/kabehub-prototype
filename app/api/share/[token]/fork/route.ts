@@ -61,10 +61,10 @@ export async function POST(
     return NextResponse.json({ error: "Failed to create thread" }, { status: 500 });
   }
 
-// メッセージ一括コピー ← ここを丸ごと置き換え
-if (messages.length > 0) {
-  let hiddenCount = 0;
+// メッセージ一括コピー
+let hiddenCount = 0;
 
+if (messages.length > 0) {
   const newMessages = messages.map((m) => {
     let content = m.content;
 
@@ -97,20 +97,13 @@ if (messages.length > 0) {
     await authSupabase.from("threads").delete().eq("id", newThread.id);
     return NextResponse.json({ error: "Failed to copy messages" }, { status: 500 });
   }
-
-  return NextResponse.json({
-    thread: newThread,
-    prompt_forked: sourceThread.allow_prompt_fork,
-    hidden_count: hiddenCount, // Toast通知用
-  });
 }
 
-// ↓ 追加
-  await authSupabase.rpc("increment_fork_count", { p_thread_id: sourceThread.id });
+await authSupabase.rpc("increment_fork_count", { p_thread_id: sourceThread.id });
 
-  return NextResponse.json({
-    thread: newThread,
-    prompt_forked: sourceThread.allow_prompt_fork,
-    hidden_count: 0,
-  });;
+return NextResponse.json({
+  thread: newThread,
+  prompt_forked: sourceThread.allow_prompt_fork,
+  hidden_count: hiddenCount,
+});
 }
