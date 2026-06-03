@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { waitUntil } from "@vercel/functions"; // ✅ v62: Vercel環境でレスポンス後もDB保存を保証
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
+import { trimContextToWindow, estimateTokens } from "@/lib/context-window";
+import { checkChatRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = 'force-dynamic';
 
@@ -415,6 +417,28 @@ export async function POST(req: NextRequest) {
     imageContextId,
   } = await req.json();
 
+  // ── Rate limiting ───────────────────────────────────────────────────────────
+  if (!isTemporary && !isMemo) {
+    const rl = await checkChatRateLimit(userId);
+    if (!rl.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "リクエストが多すぎます。少し待ってから再度お試しください。",
+          retryAfter: Math.ceil((rl.resetAt - Date.now()) / 1000),
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "X-RateLimit-Limit": String(rl.limit),
+            "X-RateLimit-Remaining": String(rl.remaining),
+            "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)),
+          },
+        }
+      );
+    }
+  }
+
   const imageBlocksForApi: ImageBlock[] = (attachedImages ?? []).map(
     (img: { base64: string; mediaType: string }) => ({
       type: "image" as const,
@@ -597,6 +621,20 @@ export async function POST(req: NextRequest) {
   const systemPromptWithLabel = resolvedSystemPrompt
     ? resolvedSystemPrompt + participantNote + labelNote
     : (participantNote + labelNote).trim();
+
+  // ── Context window trimming (applied after lore injection) ─────────────────
+  const trimResult = trimContextToWindow(
+    messagesForApi,
+    systemPromptWithLabel ?? resolvedSystemPrompt,
+    { maxInputTokens: 80_000, anchorTurns: 6, responseReserveTokens: 2_000 }
+  );
+  messagesForApi.length = 0;
+  for (const m of trimResult.messages) messagesForApi.push(m);
+  if (process.env.NODE_ENV === "development" && trimResult.wasTrimmed) {
+    console.warn(
+      `[context-trim] Trimmed. estimatedInputTokens=${trimResult.estimatedInputTokens}, messages=${trimResult.messages.length}`
+    );
+  }
 
   try {
     if (provider === "gemini") {
