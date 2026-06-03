@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import { waitUntil } from "@vercel/functions"; // ✅ v62: Vercel環境でレスポンス後もDB保存を保証
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
-import { trimContextToWindow, estimateTokens } from "@/lib/context-window";
+import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
+import { searchLore } from "@/lib/lore";
 
 export const dynamic = 'force-dynamic';
 
@@ -42,19 +43,22 @@ function streamClaude(
   signal?: AbortSignal,
   onUsage?: (u: UsageData) => void,
   isDeepThinking?: boolean,
+  cacheAnchorIndex: number = -1,
 ): ReadableStream<string> {
   const systemBlock = systemPrompt?.trim()
     ? [{ type: "text" as const, text: systemPrompt.trim(), cache_control: { type: "ephemeral" as const } }]
     : undefined;
 
+  const resolvedAnchorIndex = cacheAnchorIndex >= 0
+    ? cacheAnchorIndex
+    : messages.length - 2;
+
   const messagesForAPI = messages.map((m, index) => {
     const isLast = index === messages.length - 1;
-    const isSecondToLast = index === messages.length - 2;
     if (isLast && m.role === "user" && imageBlocks.length > 0) {
-      const contentBlocks: ContentBlock[] = [...imageBlocks, { type: "text" as const, text: m.content }];
-      return { role: m.role, content: contentBlocks };
+      return { role: m.role, content: [...imageBlocks, { type: "text" as const, text: m.content }] };
     }
-    if (isSecondToLast) {
+    if (index === resolvedAnchorIndex) {
       return { role: m.role, content: [{ type: "text" as const, text: m.content, cache_control: { type: "ephemeral" as const } }] };
     }
     return { role: m.role, content: m.content };
@@ -470,11 +474,11 @@ export async function POST(req: NextRequest) {
 
   // スレッド作成
   if (!isTemporary) {
-    const { data: exists } = await supabase.from("threads").select("id").eq("id", threadId).single();
-    if (!exists) {
-      const title = userContent.slice(0, 20) + (userContent.length > 20 ? "…" : "");
-      await supabase.from("threads").insert({ id: threadId, title, user_id: userId });
-    }
+    const title = userContent.slice(0, 20) + (userContent.length > 20 ? "…" : "");
+    await supabase.from("threads").upsert(
+      { id: threadId, title, user_id: userId },
+      { onConflict: "id", ignoreDuplicates: true }
+    );
   }
 
   // ユーザーメッセージ保存
@@ -513,27 +517,17 @@ export async function POST(req: NextRequest) {
 
   // Lore Book 自動注入（novel フォルダ + openaiKey がある場合のみ）
   if (loreEnabled && openaiKey && loreTargetFolder) {
-    try {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-      const cookieHeader = req.headers.get("cookie") ?? "";
-      const searchRes = await fetch(`${appUrl}/api/lore/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
-          ...(cookieHeader ? { cookie: cookieHeader } : {}),
-        },
-        body: JSON.stringify({ query: userContent, folderName: loreTargetFolder, topK: 3 }),
-      });
-      if (searchRes.ok) {
-        const { chunks } = await searchRes.json();
-        if (Array.isArray(chunks) && chunks.length > 0) {
-          const loreNote = "\n\n【関連設定（Lore Book より自動注入）】\n" + chunks.join("\n\n---\n\n");
-          resolvedSystemPrompt = (resolvedSystemPrompt ?? "") + loreNote;
-        }
-      }
-    } catch {
-      // Lore注入失敗はベストエフォートで握りつぶし
+    const chunks = await searchLore(supabase, {
+      query: userContent,
+      folderName: loreTargetFolder,
+      userId,
+      topK: 3,
+      openaiKey,
+      timeoutMs: 3_000,
+    });
+    if (chunks.length > 0) {
+      const loreNote = "\n\n【関連設定（Lore Book より自動注入）】\n" + chunks.join("\n\n---\n\n");
+      resolvedSystemPrompt = (resolvedSystemPrompt ?? "") + loreNote;
     }
   }
 
@@ -642,7 +636,7 @@ export async function POST(req: NextRequest) {
       aiStream = streamGemini(geminiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as GeminiModel, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage, isDeepThinking ?? false);
+      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage, isDeepThinking ?? false, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
       aiStream = streamOpenAI(openaiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal, handleUsage);
@@ -690,6 +684,8 @@ export async function POST(req: NextRequest) {
     isDeepThinking: isDeepThinking ?? false,
   }) + "\n";
 
+  const MAX_ACCUMULATED_BYTES = 200_000;
+  let accumulatedTruncated = false;
   let accumulatedText = "";
   let isAborted = false;
 
@@ -699,10 +695,18 @@ export async function POST(req: NextRequest) {
         // JSON行形式: テキスト部分のみDBに蓄積、thinking部分は含めない
         try {
           const inner = JSON.parse(chunk.trimEnd());
-          if (inner.kind === "text") accumulatedText += inner.text;
+          if (inner.kind === "text") {
+            if (!accumulatedTruncated) {
+              accumulatedText += inner.text;
+              if (accumulatedText.length > MAX_ACCUMULATED_BYTES) accumulatedTruncated = true;
+            }
+          }
         } catch { /* 分割チャンクは無視 */ }
       } else {
-        accumulatedText += chunk;
+        if (!accumulatedTruncated) {
+          accumulatedText += chunk;
+          if (accumulatedText.length > MAX_ACCUMULATED_BYTES) accumulatedTruncated = true;
+        }
       }
       controller.enqueue(JSON.stringify({ type: "chunk", text: chunk }) + "\n");
     },

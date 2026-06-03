@@ -18,6 +18,13 @@ export interface TrimResult {
   messages: ContextMessage[];
   wasTrimmed: boolean;
   estimatedInputTokens: number;
+  cacheAnchorIndex: number; // -1 は対象なし
+}
+
+function computeAnchorIndex(msgs: ContextMessage[]): number {
+  if (msgs.length < 2) return -1;
+  const candidate = msgs[msgs.length - 2];
+  return candidate.role === "assistant" ? msgs.length - 2 : -1;
 }
 
 export function trimContextToWindow(
@@ -39,7 +46,7 @@ export function trimContextToWindow(
   const budget = maxInputTokens - systemTokens - responseReserveTokens;
 
   if (budget <= 0 || messages.length === 0) {
-    return { messages, wasTrimmed: false, estimatedInputTokens: systemTokens };
+    return { messages, wasTrimmed: false, estimatedInputTokens: systemTokens, cacheAnchorIndex: computeAnchorIndex(messages) };
   }
 
   const anchorCount = Math.min(anchorTurns * 2, messages.length);
@@ -56,6 +63,7 @@ export function trimContextToWindow(
       messages: anchorMessages,
       wasTrimmed: historyMessages.length > 0,
       estimatedInputTokens: anchorTokens + systemTokens,
+      cacheAnchorIndex: computeAnchorIndex(anchorMessages),
     };
   }
 
@@ -76,9 +84,12 @@ export function trimContextToWindow(
     ? [{ role: "user", content: "[System note: Earlier conversation history was omitted to fit the context window. The most recent messages are included below. Please continue naturally.]" }]
     : [];
 
+  const finalMessages = [...truncationStub, ...keptHistory, ...anchorMessages];
+
   return {
-    messages: [...truncationStub, ...keptHistory, ...anchorMessages],
+    messages: finalMessages,
     wasTrimmed,
     estimatedInputTokens: budget - remainingBudget + systemTokens,
+    cacheAnchorIndex: computeAnchorIndex(finalMessages),
   };
 }
