@@ -33,7 +33,5 @@ export async function checkChatRateLimit(userId: string): Promise<RateLimitResul
   const rl = getRatelimit();
   if (!rl) return { allowed: true, limit: 0, remaining: 0, resetAt: 0 };
   const { success, limit, remaining, reset } = await rl.limit(userId);
-  // ★確認用ログ（確認後削除）
-  console.log("[rate-limit] reset raw value:", reset, "Date.now():", Date.now());
-  return { allowed: success, limit, remaining, resetAt: reset };
+return { allowed: success, limit, remaining, resetAt: reset };
 }
