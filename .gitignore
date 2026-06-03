@@ -4,3 +4,4 @@ out
 build
 .env.local
 .claude/
+tsconfig.tsbuildinfo

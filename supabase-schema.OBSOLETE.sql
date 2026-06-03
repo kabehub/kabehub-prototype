@@ -1,3 +1,4 @@
+-- OBSOLETE: Do not apply this file. Use docs/schema.sql instead.
 -- Phase 2: Supabase に切り替える際に実行するスキーマ
 -- Supabase Dashboard > SQL Editor で実行してください
 

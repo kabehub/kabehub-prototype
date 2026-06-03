@@ -45,6 +45,7 @@ create table if not exists threads (
   allow_prompt_fork boolean not null default true,
   metadata          jsonb,
   genre             text,
+  shared_at         timestamptz,
   likes_count       integer default 0,
   fork_count        integer default 0,
   roleplay_mode     boolean default false,         -- v63追加: なりきりモードフラグ
@@ -65,9 +66,7 @@ create policy "自分のスレッドのみ操作可"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
-create policy "公開スレッドは全員閲覧可"
-  on threads for select
-  using (is_public = true);
+-- Public thread reads should use public_threads_view to avoid exposing private columns.
 
 -- ============================================================
 -- messages テーブル
@@ -91,15 +90,29 @@ alter table messages enable row level security;
 create policy "自分のメッセージのみ操作可"
   on messages for all
   using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = messages.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
 create policy "公開スレッドのメッセージは全員閲覧可"
   on messages for select
   using (
+    coalesce(is_hidden, false) = false
+    and provider <> 'memo'
+    and
     exists (
       select 1 from threads
       where threads.id = messages.thread_id
         and threads.is_public = true
+        and (
+          threads.shared_at is null
+          or messages.created_at <= threads.shared_at
+        )
     )
   );
 
@@ -120,7 +133,14 @@ alter table thread_notes enable row level security;
 create policy "自分のスレッドメモのみ操作可"
   on thread_notes for all
   using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
 -- ============================================================
 -- message_notes テーブル
@@ -140,7 +160,14 @@ alter table message_notes enable row level security;
 create policy "自分のメッセージメモのみ操作可"
   on message_notes for all
   using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = message_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
 -- ============================================================
 -- thread_tags テーブル
@@ -160,7 +187,14 @@ alter table thread_tags enable row level security;
 create policy "自分のタグのみ操作可"
   on thread_tags for all
   using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_tags.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
 create policy "公開スレッドのタグは全員閲覧可"
   on thread_tags for select
@@ -171,6 +205,35 @@ create policy "公開スレッドのタグは全員閲覧可"
         and threads.is_public = true
     )
   );
+
+create or replace view public_threads_view as
+select
+  t.id,
+  t.title,
+  t.is_public,
+  t.created_at,
+  t.updated_at,
+  t.user_id,
+  t.genre,
+  coalesce(
+    array_agg(tt.name order by tt.created_at) filter (where tt.name is not null),
+    '{}'::text[]
+  ) as tags
+from threads t
+left join thread_tags tt
+  on tt.thread_id = t.id
+ and tt.user_id = t.user_id
+where t.is_public = true
+group by
+  t.id,
+  t.title,
+  t.is_public,
+  t.created_at,
+  t.updated_at,
+  t.user_id,
+  t.genre;
+
+grant select on public_threads_view to anon, authenticated;
 
 -- ============================================================
 -- drafts テーブル
@@ -188,7 +251,14 @@ alter table drafts enable row level security;
 create policy "自分の下書きのみ操作可"
   on drafts for all
   using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = drafts.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
 -- ============================================================
 -- likes テーブル（v34追加）

@@ -60,18 +60,37 @@ export default async function Page({ params }: Props) {
 
   // 公開スレッド取得 + 統計用カラム追加
   const { data: threads } = await supabase
-    .from('threads')
+    .from('public_threads_view')
     .select(`
-      id, title, created_at, updated_at, share_token,
-      likes_count, fork_count,
-      thread_tags ( name )
+      id, title, created_at, updated_at, tags
     `)
     .eq('user_id', profile.id)
-    .eq('is_public', true)
     .order('updated_at', { ascending: false })
     .limit(50)
 
-  const threadList = threads ?? []
+  const threadList = (threads ?? []).map((thread) => ({
+    ...thread,
+    likes_count: 0,
+    fork_count: 0,
+  }))
+  const threadIds = threadList.map((thread) => thread.id)
+
+  if (threadIds.length > 0) {
+    const { data: likes } = await supabase
+      .from('likes')
+      .select('thread_id')
+      .in('thread_id', threadIds)
+
+    const likeCounts = new Map<string, number>()
+    for (const like of likes ?? []) {
+      likeCounts.set(like.thread_id, (likeCounts.get(like.thread_id) ?? 0) + 1)
+    }
+
+    for (const thread of threadList) {
+      thread.likes_count = likeCounts.get(thread.id) ?? 0
+    }
+  }
+
   const stats = {
     publicThreadCount: threadList.length,
     totalLikes: threadList.reduce((sum, t) => sum + (t.likes_count ?? 0), 0),
