@@ -1,8 +1,33 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Thread, Message, ThreadNote, MessageNote, Draft } from "@/types";
 
+type SupabaseTable<Row extends Record<string, unknown>> = {
+  Row: Row;
+  Insert: Partial<Row>;
+  Update: Partial<Row>;
+  Relationships: [];
+};
+
+type SupabaseDatabase = {
+  public: {
+    Tables: {
+      threads: SupabaseTable<Thread & Record<string, unknown>>;
+      messages: SupabaseTable<Message & Record<string, unknown>>;
+      thread_notes: SupabaseTable<ThreadNote & Record<string, unknown>>;
+      message_notes: SupabaseTable<MessageNote & Record<string, unknown>>;
+      drafts: SupabaseTable<Draft & Record<string, unknown>>;
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
+
+type AppSupabaseClient = SupabaseClient<SupabaseDatabase>;
+
 // ── Thread CRUD ──────────────────────────────────────────────
-export async function getThreads(supabase: SupabaseClient, userId: string): Promise<Thread[]> {
+export async function getThreads(supabase: AppSupabaseClient, userId: string): Promise<Thread[]> {
   const { data, error } = await supabase
     .from("threads")
     .select("*")
@@ -13,7 +38,7 @@ export async function getThreads(supabase: SupabaseClient, userId: string): Prom
   return data ?? [];
 }
 
-export async function getThread(supabase: SupabaseClient, id: string): Promise<Thread | null> {
+export async function getThread(supabase: AppSupabaseClient, id: string): Promise<Thread | null> {
   const { data, error } = await supabase
     .from("threads")
     .select("*")
@@ -24,7 +49,7 @@ export async function getThread(supabase: SupabaseClient, id: string): Promise<T
 }
 
 export async function createThread(
-  supabase: SupabaseClient,
+  supabase: AppSupabaseClient,
   id: string,
   firstMessage: string,
   userId: string
@@ -39,13 +64,13 @@ export async function createThread(
   return data;
 }
 
-export async function deleteThread(supabase: SupabaseClient, id: string): Promise<void> {
+export async function deleteThread(supabase: AppSupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("threads").delete().eq("id", id);
   if (error) throw error;
 }
 
 // ── Message CRUD ─────────────────────────────────────────────
-export async function getMessages(supabase: SupabaseClient, threadId: string): Promise<Message[]> {
+export async function getMessages(supabase: AppSupabaseClient, threadId: string): Promise<Message[]> {
   const { data, error } = await supabase
     .from("messages")
     .select("*")
@@ -56,7 +81,7 @@ export async function getMessages(supabase: SupabaseClient, threadId: string): P
 }
 
 export async function addMessage(
-  supabase: SupabaseClient,
+  supabase: AppSupabaseClient,
   message: Message,
   userId: string
 ): Promise<Message> {
@@ -71,7 +96,7 @@ export async function addMessage(
 }
 
 // ── ThreadNote CRUD ──────────────────────────────────────────
-export async function getNotes(supabase: SupabaseClient, threadId: string): Promise<ThreadNote[]> {
+export async function getNotes(supabase: AppSupabaseClient, threadId: string): Promise<ThreadNote[]> {
   const { data, error } = await supabase
     .from("thread_notes")
     .select("*")
@@ -82,7 +107,7 @@ export async function getNotes(supabase: SupabaseClient, threadId: string): Prom
 }
 
 export async function addNote(
-  supabase: SupabaseClient,
+  supabase: AppSupabaseClient,
   threadId: string,
   content: string,
   userId: string
@@ -97,7 +122,7 @@ export async function addNote(
 }
 
 export async function updateNote(
-  supabase: SupabaseClient,
+  supabase: AppSupabaseClient,
   id: string,
   content: string
 ): Promise<ThreadNote> {
@@ -111,13 +136,13 @@ export async function updateNote(
   return data;
 }
 
-export async function deleteNote(supabase: SupabaseClient, id: string): Promise<void> {
+export async function deleteNote(supabase: AppSupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("thread_notes").delete().eq("id", id);
   if (error) throw error;
 }
 
 // ── MessageNote CRUD ─────────────────────────────────────────
-export async function getMessageNotes(supabase: SupabaseClient, threadId: string): Promise<MessageNote[]> {
+export async function getMessageNotes(supabase: AppSupabaseClient, threadId: string): Promise<MessageNote[]> {
   const { data, error } = await supabase
     .from("message_notes")
     .select("*")
@@ -128,7 +153,7 @@ export async function getMessageNotes(supabase: SupabaseClient, threadId: string
 }
 
 export async function addMessageNote(
-  supabase: SupabaseClient,
+  supabase: AppSupabaseClient,
   messageId: string,
   threadId: string,
   content: string,
@@ -143,13 +168,13 @@ export async function addMessageNote(
   return data;
 }
 
-export async function deleteMessageNote(supabase: SupabaseClient, id: string): Promise<void> {
+export async function deleteMessageNote(supabase: AppSupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("message_notes").delete().eq("id", id);
   if (error) throw error;
 }
 
 // ── Draft CRUD ───────────────────────────────────────────────
-export async function getDrafts(supabase: SupabaseClient, threadId: string): Promise<Draft[]> {
+export async function getDrafts(supabase: AppSupabaseClient, threadId: string): Promise<Draft[]> {
   const { data, error } = await supabase
     .from("drafts")
     .select("*")
@@ -160,7 +185,7 @@ export async function getDrafts(supabase: SupabaseClient, threadId: string): Pro
 }
 
 export async function addDraft(
-  supabase: SupabaseClient,
+  supabase: AppSupabaseClient,
   threadId: string,
   content: string,
   userId: string
@@ -174,7 +199,7 @@ export async function addDraft(
   return data;
 }
 
-export async function deleteDraft(supabase: SupabaseClient, id: string): Promise<void> {
+export async function deleteDraft(supabase: AppSupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("drafts").delete().eq("id", id);
   if (error) throw error;
 }
