@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
 import { searchLore } from "@/lib/lore";
+import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
 export const dynamic = 'force-dynamic';
 
@@ -13,23 +14,34 @@ type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string;
 type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
 
-type ClaudeModel =
-  | "claude-opus-4-8"
-  | "claude-opus-4-7"
-  | "claude-opus-4-6"
-  | "claude-sonnet-4-5"
-  | "claude-sonnet-4-6"
-  | "claude-haiku-4-5-20251001";
-// TODO: types/index.ts へ集約予定
-type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite";
-type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
-type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
-
 const DEFAULT_MODELS: Record<string, ModelId> = {
   claude: "claude-sonnet-4-5",
   gemini: "gemini-2.5-flash",
   openai: "gpt-4o",
 };
+
+const CLAUDE_MODEL_IDS = [
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-5",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5-20251001",
+] as const satisfies readonly ClaudeModel[];
+const GEMINI_MODEL_IDS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite"] as const satisfies readonly GeminiModel[];
+const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5"] as const satisfies readonly OpenAIModel[];
+
+function isClaudeModel(modelId: string): modelId is ClaudeModel {
+  return (CLAUDE_MODEL_IDS as readonly string[]).includes(modelId);
+}
+
+function isGeminiModel(modelId: string): modelId is GeminiModel {
+  return (GEMINI_MODEL_IDS as readonly string[]).includes(modelId);
+}
+
+function isOpenAIModel(modelId: string): modelId is OpenAIModel {
+  return (OPENAI_MODEL_IDS as readonly string[]).includes(modelId);
+}
 
 // ─── ストリーミング版 callClaude ─────────────────────────────────────────────
 // ReadableStream<string> を返す。各chunkは生テキスト断片。
@@ -632,14 +644,32 @@ export async function POST(req: NextRequest) {
 
   try {
     if (provider === "gemini") {
+      if (!isGeminiModel(resolvedModelId)) {
+        return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
-      aiStream = streamGemini(geminiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as GeminiModel, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamGemini(geminiKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
+      if (!isClaudeModel(resolvedModelId)) {
+        return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId as ClaudeModel, imageBlocksForApi, req.signal, handleUsage, isDeepThinking ?? false, trimResult.cacheAnchorIndex);
+      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, isDeepThinking ?? false, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
+      if (!isOpenAIModel(resolvedModelId)) {
+        return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
-      aiStream = streamOpenAI(openaiKey, messagesForApi, systemPromptWithLabel, resolvedModelId as OpenAIModel, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamOpenAI(openaiKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
     }

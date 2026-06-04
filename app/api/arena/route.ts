@@ -1,21 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
+import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 type ChatMessage = { role: string; content: string; provider?: string };
-
-// モデルID型（ChatInput.tsxのMODEL_CONFIGと対応）
-type ClaudeModel =
-  | "claude-opus-4-8"
-  | "claude-opus-4-7"
-  | "claude-opus-4-6"
-  | "claude-sonnet-4-5"
-  | "claude-sonnet-4-6";
-type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
-type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
-type ModelId = ClaudeModel | GeminiModel | OpenAIModel;
 
 // デフォルトモデル（modelIdが未指定の場合のフォールバック）
 const DEFAULT_MODELS: Record<string, ModelId> = {
@@ -23,6 +13,29 @@ const DEFAULT_MODELS: Record<string, ModelId> = {
   gemini: "gemini-2.5-flash",
   openai: "gpt-4o",
 };
+
+const CLAUDE_MODEL_IDS = [
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-5",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5-20251001",
+] as const satisfies readonly ClaudeModel[];
+const GEMINI_MODEL_IDS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite"] as const satisfies readonly GeminiModel[];
+const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5"] as const satisfies readonly OpenAIModel[];
+
+function isClaudeModel(modelId: string): modelId is ClaudeModel {
+  return (CLAUDE_MODEL_IDS as readonly string[]).includes(modelId);
+}
+
+function isGeminiModel(modelId: string): modelId is GeminiModel {
+  return (GEMINI_MODEL_IDS as readonly string[]).includes(modelId);
+}
+
+function isOpenAIModel(modelId: string): modelId is OpenAIModel {
+  return (OPENAI_MODEL_IDS as readonly string[]).includes(modelId);
+}
 
 async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: ClaudeModel = "claude-sonnet-4-5"): Promise<string> {
   const body: Record<string, unknown> = {
@@ -80,18 +93,21 @@ async function callAI(
 ): Promise<string> {
   const resolvedModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
   if (provider === "claude") {
+    if (!isClaudeModel(resolvedModelId)) throw new Error(`Invalid modelId "${resolvedModelId}" for provider "${provider}"`);
     if (!keys.anthropic) throw new Error("ClaudeのAPIキーが設定されていません。");
-    return callClaude(keys.anthropic, messages, systemPrompt, resolvedModelId as ClaudeModel);
+    return callClaude(keys.anthropic, messages, systemPrompt, resolvedModelId);
   } else if (provider === "gemini") {
+    if (!isGeminiModel(resolvedModelId)) throw new Error(`Invalid modelId "${resolvedModelId}" for provider "${provider}"`);
     if (!keys.gemini) throw new Error("GeminiのAPIキーが設定されていません。");
     const geminiMessages = [...messages];
     if (geminiMessages.length > 0 && geminiMessages[geminiMessages.length - 1].role === "assistant") {
       geminiMessages.push({ role: "user", content: "続けてください。あなたの意見を述べてください。" });
     }
-    return callGemini(keys.gemini, geminiMessages, systemPrompt, resolvedModelId as GeminiModel);
+    return callGemini(keys.gemini, geminiMessages, systemPrompt, resolvedModelId);
   } else if (provider === "openai") {
+    if (!isOpenAIModel(resolvedModelId)) throw new Error(`Invalid modelId "${resolvedModelId}" for provider "${provider}"`);
     if (!keys.openai) throw new Error("OpenAIのAPIキーが設定されていません。");
-    return callOpenAI(keys.openai, messages, systemPrompt, resolvedModelId as OpenAIModel);
+    return callOpenAI(keys.openai, messages, systemPrompt, resolvedModelId);
   }
   throw new Error(`未対応のプロバイダーです: ${provider}`);
 }
@@ -172,6 +188,19 @@ export async function POST(req: NextRequest) {
     interventionContent,
     modelId,
   } = body;
+
+  const providerForValidation = currentProvider ?? "";
+  const modelForValidation = modelId ?? DEFAULT_MODELS[providerForValidation] ?? DEFAULT_MODELS.claude;
+  if (
+    (providerForValidation === "claude" && !isClaudeModel(modelForValidation)) ||
+    (providerForValidation === "gemini" && !isGeminiModel(modelForValidation)) ||
+    (providerForValidation === "openai" && !isOpenAIModel(modelForValidation))
+  ) {
+    return NextResponse.json(
+      { error: `Invalid modelId "${modelForValidation}" for provider "${providerForValidation}"` },
+      { status: 400 }
+    );
+  }
 
   // APIキー取得
   const keys = {

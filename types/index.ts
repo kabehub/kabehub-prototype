@@ -1,3 +1,18 @@
+export type Provider = "claude" | "gemini" | "openai" | "image_gen";
+
+export type ClaudeModel =
+  | "claude-opus-4-8"
+  | "claude-opus-4-7"
+  | "claude-opus-4-6"
+  | "claude-sonnet-4-5"
+  | "claude-sonnet-4-6"
+  | "claude-haiku-4-5-20251001";
+export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite";
+export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5";
+export type ImageGenModel = "gpt-image-2" | "gemini-2.5-flash-image" | "ideogram-v3" | "black-forest-labs/flux.2-pro";
+
+export type ModelId = ClaudeModel | GeminiModel | OpenAIModel | ImageGenModel;
+
 export interface Thread {
   id: string;
   title: string;
