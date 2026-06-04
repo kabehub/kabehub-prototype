@@ -11,7 +11,16 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await supabase.from("threads").delete().eq("id", params.id);
+  const { data: thread } = await supabase
+    .from("threads")
+    .select("id")
+    .eq("id", params.id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!thread) return NextResponse.json({ error: "Not Found" }, { status: 404 });
+
+  await supabase.from("threads").delete().eq("id", params.id).eq("user_id", user.id);
   return NextResponse.json({ success: true });
 }
 
@@ -43,13 +52,17 @@ export async function PATCH(
   // ✅ v76: スナップショット型共有のPush時刻
   if (body.shared_at !== undefined) updates.shared_at = body.shared_at;
 
+  const { data: thread } = await supabase
+    .from("threads")
+    .select("id, share_token")
+    .eq("id", params.id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!thread) return NextResponse.json({ error: "Not Found" }, { status: 404 });
+
   if (body.needsToken && body.is_public) {
-    const { data: existing } = await supabase
-      .from("threads")
-      .select("share_token")
-      .eq("id", params.id)
-      .single();
-    if (!existing?.share_token) {
+    if (!thread.share_token) {
       updates.share_token = uuidv4();
     }
   }
@@ -61,6 +74,7 @@ export async function PATCH(
       user_id: user.id,
       ...updates,
     })
+    .eq("user_id", user.id)
     .select()
     .single();
 

@@ -26,6 +26,7 @@ export async function GET(
     .from("messages")
     .select("id, role, content, provider, created_at, is_hidden")
     .eq("thread_id", thread.id)
+    .eq("is_hidden", false)
     .order("created_at", { ascending: true });
 
   if (messagesError) {
