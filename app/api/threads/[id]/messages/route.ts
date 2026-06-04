@@ -33,6 +33,26 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { fromCreatedAt } = await req.json();
+  const isValidFromCreatedAt =
+    typeof fromCreatedAt === "string" &&
+    !Number.isNaN(Date.parse(fromCreatedAt));
+
+  if (!isValidFromCreatedAt) {
+    return NextResponse.json(
+      { error: "Invalid fromCreatedAt timestamp" },
+      { status: 400 }
+    );
+  }
+
+  const { data: thread, error: threadError } = await supabase
+    .from("threads")
+    .select("id")
+    .eq("id", params.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (threadError) return NextResponse.json({ error: threadError }, { status: 500 });
+  if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
 
   const { error } = await supabase
     .from("messages")
