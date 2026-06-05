@@ -12,7 +12,6 @@ interface OutlinePaneProps {
 
 export default function OutlinePane({ messages, isOpen, onToggle }: OutlinePaneProps) {
   const [isWide, setIsWide] = useState(true);
-  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
 
   useEffect(() => {
     const check = () => setIsWide(window.innerWidth >= 1280);
@@ -28,10 +27,6 @@ export default function OutlinePane({ messages, isOpen, onToggle }: OutlinePaneP
       counter++;
       return { msg, num: counter };
     });
-
-  const userItems = messages.filter(
-    (msg) => msg.role === "user" && msg.provider !== "memo"
-  );
 
   const paneWidth = isOpen ? 220 : 0;
 
@@ -98,100 +93,6 @@ export default function OutlinePane({ messages, isOpen, onToggle }: OutlinePaneP
         >
           {isOpen ? "▶" : "◀"}
         </button>
-      )}
-
-      {/* Indicator strip — wide screen + pane closed only */}
-      {isWide && !isOpen && (
-        <div
-          style={{
-            width: 14,
-            minWidth: 14,
-            height: "100vh",
-            flexShrink: 0,
-            background: "white",
-            borderLeft: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-evenly",
-            alignItems: "center",
-            cursor: "pointer",
-            overflow: "visible",
-            position: "relative",
-            boxSizing: "border-box",
-            padding: "16px 0",
-          }}
-          onClick={onToggle}
-          title="アウトラインを開く"
-        >
-          {userItems.map((msg) => (
-            <div
-              key={msg.id as string}
-              style={{
-                position: "relative",
-                minHeight: 8,
-                marginTop: 4,
-                marginBottom: 4,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "100%",
-              }}
-              onMouseEnter={() => setHoveredMsgId(msg.id as string)}
-              onMouseLeave={() => setHoveredMsgId(null)}
-            >
-              {hoveredMsgId === msg.id && (
-                <div
-                  style={{
-                    position: "absolute",
-                    right: "calc(100% + 6px)",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "rgba(30,30,30,0.85)",
-                    color: "white",
-                    fontSize: 10,
-                    fontFamily: "'DM Sans', sans-serif",
-                    borderRadius: 4,
-                    padding: "3px 6px",
-                    whiteSpace: "nowrap",
-                    maxWidth: 160,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    pointerEvents: "none",
-                    zIndex: 200,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {msg.content}
-                </div>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  document.getElementById("msg-" + msg.id)?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                  });
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 10,
-                  color: "var(--accent)",
-                  padding: "2px 0",
-                  minHeight: 8,
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  lineHeight: 1,
-                }}
-              >
-                —
-              </button>
-            </div>
-          ))}
-        </div>
       )}
 
       <div style={paneStyle}>

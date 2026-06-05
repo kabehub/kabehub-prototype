@@ -6,6 +6,7 @@ import MessageBubble, { ThinkingBubble, BranchBubble } from "./MessageBubble";
 import ChatInput, { type ModelId, type AttachedImageFile, type Provider } from "./ChatInput";
 import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
+import { generateMessageSummary } from "@/lib/stringUtils";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
 import PublishConfirmModal from "./PublishConfirmModal";
 import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
@@ -97,6 +98,10 @@ export default function ChatPanel({
   onImageRefUploadClear,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [dotPositions, setDotPositions] = useState<Array<{id: string; topPct: number}>>([]);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{top: number; right: number} | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [editTitle, setEditTitle] = useState("");
 
@@ -166,7 +171,34 @@ export default function ChatPanel({
   const [rpIconSaving, setRpIconSaving] = useState(false);
   const [rpSaving, setRpSaving] = useState(false);
   const rpIconInputRef = useRef<HTMLInputElement>(null);
-  
+
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= 1280);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const compute = () => {
+      const scrollH = el.scrollHeight;
+      if (!scrollH) return;
+      const userMsgs = messages.filter(m => m.role === "user" && m.provider !== "memo");
+      const positions = userMsgs.map(msg => {
+        const dom = document.getElementById(`msg-${String(msg.id)}`);
+        if (!dom) return null;
+        return { id: String(msg.id), topPct: dom.offsetTop / scrollH * 100 };
+      }).filter(Boolean) as Array<{id: string; topPct: number}>;
+      setDotPositions(positions);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [messages]);
+
   useEffect(() => {
     if (!thread?.folder_name) {
       setFolderSystemPrompt(null)
@@ -1544,7 +1576,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       )}
 
       {/* Messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "28px 48px" }}>
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        <div ref={scrollRef} style={{ height: "100%", overflowY: "auto", padding: "28px 52px 28px 48px" }}>
         {!thread && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "16px", color: "var(--ink-muted)" }}>
             <div style={{ width: "56px", height: "56px", borderRadius: "14px", background: "white", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>✦</div>
@@ -1670,6 +1703,29 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 )}
 
 
+        </div>
+        {isDesktop && (
+          <div style={{ position: "absolute", right: 0, top: 0, width: 16, height: "100%", pointerEvents: "none" }}>
+            {dotPositions.map(({ id, topPct }) => (
+              <div
+                key={id}
+                style={{ position: "absolute", left: "50%", transform: "translate(-50%, -50%)", top: `${topPct}%`, width: 4, height: 14, background: "var(--accent)", borderRadius: 2, opacity: 0.75, cursor: "pointer", pointerEvents: "auto" }}
+                onClick={() => document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setTooltipPos({ top: rect.top + rect.height / 2, right: window.innerWidth - rect.left + 8 });
+                  setHoveredMsgId(id);
+                }}
+                onMouseLeave={() => { setHoveredMsgId(null); setTooltipPos(null); }}
+              />
+            ))}
+            {hoveredMsgId && tooltipPos && messages.find(m => String(m.id) === hoveredMsgId) && (
+              <div style={{ position: "fixed", top: tooltipPos.top, right: tooltipPos.right, transform: "translateY(-50%)", background: "rgba(30,30,30,0.88)", color: "white", fontSize: 11, padding: "3px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 200 }}>
+                {generateMessageSummary(messages.find(m => String(m.id) === hoveredMsgId)!.content)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ✅ v62追加: ■停止ボタン（生成中のみ表示） */}
