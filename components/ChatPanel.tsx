@@ -99,9 +99,10 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [dotPositions, setDotPositions] = useState<Array<{id: string; topPct: number}>>([]);
+  const [dotPositions, setDotPositions] = useState<Array<{id: string; topPct: number; role: string}>>([]);
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{top: number; right: number} | null>(null);
+  const [navExpanded, setNavExpanded] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [editTitle, setEditTitle] = useState("");
 
@@ -180,17 +181,21 @@ export default function ChatPanel({
   }, []);
 
   useEffect(() => {
+    setNavExpanded(localStorage.getItem('kabehub_nav_expanded_always') === 'true');
+  }, []);
+
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const compute = () => {
       const scrollH = el.scrollHeight;
       if (!scrollH) return;
-      const userMsgs = messages.filter(m => m.role === "user" && m.provider !== "memo");
-      const positions = userMsgs.map(msg => {
+      const navMsgs = messages.filter(m => m.provider !== "memo" && m.is_active !== false);
+      const positions = navMsgs.map(msg => {
         const dom = document.getElementById(`msg-${String(msg.id)}`);
         if (!dom) return null;
-        return { id: String(msg.id), topPct: dom.offsetTop / scrollH * 100 };
-      }).filter(Boolean) as Array<{id: string; topPct: number}>;
+        return { id: String(msg.id), topPct: dom.offsetTop / scrollH * 100, role: msg.role };
+      }).filter(Boolean) as Array<{id: string; topPct: number; role: string}>;
       setDotPositions(positions);
     };
     compute();
@@ -264,6 +269,14 @@ export default function ChatPanel({
     setShowShare(false);
   };
 
+  const scrollToMessage = (id: string) => {
+    const container = scrollRef.current;
+    const el = document.getElementById(`msg-${id}`);
+    if (container && el) {
+      container.scrollTo({ top: el.offsetTop - 20, behavior: 'smooth' });
+    }
+  };
+
 
   // ✅ v26: スクロールuseEffectはpage.tsxに移動済み。
   // ChatPanel側では searchMatchIds の変化を検知する必要はない。
@@ -295,6 +308,8 @@ export default function ChatPanel({
     setTags([]);
     setShowTagInput(false);
     setTagInputValue("");
+    // navExpandedを常時設定の初期値に戻す
+    setNavExpanded(localStorage.getItem('kabehub_nav_expanded_always') === 'true');
   }, [thread?.id]);
 
   // スレッド選択時にタグを取得
@@ -829,6 +844,26 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                 >
                   📝 メモ{notes.length > 0 && ` (${notes.length})`}
                 </button>
+
+                {/* 履歴ナビゲーショントグル */}
+                {isDesktop && (
+                  <button
+                    onClick={() => setNavExpanded(v => !v)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: navExpanded ? "var(--accent)" : "white",
+                      color: navExpanded ? "white" : "var(--ink-muted)",
+                      fontSize: "11px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: "pointer",
+                      transition: "all 0.12s",
+                    }}
+                  >
+                    {navExpanded ? "📖 履歴ON" : "📘 履歴OFF"}
+                  </button>
+                )}
 
                 {/* ··· メニュー */}
                 <div style={{ position: "relative" }}>
@@ -1576,8 +1611,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       )}
 
       {/* Messages */}
-      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        <div ref={scrollRef} style={{ height: "100%", overflowY: "auto", padding: "28px 52px 28px 48px" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+        <div ref={scrollRef} style={{ flex: 1, height: "100%", overflowY: "auto", padding: "28px 52px 28px 48px", position: "relative" }}>
         {!thread && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "16px", color: "var(--ink-muted)" }}>
             <div style={{ width: "56px", height: "56px", borderRadius: "14px", background: "white", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>✦</div>
@@ -1704,13 +1739,26 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
 
         </div>
-        {isDesktop && (
+        {/* 最小化インジケーター */}
+        {isDesktop && !navExpanded && (
           <div style={{ position: "absolute", right: 0, top: 0, width: 16, height: "100%", pointerEvents: "none" }}>
-            {dotPositions.map(({ id, topPct }) => (
+            {dotPositions.map(({ id, topPct, role }) => (
               <div
                 key={id}
-                style={{ position: "absolute", left: "50%", transform: "translate(-50%, -50%)", top: `${topPct}%`, width: 4, height: 14, background: "var(--accent)", borderRadius: 2, opacity: 0.75, cursor: "pointer", pointerEvents: "auto" }}
-                onClick={() => document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  top: `${topPct}%`,
+                  width: 4,
+                  height: role === "user" ? 14 : 8,
+                  background: role === "user" ? "var(--accent)" : "var(--ink-faint)",
+                  borderRadius: 2,
+                  opacity: 0.75,
+                  cursor: "pointer",
+                  pointerEvents: "auto",
+                }}
+                onClick={() => scrollToMessage(id)}
                 onMouseEnter={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setTooltipPos({ top: rect.top + rect.height / 2, right: window.innerWidth - rect.left + 8 });
@@ -1724,6 +1772,62 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                 {generateMessageSummary(messages.find(m => String(m.id) === hoveredMsgId)!.content)}
               </div>
             )}
+          </div>
+        )}
+
+        {/* 展開時サイドペイン */}
+        {isDesktop && navExpanded && (
+          <div style={{
+            width: 180,
+            borderLeft: "1px solid var(--border)",
+            background: "var(--paper)",
+            overflowY: "auto",
+            padding: "12px 8px",
+            flexShrink: 0,
+          }}>
+            <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginBottom: "8px", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em" }}>
+              会話履歴
+            </div>
+            {dotPositions.map(({ id, role }) => {
+              const msg = messages.find(m => String(m.id) === id);
+              if (!msg) return null;
+              const label = generateMessageSummary(
+                typeof msg.content === "string" ? msg.content : ""
+              );
+              return (
+                <div
+                  key={id}
+                  onClick={() => scrollToMessage(id)}
+                  style={{
+                    padding: "5px 7px",
+                    marginBottom: "3px",
+                    borderRadius: "5px",
+                    fontSize: "11px",
+                    fontFamily: "'DM Sans', sans-serif",
+                    cursor: "pointer",
+                    background: role === "user" ? "var(--sidebar-bg)" : "transparent",
+                    border: "1px solid transparent",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    color: role === "user" ? "var(--ink)" : "var(--ink-muted)",
+                    transition: "all 0.1s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
+                  }}
+                  title={label}
+                >
+                  <span style={{ marginRight: "4px", fontSize: "9px" }}>
+                    {role === "user" ? "👤" : "🤖"}
+                  </span>
+                  {label}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -80,6 +80,9 @@ function SettingsContent() {
   const [revealedToken, setRevealedToken] = useState<string | null>(null)
   const [tokenCopied, setTokenCopied] = useState(false)
 
+  // UI設定 state
+  const [navAlwaysOn, setNavAlwaysOn] = useState(false)
+
   // ① LocalStorageからAPIキーとモデルを読み込む
   useEffect(() => {
     setClaudeKey(localStorage.getItem(LS_KEYS.claude) ?? '')
@@ -90,6 +93,7 @@ function SettingsContent() {
     setClaudeModel(loadModel('claude'))
     setGeminiModel(loadModel('gemini'))
     setOpenaiModel(loadModel('openai'))
+    setNavAlwaysOn(localStorage.getItem('kabehub_nav_expanded_always') === 'true')
   }, [])
 
   const fetchMcpTokens = useCallback(async () => {
@@ -739,6 +743,47 @@ function SettingsContent() {
               <span className="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-full px-3 py-1">
                 近日公開
               </span>
+            </div>
+          </div>
+        </section>
+
+        {/* UI設定セクション */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">
+            UI設定
+          </h2>
+          <div className="border border-gray-800 rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-200">履歴ナビゲーションを常時展開</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  ONにすると、会話画面の右端に目次形式の履歴パネルを常に表示します。
+                  OFFでも右端のインジケータードットは表示されます。
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = localStorage.getItem('kabehub_nav_expanded_always') !== 'true'
+                  localStorage.setItem('kabehub_nav_expanded_always', String(next))
+                  setNavAlwaysOn(next)
+                }}
+                className="ml-6 relative"
+                style={{ width: 48, height: 24, borderRadius: 12, background: navAlwaysOn ? '#2563eb' : '#374151', border: 'none', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 3,
+                    left: navAlwaysOn ? 27 : 3,
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: 'white',
+                    transition: 'left 0.2s',
+                    display: 'block',
+                  }}
+                />
+              </button>
             </div>
           </div>
         </section>
