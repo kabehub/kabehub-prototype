@@ -226,6 +226,9 @@ export async function POST(req: NextRequest) {
     p_folder_name: folderName,
   });
 
+  console.log("RPC raw data:", JSON.stringify(data));
+  console.log("RPC error:", JSON.stringify(error));
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const candidates = ((Array.isArray(data) ? data : []) as SimilarLorePairRow[])
@@ -242,6 +245,8 @@ export async function POST(req: NextRequest) {
     usedIds.add(candidate.idB);
     matched.push(candidate);
   }
+
+  console.log("matched count:", matched.length);
 
   const results: BatchResult[] = [];
 
