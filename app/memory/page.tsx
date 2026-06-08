@@ -31,6 +31,16 @@ type TemporalStatusUpdateResult = {
   total: number;
 };
 
+type DreamingBatchResult = {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  results: Array<
+    | { idA: string; idB: string; newId: string | null; status: "merged"; mergedText: string }
+    | { idA: string; idB: string; status: "failed"; reason: string }
+  >;
+};
+
 type ConsolidationCandidate = {
   idA: string;
   idB: string;
@@ -644,6 +654,8 @@ export default function MemoryPage() {
   const [batchTraining, setBatchTraining] = useState(false);
   const [updatingTemporalStatus, setUpdatingTemporalStatus] = useState(false);
   const [temporalStatusMessage, setTemporalStatusMessage] = useState<string | null>(null);
+  const [isDreamingBatch, setIsDreamingBatch] = useState(false);
+  const [dreamingBatchResult, setDreamingBatchResult] = useState<DreamingBatchResult | null>(null);
   const [consolidationCandidates, setConsolidationCandidates] = useState<ConsolidationCandidate[]>([]);
   const [consolidationExpanded, setConsolidationExpanded] = useState(false);
   const [dismissingPairKey, setDismissingPairKey] = useState<string | null>(null);
@@ -771,6 +783,38 @@ export default function MemoryPage() {
       setError((err as Error).message);
     } finally {
       setUpdatingTemporalStatus(false);
+    }
+  };
+
+  const handleDreamingBatch = async () => {
+    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
+    if (!openaiKey) {
+      setError("OpenAI APIキーが設定されていません。");
+      return;
+    }
+
+    setIsDreamingBatch(true);
+    setError(null);
+    setDreamingBatchResult(null);
+
+    try {
+      const res = await fetch("/api/lore/dreaming-batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-openai-api-key": openaiKey,
+        },
+        body: JSON.stringify({ limit: 5 }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? "自動整理に失敗しました");
+
+      setDreamingBatchResult(json as DreamingBatchResult);
+      await Promise.all([fetchCards(), fetchConsolidationCandidates()]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsDreamingBatch(false);
     }
   };
 
@@ -969,6 +1013,17 @@ export default function MemoryPage() {
           >
             {updatingTemporalStatus ? "整理中..." : "期限切れを整理"}
           </button>
+          <button
+            onClick={handleDreamingBatch}
+            disabled={isDreamingBatch}
+            className={`px-4 py-2 rounded-lg text-sm transition-colors border ${
+              isDreamingBatch
+                ? "bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed"
+                : "bg-emerald-600 border-emerald-500 hover:bg-emerald-500 text-white"
+            }`}
+          >
+            {isDreamingBatch ? "自動整理中..." : "自動整理を実行"}
+          </button>
         </div>
       </div>
 
@@ -1041,6 +1096,12 @@ export default function MemoryPage() {
           {temporalStatusMessage && (
             <div className="border border-green-500/30 bg-green-500/10 rounded-lg px-4 py-3 text-sm text-green-300">
               {temporalStatusMessage}
+            </div>
+          )}
+
+          {dreamingBatchResult && (
+            <div className="border border-green-500/30 bg-green-500/10 rounded-lg px-4 py-3 text-sm text-green-300">
+              {dreamingBatchResult.succeeded}件統合しました / {dreamingBatchResult.failed}件スキップ
             </div>
           )}
 
