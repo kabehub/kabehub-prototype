@@ -55,6 +55,11 @@ type ConsolidationCandidate = {
   similarity: number;
 };
 
+type HistoryItem = {
+  newRecord: LoreMemoryCard;
+  sources: LoreMemoryCard[];
+};
+
 const KIND_GROUPS: Record<string, string[]> = {
   plan_todo: ["plan", "todo"],
   fact_other: ["fact", "other"],
@@ -666,6 +671,10 @@ export default function MemoryPage() {
   const [previewMemoryKind, setPreviewMemoryKind] = useState<string | null>(null);
   const [previewTemporalStatus, setPreviewTemporalStatus] = useState<string | null>(null);
   const [savingMerge, setSavingMerge] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [rollbackingId, setRollbackingId] = useState<string | null>(null);
 
   const currentFolderName = "すべて";
 
@@ -693,6 +702,33 @@ export default function MemoryPage() {
     }
   }, [filterKind, filterPinned, filterStatus]);
 
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+
+    try {
+      const res = await fetch("/api/lore/dreaming-batch/history");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? "統合履歴の取得に失敗しました");
+
+      const items = Array.isArray(json?.history)
+        ? (json.history as Array<{ newRecord: LoreMemoryRow; sources: LoreMemoryRow[] }>)
+        : [];
+      setHistory(
+        items
+          .filter((item) => item.newRecord.is_archived === false)
+          .map((item) => ({
+            newRecord: toMemoryCard(item.newRecord),
+            sources: (item.sources ?? []).map(toMemoryCard),
+          })),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   const fetchConsolidationCandidates = useCallback(async () => {
     try {
       const res = await fetch("/api/lore/consolidate/candidates");
@@ -713,7 +749,8 @@ export default function MemoryPage() {
 
   useEffect(() => {
     fetchCards();
-  }, [fetchCards]);
+    fetchHistory();
+  }, [fetchCards, fetchHistory]);
 
   useEffect(() => {
     fetchConsolidationCandidates();
@@ -752,7 +789,7 @@ export default function MemoryPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "記憶化に失敗しました");
-      await fetchCards();
+      await Promise.all([fetchCards(), fetchHistory()]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -778,7 +815,7 @@ export default function MemoryPage() {
       setTemporalStatusMessage(
         `過去の予定へ移動: ${result.pastCount}件 / 期限切れ: ${result.expiredCount}件 / 合計: ${result.total}件更新しました`
       );
-      await fetchCards();
+      await Promise.all([fetchCards(), fetchHistory()]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -804,13 +841,13 @@ export default function MemoryPage() {
           "Content-Type": "application/json",
           "x-openai-api-key": openaiKey,
         },
-        body: JSON.stringify({ limit: 5, threshold: 0.80 }),
+        body: JSON.stringify({ limit: 5, threshold: 0.92 }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "自動整理に失敗しました");
 
       setDreamingBatchResult(json as DreamingBatchResult);
-      await Promise.all([fetchCards(), fetchConsolidationCandidates()]);
+      await Promise.all([fetchCards(), fetchHistory(), fetchConsolidationCandidates()]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -922,7 +959,7 @@ export default function MemoryPage() {
       if (!res.ok) throw new Error(json?.error ?? "統合の保存に失敗しました");
 
       closePreviewModal();
-      await Promise.all([fetchCards(), fetchConsolidationCandidates()]);
+      await Promise.all([fetchCards(), fetchHistory(), fetchConsolidationCandidates()]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -936,6 +973,32 @@ export default function MemoryPage() {
 
   const handleArchive = (id: string) => {
     setCards((prev) => prev.filter((card) => card.id !== id));
+  };
+
+  const handleRollback = async (consolidatedId: string) => {
+    setRollbackingId(consolidatedId);
+
+    try {
+      const res = await fetch("/api/lore/dreaming-batch/rollback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ consolidatedId }),
+      });
+      if (res.status === 409) {
+        alert("この記憶はすでに保護されているため元に戻せません");
+        return;
+      }
+      if (!res.ok) {
+        alert("元に戻すのに失敗しました");
+        return;
+      }
+
+      await Promise.all([fetchHistory(), fetchCards(), fetchConsolidationCandidates()]);
+    } catch {
+      alert("元に戻すのに失敗しました");
+    } finally {
+      setRollbackingId(null);
+    }
   };
 
   const selectAll = () => {
@@ -1104,6 +1167,65 @@ export default function MemoryPage() {
               {dreamingBatchResult.succeeded}件統合しました / {dreamingBatchResult.failed}件スキップ
             </div>
           )}
+
+          <section className="border border-gray-800 rounded-xl p-5 bg-gray-950 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold">自動整理の履歴</h2>
+            </div>
+
+            {historyLoading ? (
+              <div className="text-sm text-gray-500">読み込み中...</div>
+            ) : history.length === 0 ? (
+              <div className="text-sm text-gray-500">まだ自動整理の履歴はありません</div>
+            ) : (
+              <div className="space-y-3">
+                {history.map((item) => {
+                  const expanded = expandedHistoryId === item.newRecord.id;
+                  const rollbacking = rollbackingId === item.newRecord.id;
+
+                  return (
+                    <article key={item.newRecord.id} className="rounded-lg border border-gray-800 bg-gray-950 p-4 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p
+                          className="min-w-0 flex-1 text-sm leading-7 text-gray-200 whitespace-pre-wrap"
+                          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
+                          {item.newRecord.chunkText}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRollback(item.newRecord.id)}
+                            disabled={rollbacking}
+                            className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-300 hover:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed"
+                          >
+                            {rollbacking ? "処理中..." : "元に戻す"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedHistoryId(expanded ? null : item.newRecord.id)}
+                            className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-300 hover:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed"
+                          >
+                            {expanded ? "閉じる" : "元の記憶を見る"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {expanded && (
+                        <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-2">
+                          {item.sources.map((source) => (
+                            <p key={source.id} className="text-sm text-gray-500">
+                              {source.chunkText}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
           <ConsolidationCandidates
             candidates={consolidationCandidates}

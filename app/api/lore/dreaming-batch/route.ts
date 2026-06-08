@@ -280,7 +280,6 @@ export async function POST(req: NextRequest) {
         p_memory_kind: validated.sourceA.memory_kind ?? "fact",
         p_temporal_status: validated.sourceA.temporal_status ?? "current",
         p_folder_name: validated.sourceA.folder_name ?? null,
-        p_tags: [],
         p_importance: Math.max(validated.sourceA.importance_score ?? 0.5, validated.sourceB.importance_score ?? 0.5),
         p_confidence: ((validated.sourceA.confidence_score ?? 0.8) + (validated.sourceB.confidence_score ?? 0.8)) / 2,
       });
