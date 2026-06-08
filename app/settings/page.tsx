@@ -729,6 +729,26 @@ function SettingsContent() {
           </div>
         </section>
 
+        {/* AI記憶（RAG）セクション */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">
+              AI記憶（RAG）
+            </h2>
+            <p className="text-xs text-gray-600 mt-1">
+              壁打ちの内容からAIが自動抽出した記憶を管理できます。
+            </p>
+          </div>
+          <div className="border border-gray-800 rounded-xl p-5">
+            <button
+              onClick={() => router.push("/memory")}
+              className="px-4 py-2 rounded-lg text-sm border border-gray-600 hover:bg-gray-800 text-gray-300"
+            >
+              AI記憶を管理する →
+            </button>
+          </div>
+        </section>
+
         {/* 将来の有料機能ティーザー */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">
