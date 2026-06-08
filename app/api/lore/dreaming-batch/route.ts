@@ -226,6 +226,13 @@ export async function POST(req: NextRequest) {
     p_folder_name: folderName,
   });
 
+  console.log("RPC params:", JSON.stringify({
+    p_user_id: user.id,
+    p_threshold: threshold,
+    p_limit: limit * 3,
+    p_k: 3,
+    p_folder_name: folderName,
+  }));
   console.log("RPC raw data:", JSON.stringify(data));
   console.log("RPC error:", JSON.stringify(error));
 
