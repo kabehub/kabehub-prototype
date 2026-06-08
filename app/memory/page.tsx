@@ -659,6 +659,7 @@ export default function MemoryPage() {
   const [batchTraining, setBatchTraining] = useState(false);
   const [updatingTemporalStatus, setUpdatingTemporalStatus] = useState(false);
   const [temporalStatusMessage, setTemporalStatusMessage] = useState<string | null>(null);
+  const [batchTrainMessage, setBatchTrainMessage] = useState<string | null>(null);
   const [isDreamingBatch, setIsDreamingBatch] = useState(false);
   const [dreamingBatchResult, setDreamingBatchResult] = useState<DreamingBatchResult | null>(null);
   const [consolidationCandidates, setConsolidationCandidates] = useState<ConsolidationCandidate[]>([]);
@@ -782,6 +783,7 @@ export default function MemoryPage() {
 
     setBatchTraining(true);
     setError(null);
+    setBatchTrainMessage(null);
     try {
       const res = await fetch("/api/lore/batch-train", {
         method: "POST",
@@ -789,10 +791,11 @@ export default function MemoryPage() {
           "Content-Type": "application/json",
           "x-openai-api-key": openaiKey,
         },
-        body: JSON.stringify({ limit: 20 }),
+        body: JSON.stringify({ limit: 100 }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "記憶化に失敗しました");
+      setBatchTrainMessage(`${json.processedCount}件処理 / ${json.insertedCount}件を記憶化しました`);
       await Promise.all([fetchCards(), fetchHistory()]);
     } catch (err) {
       setError((err as Error).message);
@@ -1169,6 +1172,12 @@ export default function MemoryPage() {
           {temporalStatusMessage && (
             <div className="border border-green-500/30 bg-green-500/10 rounded-lg px-4 py-3 text-sm text-green-300">
               {temporalStatusMessage}
+            </div>
+          )}
+
+          {batchTrainMessage && (
+            <div className="border border-green-500/30 bg-green-500/10 rounded-lg px-4 py-3 text-sm text-green-300">
+              {batchTrainMessage}
             </div>
           )}
 
