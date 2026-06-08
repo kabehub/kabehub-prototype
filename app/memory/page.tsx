@@ -804,7 +804,7 @@ export default function MemoryPage() {
           "Content-Type": "application/json",
           "x-openai-api-key": openaiKey,
         },
-        body: JSON.stringify({ limit: 5 }),
+        body: JSON.stringify({ limit: 5, threshold: 0.80 }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "自動整理に失敗しました");
