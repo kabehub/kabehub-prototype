@@ -230,16 +230,6 @@ export async function POST(req: NextRequest) {
     p_folder_name: folderName,
   });
 
-  console.log("RPC params:", JSON.stringify({
-    p_user_id: user.id,
-    p_threshold: threshold,
-    p_limit: limit * 3,
-    p_k: 3,
-    p_folder_name: folderName,
-  }));
-  console.log("RPC raw data:", JSON.stringify(data));
-  console.log("RPC error:", JSON.stringify(error));
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const candidates = ((Array.isArray(data) ? data : []) as SimilarLorePairRow[])
@@ -256,8 +246,6 @@ export async function POST(req: NextRequest) {
     usedIds.add(candidate.idB);
     matched.push(candidate);
   }
-
-  console.log("matched count:", matched.length);
 
   const results: BatchResult[] = [];
 
@@ -318,8 +306,6 @@ export async function POST(req: NextRequest) {
 
   const succeeded = results.filter((result) => result.status === "merged").length;
   const failed = results.filter((result) => result.status === "failed").length;
-
-  console.log("batch results:", JSON.stringify(results));
 
   return NextResponse.json({
     processed: results.length,
