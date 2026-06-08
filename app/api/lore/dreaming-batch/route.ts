@@ -222,6 +222,7 @@ export async function POST(req: NextRequest) {
     p_user_id: user.id,
     p_threshold: threshold,
     p_limit: limit * 3,
+    p_k: 3,
     p_folder_name: folderName,
   });
 
