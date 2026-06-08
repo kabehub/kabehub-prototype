@@ -3,9 +3,9 @@ import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export const dynamic = "force-dynamic";
 
-const CONSOLIDATION_PROMPT = `2つの記憶を、重複を取り除いて1つに統合してください。
+const CONSOLIDATION_PROMPT = `複数の記憶を、重複を取り除いて1つに統合してください。
 元の記憶にない新事実は追加しないでください。
-矛盾がある場合は、より新しい記憶を優先し、古い内容は「以前は〜だったが、現在は〜」のように整理してください。
+矛盾がある場合は、created_at が新しい記憶を優先し、古い内容は「以前は〜だったが、現在は〜」のように整理してください。
 出力は統合後の記憶本文のみ。説明や前置きは不要です。`;
 
 const CONSOLIDATION_SOURCE_SELECT = [
@@ -48,9 +48,13 @@ type Candidate = {
   similarity: number;
 };
 
+type Cluster = {
+  ids: string[];
+};
+
 type BatchResult =
-  | { idA: string; idB: string; newId: string | null; status: "merged"; mergedText: string }
-  | { idA: string; idB: string; status: "failed"; reason: string };
+  | { sourceIds: string[]; newId: string | null; status: "merged"; mergedText: string }
+  | { sourceIds: string[]; status: "failed"; reason: string };
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -85,25 +89,57 @@ function normalizeCandidate(row: SimilarLorePairRow): Candidate | null {
   return { idA, idB, similarity };
 }
 
-function normalizePair(idA: string, idB: string) {
-  return idA < idB ? [idA, idB] as const : [idB, idA] as const;
+function buildGreedyChainClusters(candidates: Candidate[], limit: number) {
+  const clusters: Cluster[] = [];
+  const idToCluster = new Map<string, Cluster>();
+
+  for (const candidate of candidates) {
+    const clusterA = idToCluster.get(candidate.idA);
+    const clusterB = idToCluster.get(candidate.idB);
+
+    if (clusterA && clusterB) {
+      if (clusterA === clusterB) continue;
+
+      const mergedIds = Array.from(new Set([...clusterA.ids, ...clusterB.ids]));
+      if (mergedIds.length > 5) continue;
+
+      clusterA.ids = mergedIds;
+      for (const id of clusterB.ids) idToCluster.set(id, clusterA);
+      const clusterBIndex = clusters.indexOf(clusterB);
+      if (clusterBIndex >= 0) clusters.splice(clusterBIndex, 1);
+      continue;
+    }
+
+    const existingCluster = clusterA ?? clusterB;
+    if (existingCluster) {
+      const nextId = clusterA ? candidate.idB : candidate.idA;
+      if (existingCluster.ids.includes(nextId) || existingCluster.ids.length >= 5) continue;
+      existingCluster.ids.push(nextId);
+      idToCluster.set(nextId, existingCluster);
+      continue;
+    }
+
+    if (clusters.length >= limit) continue;
+
+    const newCluster = { ids: [candidate.idA, candidate.idB] };
+    clusters.push(newCluster);
+    idToCluster.set(candidate.idA, newCluster);
+    idToCluster.set(candidate.idB, newCluster);
+  }
+
+  return clusters.slice(0, limit);
 }
 
-function validateSources(
-  rows: ConsolidationSource[],
-  userId: string,
-  loreIdA: string,
-  loreIdB: string,
-) {
-  if (rows.length !== 2) return null;
+function validateSources(rows: ConsolidationSource[], userId: string, sourceIds: string[]) {
+  if (rows.length < 2) return null;
 
   const byId = new Map(rows.map((row) => [row.id, row]));
-  const sourceA = byId.get(loreIdA);
-  const sourceB = byId.get(loreIdB);
-  if (!sourceA || !sourceB) return null;
+  const sources = sourceIds.map((id) => byId.get(id));
+  if (sources.some((source) => !source)) return null;
 
   const isEditableExtraction = (value: string | null) => value === "user_edited" || value === "user_created";
-  const invalid = [sourceA, sourceB].some((row) =>
+  const validSources = sources as ConsolidationSource[];
+  const invalid = validSources.some((row) =>
     row.user_id !== userId ||
     row.is_archived !== false ||
     row.superseded_by !== null ||
@@ -111,20 +147,32 @@ function validateSources(
     isEditableExtraction(row.extraction_version)
   );
   if (invalid) return null;
-  if (sourceA.folder_name !== sourceB.folder_name || sourceA.memory_kind !== sourceB.memory_kind) return null;
+  const first = validSources[0];
+  const mismatched = validSources.some((row) =>
+    row.folder_name !== first.folder_name || row.memory_kind !== first.memory_kind
+  );
+  if (mismatched) return null;
 
-  return { sourceA, sourceB };
+  return validSources;
 }
 
-function buildUserPrompt(sourceA: ConsolidationSource, sourceB: ConsolidationSource) {
-  return `記憶A（created_at: ${sourceA.created_at ?? "unknown"}）:
-${sourceA.chunk_text}
-
-記憶B（created_at: ${sourceB.created_at ?? "unknown"}）:
-${sourceB.chunk_text}`;
+function hasSameFolderNameAndMemoryKind(sources: ConsolidationSource[]) {
+  const first = sources[0];
+  return sources.every((source) =>
+    source.folder_name === first.folder_name && source.memory_kind === first.memory_kind
+  );
 }
 
-async function generateMergedText(openaiKey: string, sourceA: ConsolidationSource, sourceB: ConsolidationSource) {
+function buildUserPrompt(sources: ConsolidationSource[]) {
+  return sources
+    .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
+    .map((source, index) =>
+      `記憶${index + 1}（created_at: ${source.created_at ?? "unknown"}）:\n${source.chunk_text}`
+    )
+    .join("\n\n---\n\n");
+}
+
+async function generateMergedText(openaiKey: string, sources: ConsolidationSource[]) {
   const llmRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -135,7 +183,7 @@ async function generateMergedText(openaiKey: string, sourceA: ConsolidationSourc
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: CONSOLIDATION_PROMPT },
-        { role: "user", content: buildUserPrompt(sourceA, sourceB) },
+        { role: "user", content: buildUserPrompt(sources) },
       ],
     }),
   });
@@ -225,8 +273,8 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase.rpc("find_similar_lore_pairs_v2", {
     p_user_id: user.id,
     p_threshold: threshold,
-    p_limit: limit * 3,
-    p_k: 3,
+    p_limit: limit * 8,
+    p_k: 5,
     p_folder_name: folderName,
   });
 
@@ -237,66 +285,82 @@ export async function POST(req: NextRequest) {
     .filter((candidate): candidate is Candidate => Boolean(candidate))
     .sort((a, b) => b.similarity - a.similarity);
 
-  const usedIds = new Set<string>();
-  const matched: Candidate[] = [];
-  for (const candidate of candidates) {
-    if (matched.length >= limit) break;
-    if (usedIds.has(candidate.idA) || usedIds.has(candidate.idB)) continue;
-    usedIds.add(candidate.idA);
-    usedIds.add(candidate.idB);
-    matched.push(candidate);
-  }
+  const matchedClusters = buildGreedyChainClusters(candidates, limit);
 
   const results: BatchResult[] = [];
 
-  for (const candidate of matched) {
-    const [loreIdA, loreIdB] = normalizePair(candidate.idA, candidate.idB);
+  for (const cluster of matchedClusters) {
+    const sourceIds = cluster.ids;
 
     try {
       const { data: sourceRows, error: sourceError } = await supabase
         .from("lore_embeddings")
         .select(CONSOLIDATION_SOURCE_SELECT)
-        .in("id", [loreIdA, loreIdB]);
+        .in("id", sourceIds);
 
       if (sourceError) throw new Error(sourceError.message);
 
-      const validated = validateSources((sourceRows ?? []) as unknown as ConsolidationSource[], user.id, loreIdA, loreIdB);
-      if (!validated) throw new Error("Invalid lore pair");
+      const rows = (sourceRows ?? []) as unknown as ConsolidationSource[];
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const clusterSources = sourceIds.map((id) => byId.get(id));
+      if (clusterSources.some((source) => !source)) throw new Error("Invalid lore cluster");
+      const orderedSources = clusterSources as ConsolidationSource[];
+      if (!hasSameFolderNameAndMemoryKind(orderedSources)) continue;
 
-      const mergedText = await generateMergedText(openaiKey, validated.sourceA, validated.sourceB);
+      const validated = validateSources(orderedSources, user.id, sourceIds);
+      if (!validated) throw new Error("Invalid lore cluster");
+
+      const mergedText = await generateMergedText(openaiKey, validated);
       const validationError = validateMergedText(mergedText);
       if (validationError) {
-        results.push({ idA: loreIdA, idB: loreIdB, status: "failed", reason: validationError });
+        results.push({ sourceIds, status: "failed", reason: validationError });
         continue;
       }
 
       const embedding = await createEmbedding(openaiKey, mergedText);
-      const { data: rpcData, error: rpcError } = await supabase.rpc("consolidate_dreaming_batch", {
-        p_user_id: user.id,
-        p_lore_id_a: loreIdA,
-        p_lore_id_b: loreIdB,
-        p_merged_text: mergedText,
-        p_embedding: embedding,
-        p_memory_kind: validated.sourceA.memory_kind ?? "fact",
-        p_temporal_status: validated.sourceA.temporal_status ?? "current",
-        p_folder_name: validated.sourceA.folder_name ?? null,
-        p_importance: Math.max(validated.sourceA.importance_score ?? 0.5, validated.sourceB.importance_score ?? 0.5),
-        p_confidence: ((validated.sourceA.confidence_score ?? 0.8) + (validated.sourceB.confidence_score ?? 0.8)) / 2,
-      });
+      const firstSource = validated[0];
+      const importance = Math.max(...validated.map((source) => source.importance_score ?? 0.5));
+      const confidence = validated.reduce(
+        (sum, source) => sum + (source.confidence_score ?? 0.8),
+        0,
+      ) / validated.length;
+
+      const { data: rpcData, error: rpcError } = sourceIds.length === 2
+        ? await supabase.rpc("consolidate_dreaming_batch", {
+            p_user_id: user.id,
+            p_lore_id_a: sourceIds[0],
+            p_lore_id_b: sourceIds[1],
+            p_merged_text: mergedText,
+            p_embedding: embedding,
+            p_memory_kind: firstSource.memory_kind ?? "fact",
+            p_temporal_status: firstSource.temporal_status ?? "current",
+            p_folder_name: firstSource.folder_name ?? null,
+            p_importance: importance,
+            p_confidence: confidence,
+          })
+        : await supabase.rpc("consolidate_dreaming_batch_multi", {
+            p_user_id: user.id,
+            p_source_ids: sourceIds,
+            p_merged_text: mergedText,
+            p_embedding: embedding,
+            p_memory_kind: firstSource.memory_kind ?? "fact",
+            p_temporal_status: firstSource.temporal_status ?? "current",
+            p_folder_name: firstSource.folder_name ?? null,
+            p_importance: importance,
+            p_confidence: confidence,
+          });
 
       if (rpcError) throw new Error(rpcError.message);
 
       results.push({
-        idA: loreIdA,
-        idB: loreIdB,
+        sourceIds,
         newId: normalizeRpcNewId(rpcData),
         status: "merged",
         mergedText,
       });
     } catch (err) {
       results.push({
-        idA: loreIdA,
-        idB: loreIdB,
+        sourceIds,
         status: "failed",
         reason: (err as Error).message,
       });

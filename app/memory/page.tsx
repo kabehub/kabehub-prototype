@@ -36,8 +36,8 @@ type DreamingBatchResult = {
   succeeded: number;
   failed: number;
   results: Array<
-    | { idA: string; idB: string; newId: string | null; status: "merged"; mergedText: string }
-    | { idA: string; idB: string; status: "failed"; reason: string }
+    | { sourceIds: string[]; newId: string | null; status: "merged"; mergedText: string }
+    | { sourceIds: string[]; status: "failed"; reason: string }
   >;
 };
 
@@ -1216,7 +1216,7 @@ export default function MemoryPage() {
                             onClick={() => setExpandedHistoryId(expanded ? null : item.newRecord.id)}
                             className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-300 hover:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed"
                           >
-                            {expanded ? "閉じる" : "元の記憶を見る"}
+                            {expanded ? "閉じる" : `元の記憶を見る（${item.sources.length}件）`}
                           </button>
                         </div>
                       </div>

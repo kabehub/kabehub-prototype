@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "consolidatedId is required" }, { status: 400 });
   }
 
-  const { error } = await supabase.rpc("rollback_dreaming_batch", {
+  const { error } = await supabase.rpc("rollback_dreaming_batch_multi", {
     p_user_id: user.id,
     p_consolidated_id: consolidatedId,
   });
