@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
   const rawLimit = typeof body.limit === "number" ? body.limit : Number(body.limit);
   const rawThreshold = typeof body.threshold === "number" ? body.threshold : Number(body.threshold);
   const limit = clamp(Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 5, 1, 5);
-  const threshold = clamp(Number.isFinite(rawThreshold) ? rawThreshold : 0.92, 0.88, 0.98);
+  const threshold = clamp(Number.isFinite(rawThreshold) ? rawThreshold : 0.92, 0.80, 0.98);
   const folderName = typeof body.folderName === "string" && body.folderName.trim()
     ? body.folderName.trim()
     : null;
