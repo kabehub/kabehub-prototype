@@ -116,3 +116,10 @@ export interface LoreMemoryCard {
   eventTime: string | null;
   createdAt: string;
 }
+
+export type LorePatchRequest =
+  | { action: "update_text"; chunkText: string; memoryKind?: string; temporalStatus?: string }
+  | { action: "update_meta"; memoryKind?: string; temporalStatus?: string }
+  | { action: "pin"; isPinned: boolean }
+  | { action: "confirm_current" }
+  | { action: "archive" };
