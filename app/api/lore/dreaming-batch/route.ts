@@ -309,6 +309,8 @@ export async function POST(req: NextRequest) {
   const succeeded = results.filter((result) => result.status === "merged").length;
   const failed = results.filter((result) => result.status === "failed").length;
 
+  console.log("batch results:", JSON.stringify(results));
+
   return NextResponse.json({
     processed: results.length,
     succeeded,
