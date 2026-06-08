@@ -689,7 +689,7 @@ export default function MemoryPage() {
       if (filterPinned) params.set("pinned", "true");
       const url = `/api/lore?${params.toString()}`;
 
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "記憶一覧の取得に失敗しました");
 
@@ -706,7 +706,9 @@ export default function MemoryPage() {
     setHistoryLoading(true);
 
     try {
-      const res = await fetch("/api/lore/dreaming-batch/history");
+      const res = await fetch("/api/lore/dreaming-batch/history", {
+        cache: "no-store",
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "統合履歴の取得に失敗しました");
 
@@ -731,7 +733,9 @@ export default function MemoryPage() {
 
   const fetchConsolidationCandidates = useCallback(async () => {
     try {
-      const res = await fetch("/api/lore/consolidate/candidates");
+      const res = await fetch("/api/lore/consolidate/candidates", {
+        cache: "no-store",
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "統合候補の取得に失敗しました");
 
@@ -993,6 +997,12 @@ export default function MemoryPage() {
         return;
       }
 
+      setHistory((prev) =>
+        prev.filter((item) => item.newRecord.id !== consolidatedId)
+      );
+      setExpandedHistoryId((prev) =>
+        prev === consolidatedId ? null : prev
+      );
       await Promise.all([fetchHistory(), fetchCards(), fetchConsolidationCandidates()]);
     } catch {
       alert("元に戻すのに失敗しました");

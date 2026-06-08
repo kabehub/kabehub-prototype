@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     .eq("user_id", user.id)
     .eq("extraction_version", "dreaming_batch")
     .eq("source_type", "consolidation")
+    .eq("is_archived", false)
     .order("created_at", { ascending: false })
     .limit(limit);
 
