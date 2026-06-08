@@ -15,6 +15,8 @@ const CONSOLIDATION_SOURCE_SELECT = [
   "chunk_text",
   "memory_kind",
   "temporal_status",
+  "importance_score",
+  "confidence_score",
   "is_archived",
   "superseded_by",
   "is_pinned",
@@ -31,6 +33,8 @@ type ConsolidationSource = {
   chunk_text: string;
   memory_kind: string | null;
   temporal_status: string | null;
+  importance_score: number | null;
+  confidence_score: number | null;
   is_archived: boolean | null;
   superseded_by: string | null;
   is_pinned: boolean | null;
@@ -285,6 +289,12 @@ export async function POST(req: NextRequest) {
         p_lore_id_b: loreIdB,
         p_merged_text: mergedText,
         p_embedding: embedding,
+        p_memory_kind: validated.sourceA.memory_kind ?? "fact",
+        p_temporal_status: validated.sourceA.temporal_status ?? "current",
+        p_folder_name: validated.sourceA.folder_name ?? null,
+        p_tags: [],
+        p_importance: Math.max(validated.sourceA.importance_score ?? 0.5, validated.sourceB.importance_score ?? 0.5),
+        p_confidence: ((validated.sourceA.confidence_score ?? 0.8) + (validated.sourceB.confidence_score ?? 0.8)) / 2,
       });
 
       if (rpcError) throw new Error(rpcError.message);
