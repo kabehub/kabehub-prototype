@@ -54,6 +54,28 @@ export async function DELETE(
   if (threadError) return NextResponse.json({ error: threadError }, { status: 500 });
   if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
 
+  const { data: targetMessages } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("thread_id", params.id)
+    .eq("user_id", user.id)
+    .gte("created_at", fromCreatedAt);
+
+  const targetIds = (targetMessages ?? []).map((m) => m.id);
+
+  if (targetIds.length > 0) {
+    const { error: archiveError } = await supabase
+      .from("lore_embeddings")
+      .update({ is_archived: true })
+      .in("source_message_id", targetIds)
+      .eq("user_id", user.id)
+      .eq("is_pinned", false);
+
+    if (archiveError) {
+      console.warn("Failed to archive lore_embeddings for deleted messages:", archiveError.message);
+    }
+  }
+
   const { error } = await supabase
     .from("messages")
     .delete()

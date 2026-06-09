@@ -20,6 +20,17 @@ export async function DELETE(
 
   if (!thread) return NextResponse.json({ error: "Not Found" }, { status: 404 });
 
+  const { error: archiveError } = await supabase
+    .from("lore_embeddings")
+    .update({ is_archived: true })
+    .eq("source_thread_id", params.id)
+    .eq("user_id", user.id)
+    .eq("is_pinned", false);
+
+  if (archiveError) {
+    console.warn("Failed to archive lore_embeddings for deleted thread:", archiveError.message);
+  }
+
   await supabase.from("threads").delete().eq("id", params.id).eq("user_id", user.id);
   return NextResponse.json({ success: true });
 }

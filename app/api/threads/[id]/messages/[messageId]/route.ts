@@ -10,6 +10,17 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { error: archiveError } = await supabase
+    .from("lore_embeddings")
+    .update({ is_archived: true })
+    .eq("source_message_id", params.messageId)
+    .eq("user_id", user.id)
+    .eq("is_pinned", false);
+
+  if (archiveError) {
+    console.warn("Failed to archive lore_embeddings for deleted message:", archiveError.message);
+  }
+
   const { error } = await supabase
     .from("messages")
     .delete()
