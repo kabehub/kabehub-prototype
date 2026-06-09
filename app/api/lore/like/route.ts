@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
     folder_name: thread?.folder_name ?? null,
     extraction_version: "liked_ai",
     memory_kind: "idea",
+    metadata: { ai_proposed_kind: "idea" },
     temporal_status: "current",
     importance_score: 0.8,
     confidence_score: 0.75,

@@ -18,6 +18,7 @@ const LORE_MEMORY_SELECT = [
   "is_pinned",
   "is_archived",
   "extraction_version",
+  "is_manually_corrected",
   "last_confirmed_at",
   "valid_from",
   "valid_until",
@@ -82,6 +83,28 @@ export async function PATCH(
 
     const updates: Record<string, unknown> = {};
     const now = new Date().toISOString();
+    let currentMemoryKind: string | null = null;
+
+    if (body.action === "update_text" || body.action === "update_meta") {
+      const { data: target, error: targetError } = await supabase
+        .from("lore_embeddings")
+        .select("memory_kind")
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (targetError) return NextResponse.json({ error: targetError.message }, { status: 500 });
+      if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      currentMemoryKind = target.memory_kind;
+    }
+
+    const markManualCorrectionIfKindChanged = () => {
+      if (body.action !== "update_text" && body.action !== "update_meta") return;
+      if (!body.memoryKind) return;
+      if (body.memoryKind !== currentMemoryKind) {
+        updates.is_manually_corrected = true;
+      }
+    };
 
     switch (body.action) {
       case "update_text": {
@@ -101,6 +124,7 @@ export async function PATCH(
         updates.last_confirmed_at = now;
         if (body.memoryKind) updates.memory_kind = body.memoryKind;
         if (body.temporalStatus) updates.temporal_status = body.temporalStatus;
+        markManualCorrectionIfKindChanged();
         break;
       }
 
@@ -112,6 +136,7 @@ export async function PATCH(
         updates.extraction_version = "user_edited";
         if (body.memoryKind) updates.memory_kind = body.memoryKind;
         if (body.temporalStatus) updates.temporal_status = body.temporalStatus;
+        markManualCorrectionIfKindChanged();
         break;
       }
 
