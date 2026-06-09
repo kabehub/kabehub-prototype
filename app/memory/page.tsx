@@ -65,6 +65,8 @@ const KIND_GROUPS: Record<string, string[]> = {
   fact_other: ["fact", "other"],
 };
 
+const KIND_ORDER = ["preference", "decision", "project", "constraint", "plan", "todo", "fact", "idea"];
+
 const MEMORY_KIND_OPTIONS = [
   { value: "preference", label: "好み・方針" },
   { value: "project", label: "プロジェクト" },
@@ -147,8 +149,18 @@ function MemoryCard({ card, onUpdate, onArchive }: MemoryCardProps) {
   const [saving, setSaving] = useState(false);
 
   const isTextChanged = draftText.trim() !== card.chunkText.trim();
-  const isStaleStatus = card.temporalStatus === "uncertain" || card.temporalStatus === "expired";
-  const leftBorderClass = isStaleStatus
+  const isValidUntilPast = (() => {
+    if (!card.validUntil) return false;
+    const d = new Date(card.validUntil);
+    if (Number.isNaN(d.getTime())) return false;
+    return d.getTime() < Date.now();
+  })();
+  const isNeedsReview =
+    card.temporalStatus === "uncertain" ||
+    card.temporalStatus === "expired" ||
+    (card.confidenceScore !== null && card.confidenceScore < 0.5) ||
+    (card.temporalStatus === "current" && isValidUntilPast);
+  const leftBorderClass = isNeedsReview
     ? "border-l-orange-500"
     : card.isPinned
       ? "border-l-blue-500"
@@ -242,7 +254,7 @@ function MemoryCard({ card, onUpdate, onArchive }: MemoryCardProps) {
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className={badgeClass("blue")}>{card.memoryKind}</span>
-            <span className={badgeClass(isStaleStatus ? "orange" : "gray")}>{card.temporalStatus}</span>
+            <span className={badgeClass(isNeedsReview ? "orange" : "gray")}>{card.temporalStatus}</span>
             {card.sourceMessageId ? (
               <span className={badgeClass("gray")}>#{card.sourceMessageNumber ?? "-"}</span>
             ) : (
@@ -654,6 +666,8 @@ export default function MemoryPage() {
   const [filterKind, setFilterKind] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [filterPinned, setFilterPinned] = useState(false);
+  const [sortMode, setSortMode] = useState<"created_at" | "importance_score">("created_at");
+  const [groupByKind, setGroupByKind] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showNewForm, setShowNewForm] = useState(false);
   const [batchTraining, setBatchTraining] = useState(false);
@@ -688,6 +702,7 @@ export default function MemoryPage() {
       if (filterKind && !KIND_GROUPS[filterKind]) params.set("kind", filterKind);
       if (filterStatus) params.set("status", filterStatus);
       if (filterPinned) params.set("pinned", "true");
+      if (sortMode === "importance_score") params.set("sort", "importance_score");
       const url = `/api/lore?${params.toString()}`;
 
       const res = await fetch(url, { cache: "no-store" });
@@ -701,7 +716,7 @@ export default function MemoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterKind, filterPinned, filterStatus]);
+  }, [filterKind, filterPinned, filterStatus, sortMode]);
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -773,6 +788,35 @@ export default function MemoryPage() {
       return true;
     });
   }, [cards, filterKind, searchQuery]);
+
+  const sortedCards = useMemo(() => {
+    if (sortMode === "importance_score") {
+      return [...filteredCards].sort((a, b) => {
+        const aScore = a.importanceScore ?? 0;
+        const bScore = b.importanceScore ?? 0;
+        if (bScore !== aScore) return bScore - aScore;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    }
+    return filteredCards;
+  }, [filteredCards, sortMode]);
+
+  const groupedSections = useMemo(() => {
+    const groups: Record<string, LoreMemoryCard[]> = {};
+    for (const card of sortedCards) {
+      const kind = card.memoryKind;
+      if (!groups[kind]) groups[kind] = [];
+      groups[kind].push(card);
+    }
+    return Object.entries(groups).sort(([a], [b]) => {
+      const ai = KIND_ORDER.indexOf(a);
+      const bi = KIND_ORDER.indexOf(b);
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+  }, [sortedCards]);
 
   const handleBatchTrain = async () => {
     const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
@@ -1142,7 +1186,7 @@ export default function MemoryPage() {
         </aside>
 
         <section className="flex-1 px-6 py-6 space-y-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <input
               type="text"
               value={searchQuery}
@@ -1150,7 +1194,27 @@ export default function MemoryPage() {
               placeholder="記憶を検索"
               className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
             />
-            <p className="shrink-0 text-xs text-gray-500">{filteredCards.length}件</p>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={() => setSortMode("created_at")}
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${sortMode === "created_at" ? "bg-blue-500/15 text-blue-300 border border-blue-500/30" : "text-gray-400 border border-transparent hover:bg-gray-900 hover:text-gray-200"}`}
+              >
+                新着順
+              </button>
+              <button
+                onClick={() => setSortMode("importance_score")}
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${sortMode === "importance_score" ? "bg-blue-500/15 text-blue-300 border border-blue-500/30" : "text-gray-400 border border-transparent hover:bg-gray-900 hover:text-gray-200"}`}
+              >
+                重要度順
+              </button>
+              <button
+                onClick={() => setGroupByKind((v) => !v)}
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${groupByKind ? "bg-blue-500/15 text-blue-300 border border-blue-500/30" : "text-gray-400 border border-transparent hover:bg-gray-900 hover:text-gray-200"}`}
+              >
+                グループ表示
+              </button>
+              <p className="shrink-0 text-xs text-gray-500">{sortedCards.length}件</p>
+            </div>
           </div>
 
           {showNewForm && (
@@ -1268,11 +1332,32 @@ export default function MemoryPage() {
 
           {loading ? (
             <div className="text-sm text-gray-500">読み込み中...</div>
-          ) : filteredCards.length === 0 ? (
+          ) : sortedCards.length === 0 ? (
             <div className="text-sm text-gray-500">記憶がありません</div>
+          ) : groupByKind ? (
+            <div className="space-y-6">
+              {groupedSections.map(([kind, kindCards]) => (
+                <section key={kind}>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                    {MEMORY_KIND_OPTIONS.find((o) => o.value === kind)?.label ?? kind}
+                    <span className="ml-2 normal-case text-gray-600">({kindCards.length})</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {kindCards.map((card) => (
+                      <MemoryCard
+                        key={card.id}
+                        card={card}
+                        onUpdate={handleUpdate}
+                        onArchive={handleArchive}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
           ) : (
             <div className="space-y-3">
-              {filteredCards.map((card) => (
+              {sortedCards.map((card) => (
                 <MemoryCard
                   key={card.id}
                   card={card}

@@ -39,13 +39,13 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status");
   const pinned = searchParams.get("pinned");
   const includeArchived = searchParams.get("include_archived");
+  const sort = searchParams.get("sort");
 
   let query = supabase
     .from("lore_embeddings")
     .select(LORE_MEMORY_SELECT)
     .eq("user_id", user.id)
-    .is("superseded_by", null)
-    .order("created_at", { ascending: false });
+    .is("superseded_by", null);
 
   if (includeArchived !== "true") {
     query = query.eq("is_archived", false);
@@ -65,6 +65,14 @@ export async function GET(req: NextRequest) {
 
   if (pinned === "true") {
     query = query.eq("is_pinned", true);
+  }
+
+  if (sort === "importance_score") {
+    query = query
+      .order("importance_score", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false });
+  } else {
+    query = query.order("created_at", { ascending: false });
   }
 
   const { data, error } = await query;
