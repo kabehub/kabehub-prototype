@@ -116,6 +116,8 @@ interface MemoryCardProps {
   card: LoreMemoryCard;
   onUpdate: (updated: LoreMemoryCard) => void;
   onArchive: (id: string) => void;
+  selected: boolean;
+  onSelect: (id: string) => void;
 }
 
 function badgeClass(tone: "blue" | "gray" | "orange" | "green") {
@@ -141,7 +143,7 @@ function formatDateTime(value: string | null) {
   });
 }
 
-function MemoryCard({ card, onUpdate, onArchive }: MemoryCardProps) {
+function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCardProps) {
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(card.chunkText);
   const [draftKind, setDraftKind] = useState(card.memoryKind);
@@ -249,8 +251,16 @@ function MemoryCard({ card, onUpdate, onArchive }: MemoryCardProps) {
   };
 
   return (
-    <article className={`border border-l-4 ${leftBorderClass} border-gray-800 rounded-xl bg-gray-950 p-5 space-y-4`}>
-      <div className="flex items-start justify-between gap-4">
+    <article className={`border border-l-4 ${leftBorderClass} border-gray-800 rounded-xl bg-gray-950 p-5`}>
+      <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onSelect(card.id)}
+          className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-gray-600 bg-gray-800 accent-blue-500"
+        />
+        <div className="flex-1 space-y-4">
+        <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className={badgeClass("blue")}>{card.memoryKind}</span>
@@ -363,6 +373,8 @@ function MemoryCard({ card, onUpdate, onArchive }: MemoryCardProps) {
           </button>
         </div>
       )}
+        </div>
+      </div>
     </article>
   );
 }
@@ -690,6 +702,9 @@ export default function MemoryPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [rollbackingId, setRollbackingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkArchiving, setIsBulkArchiving] = useState(false);
+  const [bulkArchiveMessage, setBulkArchiveMessage] = useState<string | null>(null);
 
   const currentFolderName = "すべて";
 
@@ -1024,6 +1039,53 @@ export default function MemoryPage() {
 
   const handleArchive = (id: string) => {
     setCards((prev) => prev.filter((card) => card.id !== id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    setSelectedIds(new Set(filteredCards.map((c) => c.id)));
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`選択した ${selectedIds.size} 件の記憶をアーカイブしますか？`)) return;
+
+    setIsBulkArchiving(true);
+    setBulkArchiveMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/lore/bulk-archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json?.error ?? "一括アーカイブに失敗しました");
+        return;
+      }
+
+      const { archivedCount, skippedCount } = json as { archivedCount: number; skippedCount: number };
+
+      setCards((prev) =>
+        prev.filter((card) => !selectedIds.has(card.id) || card.isPinned)
+      );
+      setSelectedIds(new Set());
+
+      let message = `${archivedCount}件アーカイブしました`;
+      if (skippedCount > 0) {
+        message += `（${skippedCount}件はピン留めのためスキップしました）`;
+      }
+      setBulkArchiveMessage(message);
+
+      await fetchCards();
+    } finally {
+      setIsBulkArchiving(false);
+    }
   };
 
   const handleRollback = async (consolidatedId: string) => {
@@ -1216,6 +1278,31 @@ export default function MemoryPage() {
               <p className="shrink-0 text-xs text-gray-500">{sortedCards.length}件</p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSelectAll}
+              className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-300 hover:bg-gray-800"
+            >
+              表示中をすべて選択
+            </button>
+            {selectedIds.size > 0 && (
+              <>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-400 hover:bg-gray-800"
+                >
+                  選択解除
+                </button>
+                <button
+                  onClick={handleBulkArchive}
+                  disabled={isBulkArchiving}
+                  className="px-3 py-1.5 rounded-lg text-xs border border-red-500/40 text-red-300 hover:bg-red-500/10 disabled:text-gray-600 disabled:cursor-not-allowed"
+                >
+                  {isBulkArchiving ? "アーカイブ中..." : `選択した記憶をアーカイブ（${selectedIds.size}件）`}
+                </button>
+              </>
+            )}
+          </div>
 
           {showNewForm && (
             <NewMemoryForm
@@ -1248,6 +1335,12 @@ export default function MemoryPage() {
           {dreamingBatchResult && (
             <div className="border border-green-500/30 bg-green-500/10 rounded-lg px-4 py-3 text-sm text-green-300">
               {dreamingBatchResult.succeeded}件統合しました / {dreamingBatchResult.failed}件スキップ
+            </div>
+          )}
+
+          {bulkArchiveMessage && (
+            <div className="border border-green-500/30 bg-green-500/10 rounded-lg px-4 py-3 text-sm text-green-300">
+              {bulkArchiveMessage}
             </div>
           )}
 
@@ -1349,6 +1442,14 @@ export default function MemoryPage() {
                         card={card}
                         onUpdate={handleUpdate}
                         onArchive={handleArchive}
+                        selected={selectedIds.has(card.id)}
+                        onSelect={(id) =>
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            next.has(id) ? next.delete(id) : next.add(id);
+                            return next;
+                          })
+                        }
                       />
                     ))}
                   </div>
@@ -1363,6 +1464,14 @@ export default function MemoryPage() {
                   card={card}
                   onUpdate={handleUpdate}
                   onArchive={handleArchive}
+                  selected={selectedIds.has(card.id)}
+                  onSelect={(id) =>
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      next.has(id) ? next.delete(id) : next.add(id);
+                      return next;
+                    })
+                  }
                 />
               ))}
             </div>
