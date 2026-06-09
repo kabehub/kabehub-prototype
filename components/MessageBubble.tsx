@@ -69,6 +69,7 @@ function MessageBubble({
   const [isSavingHidden, setIsSavingHidden] = useState(false);
 
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [likeStatus, setLikeStatus] = useState<"idle" | "loading" | "done" | "already">("idle");
 
   // ⋮ コンテキストメニュー
   const [menuOpen, setMenuOpen] = useState(false);
@@ -218,6 +219,39 @@ function MessageBubble({
       alert("保存に失敗しました");
     } finally {
       setIsSavingEdit(false);
+    }
+  };
+
+  const handleLike = async () => {
+    if (likeStatus !== "idle") return;
+    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
+    if (!openaiKey) {
+      alert("OpenAI APIキーが設定されていません。");
+      return;
+    }
+    setLikeStatus("loading");
+    try {
+      const res = await fetch("/api/lore/like", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-openai-api-key": openaiKey,
+        },
+        body: JSON.stringify({ messageId: message.id }),
+      });
+      const data = await res.json();
+      if (data.alreadyLiked) {
+        setLikeStatus("already");
+      } else if (data.success) {
+        setLikeStatus("done");
+        setTimeout(() => setLikeStatus("idle"), 2000);
+      } else {
+        alert(data.error ?? "エラーが発生しました");
+        setLikeStatus("idle");
+      }
+    } catch {
+      alert("エラーが発生しました");
+      setLikeStatus("idle");
     }
   };
 
@@ -696,6 +730,35 @@ function MessageBubble({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* 👍 記憶に追加ボタン（assistantのみ） */}
+        {!isUser && !isMemo && !isImageGen && (
+          <div style={{ marginTop: "4px", position: "relative", zIndex: 1 }}>
+            <button
+              onClick={handleLike}
+              disabled={likeStatus === "loading" || likeStatus === "already"}
+              style={{
+                fontSize: "10px",
+                fontFamily: "'JetBrains Mono', monospace",
+                color: (likeStatus === "done" || likeStatus === "already") ? "#38a169" : "var(--ink-faint)",
+                background: "none",
+                border: "none",
+                cursor: (likeStatus === "loading" || likeStatus === "already") ? "default" : "pointer",
+                padding: "2px 4px",
+                borderRadius: "4px",
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (likeStatus === "idle") (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                if (likeStatus === "idle") (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)";
+              }}
+            >
+              {likeStatus === "loading" ? "⏳ 保存中…" : (likeStatus === "done" || likeStatus === "already") ? "✓ 記憶済み" : "👍 記憶に追加"}
+            </button>
           </div>
         )}
 
