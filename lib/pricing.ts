@@ -15,6 +15,7 @@ export type ModelPricing = {
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // ── Claude ──────────────────────────────────────────────
+  "claude-fable-5":         { inputPerMTok: 10.00, outputPerMTok: 50.00 },
   "claude-opus-4":          { inputPerMTok: 5.00,  outputPerMTok: 25.00 },
   "claude-sonnet-4":        { inputPerMTok: 3.00,  outputPerMTok: 15.00 },
   "claude-haiku-4":         { inputPerMTok: 1.00,  outputPerMTok:  5.00 },

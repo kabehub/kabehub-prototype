@@ -15,6 +15,7 @@ const DEFAULT_MODELS: Record<string, ModelId> = {
 };
 
 const CLAUDE_MODEL_IDS = [
+  "claude-fable-5",
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",

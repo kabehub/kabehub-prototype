@@ -64,6 +64,7 @@ export const MODEL_CONFIG = {
   claude: {
     label: "Claude",
     models: [
+      { id: "claude-fable-5" as ClaudeModel,             label: "Fable 5",    badge: "最高精度" },
       { id: "claude-opus-4-8" as ClaudeModel,           label: "Opus 4.8",   badge: "最高精度" },
       { id: "claude-opus-4-7" as ClaudeModel,           label: "Opus 4.7",   badge: "高精度" },
       { id: "claude-opus-4-6" as ClaudeModel,           label: "Opus 4.6",   badge: "高精度" },
@@ -1002,8 +1003,12 @@ export default function ChatInput({
           {provider === "claude" && (
             <button
               onClick={() => setIsDeepThinking((v) => !v)}
-              disabled={selectedModel === "claude-haiku-4-5-20251001" || isLoading || !!disabled}
-              title={selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" : "Extended Thinking: AIが回答前に深く考えます"}
+              disabled={selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || isLoading || !!disabled}
+              title={
+                selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" :
+                selectedModel === "claude-fable-5" ? "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
+                "Extended Thinking: AIが回答前に深く考えます"
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1013,10 +1018,10 @@ export default function ChatInput({
                 border: "1px solid",
                 borderColor: isDeepThinking ? "var(--accent)" : "var(--border)",
                 background: isDeepThinking ? "rgba(196,98,45,0.12)" : "transparent",
-                color: isDeepThinking ? "var(--accent)" : selectedModel === "claude-haiku-4-5-20251001" || isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                color: isDeepThinking ? "var(--accent)" : selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
                 fontSize: "11px",
                 fontFamily: "'JetBrains Mono', monospace",
-                cursor: selectedModel === "claude-haiku-4-5-20251001" || isLoading || disabled ? "not-allowed" : "pointer",
+                cursor: selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || isLoading || disabled ? "not-allowed" : "pointer",
                 transition: "all 0.15s",
                 letterSpacing: "0.03em",
               }}
