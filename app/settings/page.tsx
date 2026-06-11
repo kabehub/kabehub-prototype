@@ -306,7 +306,7 @@ function SettingsContent() {
           'Content-Type': 'application/json',
           'x-openai-api-key': openaiKey,
         },
-        body: JSON.stringify({ limit: 20 }),
+        body: JSON.stringify({ limit: 5 }),
       })
       if (!res.ok) throw new Error('batch-train failed')
       const json = await res.json()
