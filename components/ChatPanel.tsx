@@ -39,6 +39,7 @@ interface ChatPanelProps {
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
+  githubProgressMessages?: string[];
   onSendMemoToAI?: (content: string) => void;
   onRestoreBranch?: (message: Message) => void;
   onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => void;
@@ -81,6 +82,7 @@ export default function ChatPanel({
   onUpdateMessage,
   streamingContent = "",  // ✅ v62追加
   onAbort,               // ✅ v62追加
+  githubProgressMessages = [],
   onSendMemoToAI,
   thinkingContents,
   onRestoreBranch,
@@ -1833,6 +1835,29 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       </div>
 
       {/* ✅ v62追加: ■停止ボタン（生成中のみ表示） */}
+      {/* GitHub Tool Loop 探索中インジケーター */}
+      {isLoading && githubProgressMessages.length > 0 && (
+        <div style={{
+          padding: "8px 16px",
+          margin: "4px 28px",
+          borderRadius: "8px",
+          background: "var(--surface, #f5f5f5)",
+          border: "1px solid var(--border)",
+          fontSize: "11px",
+          fontFamily: "'JetBrains Mono', monospace",
+          color: "var(--ink-muted)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px",
+        }}>
+          <div style={{ color: "var(--ink-faint)", marginBottom: "2px", fontSize: "10px" }}>
+             GitHub を探索中...
+          </div>
+          {githubProgressMessages.map((msg, i) => (
+            <div key={i}> {msg}</div>
+          ))}
+        </div>
+      )}
       {isLoading && onAbort && (
         <div style={{ padding: "0 28px 8px", display: "flex", justifyContent: "center" }}>
           <button
