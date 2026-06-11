@@ -198,6 +198,7 @@ export async function POST(req: NextRequest) {
     .eq('role', 'user')
     .neq('provider', 'memo')
     .neq('provider', 'image_gen')
+    .or("is_active.is.null,is_active.eq.true")
     .order("created_at", { ascending: true })
     .limit(limit);
 

@@ -48,6 +48,8 @@ export interface Message {
   is_hidden?: boolean;
   is_active?: boolean;
   branch_id?: string | null;
+  branch_root_id?: string | null; // v131追加
+  branch_index?: number | null;   // v131追加
   metadata?: {
     storagePath?: string | null; // [userId]/[threadId]/[imageId].png
     mimeType?: string | null;
