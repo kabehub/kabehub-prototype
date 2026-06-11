@@ -220,7 +220,7 @@ async function callAnthropicMessages(
       },
       body: JSON.stringify({
         model: params.modelId,
-        max_tokens: 256,
+        max_tokens: 4096,
         system: buildDiscoverySystemPrompt(params.systemPrompt),
         messages,
         tools: GITHUB_TOOLS,
