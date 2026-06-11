@@ -302,8 +302,9 @@ export async function runGithubToolLoop(
         console.log("[DEBUG][listGithubDirectory] result", {
           hasError: "error" in result,
           error: "error" in result ? (result as { error: string }).error : undefined,
-          itemCount: Array.isArray(result) ? result.length : undefined,
           resultType: typeof result,
+          resultKeys: typeof result === "object" && result !== null ? Object.keys(result) : [],
+          resultPreview: JSON.stringify(result).slice(0, 300),
         });
 
         toolResults.push({
