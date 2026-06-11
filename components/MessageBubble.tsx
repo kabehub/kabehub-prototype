@@ -99,6 +99,11 @@ function MessageBubble({
   const [editRegenContent, setEditRegenContent] = useState("");
   const [editRegenProvider, setEditRegenProvider] = useState<"claude" | "gemini" | "openai">("claude");
   const [editRegenModelId, setEditRegenModelId] = useState<string | undefined>(undefined);
+  const USER_COLLAPSE_THRESHOLD = 128;
+  const shouldCollapseUserMessage = isUser && !isMemo && !isImageGen;
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [needsCollapse, setNeedsCollapse] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
@@ -162,6 +167,23 @@ function MessageBubble({
         if (data?.signedUrl) setImageUrl(data.signedUrl);
       });
   }, [isImageGen, message.metadata?.storagePath, message.metadata?.image_deleted]);
+
+  useEffect(() => {
+    if (!shouldCollapseUserMessage || !contentRef.current) return;
+
+    const el = contentRef.current;
+
+    const measure = () => {
+      setNeedsCollapse(el.scrollHeight > USER_COLLAPSE_THRESHOLD + 1);
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+
+    return () => observer.disconnect();
+  }, [shouldCollapseUserMessage, message.content]);
 
   const handleOpenMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -537,6 +559,59 @@ function MessageBubble({
                   <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace", marginTop: "4px" }}>
                     プロンプト: {message.content}
                   </div>
+                </div>
+              ) : isUser ? (
+                <div style={{ position: "relative" }}>
+                  <div
+                    ref={contentRef}
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      overflowWrap: "anywhere",
+                      lineHeight: 1.6,
+                      maxHeight:
+                        needsCollapse && isCollapsed
+                          ? `${USER_COLLAPSE_THRESHOLD}px`
+                          : "none",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {message.content}
+                  </div>
+
+                  {needsCollapse && isCollapsed && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: "24px",
+                        height: "36px",
+                        background: "linear-gradient(transparent, #f7f7f5)",
+                        pointerEvents: "none",
+                      }}
+                    />
+                  )}
+
+                  {needsCollapse && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsCollapsed((v) => !v);
+                      }}
+                      style={{
+                        marginTop: "6px",
+                        fontSize: "11px",
+                        fontFamily: "'JetBrains Mono', monospace",
+                        color: "var(--accent)",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      {isCollapsed ? "▽ 続きを読む" : "△ 折りたたむ"}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <MarkdownRenderer content={message.content} />

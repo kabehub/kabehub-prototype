@@ -232,6 +232,52 @@ export default function MarkdownRenderer({
               </blockquote>
             );
           },
+          h1({ children }) {
+            return (
+              <h1 style={{
+                fontFamily: "'Lora', serif",
+                fontSize: "1.15em",
+                fontWeight: 600,
+                color: "var(--ink)",
+                marginTop: "1.25em",
+                marginBottom: "0.5em",
+                lineHeight: 1.3,
+              }}>
+                {children}
+              </h1>
+            );
+          },
+          h2({ children }) {
+            return (
+              <h2 style={{
+                fontFamily: "'Lora', serif",
+                fontSize: "1.05em",
+                fontWeight: 600,
+                color: "var(--ink)",
+                marginTop: "1.25em",
+                marginBottom: "0.5em",
+                lineHeight: 1.3,
+              }}>
+                {children}
+              </h2>
+            );
+          },
+          h3({ children }) {
+            return (
+              <h3 style={{
+                fontFamily: "'Lora', serif",
+                fontSize: "0.95em",
+                fontWeight: 500,
+                fontStyle: "italic",
+                color: "var(--ink)",
+                marginTop: "1em",
+                marginBottom: "0.4em",
+                lineHeight: 1.3,
+              }}>
+                {children}
+              </h3>
+            );
+          },
         }}
       >
         {processedContent}
