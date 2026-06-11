@@ -453,6 +453,7 @@ async function saveAssistantMessage(
   modelId?: string,
   inputTokens?: number | null,
   outputTokens?: number | null,
+  branchMeta?: { branch_root_id: string; branch_index: number } | null,
 ): Promise<boolean> {
   // ✅ v64修正: upsertで重複INSERT（duplicate key）を防ぐ
   // 同じIDで2回保存が走った場合は既存レコードを上書き
@@ -466,6 +467,10 @@ async function saveAssistantMessage(
     ...(modelId ? { model_id: modelId } : {}),
     ...(inputTokens != null ? { input_tokens: inputTokens } : {}),
     ...(outputTokens != null ? { output_tokens: outputTokens } : {}),
+    ...(branchMeta ? {
+      branch_root_id: branchMeta.branch_root_id,
+      branch_index: branchMeta.branch_index,
+    } : {}),
   }, { onConflict: "id" });
   if (error) {
     console.error("[saveAssistantMessage] DB保存失敗:", error);
@@ -486,7 +491,7 @@ export async function POST(req: NextRequest) {
   const {
     threadId, messages, userContent, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
-    imageContextId,
+    imageContextId, branchEdit,
   } = await req.json();
 
   // ── Rate limiting ───────────────────────────────────────────────────────────
@@ -572,14 +577,85 @@ export async function POST(req: NextRequest) {
   };
 
   if (!isRegenerate && !isTemporary) {
-    await supabase.from("messages").insert({
-      id: userMessage.id,
-      thread_id: threadId,
-      role: "user",
-      content: userContent,
-      provider: isMemo ? "memo" : "user",
-      user_id: userId,
-    });
+    if (branchEdit?.baseUserMessageId) {
+      // branchEditモード: 旧user以降を inactive化 → 新userを新規insert
+
+      // 1. baseUserを取得してmessage_numberを確認
+      const { data: baseUser } = await supabase
+        .from("messages")
+        .select("id, message_number, branch_root_id, branch_index")
+        .eq("id", branchEdit.baseUserMessageId)
+        .eq("user_id", userId)
+        .single();
+
+      if (baseUser) {
+        // 2. baseUser以降のactive messagesをすべてinactive化
+        await supabase
+          .from("messages")
+          .update({ is_active: false })
+          .eq("thread_id", threadId)
+          .eq("user_id", userId)
+          .neq("is_active", false)
+          .gte("message_number", baseUser.message_number);
+
+        // 3. branch_root_id と branch_index を決定
+        const branchRootId = baseUser.branch_root_id ?? baseUser.id;
+
+        const { data: maxBranchRow } = await supabase
+          .from("messages")
+          .select("branch_index")
+          .eq("thread_id", threadId)
+          .eq("user_id", userId)
+          .eq("branch_root_id", branchRootId)
+          .order("branch_index", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const nextBranchIndex = (maxBranchRow?.branch_index ?? 0) + 1;
+
+        // 4. message_numberを採番
+        const { data: maxNumRow } = await supabase
+          .from("messages")
+          .select("message_number")
+          .eq("thread_id", threadId)
+          .eq("user_id", userId)
+          .order("message_number", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const nextMessageNumber = (maxNumRow?.message_number ?? 0) + 1;
+
+        // 5. 新userメッセージをinsert
+        await supabase.from("messages").insert({
+          id: userMessage.id,
+          thread_id: threadId,
+          role: "user",
+          content: userContent,
+          provider: "user",
+          user_id: userId,
+          parent_id: baseUser.id,
+          branch_root_id: branchRootId,
+          branch_index: nextBranchIndex,
+          message_number: nextMessageNumber,
+          is_active: true,
+        });
+
+        // branchMetaをsaveAssistantMessage用に保持
+        (userMessage as Record<string, unknown>).branchMeta = {
+          branch_root_id: branchRootId,
+          branch_index: nextBranchIndex,
+        };
+      }
+    } else {
+      await supabase.from("messages").insert({
+        id: userMessage.id,
+        thread_id: threadId,
+        role: "user",
+        content: userContent,
+        provider: isMemo ? "memo" : "user",
+        user_id: userId,
+      });
+    }
   }
 
   // メモモードはストリーミング不要
@@ -974,7 +1050,14 @@ export async function POST(req: NextRequest) {
   const saveToDb = async (aborted: boolean, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
     if (isTemporary) return true;
     const contentToSave = accumulatedText.replace(/^(\[.*?\]\n)+/, "");
-    return await saveAssistantMessage(supabaseClient, threadId, userId, contentToSave, usedProvider, assistantMessageId, resolvedModelId, usageRef.input_tokens, usageRef.output_tokens);
+    const branchMeta = (userMessage as Record<string, unknown>).branchMeta as
+      { branch_root_id: string; branch_index: number } | undefined;
+    return await saveAssistantMessage(
+      supabaseClient, threadId, userId, contentToSave, usedProvider,
+      assistantMessageId, resolvedModelId,
+      usageRef.input_tokens, usageRef.output_tokens,
+      branchMeta ?? null,
+    );
   };
 
   const readable = aiStream.pipeThrough(outputStream);
@@ -1056,6 +1139,8 @@ export async function POST(req: NextRequest) {
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceKey) {
         const contentToSave = accumulatedText;
+        const branchMeta = (userMessage as Record<string, unknown>).branchMeta as
+          { branch_root_id: string; branch_index: number } | undefined;
         const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
           method: "POST",
           headers: {
@@ -1074,6 +1159,10 @@ export async function POST(req: NextRequest) {
             model_id: resolvedModelId,
             ...(usageRef.input_tokens != null ? { input_tokens: usageRef.input_tokens } : {}),
             ...(usageRef.output_tokens != null ? { output_tokens: usageRef.output_tokens } : {}),
+            ...(branchMeta ? {
+              branch_root_id: branchMeta.branch_root_id,
+              branch_index: branchMeta.branch_index,
+            } : {}),
           }),
         });
         if (res.ok) {

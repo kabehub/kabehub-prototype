@@ -891,7 +891,7 @@ export default function Home() {
   }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming]);
 
   const handleEditAndRegenerate = useCallback(async (
-    assistantMsg: Message,
+    baseUserMsg: Message,
     editedContent: string,
     targetProvider: "claude" | "gemini" | "openai",
     modelId?: string,
@@ -900,53 +900,20 @@ export default function Home() {
     setIsLoading(true);
     setStreamingContent("");
     try {
-      const idx = messages.findIndex(m => m.id === assistantMsg.id);
-      let lastUser: Message | null = null;
-      for (let i = idx - 1; i >= 0; i--) {
-        if (messages[i].role === "user") {
-          lastUser = messages[i];
-          break;
-        }
-      }
-      if (!lastUser) {
-        setIsLoading(false);
-        return;
-      }
-
-      const branchId = crypto.randomUUID();
-
-      await fetch(`/api/threads/${activeThreadId}/messages/${assistantMsg.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: false, branch_id: branchId }),
-      });
-      setMessages(prev =>
-        prev.map(m => m.id === assistantMsg.id ? { ...m, is_active: false, branch_id: branchId } : m)
-      );
-
-      await fetch(`/api/threads/${activeThreadId}/messages/${lastUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: editedContent }),
-      });
-      setMessages(prev =>
-        prev.map(m => m.id === lastUser!.id ? { ...m, content: editedContent } : m)
-      );
-
-      const newMessages = messages
-        .filter(m => m.is_active !== false && m.id !== assistantMsg.id)
-        .map(m => m.id === lastUser!.id ? { ...m, content: editedContent } : m);
-
-      const { assistantMessage, thinkingContent } = await fetchWithStreaming(
+      const { userMessage, assistantMessage, thinkingContent } = await fetchWithStreaming(
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
           threadId: activeThreadId,
-          messages: newMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
+          messages: messages
+            .filter(m => m.is_active !== false)
+            .map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent: editedContent,
           provider: targetProvider,
           modelId: modelId,
-          isRegenerate: true,
+          branchEdit: {
+            baseUserMessageId: baseUserMsg.id,
+          },
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
         (accumulated) => {
@@ -958,7 +925,8 @@ export default function Home() {
         setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
       }
 
-      setMessages((prev) => [...prev, { ...assistantMessage, branch_id: branchId, is_active: true }]);
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      await fetchThreads();
     } catch (err) {
       console.error("編集して再生成失敗:", err);
     } finally {
@@ -966,7 +934,7 @@ export default function Home() {
       setStreamingContent("");
       setGithubProgressMessages([]);
     }
-  }, [isLoading, activeThreadId, messages, activeThread, getApiKeyHeaders, fetchWithStreaming]);
+  }, [isLoading, activeThreadId, messages, activeThread, getApiKeyHeaders, fetchWithStreaming, fetchThreads]);
 
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
@@ -1051,42 +1019,26 @@ export default function Home() {
   }, [activeThreadId]);
 
   // ── ブランチ復元 ──────────────────────────────────────────
-  const handleRestoreBranch = useCallback(async (targetMessage: Message) => {
+  const handleRestoreBranch = useCallback(async (branchRootId: string, branchIndex: number) => {
     if (!activeThreadId) return;
 
-    const currentActive = messages.find(
-      m => m.branch_id === targetMessage.branch_id
-        && m.id !== targetMessage.id
-        && m.is_active === true
-        && m.role === "assistant"
-    );
-
-    setMessages(prev =>
-      prev.map(m => {
-        if (m.id === targetMessage.id) return { ...m, is_active: true };
-        if (m.id === currentActive?.id) return { ...m, is_active: false };
-        return m;
-      })
-    );
-
-    const patches: Promise<Response>[] = [
-      fetch(`/api/threads/${activeThreadId}/messages/${targetMessage.id}`, {
+    try {
+      await fetch(`/api/threads/${activeThreadId}/messages/restore-branch`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: true }),
-      }),
-    ];
-    if (currentActive) {
-      patches.push(
-        fetch(`/api/threads/${activeThreadId}/messages/${currentActive.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_active: false }),
-        })
-      );
+        body: JSON.stringify({ branchRootId, branchIndex }),
+      });
+
+      // DBから最新のmessagesを再取得して表示を更新
+      const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+      if (res.ok) {
+        const data: Message[] = await res.json();
+        setMessages(data);
+      }
+    } catch (err) {
+      console.error("ブランチ復元失敗:", err);
     }
-    await Promise.all(patches);
-  }, [activeThreadId, messages]);
+  }, [activeThreadId]);
 
   // ── セルフコピペ ──────────────────────────────────────────
   const handleCopyThread = useCallback(async (threadId: string) => {

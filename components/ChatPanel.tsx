@@ -26,7 +26,7 @@ interface ChatPanelProps {
   onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
   onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message, modelId?: string) => void;
   onEditAndRegenerate: (
-    assistantMsg: Message,
+    baseUserMsg: Message,
     editedContent: string,
     targetProvider: "claude" | "gemini" | "openai",
     modelId?: string
@@ -47,7 +47,7 @@ interface ChatPanelProps {
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
   githubProgressMessages?: string[];
   onSendMemoToAI?: (content: string) => void;
-  onRestoreBranch?: (message: Message) => void;
+  onRestoreBranch?: (branchRootId: string, branchIndex: number) => void;
   onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => void;
   onDiscuss?: (messageId: string) => void;
   imageContextId?: string | null;
@@ -795,15 +795,31 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   const lastAssistantMsg =
     lastAssistantIndex >= 0 ? activeMessages[lastAssistantIndex] : null;
 
-  let lastUserBeforeLastAssistant: Message | null = null;
-  if (lastAssistantIndex >= 0) {
-    for (let i = lastAssistantIndex - 1; i >= 0; i--) {
+  const handleEditAndRegenerateFromBubble = (
+    sourceMsg: Message,
+    editedContent: string,
+    targetProvider: "claude" | "gemini" | "openai",
+    modelId?: string,
+  ) => {
+    if (sourceMsg.role === "user") {
+      onEditAndRegenerate(sourceMsg, editedContent, targetProvider, modelId);
+      return;
+    }
+
+    const idx = activeMessages.findIndex((m) => m.id === sourceMsg.id);
+    for (let i = idx - 1; i >= 0; i--) {
       if (activeMessages[i].role === "user" && activeMessages[i].provider !== "memo") {
-        lastUserBeforeLastAssistant = activeMessages[i];
-        break;
+        onEditAndRegenerate(activeMessages[i], editedContent, targetProvider, modelId);
+        return;
       }
     }
-  }
+  };
+
+  const handleRestoreBranchFromBubble = (message: Message) => {
+    const branchRootId = message.branch_root_id ?? message.parent_id ?? null;
+    if (!branchRootId || message.branch_index == null) return;
+    onRestoreBranch?.(branchRootId, message.branch_index);
+  };
 
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
 
@@ -1655,7 +1671,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       <BranchBubble
         key={msg.id}
         message={msg}
-        onRestore={onRestoreBranch}
+        onRestore={handleRestoreBranchFromBubble}
       />
     );
   }
@@ -1710,7 +1726,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         isLoading={isLoading}
         provider={provider}
         onRegenerate={onRegenerate}
-        onEditAndRegenerate={onEditAndRegenerate}
+        onEditAndRegenerate={handleEditAndRegenerateFromBubble}
         prevUserContent={(() => {
           const idx = messages.findIndex(m => m.id === msg.id);
           for (let i = idx - 1; i >= 0; i--) {
@@ -1718,12 +1734,15 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           }
           return "";
         })()}
-        editRegenAssistantMsg={lastAssistantMsg ?? undefined}
+        editRegenAssistantMsg={msg.role === "user" ? msg : lastAssistantMsg ?? undefined}
         canEditAndRegenerateFromUser={
           msg.role === "user" &&
-          !!lastAssistantMsg &&
-          !!lastUserBeforeLastAssistant &&
-          msg.id === lastUserBeforeLastAssistant.id
+          msg.provider !== "memo" &&
+          (msg as { is_active?: boolean }).is_active !== false &&
+          activeMessages.some((m, j) => {
+            const msgIdx = activeMessages.findIndex(am => am.id === msg.id);
+            return j > msgIdx && m.role === "assistant";
+          })
         }
         onTrimFrom={onTrimFrom}
         onMemoize={onMemoizeMessage}
