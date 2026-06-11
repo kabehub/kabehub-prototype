@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from "uuid";
 import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
 import { searchLore, searchLoreV2 } from "@/lib/lore";
+import { runGithubToolLoop } from "@/lib/github-tool-loop";
+import { buildPinnedGithubContext } from "@/lib/github";
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
@@ -468,14 +470,22 @@ export async function POST(req: NextRequest) {
   let resolvedSystemPrompt: string | undefined = systemPrompt || undefined;
   let loreTargetFolder: string | null = null;
   let loreEnabled = false;
+  let pinnedGithubFiles: string[] = [];
+  let githubRepo: string | null = null;
+  let githubRef: string | undefined = undefined;
 
   if (!isTemporary) {
     const { data: thread } = await supabase
       .from('threads').select('folder_name, user_id').eq('id', threadId).single();
     if (thread?.folder_name) {
       const { data: folderSetting } = await supabase
-        .from('folder_settings').select('system_prompt, folder_type')
+        .from('folder_settings').select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
         .eq('user_id', userId).eq('folder_name', thread.folder_name).maybeSingle();
+      pinnedGithubFiles = Array.isArray(folderSetting?.pinned_github_files)
+        ? folderSetting.pinned_github_files
+        : [];
+      githubRepo = folderSetting?.github_repo ?? null;
+      githubRef = folderSetting?.github_ref ?? undefined;
       if (!resolvedSystemPrompt) {
         resolvedSystemPrompt = folderSetting?.system_prompt ?? undefined;
       }
@@ -670,9 +680,61 @@ export async function POST(req: NextRequest) {
   const handleUsage = (u: UsageData) => { usageRef.input_tokens = u.input_tokens; usageRef.output_tokens = u.output_tokens; };
 
   const labelNote = "\n\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。";
-  const systemPromptWithLabel = resolvedSystemPrompt
+  let systemPromptWithLabel = resolvedSystemPrompt
     ? resolvedSystemPrompt + participantNote + labelNote
     : (participantNote + labelNote).trim();
+
+  // ── Pinned GitHub Files 注入 ──────────────────────────────────────────────
+  if (pinnedGithubFiles.length > 0) {
+    const { context: pinnedContext, warnings: pinnedWarnings } =
+      await buildPinnedGithubContext(pinnedGithubFiles);
+    if (pinnedWarnings.length > 0) {
+      console.warn("[Pinned GitHub Files] warnings:", pinnedWarnings);
+    }
+    if (pinnedContext) {
+      systemPromptWithLabel = systemPromptWithLabel
+        ? systemPromptWithLabel + "\n\n" + pinnedContext
+        : pinnedContext;
+    }
+  }
+
+  // ── GitHub Tool Loop（フェーズ4 AI動的探索） ─────────────────────────────
+  const progressMessages: string[] = [];
+  if (
+    provider === "claude" &&
+    githubRepo &&
+    !isDeepThinking &&
+    anthropicKey
+  ) {
+    try {
+      const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : "claude-sonnet-4-5";
+      const discovery = await runGithubToolLoop({
+        anthropicKey,
+        modelId: resolvedModelIdForLoop,
+        messages: messagesForApi.map(m => ({
+          role: m.role as "user" | "assistant",
+          content: typeof m.content === "string" ? m.content : "",
+        })),
+        systemPrompt: systemPromptWithLabel,
+        repo: githubRepo,
+        ref: githubRef,
+        maxToolCalls: 10,
+        maxReadFiles: 8,
+        onProgress: (msg) => { progressMessages.push(msg); },
+      });
+      if (discovery.contextBlock) {
+        systemPromptWithLabel = systemPromptWithLabel
+          ? systemPromptWithLabel + "\n\n" + discovery.contextBlock
+          : discovery.contextBlock;
+      }
+      if (discovery.warnings.length > 0) {
+        console.warn("[github-tool-loop] warnings:", discovery.warnings);
+      }
+    } catch (err) {
+      console.error("[github-tool-loop] error:", err);
+      // エラーが起きても会話は続行する（Tool Loop は best-effort）
+    }
+  }
 
   // ── Context window trimming (applied after lore injection) ─────────────────
   const trimResult = trimContextToWindow(
@@ -821,6 +883,14 @@ export async function POST(req: NextRequest) {
 
       // メタデータを最初に送信
       controller.enqueue(encoder.encode(metaChunk));
+      // GitHub Tool Loop の進捗メッセージを専用 SSE type で送信
+      for (const msg of progressMessages) {
+        controller.enqueue(
+          encoder.encode(
+            JSON.stringify({ type: "github_progress", text: msg }) + "\n"
+          )
+        );
+      }
 
       const reader = readable.getReader();
       try {
