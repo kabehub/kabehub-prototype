@@ -167,11 +167,12 @@ async function readGithubFileByPath(
 function buildDiscoverySystemPrompt(baseSystemPrompt: string): string {
   return `${baseSystemPrompt}
 ---
-【GitHub探索ルール】
-- まず list_github_directory でルート構造を把握する
-- ユーザーの質問に関係するファイルを read_github_file で読む（最大8ファイル）
-- 必要なファイルを読み終えたら、ツールの使用を止めて「探索完了」とだけ出力する
-- ファイルを読まずにディレクトリ一覧だけ返すことは禁止`;
+【GitHub探索モード】
+以下のリポジトリのディレクトリ情報を参考に、ユーザーの質問に答えるために
+読むべきファイルのパスを最大8個、JSONの配列だけで返してください。
+説明文は不要です。パスのみのJSON配列だけを出力してください。
+例: ["app/api/chat/route.ts","lib/github.ts"]
+ファイルが不要な場合は空配列 [] を返してください。`;
 }
 
 function buildGithubDynamicContext(
@@ -248,6 +249,42 @@ async function callAnthropicMessages(
   }
 }
 
+async function callAnthropicWithoutTools(
+  params: GithubToolLoopParams,
+  messages: AnthropicToolMessage[],
+): Promise<{ text?: string; warning?: string }> {
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": params.anthropicKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: params.modelId,
+        max_tokens: 512,
+        system: buildDiscoverySystemPrompt(params.systemPrompt),
+        messages,
+      }),
+    });
+
+    if (!response.ok) {
+      return { warning: `Anthropic API エラー（HTTP ${response.status}）` };
+    }
+
+    const data = await response.json() as AnthropicMessageResponse;
+    const text = data.content
+      ?.filter((b): b is Extract<AnthropicContentBlock, { type: "text" }> => b.type === "text")
+      .map((b) => b.text)
+      .join("") ?? "";
+    return { text };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown";
+    return { warning: `GitHub Tool Loop エラー: ${message}` };
+  }
+}
+
 function getToolUseBlocks(content: AnthropicContentBlock[] | undefined): Extract<AnthropicContentBlock, { type: "tool_use" }>[] {
   if (!Array.isArray(content)) {
     return [];
@@ -262,161 +299,83 @@ export async function runGithubToolLoop(
   let toolCallCount = 0;
   const exploredFiles: ExploredGithubFile[] = [];
   const warnings: string[] = [];
-  let readFileCount = 0;
-  const maxToolCalls = params.maxToolCalls ?? 10;
   const maxReadFiles = params.maxReadFiles ?? 8;
-  const messages: AnthropicToolMessage[] = [...params.messages];
 
-  let current = await callAnthropicMessages(params, messages);
-  if (current.warning) {
-    warnings.push(current.warning);
+  // フェーズ1: ルートディレクトリ一覧を取得
+  const rootResult = await listGithubDirectory(params.repo, "", {
+    ref: params.ref,
+    accessToken: params.accessToken,
+  });
+  toolCallCount += 1;
+  console.log("[DEBUG][Phase1] root listing", { hasError: "error" in rootResult });
+
+  if ("error" in rootResult) {
+    warnings.push(`ルートディレクトリ取得失敗: ${rootResult.error}`);
     return { contextBlock: "", exploredFiles: [], warnings, toolCallCount };
   }
 
-  while (current.response?.stop_reason === "tool_use") {
-    console.log("[DEBUG][Tool Loop iteration]", {
-      toolCallCount,
-      stop_reason: current.response?.stop_reason,
-    });
-    const toolUseBlocks = getToolUseBlocks(current.response.content);
-    if (toolUseBlocks.length === 0) {
-      break;
-    }
+  // フェーズ1: Claudeにディレクトリ情報を渡して読むべきファイルパスを聞く
+  const directoryInfo = JSON.stringify(rootResult);
+  const phaseOneMessages: AnthropicToolMessage[] = [
+    ...params.messages,
+    {
+      role: "user" as const,
+      content: `リポジトリ ${params.repo} のルートディレクトリ情報:\n${directoryInfo}\n\nユーザーの質問に答えるために読むべきファイルパスをJSON配列で返してください。`,
+    },
+  ];
 
-    const toolResults: AnthropicContentBlock[] = [];
-
-    for (const toolUse of toolUseBlocks) {
-      toolCallCount += 1;
-      if (toolCallCount > maxToolCalls) {
-        break;
-      }
-
-      if (toolUse.name === "list_github_directory") {
-        const path = typeof toolUse.input.path === "string" ? toolUse.input.path : "";
-        params.onProgress?.(`${path || "ルート"} を確認中...`);
-        console.log("[DEBUG][listGithubDirectory] call", { repo: params.repo, path, ref: params.ref, hasToken: !!params.accessToken });
-        const result = await listGithubDirectory(params.repo, path, {
-          ref: params.ref,
-          accessToken: params.accessToken,
-        });
-        console.log("[DEBUG][listGithubDirectory] result", {
-          hasError: "error" in result,
-          error: "error" in result ? (result as { error: string }).error : undefined,
-          resultType: typeof result,
-          resultKeys: typeof result === "object" && result !== null ? Object.keys(result) : [],
-          resultPreview: JSON.stringify(result).slice(0, 300),
-        });
-
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: JSON.stringify(result),
-          ...("error" in result ? { is_error: true } : {}),
-        });
-        continue;
-      }
-
-      if (toolUse.name === "read_github_file") {
-        if (typeof toolUse.input.path !== "string") {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: "path は文字列で指定してください",
-            is_error: true,
-          });
-          continue;
-        }
-
-        const path = toolUse.input.path;
-        const validation = validateGithubPath(path);
-        if (!validation.valid) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: validation.reason,
-            is_error: true,
-          });
-          continue;
-        }
-
-        if (!isAllowedExtension(path)) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: "サポートされていない拡張子です",
-            is_error: true,
-          });
-          continue;
-        }
-
-        if (readFileCount >= maxReadFiles) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: "読み込み上限に達しました",
-            is_error: true,
-          });
-          continue;
-        }
-
-        params.onProgress?.(`${path} を読んでいます...`);
-        const result = await readGithubFileByPath(params.repo, path, {
-          ref: params.ref,
-          accessToken: params.accessToken,
-        });
-
-        if ("error" in result) {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: result.error,
-            is_error: true,
-          });
-          continue;
-        }
-
-        exploredFiles.push({ path, sha: undefined, content: result.content });
-        readFileCount += 1;
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: JSON.stringify(result),
-        });
-        continue;
-      }
-
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: `未対応のツールです: ${toolUse.name}`,
-        is_error: true,
-      });
-    }
-
-    if (toolCallCount > maxToolCalls || toolResults.length === 0) {
-      break;
-    }
-
-    messages.push({
-      role: "assistant",
-      content: current.response.content ?? [],
-    });
-    messages.push({
-      role: "user",
-      content: toolResults,
-    });
-
-    current = await callAnthropicMessages(params, messages);
-    if (current.warning) {
-      warnings.push(current.warning);
-      return { contextBlock: "", exploredFiles: [], warnings, toolCallCount };
-    }
+  const phaseOneResponse = await callAnthropicWithoutTools(params, phaseOneMessages);
+  if (phaseOneResponse.warning) {
+    warnings.push(phaseOneResponse.warning);
+    return { contextBlock: "", exploredFiles: [], warnings, toolCallCount };
   }
+
+  // フェーズ1のレスポンスからJSONパスリストを抽出
+  const responseText = phaseOneResponse.text ?? "";
+  console.log("[DEBUG][Phase1] Claude response:", responseText.slice(0, 200));
+
+  let pathsToRead: string[] = [];
+  try {
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed)) {
+        pathsToRead = parsed.filter((p): p is string => typeof p === "string").slice(0, maxReadFiles);
+      }
+    }
+  } catch {
+    warnings.push("ファイルパスリストのパース失敗");
+  }
+
+  console.log("[DEBUG][Phase2] pathsToRead", pathsToRead);
+
+  // フェーズ2: 指定されたファイルを順番に読む
+  for (const path of pathsToRead) {
+    const validation = validateGithubPath(path);
+    if (!validation.valid) continue;
+    if (!isAllowedExtension(path)) continue;
+
+    params.onProgress?.(`${path} を読んでいます...`);
+    const result = await readGithubFileByPath(params.repo, path, {
+      ref: params.ref,
+      accessToken: params.accessToken,
+    });
+    toolCallCount += 1;
+
+    if ("error" in result) {
+      warnings.push(`${path}: ${result.error}`);
+      continue;
+    }
+
+    exploredFiles.push({ path, sha: undefined, content: result.content });
+  }
+
+  console.log("[DEBUG][Phase2] exploredFiles count:", exploredFiles.length);
 
   const contextBlock = buildGithubDynamicContext(exploredFiles, params.repo, params.ref, warnings);
   return {
     contextBlock,
-    exploredFiles: exploredFiles.map((file) => ({ path: file.path, sha: file.sha })),
+    exploredFiles: exploredFiles.map((f) => ({ path: f.path, sha: f.sha })),
     warnings,
     toolCallCount,
   };
