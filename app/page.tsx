@@ -48,6 +48,7 @@ export default function Home() {
   // ✅ v62追加: ストリーミング関連
   // streamingContentはChatPanelに渡してリアルタイム表示する
   const [streamingContent, setStreamingContent] = useState<string>("");
+  const [githubProgressMessages, setGithubProgressMessages] = useState<string[]>([]);
   const [thinkingContents, setThinkingContents] = useState<Record<string, string>>({});
   // AbortControllerをrefで管理（stateにするとre-renderが多すぎる）
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -452,6 +453,8 @@ export default function Home() {
               }
             } else if (parsed.type === "done") {
               aborted = parsed.aborted;
+            } else if (parsed.type === "github_progress") {
+              setGithubProgressMessages(prev => [...prev, parsed.text]);
             }
           } catch {
             // JSON parseエラーは無視
@@ -546,6 +549,7 @@ export default function Home() {
       } finally {
         setIsLoading(false);
         setStreamingContent("");
+        setGithubProgressMessages([]);
       }
       return;
     }
@@ -608,6 +612,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
       setStreamingContent("");
+      setGithubProgressMessages([]);
     }
   }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming, imageContextId, isImagePinned]);
 
@@ -881,6 +886,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
       setStreamingContent("");
+      setGithubProgressMessages([]);
     }
   }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming]);
 
@@ -1126,6 +1132,7 @@ export default function Home() {
         onUpdateMessage={handleUpdateMessage}
         // ✅ v62追加
         streamingContent={streamingContent}
+        {...({ githubProgressMessages } as any)}
         onAbort={handleAbort}
         onSendMemoToAI={handleSendMemoToAI}
         thinkingContents={thinkingContents}
