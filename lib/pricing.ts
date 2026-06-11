@@ -32,6 +32,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // ── OpenAI ──────────────────────────────────────────────
   "gpt-5.5":                { inputPerMTok: 5.00,  outputPerMTok: 30.00 },
+  "gpt-5.5-pro":            { inputPerMTok: 30.00, outputPerMTok: 180.00 },
   "gpt-5.4-mini":           { inputPerMTok: 0.75,  outputPerMTok:  4.50 },
   "gpt-5.4-nano":           { inputPerMTok: 0.20,  outputPerMTok:  1.25 },
   "gpt-5.4":                { inputPerMTok: 2.50,  outputPerMTok: 15.00 },

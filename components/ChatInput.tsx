@@ -93,6 +93,7 @@ export const MODEL_CONFIG = {
       { id: "gpt-5.4-mini" as OpenAIModel, label: "GPT-5.4 mini", badge: "標準" },
       { id: "gpt-5.4" as OpenAIModel, label: "GPT-5.4", badge: "高性能" },
       { id: "gpt-5.5" as OpenAIModel, label: "GPT-5.5", badge: "最高精度" },
+      { id: "gpt-5.5-pro" as OpenAIModel, label: "GPT-5.5 Pro", badge: "最上位" },
     ],
     defaultModel: "gpt-5.4-mini" as OpenAIModel,
     lsKey: "kabehub_openai_model",

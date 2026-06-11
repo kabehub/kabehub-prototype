@@ -34,7 +34,7 @@ const CLAUDE_MODEL_IDS = [
   "claude-haiku-4-5-20251001",
 ] as const satisfies readonly ClaudeModel[];
 const GEMINI_MODEL_IDS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite"] as const satisfies readonly GeminiModel[];
-const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5"] as const satisfies readonly OpenAIModel[];
+const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"] as const satisfies readonly OpenAIModel[];
 
 function isClaudeModel(modelId: string): modelId is ClaudeModel {
   return (CLAUDE_MODEL_IDS as readonly string[]).includes(modelId);
@@ -321,6 +321,34 @@ function streamOpenAI(
   return new ReadableStream<string>({
     async start(controller) {
       try {
+        // gpt-5.5-pro は /v1/chat/completions 非対応 → Responses API 経由
+        if (modelId === "gpt-5.5-pro") {
+          const input = msgs.map((m) => ({ role: m.role, content: m.content as string }));
+          const res = await fetch("https://api.openai.com/v1/responses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ model: modelId, input, max_output_tokens: 8192 }),
+            signal,
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error?.message ?? "OpenAI Responses API error");
+          }
+          const data = await res.json();
+          const text = data.output
+            ?.flatMap((o: { content?: { type: string; text: string }[] }) => o.content ?? [])
+            .filter((c: { type: string }) => c.type === "output_text")
+            .map((c: { text: string }) => c.text)
+            .join("") ?? "";
+          onUsage?.({
+            input_tokens: data.usage?.input_tokens ?? null,
+            output_tokens: data.usage?.output_tokens ?? null,
+          });
+          if (text) controller.enqueue(text);
+          controller.close();
+          return;
+        }
+
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -938,14 +966,23 @@ export async function POST(req: NextRequest) {
         // ✅ v64修正: 保存成功時のみdbSaved=true（失敗してもtrueにしない）
         dbSaved = await saveToDb(false, supabase);
       } catch (err) {
-        // 中断またはエラー
         isAborted = true;
-        // ✅ v64修正: 保存成功時のみdbSaved=true
         dbSaved = await saveToDb(true, supabase);
-        // 中断通知をフロントに送る
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ type: "done", aborted: true }) + "\n")
-        );
+        if ((err as Error).name === "AbortError") {
+          // Esc キャンセル: 中断通知
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "done", aborted: true }) + "\n")
+          );
+        } else {
+          // API エラー: エラーメッセージをチャット欄に表示して正常終了扱い
+          const msg = err instanceof Error ? err.message : "不明なエラー";
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "chunk", text: `\n\n（エラー: ${msg}）` }) + "\n")
+          );
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "done", aborted: false }) + "\n")
+          );
+        }
       } finally {
         // ✅ v73修正: try/catchどちらのパスでも必ずresolveを呼ぶ（waitUntilの永久待機を防ぐ）
         resolveDbSave(dbSaved);
