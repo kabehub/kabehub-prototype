@@ -59,6 +59,58 @@ function getUniqueFolderNames(threads: Thread[]): string[] {
   return Array.from(new Set(names)).sort();
 }
 
+// ---- Pinned File URL入力 ----
+function PinnedFileInput({ onAdd }: { onAdd: (url: string) => void }) {
+  const [inputUrl, setInputUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const handleAdd = () => {
+    const trimmed = inputUrl.trim();
+    if (!trimmed) return;
+
+    // github.com/owner/repo/blob/branch/path 形式かチェック
+    const githubBlobPattern = /^https:\/\/github\.com\/[^/]+\/[^/]+\/blob\/(main|master|develop|dev)\/.+/;
+    if (!githubBlobPattern.test(trimmed)) {
+      setError("https://github.com/.../blob/main/... 形式のURLを入力してください（対応ブランチ: main/master/develop/dev）");
+      return;
+    }
+
+    onAdd(trimmed);
+    setInputUrl("");
+    setError(null);
+  };
+
+  return (
+    <div style={{ marginBottom: "6px" }}>
+      <div style={{ display: "flex", gap: "6px" }}>
+        <input
+          type="text"
+          value={inputUrl}
+          onChange={(e) => { setInputUrl(e.target.value); setError(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }}
+          placeholder="https://github.com/.../blob/main/..."
+          style={{ flex: 1, padding: "6px 10px", border: `1px solid ${error ? "#e53e3e" : "var(--border)"}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = error ? "#e53e3e" : "var(--accent-muted)"; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = error ? "#e53e3e" : "var(--border)"; }}
+        />
+        <button
+          onClick={handleAdd}
+          style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "12px", cursor: "pointer", flexShrink: 0, fontFamily: "'DM Sans', sans-serif" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+        >
+          追加
+        </button>
+      </div>
+      {error && (
+        <div style={{ fontSize: "11px", color: "#e53e3e", marginTop: "3px", fontFamily: "'DM Sans', sans-serif" }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- フォルダ割り当てポップオーバー ----
 interface FolderPopoverProps {
   thread: Thread;
@@ -580,8 +632,16 @@ export default function Sidebar({
   }, [user]);
 
   // フォルダ設定モーダル
-  const [folderSettingsModal, setFolderSettingsModal] = useState<{ folderName: string; systemPrompt: string; folderType: string | null } | null>(null);
+  const [folderSettingsModal, setFolderSettingsModal] = useState<{
+    folderName: string;
+    systemPrompt: string;
+    folderType: string | null;
+    pinnedFiles: string[];
+    githubRepo: string;
+    githubRef: string;
+  } | null>(null);
   const [folderSettingsSaving, setFolderSettingsSaving] = useState(false);
+  const [githubRepoError, setGithubRepoError] = useState<string | null>(null);
 
   const handleNewThreadInFolder = useCallback((folderName: string) => {
     onNewThreadInFolder(folderName);
@@ -591,14 +651,38 @@ export default function Sidebar({
     try {
       const res = await fetch(`/api/folder-settings?folder_name=${encodeURIComponent(folderName)}`);
       const data = await res.json();
-      setFolderSettingsModal({ folderName, systemPrompt: data?.system_prompt ?? "", folderType: data?.folder_type ?? null });
+      setFolderSettingsModal({
+        folderName,
+        systemPrompt: data?.system_prompt ?? "",
+        folderType: data?.folder_type ?? null,
+        pinnedFiles: Array.isArray(data?.pinned_github_files) ? data.pinned_github_files : [],
+        githubRepo: data?.github_repo ?? "",
+        githubRef: data?.github_ref ?? "",
+      });
+      setGithubRepoError(null);
     } catch {
-      setFolderSettingsModal({ folderName, systemPrompt: "", folderType: null });
+      setFolderSettingsModal({
+        folderName,
+        systemPrompt: "",
+        folderType: null,
+        pinnedFiles: [],
+        githubRepo: "",
+        githubRef: "",
+      });
+      setGithubRepoError(null);
     }
   }, []);
 
   const handleSaveFolderSettings = useCallback(async () => {
     if (!folderSettingsModal) return;
+    // github_repo バリデーション
+    if (folderSettingsModal.githubRepo.trim() !== "") {
+      if (!/^[^/]+\/[^/]+$/.test(folderSettingsModal.githubRepo.trim())) {
+        setGithubRepoError("owner/repo の形式で入力してください");
+        return;
+      }
+    }
+    setGithubRepoError(null);
     setFolderSettingsSaving(true);
     try {
       await fetch("/api/folder-settings", {
@@ -608,6 +692,9 @@ export default function Sidebar({
           folder_name: folderSettingsModal.folderName,
           system_prompt: folderSettingsModal.systemPrompt,
           folder_type: folderSettingsModal.folderType ?? null,
+          pinned_github_files: folderSettingsModal.pinnedFiles,
+          github_repo: folderSettingsModal.githubRepo.trim() || null,
+          github_ref: folderSettingsModal.githubRef.trim() || null,
         }),
       });
       setFolderTypes(prev => ({ ...prev, [folderSettingsModal.folderName]: folderSettingsModal.folderType ?? null }));
@@ -1110,6 +1197,102 @@ export default function Sidebar({
                   <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#fef3c7", color: "#92400e" }}>△ あと{(5000 - folderSettingsModal.systemPrompt.length).toLocaleString()}文字でCaching有効</span>
                 )
               )}
+            </div>
+            {/* Pinned Files セクション */}
+            <div style={{ marginTop: "16px" }}>
+              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "6px", letterSpacing: "0.05em" }}>
+                 Pinned Files
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}>
+                このフォルダで常に参照するGitHubファイル（最大5件・合計約60,000文字まで）
+              </div>
+
+              {/* URL入力欄 */}
+              {(folderSettingsModal.pinnedFiles.length < 5) && (
+                <PinnedFileInput
+                  onAdd={(url) => {
+                    setFolderSettingsModal(prev =>
+                      prev ? { ...prev, pinnedFiles: [...prev.pinnedFiles, url] } : null
+                    );
+                  }}
+                />
+              )}
+              {folderSettingsModal.pinnedFiles.length >= 5 && (
+                <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "6px" }}>
+                  上限（5件）に達しています
+                </div>
+              )}
+
+              {/* 登録済みファイル一覧 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "6px" }}>
+                {folderSettingsModal.pinnedFiles.map((url, i) => {
+                  const fileName = url.split("/").pop() ?? url;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", background: "var(--sidebar-bg)", borderRadius: "5px", border: "1px solid var(--border)" }}>
+                      <span style={{ flex: 1, fontSize: "12px", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={url}>
+                         {fileName}
+                      </span>
+                      <button
+                        onClick={() => setFolderSettingsModal(prev =>
+                          prev ? { ...prev, pinnedFiles: prev.pinnedFiles.filter((_, idx) => idx !== i) } : null
+                        )}
+                        style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: "14px", padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
+                        title="削除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* AI動的探索セクション */}
+            <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", background: "white" }}>
+              <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "2px" }}> AI動的探索（フェーズ4）</div>
+              <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "10px", fontFamily: "'DM Sans', sans-serif" }}>
+                設定するとAIが会話中に自律的にリポジトリを探索します。Claudeのみ対応。
+              </div>
+
+              {/* 対象リポジトリ入力 */}
+              <div style={{ marginBottom: "10px" }}>
+                <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>
+                  対象リポジトリ
+                </div>
+                <input
+                  type="text"
+                  value={folderSettingsModal.githubRepo}
+                  onChange={(e) => {
+                    setFolderSettingsModal(prev => prev ? { ...prev, githubRepo: e.target.value } : null);
+                    setGithubRepoError(null);
+                  }}
+                  placeholder="例: owner/repo-name"
+                  style={{ width: "100%", padding: "7px 10px", border: `1px solid ${githubRepoError ? "#e53e3e" : "var(--border)"}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = githubRepoError ? "#e53e3e" : "var(--accent-muted)"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = githubRepoError ? "#e53e3e" : "var(--border)"; }}
+                />
+                {githubRepoError && (
+                  <div style={{ fontSize: "11px", color: "#e53e3e", marginTop: "3px", fontFamily: "'DM Sans', sans-serif" }}>
+                    {githubRepoError}
+                  </div>
+                )}
+              </div>
+
+              {/* ブランチ/タグ/SHA入力 */}
+              <div>
+                <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>
+                  ブランチ / タグ / SHA（省略可）
+                </div>
+                <input
+                  type="text"
+                  value={folderSettingsModal.githubRef}
+                  onChange={(e) => setFolderSettingsModal(prev => prev ? { ...prev, githubRef: e.target.value } : null)}
+                  placeholder="例: main, v1.0.0（省略時はデフォルトブランチ）"
+                  style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-muted)"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                />
+              </div>
             </div>
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
               💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
