@@ -167,11 +167,11 @@ async function readGithubFileByPath(
 function buildDiscoverySystemPrompt(baseSystemPrompt: string): string {
   return `${baseSystemPrompt}
 ---
-【GitHub探索モード】
-あなたは今、ユーザーの質問に答えるために必要なリポジトリ情報を集める「調査フェーズ」にいます。
-このフェーズでは最終回答を生成してはいけません。
-必要なファイルを探索し終えたら、調査したファイルの一覧と簡単なメモだけを出力してください。
-余計な説明や回答は不要です。`;
+【GitHub探索ルール】
+- まず list_github_directory でルート構造を把握する
+- ユーザーの質問に関係するファイルを read_github_file で読む（最大8ファイル）
+- 必要なファイルを読み終えたら、ツールの使用を止めて「探索完了」とだけ出力する
+- ファイルを読まずにディレクトリ一覧だけ返すことは禁止`;
 }
 
 function buildGithubDynamicContext(
@@ -220,7 +220,7 @@ async function callAnthropicMessages(
       },
       body: JSON.stringify({
         model: params.modelId,
-        max_tokens: 1024,
+        max_tokens: 256,
         system: buildDiscoverySystemPrompt(params.systemPrompt),
         messages,
         tools: GITHUB_TOOLS,
