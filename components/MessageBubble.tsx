@@ -12,6 +12,15 @@ interface MessageBubbleProps {
   isLoading?: boolean;
   provider?: string;
   onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message, modelId?: string) => void;
+  onEditAndRegenerate?: (
+    assistantMsg: Message,
+    editedContent: string,
+    targetProvider: "claude" | "gemini" | "openai",
+    modelId?: string
+  ) => void;
+  prevUserContent?: string;
+  editRegenAssistantMsg?: Message;
+  canEditAndRegenerateFromUser?: boolean;
   onTrimFrom?: (message: Message) => void;
   onMemoize?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
@@ -35,6 +44,10 @@ function MessageBubble({
   isLoading,
   provider,
   onRegenerate,
+  onEditAndRegenerate,
+  prevUserContent,
+  editRegenAssistantMsg,
+  canEditAndRegenerateFromUser,
   onTrimFrom,
   onMemoize,
   onUpdateMessage,
@@ -82,6 +95,10 @@ function MessageBubble({
   const regenBtnRef = useRef<HTMLButtonElement>(null);
   const subMenuRef = useRef<HTMLDivElement>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [editRegenOpen, setEditRegenOpen] = useState(false);
+  const [editRegenContent, setEditRegenContent] = useState("");
+  const [editRegenProvider, setEditRegenProvider] = useState<"claude" | "gemini" | "openai">("claude");
+  const [editRegenModelId, setEditRegenModelId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
@@ -291,6 +308,13 @@ function MessageBubble({
     message.provider === "claude" || message.provider === "gemini" || message.provider === "openai"
       ? message.provider
       : "claude";
+
+  const openEditRegenModal = (initialContent: string) => {
+    setEditRegenContent(initialContent);
+    setEditRegenProvider(regenProvider);
+    setEditRegenModelId(undefined);
+    setEditRegenOpen(true);
+  };
 
   return (
     <>
@@ -824,6 +848,28 @@ function MessageBubble({
                 🔄 {regenLabel(p)}で再生成
               </button>
             ))}
+            {onEditAndRegenerate && (
+              <button
+                onClick={() => openEditRegenModal(prevUserContent ?? "")}
+                style={{
+                  padding: "4px 10px", borderRadius: "6px",
+                  border: "1px solid var(--accent)", background: "white",
+                  color: "var(--accent)", fontSize: "11px",
+                  fontFamily: "'JetBrains Mono', monospace", cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s"
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)";
+                  (e.currentTarget as HTMLButtonElement).style.color = "white";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "white";
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+                }}
+              >
+                ✏️ 編集して再生成
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -856,6 +902,25 @@ function MessageBubble({
             >
               <span>🔄 再生成</span>
               <span style={{ fontSize: "10px", color: "var(--ink-faint)", marginLeft: "16px" }}>▶</span>
+            </button>
+          )}
+          {isUser && !isMemo && onEditAndRegenerate && editRegenAssistantMsg && canEditAndRegenerateFromUser && (
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                setRegenSubOpen(false);
+                openEditRegenModal(message.content);
+              }}
+              style={menuItemStyle}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5";
+                setRegenSubOpen(false);
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "none";
+              }}
+            >
+              ✏️ 編集して再生成
             </button>
           )}
           {/* メモ化（userとassistantのみ、memoは除外） */}
@@ -976,6 +1041,110 @@ function MessageBubble({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {editRegenOpen && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 10001,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditRegenOpen(false); }}
+        >
+          <div style={{
+            background: "white", borderRadius: "12px",
+            padding: "24px", width: "560px", maxWidth: "90vw",
+            display: "flex", flexDirection: "column", gap: "16px",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+          }}>
+            <div style={{ fontSize: "14px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)" }}>
+              ✏️ プロンプトを編集して再生成
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
+              元の回答を分岐として保存し、編集後のプロンプトで再生成します。
+            </div>
+
+            <textarea
+              autoFocus
+              value={editRegenContent}
+              onChange={(e) => setEditRegenContent(e.target.value)}
+              rows={6}
+              style={{
+                width: "100%", padding: "10px 12px",
+                border: "1px solid var(--accent)", borderRadius: "8px",
+                fontSize: "13px", fontFamily: "'DM Sans', sans-serif",
+                color: "var(--ink)", resize: "vertical", outline: "none",
+                boxSizing: "border-box", lineHeight: 1.6,
+              }}
+            />
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
+                送信先
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {(Object.keys(MODEL_CONFIG) as Array<keyof typeof MODEL_CONFIG>)
+                  .filter(k => k !== "image_gen")
+                  .map((providerKey) => {
+                    const config = MODEL_CONFIG[providerKey];
+                    return config.models.map((model) => {
+                      const isSelected = editRegenProvider === providerKey && editRegenModelId === model.id;
+                      return (
+                        <button
+                          key={model.id}
+                          onClick={() => {
+                            setEditRegenProvider(providerKey as "claude" | "gemini" | "openai");
+                            setEditRegenModelId(model.id);
+                          }}
+                          style={{
+                            padding: "4px 10px", borderRadius: "6px", fontSize: "11px",
+                            fontFamily: "'JetBrains Mono', monospace", cursor: "pointer",
+                            border: isSelected ? "1px solid var(--accent)" : "1px solid var(--border)",
+                            background: isSelected ? "var(--accent)" : "white",
+                            color: isSelected ? "white" : "var(--ink-muted)",
+                          }}
+                        >
+                          {model.label}
+                        </button>
+                      );
+                    });
+                  })}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setEditRegenOpen(false)}
+                style={{
+                  padding: "6px 16px", borderRadius: "6px",
+                  border: "1px solid var(--border)", background: "white",
+                  color: "var(--ink-muted)", fontSize: "12px", cursor: "pointer"
+                }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => {
+                  if (!editRegenContent.trim() || !onEditAndRegenerate) return;
+                  const targetAssistant = !isUser ? message : editRegenAssistantMsg;
+                  if (!targetAssistant) return;
+                  onEditAndRegenerate(targetAssistant, editRegenContent.trim(), editRegenProvider, editRegenModelId);
+                  setEditRegenOpen(false);
+                }}
+                disabled={!editRegenContent.trim()}
+                style={{
+                  padding: "6px 16px", borderRadius: "6px", border: "none",
+                  background: editRegenContent.trim() ? "var(--accent)" : "var(--border)",
+                  color: "white", fontSize: "12px",
+                  cursor: editRegenContent.trim() ? "pointer" : "default",
+                }}
+              >
+                再生成
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

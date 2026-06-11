@@ -25,6 +25,12 @@ interface ChatPanelProps {
   onProviderChange: (p: Provider) => void;
   onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
   onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message, modelId?: string) => void;
+  onEditAndRegenerate: (
+    assistantMsg: Message,
+    editedContent: string,
+    targetProvider: "claude" | "gemini" | "openai",
+    modelId?: string
+  ) => void;
   onTrimFrom: (message: Message) => void;
   onDeleteMessage?: (message: Message) => void;
   onDeleteImage?: (message: Message) => void;
@@ -68,6 +74,7 @@ export default function ChatPanel({
   onProviderChange,
   onTitleUpdate,
   onRegenerate,
+  onEditAndRegenerate,
   onTrimFrom,
   onDeleteMessage,
   onDeleteImage,
@@ -784,6 +791,18 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     (last, msg, i) => (msg.role === "assistant" ? i : last),
     -1
   );
+  const lastAssistantMsg =
+    lastAssistantIndex >= 0 ? activeMessages[lastAssistantIndex] : null;
+
+  let lastUserBeforeLastAssistant: Message | null = null;
+  if (lastAssistantIndex >= 0) {
+    for (let i = lastAssistantIndex - 1; i >= 0; i--) {
+      if (activeMessages[i].role === "user" && activeMessages[i].provider !== "memo") {
+        lastUserBeforeLastAssistant = activeMessages[i];
+        break;
+      }
+    }
+  }
 
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
 
@@ -1690,6 +1709,21 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         isLoading={isLoading}
         provider={provider}
         onRegenerate={onRegenerate}
+        onEditAndRegenerate={onEditAndRegenerate}
+        prevUserContent={(() => {
+          const idx = messages.findIndex(m => m.id === msg.id);
+          for (let i = idx - 1; i >= 0; i--) {
+            if (messages[i].role === "user") return messages[i].content;
+          }
+          return "";
+        })()}
+        editRegenAssistantMsg={lastAssistantMsg ?? undefined}
+        canEditAndRegenerateFromUser={
+          msg.role === "user" &&
+          !!lastAssistantMsg &&
+          !!lastUserBeforeLastAssistant &&
+          msg.id === lastUserBeforeLastAssistant.id
+        }
         onTrimFrom={onTrimFrom}
         onMemoize={onMemoizeMessage}
         onDeleteImage={onDeleteImage}

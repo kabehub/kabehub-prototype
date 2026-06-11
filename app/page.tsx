@@ -890,6 +890,84 @@ export default function Home() {
     }
   }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming]);
 
+  const handleEditAndRegenerate = useCallback(async (
+    assistantMsg: Message,
+    editedContent: string,
+    targetProvider: "claude" | "gemini" | "openai",
+    modelId?: string,
+  ) => {
+    if (isLoading || !activeThreadId) return;
+    setIsLoading(true);
+    setStreamingContent("");
+    try {
+      const idx = messages.findIndex(m => m.id === assistantMsg.id);
+      let lastUser: Message | null = null;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (messages[i].role === "user") {
+          lastUser = messages[i];
+          break;
+        }
+      }
+      if (!lastUser) {
+        setIsLoading(false);
+        return;
+      }
+
+      const branchId = crypto.randomUUID();
+
+      await fetch(`/api/threads/${activeThreadId}/messages/${assistantMsg.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: false, branch_id: branchId }),
+      });
+      setMessages(prev =>
+        prev.map(m => m.id === assistantMsg.id ? { ...m, is_active: false, branch_id: branchId } : m)
+      );
+
+      await fetch(`/api/threads/${activeThreadId}/messages/${lastUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editedContent }),
+      });
+      setMessages(prev =>
+        prev.map(m => m.id === lastUser!.id ? { ...m, content: editedContent } : m)
+      );
+
+      const newMessages = messages
+        .filter(m => m.is_active !== false && m.id !== assistantMsg.id)
+        .map(m => m.id === lastUser!.id ? { ...m, content: editedContent } : m);
+
+      const { assistantMessage, thinkingContent } = await fetchWithStreaming(
+        "/api/chat",
+        getApiKeyHeaders(),
+        JSON.stringify({
+          threadId: activeThreadId,
+          messages: newMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
+          userContent: editedContent,
+          provider: targetProvider,
+          modelId: modelId,
+          isRegenerate: true,
+          systemPrompt: activeThread?.system_prompt ?? "",
+        }),
+        (accumulated) => {
+          setStreamingContent(accumulated);
+        },
+      );
+
+      if (thinkingContent && assistantMessage.id) {
+        setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
+      }
+
+      setMessages((prev) => [...prev, { ...assistantMessage, branch_id: branchId, is_active: true }]);
+    } catch (err) {
+      console.error("編集して再生成失敗:", err);
+    } finally {
+      setIsLoading(false);
+      setStreamingContent("");
+      setGithubProgressMessages([]);
+    }
+  }, [isLoading, activeThreadId, messages, activeThread, getApiKeyHeaders, fetchWithStreaming]);
+
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
     if (!activeThreadId) return;
@@ -1118,6 +1196,7 @@ export default function Home() {
         onProviderChange={setProvider}
         onTitleUpdate={handleTitleUpdate}
         onRegenerate={handleRegenerate}
+        onEditAndRegenerate={handleEditAndRegenerate}
         onTrimFrom={handleTrimFrom}
         onDeleteMessage={handleDeleteMessage}
         onDeleteImage={handleDeleteImage}
