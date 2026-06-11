@@ -9,6 +9,16 @@ export interface LoreSearchOptions {
   timeoutMs?: number;
 }
 
+export interface LoreSearchOptionsV2 {
+  query: string;
+  folderName: string | null;
+  userId: string;
+  topK?: number;
+  openaiKey: string;
+  timeoutMs?: number;
+  matchThreshold?: number;
+}
+
 export async function searchLore(
   supabase: SupabaseClient,
   opts: LoreSearchOptions,
@@ -62,11 +72,13 @@ export type LoreSearchV2Result = {
   sourceMessageId: string | null;
 };
 
+export type LoreSearchResult = LoreSearchV2Result;
+
 export async function searchLoreV2(
   supabase: SupabaseClient,
-  opts: LoreSearchOptions,
+  opts: LoreSearchOptionsV2,
 ): Promise<LoreSearchV2Result[]> {
-  const { query, folderName, userId, topK = 5, openaiKey, timeoutMs = 3000 } = opts;
+  const { query, folderName, userId, topK = 5, openaiKey, timeoutMs = 3000, matchThreshold = 0.3 } = opts;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -89,7 +101,7 @@ export async function searchLoreV2(
       f_user_id: userId,
       f_folder_name: folderName,
       match_count: topK,
-      match_threshold: 0.3,
+      match_threshold: matchThreshold,
     });
 
     if (error) return [];
