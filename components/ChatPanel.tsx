@@ -754,7 +754,8 @@ const handleToggleRoleplayMode = (next: boolean) => {
 
 const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptions = { omitCsv: false }) => {
   if (!thread || messages.length === 0) return;
-  const content = buildExportContent(format, thread, messages, options);
+  const activeMessages = messages.filter(m => m.is_active !== false);
+  const content = buildExportContent(format, thread, activeMessages, options);
   const mimeType =
     format === "md" || format === "md2" ? "text/markdown;charset=utf-8" :
     format === "csv" ? "text/csv;charset=utf-8" :
