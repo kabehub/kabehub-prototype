@@ -316,6 +316,10 @@ create table if not exists folder_settings (
   user_id       uuid references auth.users(id) on delete cascade,
   folder_name   text not null,
   system_prompt text,
+  folder_type   text,
+  pinned_github_files jsonb DEFAULT '[]'::jsonb,
+  github_repo text DEFAULT NULL,
+  github_ref  text DEFAULT NULL,
   created_at    timestamptz default now(),
   updated_at    timestamptz default now(),
   unique(user_id, folder_name)
