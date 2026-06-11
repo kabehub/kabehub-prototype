@@ -232,7 +232,16 @@ async function callAnthropicMessages(
       return { warning: `Anthropic API エラー（HTTP ${response.status}）` };
     }
 
-    return { response: await response.json() as AnthropicMessageResponse };
+    const parsed = await response.json() as AnthropicMessageResponse;
+    // [DEBUG] Anthropic API response
+    console.log("[DEBUG][Anthropic Response]", JSON.stringify({
+      stop_reason: parsed.stop_reason,
+      contentTypes: parsed.content?.map(b => b.type),
+      toolUseNames: parsed.content
+        ?.filter(b => b.type === "tool_use")
+        .map(b => (b as { type: "tool_use"; name: string }).name),
+    }));
+    return { response: parsed };
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     return { warning: `GitHub Tool Loop エラー: ${message}` };

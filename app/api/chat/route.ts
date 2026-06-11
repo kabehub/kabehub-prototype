@@ -711,10 +711,28 @@ export async function POST(req: NextRequest) {
       const discovery = await runGithubToolLoop({
         anthropicKey,
         modelId: resolvedModelIdForLoop,
-        messages: messagesForApi.map(m => ({
-          role: m.role as "user" | "assistant",
-          content: typeof m.content === "string" ? m.content : "",
-        })),
+        messages: messagesForApi.map(m => {
+          let textContent = "";
+          if (typeof m.content === "string") {
+            textContent = m.content;
+          } else if (Array.isArray(m.content)) {
+            textContent = (m.content as Array<{ type: string; text?: string }>)
+              .filter(b => b.type === "text")
+              .map(b => b.text ?? "")
+              .join("\n");
+          }
+          // [DEBUG] messages passed to Tool Loop
+          console.log("[DEBUG][Tool Loop Message]", {
+            role: m.role,
+            contentType: typeof m.content,
+            isArray: Array.isArray(m.content),
+            textContent: textContent.slice(0, 100),
+          });
+          return {
+            role: m.role as "user" | "assistant",
+            content: textContent,
+          };
+        }),
         systemPrompt: systemPromptWithLabel,
         repo: githubRepo,
         ref: githubRef,
@@ -722,6 +740,14 @@ export async function POST(req: NextRequest) {
         maxReadFiles: 8,
         onProgress: (msg) => { progressMessages.push(msg); },
       });
+      // [DEBUG] GitHub Tool Loop result
+      console.log("[DEBUG][Tool Loop Result]", JSON.stringify({
+        contextBlockLength: discovery.contextBlock.length,
+        contextBlockPreview: discovery.contextBlock.slice(0, 200),
+        exploredFiles: discovery.exploredFiles,
+        warnings: discovery.warnings,
+        toolCallCount: discovery.toolCallCount,
+      }));
       if (discovery.contextBlock) {
         systemPromptWithLabel = systemPromptWithLabel
           ? systemPromptWithLabel + "\n\n" + discovery.contextBlock
