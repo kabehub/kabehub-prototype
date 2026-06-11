@@ -1203,9 +1203,11 @@ function MessageBubble({
               <button
                 onClick={() => {
                   if (!editRegenContent.trim() || !onEditAndRegenerate) return;
-                  const targetAssistant = !isUser ? message : editRegenAssistantMsg;
-                  if (!targetAssistant) return;
-                  onEditAndRegenerate(targetAssistant, editRegenContent.trim(), editRegenProvider, editRegenModelId);
+                  const target = (isUser && canEditAndRegenerateFromUser)
+                    ? message
+                    : (!isUser ? message : editRegenAssistantMsg);
+                  if (!target) return;
+                  onEditAndRegenerate(target, editRegenContent.trim(), editRegenProvider, editRegenModelId);
                   setEditRegenOpen(false);
                 }}
                 disabled={!editRegenContent.trim()}

@@ -17,6 +17,7 @@ type ChatMessage = { role: string; content: string; provider?: string; model_id?
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
+type BranchMeta = { branch_root_id: string; branch_index: number; parent_id: string };
 
 const DEFAULT_MODELS: Record<string, ModelId> = {
   claude: "claude-sonnet-4-5",
@@ -453,7 +454,7 @@ async function saveAssistantMessage(
   modelId?: string,
   inputTokens?: number | null,
   outputTokens?: number | null,
-  branchMeta?: { branch_root_id: string; branch_index: number } | null,
+  branchMeta?: BranchMeta | null,
 ): Promise<boolean> {
   // ✅ v64修正: upsertで重複INSERT（duplicate key）を防ぐ
   // 同じIDで2回保存が走った場合は既存レコードを上書き
@@ -470,6 +471,7 @@ async function saveAssistantMessage(
     ...(branchMeta ? {
       branch_root_id: branchMeta.branch_root_id,
       branch_index: branchMeta.branch_index,
+      parent_id: branchMeta.parent_id,
     } : {}),
   }, { onConflict: "id" });
   if (error) {
@@ -575,6 +577,8 @@ export async function POST(req: NextRequest) {
     provider: (isMemo ? "memo" : "user") as "memo" | "user",
     created_at: new Date().toISOString(),
   };
+  let branchEditMessagesForApi: ChatMessage[] | null = null;
+  let branchEditMeta: BranchMeta | null = null;
 
   if (!isRegenerate && !isTemporary) {
     if (branchEdit?.baseUserMessageId) {
@@ -583,10 +587,17 @@ export async function POST(req: NextRequest) {
       // 1. baseUserを取得してmessage_numberを確認
       const { data: baseUser } = await supabase
         .from("messages")
-        .select("id, message_number, branch_root_id, branch_index")
+        .select("id, message_number, branch_root_id")
         .eq("id", branchEdit.baseUserMessageId)
         .eq("user_id", userId)
         .single();
+
+      if (!baseUser) {
+        return new Response(JSON.stringify({ error: "baseUserMessage not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
       if (baseUser) {
         // 2. baseUser以降のactive messagesをすべてinactive化
@@ -595,8 +606,8 @@ export async function POST(req: NextRequest) {
           .update({ is_active: false })
           .eq("thread_id", threadId)
           .eq("user_id", userId)
-          .neq("is_active", false)
-          .gte("message_number", baseUser.message_number);
+          .gte("message_number", baseUser.message_number)
+          .not("is_active", "eq", false);
 
         // 3. branch_root_id と branch_index を決定
         const branchRootId = baseUser.branch_root_id ?? baseUser.id;
@@ -640,11 +651,29 @@ export async function POST(req: NextRequest) {
           is_active: true,
         });
 
-        // branchMetaをsaveAssistantMessage用に保持
-        (userMessage as Record<string, unknown>).branchMeta = {
+        branchEditMeta = {
           branch_root_id: branchRootId,
           branch_index: nextBranchIndex,
+          parent_id: userMessage.id,
         };
+
+        const { data: activeMessages } = await supabase
+          .from("messages")
+          .select("role, content, provider")
+          .eq("thread_id", threadId)
+          .eq("user_id", userId)
+          .not("is_active", "eq", false)
+          .lt("message_number", nextMessageNumber)
+          .order("message_number", { ascending: true });
+
+        branchEditMessagesForApi = [
+          ...(activeMessages ?? []).map((m) => ({
+            role: m.role as string,
+            content: m.content as string,
+            provider: m.provider as string | undefined,
+          })),
+          { role: "user", content: userContent, provider: "user" },
+        ];
       }
     } else {
       await supabase.from("messages").insert({
@@ -744,21 +773,29 @@ export async function POST(req: NextRequest) {
     ? `\n\n【会話の参加者】このスレッドには複数のAIが参加しています：${participants.join("、")}`
     : "";
 
-  const messagesForApi = [
-    ...messages
-      .filter((m: ChatMessage) => m.provider !== "memo")
-      .filter((m: ChatMessage) => m.is_active !== false)
-      .map((m: ChatMessage) => {
-        if (m.role !== "assistant") return { role: m.role as string, content: m.content };
-        // 改行あり・なし・スペース区切りすべてのラベルパターンを除去
-        // 既存DBの汚染データ（[claude][claude]...）も一網打尽にする
-        const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
-        // ⚠️ [${label}]\n の付与をやめる
-        // AIへの発言者情報の伝達は participantNote（systemPrompt末尾の参加者リスト）で担う
-        return { role: "assistant" as string, content: cleanContent };
-      }),
-    { role: "user" as string, content: userContent },
-  ];
+  const messagesForApi = branchEditMessagesForApi
+    ? branchEditMessagesForApi
+        .filter((m: ChatMessage) => m.provider !== "memo")
+        .map((m: ChatMessage) => {
+          if (m.role !== "assistant") return { role: m.role as string, content: m.content };
+          const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
+          return { role: "assistant" as string, content: cleanContent };
+        })
+    : [
+        ...messages
+          .filter((m: ChatMessage) => m.provider !== "memo")
+          .filter((m: ChatMessage) => m.is_active !== false)
+          .map((m: ChatMessage) => {
+            if (m.role !== "assistant") return { role: m.role as string, content: m.content };
+            // 改行あり・なし・スペース区切りすべてのラベルパターンを除去
+            // 既存DBの汚染データ（[claude][claude]...）も一網打尽にする
+            const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
+            // ⚠️ [${label}]\n の付与をやめる
+            // AIへの発言者情報の伝達は participantNote（systemPrompt末尾の参加者リスト）で担う
+            return { role: "assistant" as string, content: cleanContent };
+          }),
+        { role: "user" as string, content: userContent },
+      ];
 
   // imageContextId がある場合: DBから画像を取得してマルチモーダルコンテキストに追加
   if (imageContextId) {
@@ -987,7 +1024,7 @@ export async function POST(req: NextRequest) {
       created_at: new Date().toISOString(),
     };
     if (!isTemporary) {
-      await saveAssistantMessage(supabase, threadId, userId, content, usedProvider, assistantMessageId, resolvedModelId);
+      await saveAssistantMessage(supabase, threadId, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
     }
     return new Response(JSON.stringify({ userMessage, assistantMessage }), {
       headers: { "Content-Type": "application/json" },
@@ -1050,13 +1087,11 @@ export async function POST(req: NextRequest) {
   const saveToDb = async (aborted: boolean, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
     if (isTemporary) return true;
     const contentToSave = accumulatedText.replace(/^(\[.*?\]\n)+/, "");
-    const branchMeta = (userMessage as Record<string, unknown>).branchMeta as
-      { branch_root_id: string; branch_index: number } | undefined;
     return await saveAssistantMessage(
       supabaseClient, threadId, userId, contentToSave, usedProvider,
       assistantMessageId, resolvedModelId,
       usageRef.input_tokens, usageRef.output_tokens,
-      branchMeta ?? null,
+      branchEditMeta,
     );
   };
 
@@ -1139,8 +1174,6 @@ export async function POST(req: NextRequest) {
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceKey) {
         const contentToSave = accumulatedText;
-        const branchMeta = (userMessage as Record<string, unknown>).branchMeta as
-          { branch_root_id: string; branch_index: number } | undefined;
         const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
           method: "POST",
           headers: {
@@ -1159,9 +1192,10 @@ export async function POST(req: NextRequest) {
             model_id: resolvedModelId,
             ...(usageRef.input_tokens != null ? { input_tokens: usageRef.input_tokens } : {}),
             ...(usageRef.output_tokens != null ? { output_tokens: usageRef.output_tokens } : {}),
-            ...(branchMeta ? {
-              branch_root_id: branchMeta.branch_root_id,
-              branch_index: branchMeta.branch_index,
+            ...(branchEditMeta ? {
+              branch_root_id: branchEditMeta.branch_root_id,
+              branch_index: branchEditMeta.branch_index,
+              parent_id: branchEditMeta.parent_id,
             } : {}),
           }),
         });

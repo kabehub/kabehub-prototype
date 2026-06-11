@@ -795,25 +795,26 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   const lastAssistantMsg =
     lastAssistantIndex >= 0 ? activeMessages[lastAssistantIndex] : null;
 
-  const handleEditAndRegenerateFromBubble = (
-    sourceMsg: Message,
+  const handleEditAndRegenerateFromBubble = useCallback((
+    assistantOrUserMsg: Message,
     editedContent: string,
     targetProvider: "claude" | "gemini" | "openai",
     modelId?: string,
   ) => {
-    if (sourceMsg.role === "user") {
-      onEditAndRegenerate(sourceMsg, editedContent, targetProvider, modelId);
+    if (assistantOrUserMsg.role === "user") {
+      onEditAndRegenerate(assistantOrUserMsg, editedContent, targetProvider, modelId);
       return;
     }
 
-    const idx = activeMessages.findIndex((m) => m.id === sourceMsg.id);
+    const activeMessages = messages.filter(m => m.is_active !== false);
+    const idx = activeMessages.findIndex((m) => m.id === assistantOrUserMsg.id);
     for (let i = idx - 1; i >= 0; i--) {
       if (activeMessages[i].role === "user" && activeMessages[i].provider !== "memo") {
         onEditAndRegenerate(activeMessages[i], editedContent, targetProvider, modelId);
         return;
       }
     }
-  };
+  }, [messages, onEditAndRegenerate]);
 
   const handleRestoreBranchFromBubble = (message: Message) => {
     const branchRootId = message.branch_root_id ?? message.parent_id ?? null;
@@ -1738,11 +1739,11 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         canEditAndRegenerateFromUser={
           msg.role === "user" &&
           msg.provider !== "memo" &&
-          (msg as { is_active?: boolean }).is_active !== false &&
-          activeMessages.some((m, j) => {
-            const msgIdx = activeMessages.findIndex(am => am.id === msg.id);
-            return j > msgIdx && m.role === "assistant";
-          })
+          (() => {
+            const activeMessages = messages.filter(m => m.is_active !== false);
+            const activeIdx = activeMessages.findIndex(m => m.id === msg.id);
+            return activeIdx !== -1 && activeMessages.some((m, j) => j > activeIdx && m.role === "assistant");
+          })()
         }
         onTrimFrom={onTrimFrom}
         onMemoize={onMemoizeMessage}

@@ -900,20 +900,15 @@ export default function Home() {
     setIsLoading(true);
     setStreamingContent("");
     try {
-      const { userMessage, assistantMessage, thinkingContent } = await fetchWithStreaming(
+      const { assistantMessage, thinkingContent } = await fetchWithStreaming(
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
           threadId: activeThreadId,
-          messages: messages
-            .filter(m => m.is_active !== false)
-            .map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent: editedContent,
           provider: targetProvider,
           modelId: modelId,
-          branchEdit: {
-            baseUserMessageId: baseUserMsg.id,
-          },
+          branchEdit: { baseUserMessageId: baseUserMsg.id },
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
         (accumulated) => {
@@ -925,16 +920,18 @@ export default function Home() {
         setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
       }
 
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+      const freshMessages: Message[] = await res.json();
+      setMessages(freshMessages);
       await fetchThreads();
     } catch (err) {
-      console.error("編集して再生成失敗:", err);
+      console.error("編集再生成失敗:", err);
     } finally {
       setIsLoading(false);
       setStreamingContent("");
       setGithubProgressMessages([]);
     }
-  }, [isLoading, activeThreadId, messages, activeThread, getApiKeyHeaders, fetchWithStreaming, fetchThreads]);
+  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming, fetchThreads]);
 
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
