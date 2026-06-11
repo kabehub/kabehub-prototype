@@ -16,6 +16,12 @@ type Profile = {
   updated_at: string
 }
 
+type GithubStatus = {
+  connected: boolean
+  github_login: string | null
+  scope: string | null
+}
+
 // ① APIキーのLocalStorageキー名（壁打ち画面と統一）
 const LS_KEYS = {
   claude:     'kabehub_anthropic_key',
@@ -80,6 +86,12 @@ function SettingsContent() {
   const [revealedToken, setRevealedToken] = useState<string | null>(null)
   const [tokenCopied, setTokenCopied] = useState(false)
 
+  // GitHub連携 state
+  const [githubStatus, setGithubStatus] = useState<GithubStatus | null>(null)
+  const [githubLoading, setGithubLoading] = useState(false)
+  const [githubDisconnecting, setGithubDisconnecting] = useState(false)
+  const [githubMessage, setGithubMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   // UI設定 state
   const [navAlwaysOn, setNavAlwaysOn] = useState(false)
 
@@ -104,6 +116,32 @@ function SettingsContent() {
   }, [])
 
   useEffect(() => { fetchMcpTokens() }, [fetchMcpTokens])
+
+  const fetchGithubStatus = useCallback(async () => {
+    setGithubLoading(true)
+    try {
+      const res = await fetch('/api/auth/github/status')
+      if (!res.ok) return
+      const json = await res.json()
+      setGithubStatus(json)
+    } finally {
+      setGithubLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchGithubStatus() }, [fetchGithubStatus])
+
+  useEffect(() => {
+    const github = searchParams.get('github')
+    if (github === 'connected') {
+      setGithubMessage({ type: 'success', text: 'GitHubと連携しました' })
+      fetchGithubStatus()
+      setTimeout(() => setGithubMessage(null), 2500)
+    } else if (github === 'error') {
+      setGithubMessage({ type: 'error', text: 'GitHub連携に失敗しました' })
+      setTimeout(() => setGithubMessage(null), 2500)
+    }
+  }, [searchParams, fetchGithubStatus])
 
   const handleIssueToken = async () => {
     setIssuingToken(true)
@@ -132,6 +170,27 @@ function SettingsContent() {
       body: JSON.stringify({ id }),
     })
     await fetchMcpTokens()
+  }
+
+  const handleConnectGithub = () => {
+    window.location.href = '/api/auth/github'
+  }
+
+  const handleDisconnectGithub = async () => {
+    setGithubDisconnecting(true)
+    setGithubMessage(null)
+    try {
+      const res = await fetch('/api/auth/github', { method: 'DELETE' })
+      if (!res.ok) {
+        setGithubMessage({ type: 'error', text: 'GitHub連携の解除に失敗しました' })
+        return
+      }
+      await fetchGithubStatus()
+      setGithubMessage({ type: 'success', text: 'GitHub連携を解除しました' })
+      setTimeout(() => setGithubMessage(null), 2500)
+    } finally {
+      setGithubDisconnecting(false)
+    }
   }
 
   const handleCopyToken = async (token: string) => {
@@ -635,6 +694,55 @@ function SettingsContent() {
                 </span>
               )}
             </div>
+          </div>
+        </section>
+
+        {/* GitHub連携セクション */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest">
+              GitHub連携
+            </h2>
+            <p className="text-xs text-gray-600 mt-1">
+              GitHubのrepo権限はKabeHubではファイルの読み取りにのみ使用します。
+            </p>
+          </div>
+
+          <div className="border border-gray-800 rounded-xl p-5 space-y-5">
+            {githubStatus?.connected ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-200">
+                  ✅ @{githubStatus.github_login ?? 'GitHub'} と連携中
+                </p>
+                <button
+                  onClick={handleDisconnectGithub}
+                  disabled={githubDisconnecting}
+                  className="px-4 py-2 bg-transparent border border-red-500/50 hover:bg-red-500/10 disabled:border-gray-700 disabled:text-gray-500 text-red-400 hover:text-red-300 rounded-lg text-sm transition-colors"
+                >
+                  {githubDisconnecting ? '解除中...' : '連携を解除する'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <button
+                  onClick={handleConnectGithub}
+                  disabled={githubLoading}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors"
+                >
+                  GitHubと連携する
+                </button>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500">プライベートリポジトリも読み込めます。</p>
+                  <p className="text-xs text-gray-600">※repo権限はファイル読み取りにのみ使用します。</p>
+                </div>
+              </div>
+            )}
+
+            {githubMessage && (
+              <p className={`text-sm ${githubMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                {githubMessage.text}
+              </p>
+            )}
           </div>
         </section>
 

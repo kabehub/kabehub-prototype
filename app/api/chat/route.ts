@@ -7,6 +7,7 @@ import { checkChatRateLimit } from "@/lib/rate-limit";
 import { searchLore, searchLoreV2 } from "@/lib/lore";
 import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
+import { getGithubToken } from "@/lib/github-token-store";
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
@@ -473,6 +474,7 @@ export async function POST(req: NextRequest) {
   let pinnedGithubFiles: string[] = [];
   let githubRepo: string | null = null;
   let githubRef: string | undefined = undefined;
+  let githubAccessToken: string | null = null;
 
   if (!isTemporary) {
     const { data: thread } = await supabase
@@ -684,10 +686,14 @@ export async function POST(req: NextRequest) {
     ? resolvedSystemPrompt + participantNote + labelNote
     : (participantNote + labelNote).trim();
 
+  if (pinnedGithubFiles.length > 0 || githubRepo) {
+    githubAccessToken = await getGithubToken(userId);
+  }
+
   // ── Pinned GitHub Files 注入 ──────────────────────────────────────────────
   if (pinnedGithubFiles.length > 0) {
     const { context: pinnedContext, warnings: pinnedWarnings } =
-      await buildPinnedGithubContext(pinnedGithubFiles);
+      await buildPinnedGithubContext(pinnedGithubFiles, githubAccessToken ?? undefined);
     if (pinnedWarnings.length > 0) {
       console.warn("[Pinned GitHub Files] warnings:", pinnedWarnings);
     }
@@ -736,6 +742,7 @@ export async function POST(req: NextRequest) {
         systemPrompt: systemPromptWithLabel,
         repo: githubRepo,
         ref: githubRef,
+        accessToken: githubAccessToken ?? undefined,
         maxToolCalls: 10,
         maxReadFiles: 8,
         onProgress: (msg) => { progressMessages.push(msg); },
