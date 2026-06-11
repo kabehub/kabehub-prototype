@@ -251,6 +251,7 @@ export async function listGithubDirectory(
   const url = `https://api.github.com/repos/${repo}/contents${encodedPath}${refQuery}`;
 
   try {
+    console.log("[DEBUG][github.ts listGithubDirectory] fetching", { repo, path, ref: options?.ref });
     const response = await fetchWithTimeout(url, {
       headers: {
         Accept: "application/vnd.github+json",
@@ -258,6 +259,7 @@ export async function listGithubDirectory(
       },
     }, timeoutMs);
 
+    console.log("[DEBUG][github.ts listGithubDirectory] response status", response.status);
     if (!response.ok) {
       return { error: `ディレクトリ一覧の取得に失敗しました（HTTP ${response.status}）` };
     }

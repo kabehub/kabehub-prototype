@@ -758,7 +758,10 @@ export async function POST(req: NextRequest) {
       }
     } catch (err) {
       console.error("[github-tool-loop] error:", err);
-      // エラーが起きても会話は続行する（Tool Loop は best-effort）
+      console.error("[DEBUG][Tool Loop CATCH]", {
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack?.slice(0, 500) : undefined,
+      });
     }
   }
 

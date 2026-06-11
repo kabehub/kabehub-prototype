@@ -274,6 +274,10 @@ export async function runGithubToolLoop(
   }
 
   while (current.response?.stop_reason === "tool_use") {
+    console.log("[DEBUG][Tool Loop iteration]", {
+      toolCallCount,
+      stop_reason: current.response?.stop_reason,
+    });
     const toolUseBlocks = getToolUseBlocks(current.response.content);
     if (toolUseBlocks.length === 0) {
       break;
@@ -290,9 +294,16 @@ export async function runGithubToolLoop(
       if (toolUse.name === "list_github_directory") {
         const path = typeof toolUse.input.path === "string" ? toolUse.input.path : "";
         params.onProgress?.(`${path || "ルート"} を確認中...`);
+        console.log("[DEBUG][listGithubDirectory] call", { repo: params.repo, path, ref: params.ref, hasToken: !!params.accessToken });
         const result = await listGithubDirectory(params.repo, path, {
           ref: params.ref,
           accessToken: params.accessToken,
+        });
+        console.log("[DEBUG][listGithubDirectory] result", {
+          hasError: "error" in result,
+          error: "error" in result ? (result as { error: string }).error : undefined,
+          itemCount: Array.isArray(result) ? result.length : undefined,
+          resultType: typeof result,
         });
 
         toolResults.push({
