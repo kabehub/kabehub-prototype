@@ -60,6 +60,10 @@ function SettingsContent() {
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [isBatchTraining, setIsBatchTraining] = useState(false)
+  const [batchTrainResult, setBatchTrainResult] = useState<{
+    ok: boolean; processedCount: number; insertedCount: number
+  } | null>(null)
 
   // ① APIキー state
   const [claudeKey, setClaudeKey] = useState('')
@@ -288,6 +292,31 @@ function SettingsContent() {
       alert("エクスポートに失敗しました。もう一度お試しください。")
     } finally {
       setIsExporting(false)
+    }
+  }
+
+  const handleBatchTrain = async () => {
+    if (!openaiKey) return
+    setIsBatchTraining(true)
+    setBatchTrainResult(null)
+    try {
+      const res = await fetch('/api/lore/batch-train', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-openai-api-key': openaiKey,
+        },
+        body: JSON.stringify({ limit: 20 }),
+      })
+      if (!res.ok) throw new Error('batch-train failed')
+      const json = await res.json()
+      setBatchTrainResult(json)
+    } catch (err) {
+      console.error('[batch-train]', err)
+      setBatchTrainResult(null)
+      alert('記憶化に失敗しました。')
+    } finally {
+      setIsBatchTraining(false)
     }
   }
 
@@ -847,7 +876,37 @@ function SettingsContent() {
               壁打ちの内容からAIが自動抽出した記憶を管理できます。
             </p>
           </div>
-          <div className="border border-gray-800 rounded-xl p-5">
+          <div className="border border-gray-800 rounded-xl p-5 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-200">会話を記憶化する</p>
+              <p className="text-xs text-gray-500 mt-1">
+                未学習の会話を最大20件、AIが要約してRAG記憶として保存します。
+                対象: 全フォルダ。OpenAI APIキーが必要です。
+              </p>
+            </div>
+            <button
+              onClick={handleBatchTrain}
+              disabled={isBatchTraining || !openaiKey}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors border ${
+                isBatchTraining || !openaiKey
+                  ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
+                  : 'bg-transparent border-gray-600 hover:bg-gray-800 text-gray-300 hover:text-gray-100 cursor-pointer'
+              }`}
+            >
+              {isBatchTraining ? '⏳ 記憶化中...' : ' 未学習メッセージを記憶化'}
+            </button>
+            {batchTrainResult && (
+              <p className="text-xs text-green-400">
+                ✅ 完了: {batchTrainResult.insertedCount}件保存
+                / {batchTrainResult.processedCount - batchTrainResult.insertedCount}件スキップ
+              </p>
+            )}
+            {!openaiKey && (
+              <p className="text-xs text-gray-600">
+                ※ OpenAI APIキーを設定・保存すると使用できます
+              </p>
+            )}
+            <hr className="border-gray-800" />
             <button
               onClick={() => router.push("/memory")}
               className="px-4 py-2 rounded-lg text-sm border border-gray-600 hover:bg-gray-800 text-gray-300"
