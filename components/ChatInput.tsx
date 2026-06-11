@@ -223,6 +223,11 @@ export default function ChatInput({
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
+  // GitHub 一時添付
+  const [githubPanelOpen, setGithubPanelOpen] = useState(false);
+  const [githubUrl, setGithubUrl] = useState("");
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
 
   // モデル選択 state（LocalStorageから初期値を読み込む）
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
@@ -456,6 +461,58 @@ export default function ChatInput({
       if (target.kind === "image") URL.revokeObjectURL(target.previewUrl);
       return prev.filter((_, i) => i !== index);
     });
+  };
+
+  const handleGithubFetch = async () => {
+    const trimmed = githubUrl.trim();
+    if (!trimmed) return;
+
+    setGithubLoading(true);
+    setGithubError(null);
+
+    try {
+      const res = await fetch("/api/fetch-github", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+      });
+
+      const result: { content: string; truncated: boolean } | { error: string } = await res.json();
+
+      if ("error" in result) {
+        setGithubError(result.error);
+        return;
+      }
+
+      // テキストファイル上限チェック
+      const currentTextCount = attachedFiles.filter((f) => f.kind === "text").length;
+      if (currentTextCount >= MAX_TEXT_FILES) {
+        setGithubError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+        return;
+      }
+
+      const fileName = trimmed.split("/").pop() ?? "file";
+      const content = result.truncated
+        ? result.content + "\n（※長いため一部省略）"
+        : result.content;
+      const sizeKB = Math.round((content.length / 1024) * 10) / 10;
+
+      const githubFile: AttachedTextFile = {
+        kind: "text",
+        name: fileName,
+        content,
+        sizeKB,
+      };
+
+      setAttachedFiles((prev) => [...prev, githubFile]);
+      setGithubUrl("");
+      setGithubPanelOpen(false);
+      setGithubError(null);
+    } catch {
+      setGithubError("ネットワークエラーが発生しました");
+    } finally {
+      setGithubLoading(false);
+    }
   };
 
   const handleSubmit = () => {
@@ -753,6 +810,83 @@ export default function ChatInput({
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* GitHub 一時添付パネル */}
+      {githubPanelOpen && (
+        <div style={{ marginBottom: "8px" }}>
+          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            <input
+              type="text"
+              value={githubUrl}
+              onChange={(e) => { setGithubUrl(e.target.value); setGithubError(null); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); handleGithubFetch(); }
+                if (e.key === "Escape") { setGithubPanelOpen(false); setGithubUrl(""); setGithubError(null); }
+              }}
+              placeholder="https://github.com/.../blob/main/..."
+              disabled={githubLoading}
+              autoFocus
+              style={{
+                flex: 1,
+                padding: "6px 10px",
+                border: `1px solid ${githubError ? "#e53e3e" : "var(--border)"}`,
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontFamily: "'JetBrains Mono', monospace",
+                outline: "none",
+                color: "var(--ink)",
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = githubError ? "#e53e3e" : "var(--accent-muted)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = githubError ? "#e53e3e" : "var(--border)"; }}
+            />
+            <button
+              onClick={handleGithubFetch}
+              disabled={githubLoading || !githubUrl.trim()}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "none",
+                background: githubLoading || !githubUrl.trim() ? "var(--ink-faint)" : "var(--accent)",
+                color: "white",
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: githubLoading || !githubUrl.trim() ? "default" : "pointer",
+                whiteSpace: "nowrap",
+                transition: "background 0.15s",
+              }}
+            >
+              {githubLoading ? "読込中…" : "読み込む"}
+            </button>
+            <button
+              onClick={() => { setGithubPanelOpen(false); setGithubUrl(""); setGithubError(null); }}
+              disabled={githubLoading}
+              style={{
+                padding: "6px 8px",
+                borderRadius: "6px",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--ink-muted)",
+                fontSize: "12px",
+                cursor: githubLoading ? "default" : "pointer",
+              }}
+              title="閉じる"
+            >
+              ×
+            </button>
+          </div>
+          {githubError && (
+            <div style={{
+              marginTop: "4px",
+              fontSize: "11px",
+              color: "#e53e3e",
+              fontFamily: "'DM Sans', sans-serif",
+            }}>
+              {githubError}
+            </div>
+          )}
         </div>
       )}
 
@@ -1081,6 +1215,36 @@ export default function ChatInput({
           >
             📎 {hasAnyFile ? `添付中 (${attachedFiles.length})` : "ファイル"}
           </button>
+
+          {/* GitHub 一時添付ボタン */}
+          {provider !== "image_gen" && (
+            <button
+              onClick={() => {
+                setGithubPanelOpen((prev) => !prev);
+                setGithubError(null);
+              }}
+              disabled={isLoading || disabled}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "4px 12px",
+                borderRadius: "20px",
+                border: "1px solid",
+                borderColor: githubPanelOpen ? "var(--accent)" : "var(--border)",
+                background: githubPanelOpen ? "rgba(196,98,45,0.08)" : "transparent",
+                color: githubPanelOpen ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: isLoading || disabled ? "default" : "pointer",
+                transition: "all 0.15s",
+                letterSpacing: "0.03em",
+              }}
+              title="GitHub の公開ファイルを添付"
+            >
+              GitHub
+            </button>
+          )}
 
           <input
             ref={fileInputRef}
