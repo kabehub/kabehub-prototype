@@ -1749,7 +1749,12 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           }
           return "";
         })()}
-        editRegenAssistantMsg={msg.role === "user" ? msg : lastAssistantMsg ?? undefined}
+        editRegenAssistantMsg={(() => {
+          if (msg.role !== "user") return lastAssistantMsg ?? undefined;
+          const activeIdx = activeMessages.findIndex(m => m.id === msg.id);
+          if (activeIdx === -1) return undefined;
+          return activeMessages.slice(activeIdx + 1).find(m => m.role === "assistant");
+        })()}
         canEditAndRegenerateFromUser={
           msg.role === "user" &&
           msg.provider !== "memo" &&

@@ -331,11 +331,26 @@ function MessageBubble({
       ? message.provider
       : "claude";
 
-  const openEditRegenModal = (initialContent: string) => {
+  const openEditRegenModal = (initialContent: string, defaultModelSource?: Message) => {
     setEditRegenContent(initialContent);
-    setEditRegenProvider(regenProvider);
-    setEditRegenModelId(undefined);
+    const src = defaultModelSource ?? (!isUser ? message : undefined);
+    const srcProvider =
+      src?.provider === "claude" || src?.provider === "gemini" || src?.provider === "openai"
+        ? src.provider
+        : regenProvider;
+    setEditRegenProvider(srcProvider);
+    setEditRegenModelId(src?.model_id ?? undefined);
     setEditRegenOpen(true);
+  };
+
+  const submitEditRegen = () => {
+    if (!editRegenContent.trim() || !onEditAndRegenerate) return;
+    const target = (isUser && canEditAndRegenerateFromUser)
+      ? message
+      : (!isUser ? message : editRegenAssistantMsg);
+    if (!target) return;
+    onEditAndRegenerate(target, editRegenContent.trim(), editRegenProvider, editRegenModelId);
+    setEditRegenOpen(false);
   };
 
   return (
@@ -925,7 +940,7 @@ function MessageBubble({
             ))}
             {onEditAndRegenerate && (
               <button
-                onClick={() => openEditRegenModal(prevUserContent ?? "")}
+                onClick={() => openEditRegenModal(prevUserContent ?? "", message)}
                 style={{
                   padding: "4px 10px", borderRadius: "6px",
                   border: "1px solid var(--accent)", background: "white",
@@ -984,7 +999,7 @@ function MessageBubble({
               onClick={() => {
                 setMenuOpen(false);
                 setRegenSubOpen(false);
-                openEditRegenModal(message.content);
+                openEditRegenModal(message.content, editRegenAssistantMsg);
               }}
               style={menuItemStyle}
               onMouseEnter={(e) => {
@@ -1145,6 +1160,13 @@ function MessageBubble({
               autoFocus
               value={editRegenContent}
               onChange={(e) => setEditRegenContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                if (e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                submitEditRegen();
+              }}
               rows={6}
               style={{
                 width: "100%", padding: "10px 12px",
@@ -1201,15 +1223,7 @@ function MessageBubble({
                 キャンセル
               </button>
               <button
-                onClick={() => {
-                  if (!editRegenContent.trim() || !onEditAndRegenerate) return;
-                  const target = (isUser && canEditAndRegenerateFromUser)
-                    ? message
-                    : (!isUser ? message : editRegenAssistantMsg);
-                  if (!target) return;
-                  onEditAndRegenerate(target, editRegenContent.trim(), editRegenProvider, editRegenModelId);
-                  setEditRegenOpen(false);
-                }}
+                onClick={submitEditRegen}
                 disabled={!editRegenContent.trim()}
                 style={{
                   padding: "6px 16px", borderRadius: "6px", border: "none",

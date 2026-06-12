@@ -284,7 +284,11 @@ function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onU
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        onClick={onSelect}
+        onClick={(e) => {
+          const sel = window.getSelection();
+          if (sel && !sel.isCollapsed) return;
+          onSelect();
+        }}
         style={{
           padding: "10px 10px",
           borderRadius: "6px",
@@ -302,7 +306,7 @@ function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onU
       >
         {/* タイトル + 時刻 */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: "12.5px", fontWeight: isActive ? 500 : 400, color: isActive ? "var(--sidebar-active-color)" : "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.4 }}>
+          <div style={{ fontSize: "12.5px", fontWeight: isActive ? 500 : 400, color: isActive ? "var(--sidebar-active-color)" : "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.4, userSelect: "text", cursor: "text" }}>
             {thread.title}
           </div>
           <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginTop: "2px" }}>
