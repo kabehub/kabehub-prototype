@@ -592,6 +592,8 @@ export async function POST(req: NextRequest) {
         .eq("user_id", userId)
         .single();
 
+      console.log("[DEBUG branchEdit] baseUser:", JSON.stringify(baseUser));
+
       if (!baseUser) {
         return new Response(JSON.stringify({ error: "baseUserMessage not found" }), {
           status: 404,
@@ -601,13 +603,17 @@ export async function POST(req: NextRequest) {
 
       if (baseUser) {
         // 2. baseUser以降のactive messagesをすべてinactive化
-        await supabase
+        const { data: inactivated, error: inactivateError } = await supabase
           .from("messages")
           .update({ is_active: false })
           .eq("thread_id", threadId)
           .eq("user_id", userId)
           .gte("message_number", baseUser.message_number)
-          .not("is_active", "eq", false);
+          .not("is_active", "eq", false)
+          .select("id, message_number, role, content");
+
+        console.log("[DEBUG branchEdit] inactivated rows:", JSON.stringify(inactivated));
+        console.log("[DEBUG branchEdit] inactivate error:", JSON.stringify(inactivateError));
 
         // 3. branch_root_id と branch_index を決定
         const branchRootId = baseUser.branch_root_id ?? baseUser.id;
@@ -636,20 +642,31 @@ export async function POST(req: NextRequest) {
 
         const nextMessageNumber = (maxNumRow?.message_number ?? 0) + 1;
 
+        console.log("[DEBUG branchEdit] computed:", JSON.stringify({
+          branchRootId, nextBranchIndex, nextMessageNumber,
+          baseUserMessageNumber: baseUser.message_number,
+        }));
+
         // 5. 新userメッセージをinsert
-        await supabase.from("messages").insert({
-          id: userMessage.id,
-          thread_id: threadId,
-          role: "user",
-          content: userContent,
-          provider: "user",
-          user_id: userId,
-          parent_id: baseUser.id,
-          branch_root_id: branchRootId,
-          branch_index: nextBranchIndex,
-          message_number: nextMessageNumber,
-          is_active: true,
-        });
+        const { data: insertedUser, error: insertUserError } = await supabase
+          .from("messages")
+          .insert({
+            id: userMessage.id,
+            thread_id: threadId,
+            role: "user",
+            content: userContent,
+            provider: "user",
+            user_id: userId,
+            parent_id: baseUser.id,
+            branch_root_id: branchRootId,
+            branch_index: nextBranchIndex,
+            message_number: nextMessageNumber,
+            is_active: true,
+          })
+          .select();
+
+        console.log("[DEBUG branchEdit] insertedUser:", JSON.stringify(insertedUser));
+        console.log("[DEBUG branchEdit] insertUser error:", JSON.stringify(insertUserError));
 
         branchEditMeta = {
           branch_root_id: branchRootId,
