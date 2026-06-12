@@ -583,18 +583,13 @@ export async function POST(req: NextRequest) {
   if (!isRegenerate && !isTemporary) {
     if (branchEdit?.baseUserMessageId) {
       // branchEditモード: 旧user以降を inactive化 → 新userを新規insert
-      console.log("[DEBUG] branchEdit.baseUserMessageId:", branchEdit.baseUserMessageId);
-
       // 1. baseUserを取得してmessage_numberを確認
-      const { data: baseUser, error: baseUserError } = await supabase
+      const { data: baseUser } = await supabase
         .from("messages")
         .select("id, message_number, branch_root_id, branch_index, is_active")
         .eq("id", branchEdit.baseUserMessageId)
         .eq("user_id", userId)
         .single();
-
-      console.log("[DEBUG] baseUserError:", baseUserError);
-      console.log("[DEBUG] baseUser:", baseUser);
 
       if (!baseUser) {
         return new Response(JSON.stringify({ error: "baseUserMessage not found" }), {
@@ -608,8 +603,7 @@ export async function POST(req: NextRequest) {
         const oldBranchIndex = baseUser.branch_index ?? 0;
 
         // 2. baseUser以降のactive messagesをすべてinactive化
-        console.log("[DEBUG] UPDATE params:", { branchRootId, oldBranchIndex, gte: baseUser.message_number });
-        const { data: updatedRows, error: updateError } = await supabase
+        await supabase
           .from("messages")
           .update({
             is_active: false,
@@ -621,7 +615,6 @@ export async function POST(req: NextRequest) {
           .gte("message_number", baseUser.message_number)
           .not("is_active", "eq", false)
           .select("id, message_number, role, content");
-        console.log("[DEBUG] UPDATE result:", updatedRows, updateError);
 
         // 3. branch_root_id と branch_index を決定
         const { data: maxBranchRow } = await supabase
@@ -662,7 +655,6 @@ export async function POST(req: NextRequest) {
           message_number: nextMessageNumber,
           is_active: true,
         };
-        console.log("[DEBUG] INSERT is_active value:", insertMessage);
 
         await supabase
           .from("messages")
@@ -694,6 +686,24 @@ export async function POST(req: NextRequest) {
         ];
       }
     } else {
+      const { data: lastActiveMsg } = await supabase
+        .from("messages")
+        .select("branch_root_id, branch_index")
+        .eq("thread_id", threadId)
+        .eq("user_id", userId)
+        .not("is_active", "eq", false)
+        .order("message_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastActiveMsg?.branch_root_id != null) {
+        branchEditMeta = {
+          branch_root_id: lastActiveMsg.branch_root_id,
+          branch_index: lastActiveMsg.branch_index ?? 0,
+          parent_id: userMessage.id,
+        };
+      }
+
       await supabase.from("messages").insert({
         id: userMessage.id,
         thread_id: threadId,
@@ -701,6 +711,10 @@ export async function POST(req: NextRequest) {
         content: userContent,
         provider: isMemo ? "memo" : "user",
         user_id: userId,
+        ...(branchEditMeta ? {
+          branch_root_id: branchEditMeta.branch_root_id,
+          branch_index: branchEditMeta.branch_index,
+        } : {}),
       });
     }
   }
@@ -913,13 +927,6 @@ export async function POST(req: NextRequest) {
               .map(b => b.text ?? "")
               .join("\n");
           }
-          // [DEBUG] messages passed to Tool Loop
-          console.log("[DEBUG][Tool Loop Message]", {
-            role: m.role,
-            contentType: typeof m.content,
-            isArray: Array.isArray(m.content),
-            textContent: textContent.slice(0, 100),
-          });
           return {
             role: m.role as "user" | "assistant",
             content: textContent,
@@ -933,14 +940,6 @@ export async function POST(req: NextRequest) {
         maxReadFiles: 8,
         onProgress: (msg) => { progressMessages.push(msg); },
       });
-      // [DEBUG] GitHub Tool Loop result
-      console.log("[DEBUG][Tool Loop Result]", JSON.stringify({
-        contextBlockLength: discovery.contextBlock.length,
-        contextBlockPreview: discovery.contextBlock.slice(0, 200),
-        exploredFiles: discovery.exploredFiles,
-        warnings: discovery.warnings,
-        toolCallCount: discovery.toolCallCount,
-      }));
       if (discovery.contextBlock) {
         systemPromptWithLabel = systemPromptWithLabel
           ? systemPromptWithLabel + "\n\n" + discovery.contextBlock
@@ -951,10 +950,6 @@ export async function POST(req: NextRequest) {
       }
     } catch (err) {
       console.error("[github-tool-loop] error:", err);
-      console.error("[DEBUG][Tool Loop CATCH]", {
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack?.slice(0, 500) : undefined,
-      });
     }
   }
 
