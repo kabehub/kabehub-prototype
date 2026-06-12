@@ -832,6 +832,19 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     return acc;
   }, {});
 
+  const inactiveBranchGroups = messages.reduce<Record<string, Message[]>>((acc, msg) => {
+    if (msg.is_active !== false) return acc;
+    const groupKey = msg.branch_root_id ?? msg.id;
+    if (!acc[groupKey]) acc[groupKey] = [];
+    acc[groupKey].push(msg);
+    return acc;
+  }, {});
+  const inactiveBranchFirstMessageIds = new Set(
+    Object.values(inactiveBranchGroups)
+      .map((group) => group[0]?.id)
+      .filter((id): id is string => Boolean(id))
+  );
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: isTemporary ? "#f1f1f0" : "var(--chat-bg)", overflow: "hidden" }}>
       {/* Header */}
@@ -1667,10 +1680,12 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         )}
         {messages.map((msg, i) => {
   if (msg.is_active === false) {
+    const groupKey = msg.branch_root_id ?? msg.id;
+    if (!inactiveBranchFirstMessageIds.has(msg.id)) return null;
     return (
       <BranchBubble
-        key={msg.id}
-        message={msg}
+        key={`branch-${groupKey}`}
+        messages={inactiveBranchGroups[groupKey] ?? [msg]}
         onRestore={handleRestoreBranchFromBubble}
       />
     );

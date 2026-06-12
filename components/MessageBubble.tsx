@@ -1244,19 +1244,26 @@ export function ThinkingBubble() {
 }
 
 interface BranchBubbleProps {
-  message: Message;
+  messages: Message[];
   onRestore?: (message: Message) => void;
 }
 
-export function BranchBubble({ message, onRestore }: BranchBubbleProps) {
+export function BranchBubble({ messages, onRestore }: BranchBubbleProps) {
   const [expanded, setExpanded] = useState(false);
+  const restoreMessage =
+    [...messages].reverse().find((msg) => msg.role === "assistant" && msg.branch_root_id && msg.branch_index != null) ??
+    messages.find((msg) => msg.branch_root_id && msg.branch_index != null);
+  const labelMessage =
+    restoreMessage ??
+    messages.find((msg) => msg.role === "assistant") ??
+    messages[0];
 
   const providerLabel =
-    message.provider === "claude" ? "Claude" :
-    message.provider === "gemini" ? "Gemini" :
-    message.provider === "openai" ? "ChatGPT" : "AI";
+    labelMessage?.provider === "claude" ? "Claude" :
+    labelMessage?.provider === "gemini" ? "Gemini" :
+    labelMessage?.provider === "openai" ? "ChatGPT" : "AI";
 
-  const modelLabel = message.model_id ? ` · ${message.model_id}` : "";
+  const modelLabel = labelMessage?.model_id ? ` · ${labelMessage.model_id}` : "";
 
   return (
     <div style={{
@@ -1286,7 +1293,7 @@ export function BranchBubble({ message, onRestore }: BranchBubbleProps) {
           color: "var(--ink-faint)",
           letterSpacing: "0.05em",
         }}>
-          ボツ案 · {providerLabel}{modelLabel}
+          ボツ案 · {providerLabel}{modelLabel}{messages.length > 1 ? ` · ${messages.length}件` : ""}
         </span>
         <span style={{
           marginLeft: "auto",
@@ -1303,20 +1310,48 @@ export function BranchBubble({ message, onRestore }: BranchBubbleProps) {
           padding: "10px 14px 12px",
           borderTop: "1px dashed var(--border)",
         }}>
-          <div style={{
-            fontSize: "13px",
-            lineHeight: 1.7,
-            color: "var(--ink-muted)",
-            fontFamily: "'DM Sans', sans-serif",
-            whiteSpace: "pre-wrap",
-            marginBottom: "10px",
-            opacity: 0.75,
-          }}>
-            {message.content}
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: restoreMessage ? "10px" : 0 }}>
+            {messages.map((msg) => {
+              const isUser = msg.role === "user";
+              const roleLabel = isUser ? "You" : "AI";
+              return (
+                <div key={msg.id} style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: isUser ? "flex-end" : "flex-start",
+                  gap: "3px",
+                }}>
+                  <div style={{
+                    fontSize: "9px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    color: "var(--ink-faint)",
+                    letterSpacing: "0.05em",
+                  }}>
+                    {roleLabel}
+                  </div>
+                  <div style={{
+                    maxWidth: "720px",
+                    borderRadius: "8px",
+                    padding: "9px 12px",
+                    background: isUser ? "#f7f7f5" : "white",
+                    border: "1px solid var(--border)",
+                    borderLeft: isUser ? "4px solid var(--ink-faint)" : "1px solid var(--border)",
+                    fontSize: "13px",
+                    lineHeight: 1.7,
+                    color: "var(--ink-muted)",
+                    fontFamily: "'DM Sans', sans-serif",
+                    whiteSpace: "pre-wrap",
+                    opacity: 0.75,
+                  }}>
+                    {msg.content}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          {message.role === "assistant" && (
+          {restoreMessage && (
             <button
-              onClick={(e) => { e.stopPropagation(); onRestore?.(message); }}
+              onClick={(e) => { e.stopPropagation(); onRestore?.(restoreMessage); }}
               style={{
                 padding: "4px 12px",
                 borderRadius: "6px",
