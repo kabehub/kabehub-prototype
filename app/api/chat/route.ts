@@ -583,14 +583,18 @@ export async function POST(req: NextRequest) {
   if (!isRegenerate && !isTemporary) {
     if (branchEdit?.baseUserMessageId) {
       // branchEditモード: 旧user以降を inactive化 → 新userを新規insert
+      console.log("[DEBUG] branchEdit.baseUserMessageId:", branchEdit.baseUserMessageId);
 
       // 1. baseUserを取得してmessage_numberを確認
-      const { data: baseUser } = await supabase
+      const { data: baseUser, error: baseUserError } = await supabase
         .from("messages")
-        .select("id, message_number, branch_root_id, branch_index")
+        .select("id, message_number, branch_root_id, branch_index, is_active")
         .eq("id", branchEdit.baseUserMessageId)
         .eq("user_id", userId)
         .single();
+
+      console.log("[DEBUG] baseUserError:", baseUserError);
+      console.log("[DEBUG] baseUser:", baseUser);
 
       if (!baseUser) {
         return new Response(JSON.stringify({ error: "baseUserMessage not found" }), {
@@ -604,7 +608,8 @@ export async function POST(req: NextRequest) {
         const oldBranchIndex = baseUser.branch_index ?? 0;
 
         // 2. baseUser以降のactive messagesをすべてinactive化
-        await supabase
+        console.log("[DEBUG] UPDATE params:", { branchRootId, oldBranchIndex, gte: baseUser.message_number });
+        const { data: updatedRows, error: updateError } = await supabase
           .from("messages")
           .update({
             is_active: false,
@@ -616,6 +621,7 @@ export async function POST(req: NextRequest) {
           .gte("message_number", baseUser.message_number)
           .not("is_active", "eq", false)
           .select("id, message_number, role, content");
+        console.log("[DEBUG] UPDATE result:", updatedRows, updateError);
 
         // 3. branch_root_id と branch_index を決定
         const { data: maxBranchRow } = await supabase
@@ -643,21 +649,24 @@ export async function POST(req: NextRequest) {
         const nextMessageNumber = (maxNumRow?.message_number ?? 0) + 1;
 
         // 5. 新userメッセージをinsert
+        const insertMessage = {
+          id: userMessage.id,
+          thread_id: threadId,
+          role: "user",
+          content: userContent,
+          provider: "user",
+          user_id: userId,
+          parent_id: baseUser.id,
+          branch_root_id: branchRootId,
+          branch_index: nextBranchIndex,
+          message_number: nextMessageNumber,
+          is_active: true,
+        };
+        console.log("[DEBUG] INSERT is_active value:", insertMessage);
+
         await supabase
           .from("messages")
-          .insert({
-            id: userMessage.id,
-            thread_id: threadId,
-            role: "user",
-            content: userContent,
-            provider: "user",
-            user_id: userId,
-            parent_id: baseUser.id,
-            branch_root_id: branchRootId,
-            branch_index: nextBranchIndex,
-            message_number: nextMessageNumber,
-            is_active: true,
-          })
+          .insert(insertMessage)
           .select();
 
         branchEditMeta = {
