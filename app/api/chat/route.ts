@@ -761,9 +761,11 @@ export async function POST(req: NextRequest) {
 
   const resolvedModelId: ModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
 
+  const sourceMessagesForParticipants: ChatMessage[] = branchEditMessagesForApi ?? messages ?? [];
+
   const participants = [
     ...new Map(
-      messages
+      sourceMessagesForParticipants
         .filter((m: ChatMessage) => m.role === "assistant" && m.provider)
         .map((m: ChatMessage) => [m.model_id ?? m.provider, m.model_id ?? m.provider])
     ).values()
