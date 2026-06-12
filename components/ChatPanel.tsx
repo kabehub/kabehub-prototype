@@ -34,6 +34,7 @@ const getAnchorKey = (m: Message) => {
 interface ChatPanelProps {
   thread: Thread | null;
   messages: Message[];
+  displayName?: string | null;
   inputValue: string;
   onInputChange: (val: string) => void;
   onSubmit: (content: string, modelId: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => void;
@@ -84,6 +85,7 @@ interface ChatPanelProps {
 export default function ChatPanel({
   thread,
   messages,
+  displayName,
   inputValue,
   onInputChange,
   onSubmit,
@@ -1746,8 +1748,22 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           </div>
         )}
         {thread && orderedMessages.length === 0 && !isLoading && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--ink-muted)", fontSize: "13px" }}>
-            最初のメッセージを入力してください。
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "100%",
+              color: "var(--ink-muted)",
+              fontFamily: "'Lora', serif",
+              fontSize: "clamp(18px, 2.2vw, 28px)",
+              fontWeight: 500,
+              textAlign: "center",
+              lineHeight: 1.8,
+              padding: "0 16px",
+            }}
+          >
+            {(displayName?.trim() || "ユーザー")}さん、壁打ちを始めましょう
           </div>
         )}
         {activeMessages.map((msg) => {

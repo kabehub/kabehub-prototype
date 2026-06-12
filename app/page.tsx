@@ -29,6 +29,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [provider, setProvider] = useState<Provider>("claude");
   const [user, setUser] = useState<User | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   const [isOutlineOpen, setIsOutlineOpen] = useState(false);
   const [isNovelPaneOpen, setIsNovelPaneOpen] = useState(false);
@@ -61,6 +62,34 @@ export default function Home() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const fetchProfile = async () => {
+      if (!user) {
+        setDisplayName(null);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/profile", { cache: "no-store" });
+        const json = await res.json();
+        if (!ignore) {
+          setDisplayName(json.profile?.display_name?.trim() || null);
+        }
+      } catch (err) {
+        console.error("プロフィール取得失敗:", err);
+        if (!ignore) setDisplayName(null);
+      }
+    };
+
+    fetchProfile();
+
+    return () => {
+      ignore = true;
+    };
+  }, [user]);
 
   // ── beforeunload: 一時モード中にブラウザを閉じようとしたら警告 ──
   useEffect(() => {
@@ -1136,6 +1165,7 @@ export default function Home() {
       <ChatPanel
         thread={activeThread}
         messages={messages}
+        displayName={displayName}
         inputValue={inputValue}
         onInputChange={setInputValue}
         onSubmit={handleSubmit}
