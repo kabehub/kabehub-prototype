@@ -3,5 +3,7 @@ node_modules
 out
 build
 .env.local
+.env.vercel-production.local
+.vercel/
 .claude/
 tsconfig.tsbuildinfo
