@@ -587,7 +587,7 @@ export async function POST(req: NextRequest) {
       // 1. baseUserを取得してmessage_numberを確認
       const { data: baseUser } = await supabase
         .from("messages")
-        .select("id, message_number, branch_root_id")
+        .select("id, message_number, branch_root_id, branch_index")
         .eq("id", branchEdit.baseUserMessageId)
         .eq("user_id", userId)
         .single();
@@ -600,10 +600,17 @@ export async function POST(req: NextRequest) {
       }
 
       if (baseUser) {
+        const branchRootId = baseUser.branch_root_id ?? baseUser.id;
+        const oldBranchIndex = baseUser.branch_index ?? 0;
+
         // 2. baseUser以降のactive messagesをすべてinactive化
         await supabase
           .from("messages")
-          .update({ is_active: false })
+          .update({
+            is_active: false,
+            branch_root_id: branchRootId,
+            branch_index: oldBranchIndex,
+          })
           .eq("thread_id", threadId)
           .eq("user_id", userId)
           .gte("message_number", baseUser.message_number)
@@ -611,8 +618,6 @@ export async function POST(req: NextRequest) {
           .select("id, message_number, role, content");
 
         // 3. branch_root_id と branch_index を決定
-        const branchRootId = baseUser.branch_root_id ?? baseUser.id;
-
         const { data: maxBranchRow } = await supabase
           .from("messages")
           .select("branch_index")
