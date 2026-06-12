@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState, useCallback, useMemo } from "rea
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble, BranchBubble } from "./MessageBubble";
 import ChatInput, { type ModelId, type AttachedImageFile, type Provider } from "./ChatInput";
+import ChatInputCentered from "./ChatInputCentered";
 import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
 import { generateMessageSummary } from "@/lib/stringUtils";
@@ -919,9 +920,13 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     });
   });
 
+  const isInitialInputMode =
+    (!thread || orderedMessages.length === 0) && !isLoading;
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: isTemporary ? "#f1f1f0" : "var(--chat-bg)", overflow: "hidden" }}>
       {/* Header */}
+      {!(isInitialInputMode && !thread) && (
       <div style={{ padding: "12px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)" }}>
         {thread ? (
           <>
@@ -1085,6 +1090,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           </div>
         )}
       </div>
+      )}
 
       {/* ✅ v26追加: 検索ナビゲーションバー（ヒットが1件以上の時だけ表示） */}
       {searchMatchIds.length > 0 && (
@@ -1738,33 +1744,16 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       {/* Messages */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         <div ref={scrollRef} style={{ flex: 1, height: "100%", overflowY: "auto", padding: "28px 52px 28px 48px", position: "relative" }}>
-        {!thread && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "16px", color: "var(--ink-muted)" }}>
-            <div style={{ width: "56px", height: "56px", borderRadius: "14px", background: "white", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>✦</div>
-            <div style={{ textAlign: "center", lineHeight: 1.8 }}>
-              <div style={{ fontFamily: "'Lora', serif", fontSize: "18px", color: "var(--ink)", marginBottom: "6px" }}>思考を始めましょう</div>
-              <div style={{ fontSize: "13px" }}>左の「＋」から新しい壁打ちを開始できます。</div>
-            </div>
-          </div>
-        )}
-        {thread && orderedMessages.length === 0 && !isLoading && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "100%",
-              color: "var(--ink-muted)",
-              fontFamily: "'Lora', serif",
-              fontSize: "clamp(18px, 2.2vw, 28px)",
-              fontWeight: 500,
-              textAlign: "center",
-              lineHeight: 1.8,
-              padding: "0 16px",
-            }}
-          >
-            {(displayName?.trim() || "ユーザー")}さん、壁打ちを始めましょう
-          </div>
+        {isInitialInputMode && (
+          <ChatInputCentered
+            value={inputValue}
+            onChange={onInputChange}
+            onSubmit={onSubmit}
+            isLoading={isLoading}
+            provider={provider}
+            onProviderChange={onProviderChange}
+            displayName={displayName}
+          />
         )}
         {activeMessages.map((msg) => {
   const activeIdx = activeMessages.indexOf(msg);
@@ -2055,7 +2044,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       )}
 
       {/* 下書き保存ボタン */}
-      {thread && inputValue.trim() && (
+      {!isInitialInputMode && thread && inputValue.trim() && (
         <div style={{ padding: "0 28px 8px", display: "flex", justifyContent: "flex-end" }}>
           <button
             onClick={handleSaveDraft}
@@ -2069,26 +2058,28 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       )}
 
       {/* Input */}
-      <ChatInput
-        value={inputValue}
-        onChange={onInputChange}
-        onSubmit={onSubmit}
-        onMemoSubmit={onMemoSubmit}
-        isLoading={isLoading}
-        disabled={!thread}
-        provider={provider}
-        onProviderChange={onProviderChange}
-        onImageGenerate={onImageGenerate}
-        imageContextId={imageContextId}
-        isImagePinned={isImagePinned}
-        onImagePinToggle={onImagePinToggle}
-        onImageContextClear={onImageContextClear}
-        imageRefId={imageRefId}
-        onImageRefClear={onImageRefClear}
-        imageRefUpload={imageRefUpload}
-        onImageRefUpload={onImageRefUpload}
-        onImageRefUploadClear={onImageRefUploadClear}
-      />
+      {!isInitialInputMode && orderedMessages.length > 0 && (
+        <ChatInput
+          value={inputValue}
+          onChange={onInputChange}
+          onSubmit={onSubmit}
+          onMemoSubmit={onMemoSubmit}
+          isLoading={isLoading}
+          disabled={!thread}
+          provider={provider}
+          onProviderChange={onProviderChange}
+          onImageGenerate={onImageGenerate}
+          imageContextId={imageContextId}
+          isImagePinned={isImagePinned}
+          onImagePinToggle={onImagePinToggle}
+          onImageContextClear={onImageContextClear}
+          imageRefId={imageRefId}
+          onImageRefClear={onImageRefClear}
+          imageRefUpload={imageRefUpload}
+          onImageRefUpload={onImageRefUpload}
+          onImageRefUploadClear={onImageRefUploadClear}
+        />
+      )}
 
       {/* エクスポートモーダル */}
       <ExportModal

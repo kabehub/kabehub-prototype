@@ -526,8 +526,19 @@ export default function Home() {
 
   // ── 通常送信 ──────────────────────────────────────────────
   const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => {
-    if (!userContent.trim() || !activeThreadId || isLoading) return;
+    if (!userContent.trim() || isLoading) return;
     if (provider === "image_gen") return;
+    const resolvedThreadId = activeThreadId ?? uuidv4();
+    const isAutoNewThread = !activeThreadId;
+
+    if (isAutoNewThread) {
+      setActiveThreadId(resolvedThreadId);
+      setMessages([]);
+      setSearchMatchIds([]);
+      setSearchMatchIndex(0);
+      localStorage.setItem("lastActiveThreadId", resolvedThreadId);
+    }
+
     setInputValue("");
     setIsLoading(true);
     setStreamingContent(""); // ストリーミング表示をリセット
@@ -538,7 +549,7 @@ export default function Home() {
       // 一時モード: メモリのみ（ストリーミングなし・既存動作を維持）
       const userMsg: Message = {
         id: uuidv4(),
-        thread_id: activeThreadId,
+        thread_id: resolvedThreadId,
         role: "user",
         content: userContent,
         provider: "user",
@@ -568,7 +579,7 @@ export default function Home() {
         const tempAssistant: Message = {
           ...assistantMessage,
           id: uuidv4(),
-          thread_id: activeThreadId,
+          thread_id: resolvedThreadId,
           created_at: new Date().toISOString(),
         };
         setTemporaryMessages((prev) => [...prev, tempAssistant]);
@@ -589,7 +600,7 @@ export default function Home() {
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
-          threadId: activeThreadId,
+          threadId: resolvedThreadId,
           messages: messages
             .filter(m => m.is_active !== false)
             .map(m => ({ role: m.role, content: m.content, provider: m.provider })),
@@ -621,12 +632,12 @@ export default function Home() {
         ]);
         // DB側も非同期でmemoに更新（fire-and-forget）
         Promise.all([
-          fetch(`/api/threads/${activeThreadId}/messages/${userMessage.id}`, {
+          fetch(`/api/threads/${resolvedThreadId}/messages/${userMessage.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ provider: "memo" }),
           }),
-          fetch(`/api/threads/${activeThreadId}/messages/${assistantMessage.id}`, {
+          fetch(`/api/threads/${resolvedThreadId}/messages/${assistantMessage.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ provider: "memo" }),
@@ -647,13 +658,24 @@ export default function Home() {
 
   // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {
-    if (!inputValue.trim() || !activeThreadId || isLoading) return;
+    if (!inputValue.trim() || isLoading) return;
+    const resolvedThreadId = activeThreadId ?? uuidv4();
+    const isAutoNewThread = !activeThreadId;
+
+    if (isAutoNewThread) {
+      setActiveThreadId(resolvedThreadId);
+      setMessages([]);
+      setSearchMatchIds([]);
+      setSearchMatchIndex(0);
+      localStorage.setItem("lastActiveThreadId", resolvedThreadId);
+    }
+
     const userContent = inputValue.trim();
     setInputValue("");
 
     const optimisticMemo: Message = {
       id: uuidv4(),
-      thread_id: activeThreadId,
+      thread_id: resolvedThreadId,
       role: "user",
       content: userContent,
       provider: "memo",
@@ -672,7 +694,7 @@ export default function Home() {
         method: "POST",
         headers: getApiKeyHeaders(),
         body: JSON.stringify({
-          threadId: activeThreadId,
+          threadId: resolvedThreadId,
           messages: [...messages.map(m => ({ role: m.role, content: m.content, provider: m.provider }))],
           userContent,
           provider,
@@ -695,7 +717,18 @@ export default function Home() {
 
   // ── 画像生成（/image コマンド）────────────────────────────
   const handleImageGenerate = useCallback(async (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => {
-    if (isLoading || !activeThreadId) return
+    if (isLoading) return
+    const resolvedThreadId = activeThreadId ?? uuidv4()
+    const isAutoNewThread = !activeThreadId
+
+    if (isAutoNewThread) {
+      setActiveThreadId(resolvedThreadId)
+      setMessages([])
+      setSearchMatchIds([])
+      setSearchMatchIndex(0)
+      localStorage.setItem("lastActiveThreadId", resolvedThreadId)
+    }
+
     setIsLoading(true)
 
     const PROVIDER_MAP: Record<string, string> = {
@@ -729,7 +762,7 @@ export default function Home() {
         method: 'POST',
         headers: getApiKeyHeaders(),
         body: JSON.stringify({
-          threadId: activeThreadId,
+          threadId: resolvedThreadId,
           messages: [],
           userContent: `/image ${prompt}`,
           provider,
@@ -745,7 +778,7 @@ export default function Home() {
       const pendingId = 'image-gen-pending'
       const pendingMessage: Message = {
         id: pendingId,
-        thread_id: activeThreadId,
+        thread_id: resolvedThreadId,
         role: 'assistant',
         provider: 'image_gen',
         content: prompt,
@@ -762,7 +795,7 @@ export default function Home() {
           provider: resolvedProvider,
           prompt,
           modelId,
-          threadId: activeThreadId,
+          threadId: resolvedThreadId,
           imageRefId: imageRefId ?? undefined,
           imageRefUpload: imageRefUpload
             ? { base64: imageRefUpload.base64, mimeType: imageRefUpload.mimeType }
@@ -785,7 +818,7 @@ export default function Home() {
       // 仮メッセージを正規メッセージに置換
       const realMessage: Message = {
         id: json.messageId,
-        thread_id: activeThreadId,
+        thread_id: resolvedThreadId,
         role: 'assistant',
         provider: 'image_gen',
         content: prompt,
