@@ -1314,30 +1314,32 @@ export function BranchBubble({ message, onRestore }: BranchBubbleProps) {
           }}>
             {message.content}
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onRestore?.(message); }}
-            style={{
-              padding: "4px 12px",
-              borderRadius: "6px",
-              border: "1px solid var(--border)",
-              background: "white",
-              color: "var(--ink-muted)",
-              fontSize: "11px",
-              fontFamily: "'JetBrains Mono', monospace",
-              cursor: "pointer",
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
-            }}
-          >
-            ↩ この回答を採用する
-          </button>
+          {message.role === "assistant" && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRestore?.(message); }}
+              style={{
+                padding: "4px 12px",
+                borderRadius: "6px",
+                border: "1px solid var(--border)",
+                background: "white",
+                color: "var(--ink-muted)",
+                fontSize: "11px",
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+              }}
+            >
+              ↩ この回答を採用する
+            </button>
+          )}
         </div>
       )}
     </div>

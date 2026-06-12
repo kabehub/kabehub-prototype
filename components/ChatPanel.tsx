@@ -817,9 +817,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   }, [messages, onEditAndRegenerate]);
 
   const handleRestoreBranchFromBubble = (message: Message) => {
-    const branchRootId = message.branch_root_id ?? message.parent_id ?? null;
-    if (!branchRootId || message.branch_index == null) return;
-    onRestoreBranch?.(branchRootId, message.branch_index);
+    if (!message.branch_root_id || message.branch_index == null) return;
+    onRestoreBranch?.(message.branch_root_id, message.branch_index);
   };
 
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
