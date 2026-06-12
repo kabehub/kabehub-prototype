@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { Fragment, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble, BranchBubble } from "./MessageBubble";
 import ChatInput, { type ModelId, type AttachedImageFile, type Provider } from "./ChatInput";
@@ -10,6 +10,25 @@ import { generateMessageSummary } from "@/lib/stringUtils";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
 import PublishConfirmModal from "./PublishConfirmModal";
 import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
+
+const getOrderNo = (m: Message) =>
+  typeof m.message_number === "number" ? m.message_number : null;
+
+const compareMessagesForDisplay = (a: Message, b: Message) => {
+  const aOrder = getOrderNo(a);
+  const bOrder = getOrderNo(b);
+  if (aOrder != null && bOrder != null && aOrder !== bOrder) {
+    return aOrder - bOrder;
+  }
+  if (aOrder != null && bOrder == null) return -1;
+  if (aOrder == null && bOrder != null) return 1;
+  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+};
+
+const getAnchorKey = (m: Message) => {
+  const orderNo = getOrderNo(m);
+  return orderNo != null ? `no:${orderNo}` : `id:${m.id}`;
+};
 
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
@@ -181,6 +200,10 @@ export default function ChatPanel({
   const [rpIconSaving, setRpIconSaving] = useState(false);
   const [rpSaving, setRpSaving] = useState(false);
   const rpIconInputRef = useRef<HTMLInputElement>(null);
+  const orderedMessages = useMemo(
+    () => [...messages].sort(compareMessagesForDisplay),
+    [messages]
+  );
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1280);
@@ -199,7 +222,7 @@ export default function ChatPanel({
     const compute = () => {
       const scrollH = el.scrollHeight;
       if (!scrollH) return;
-      const navMsgs = messages.filter(m => m.provider !== "memo" && m.is_active !== false);
+      const navMsgs = orderedMessages.filter(m => m.provider !== "memo" && m.is_active !== false);
       const positions = navMsgs.map(msg => {
         const dom = document.getElementById(`msg-${String(msg.id)}`);
         if (!dom) return null;
@@ -211,7 +234,7 @@ export default function ChatPanel({
     const ro = new ResizeObserver(compute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [messages]);
+  }, [orderedMessages]);
 
   useEffect(() => {
     if (!thread?.folder_name) {
@@ -753,8 +776,8 @@ const handleToggleRoleplayMode = (next: boolean) => {
 
 
 const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptions = { omitCsv: false }) => {
-  if (!thread || messages.length === 0) return;
-  const activeMessages = messages.filter(m => m.is_active !== false);
+  if (!thread || orderedMessages.length === 0) return;
+  const activeMessages = orderedMessages.filter(m => m.is_active !== false);
   const content = buildExportContent(format, thread, activeMessages, options);
   const mimeType =
     format === "md" || format === "md2" ? "text/markdown;charset=utf-8" :
@@ -787,7 +810,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     setShowDialog(false);
   };
 
-  const activeMessages = messages.filter(msg => msg.is_active !== false);
+  const activeMessages = orderedMessages.filter(msg => msg.is_active !== false);
   const lastAssistantIndex = activeMessages.reduce(
     (last, msg, i) => (msg.role === "assistant" ? i : last),
     -1
@@ -806,7 +829,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       return;
     }
 
-    const activeMessages = messages.filter(m => m.is_active !== false);
+    const activeMessages = orderedMessages.filter(m => m.is_active !== false);
     const idx = activeMessages.findIndex((m) => m.id === assistantOrUserMsg.id);
     for (let i = idx - 1; i >= 0; i--) {
       if (activeMessages[i].role === "user" && activeMessages[i].provider !== "memo") {
@@ -814,7 +837,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         return;
       }
     }
-  }, [messages, onEditAndRegenerate]);
+  }, [orderedMessages, onEditAndRegenerate]);
 
   const handleRestoreBranchFromBubble = (message: Message) => {
     if (!message.branch_root_id || message.branch_index == null) return;
@@ -832,18 +855,67 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     return acc;
   }, {});
 
-  const inactiveBranchGroups = messages.reduce<Record<string, Message[]>>((acc, msg) => {
-    if (msg.is_active !== false) return acc;
-    const groupKey = msg.branch_root_id ?? msg.id;
-    if (!acc[groupKey]) acc[groupKey] = [];
-    acc[groupKey].push(msg);
+  const messageById = orderedMessages.reduce<Record<string, Message>>((acc, msg) => {
+    acc[msg.id] = msg;
     return acc;
   }, {});
-  const inactiveBranchFirstMessageIds = new Set(
-    Object.values(inactiveBranchGroups)
-      .map((group) => group[0]?.id)
-      .filter((id): id is string => Boolean(id))
+
+  const activeAnchorByInactiveRootKey = activeMessages.reduce<Record<string, string>>((acc, msg) => {
+    if (msg.role !== "user" || !msg.branch_root_id) return acc;
+    const rootMessage = messageById[msg.branch_root_id];
+    if (!rootMessage || rootMessage.is_active !== false) return acc;
+    const rootKey = getAnchorKey(rootMessage);
+    if (!acc[rootKey]) {
+      acc[rootKey] = getAnchorKey(msg);
+    }
+    return acc;
+  }, {});
+
+  const branchGroupsByAnchor = orderedMessages.reduce<{
+    groups: Record<string, Message[]>;
+    anchors: Record<string, string>;
+    previousActiveUser: Message | null;
+  }>((acc, msg) => {
+    if (msg.is_active !== false) {
+      if (msg.role === "user" && msg.provider !== "memo") {
+        acc.previousActiveUser = msg;
+      }
+      return acc;
+    }
+
+    const groupKey = `${msg.branch_root_id ?? msg.id}:${msg.branch_index ?? "legacy"}`;
+    if (!acc.groups[groupKey]) {
+      acc.groups[groupKey] = [];
+      const rootMessage = msg.branch_root_id ? messageById[msg.branch_root_id] : null;
+      const anchorMessage = rootMessage ?? acc.previousActiveUser;
+      if (anchorMessage) {
+        const anchorKey = getAnchorKey(anchorMessage);
+        acc.anchors[groupKey] = activeAnchorByInactiveRootKey[anchorKey] ?? anchorKey;
+      }
+    }
+    acc.groups[groupKey].push(msg);
+    return acc;
+  }, { groups: {}, anchors: {}, previousActiveUser: null });
+
+  const inactiveBranchGroupsByAnchor = Object.entries(branchGroupsByAnchor.groups).reduce<Record<string, Message[][]>>(
+    (acc, [groupKey, group]) => {
+      const anchorKey = branchGroupsByAnchor.anchors[groupKey];
+      if (!anchorKey) return acc;
+      if (!acc[anchorKey]) acc[anchorKey] = [];
+      acc[anchorKey].push(group);
+      return acc;
+    },
+    {}
   );
+
+  Object.values(inactiveBranchGroupsByAnchor).forEach((groups) => {
+    groups.sort((a, b) => {
+      const aIndex = typeof a[0]?.branch_index === "number" ? a[0].branch_index : Number.MAX_SAFE_INTEGER;
+      const bIndex = typeof b[0]?.branch_index === "number" ? b[0].branch_index : Number.MAX_SAFE_INTEGER;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      return new Date(a[0]?.created_at ?? 0).getTime() - new Date(b[0]?.created_at ?? 0).getTime();
+    });
+  });
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: isTemporary ? "#f1f1f0" : "var(--chat-bg)", overflow: "hidden" }}>
@@ -859,8 +931,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                   {thread.title}
                 </h1>
                 {(() => {
-                  const userCount = messages.filter((m) => m.role === "user" && m.provider !== "memo").length;
-                  const aiCount = messages.filter((m) => m.role === "assistant").length;
+                  const userCount = orderedMessages.filter((m) => m.role === "user" && m.provider !== "memo").length;
+                  const aiCount = orderedMessages.filter((m) => m.role === "assistant").length;
                   if (userCount === 0) return null;
                   return (
                     <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginTop: "1px", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -1673,26 +1745,16 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             </div>
           </div>
         )}
-        {thread && messages.length === 0 && !isLoading && (
+        {thread && orderedMessages.length === 0 && !isLoading && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--ink-muted)", fontSize: "13px" }}>
             最初のメッセージを入力してください。
           </div>
         )}
-        {messages.map((msg, i) => {
-  if (msg.is_active === false) {
-    const groupKey = msg.branch_root_id ?? msg.id;
-    if (!inactiveBranchFirstMessageIds.has(msg.id)) return null;
-    return (
-      <BranchBubble
-        key={`branch-${groupKey}`}
-        messages={inactiveBranchGroups[groupKey] ?? [msg]}
-        onRestore={handleRestoreBranchFromBubble}
-      />
-    );
-  }
+        {activeMessages.map((msg) => {
   const activeIdx = activeMessages.indexOf(msg);
   return (
-  <div key={msg.id} id={`msg-${msg.id}`}
+  <Fragment key={msg.id}>
+  <div id={`msg-${msg.id}`}
     style={roleplayMode && msg.role === "user" ? {
       display: "flex",
       justifyContent: "flex-end",   // 右寄せ
@@ -1743,9 +1805,9 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         onRegenerate={onRegenerate}
         onEditAndRegenerate={handleEditAndRegenerateFromBubble}
         prevUserContent={(() => {
-          const idx = messages.findIndex(m => m.id === msg.id);
+          const idx = orderedMessages.findIndex(m => m.id === msg.id);
           for (let i = idx - 1; i >= 0; i--) {
-            if (messages[i].role === "user") return messages[i].content;
+            if (orderedMessages[i].role === "user") return orderedMessages[i].content;
           }
           return "";
         })()}
@@ -1759,7 +1821,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           msg.role === "user" &&
           msg.provider !== "memo" &&
           (() => {
-            const activeMessages = messages.filter(m => m.is_active !== false);
             const activeIdx = activeMessages.findIndex(m => m.id === msg.id);
             return activeIdx !== -1 && activeMessages.some((m, j) => j > activeIdx && m.role === "assistant");
           })()
@@ -1782,6 +1843,14 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       />
     )}
   </div>
+  {(inactiveBranchGroupsByAnchor[getAnchorKey(msg)] ?? []).map((group) => (
+    <BranchBubble
+      key={`branch-${group[0]?.branch_root_id ?? group[0]?.id}:${group[0]?.branch_index ?? "legacy"}`}
+      messages={group}
+      onRestore={handleRestoreBranchFromBubble}
+    />
+  ))}
+  </Fragment>
   );
 })}
         {isLoading && !streamingContent && (
@@ -1843,9 +1912,9 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                 onMouseLeave={() => { setHoveredMsgId(null); setTooltipPos(null); }}
               />
             ))}
-            {hoveredMsgId && tooltipPos && messages.find(m => String(m.id) === hoveredMsgId) && (
+            {hoveredMsgId && tooltipPos && orderedMessages.find(m => String(m.id) === hoveredMsgId) && (
               <div style={{ position: "fixed", top: tooltipPos.top, right: tooltipPos.right, transform: "translateY(-50%)", background: "rgba(30,30,30,0.88)", color: "white", fontSize: 11, padding: "3px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 200 }}>
-                {generateMessageSummary(messages.find(m => String(m.id) === hoveredMsgId)!.content)}
+                {generateMessageSummary(orderedMessages.find(m => String(m.id) === hoveredMsgId)!.content)}
               </div>
             )}
           </div>
@@ -1865,7 +1934,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
               会話履歴
             </div>
             {dotPositions.map(({ id, role }) => {
-              const msg = messages.find(m => String(m.id) === id);
+              const msg = orderedMessages.find(m => String(m.id) === id);
               if (!msg) return null;
               const label = generateMessageSummary(
                 typeof msg.content === "string" ? msg.content : ""

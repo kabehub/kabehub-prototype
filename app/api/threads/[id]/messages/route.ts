@@ -12,6 +12,7 @@ export async function GET(
     .from("messages")
     .select("*")
     .eq("thread_id", params.id)
+    .order("message_number", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
 
   if (error) {

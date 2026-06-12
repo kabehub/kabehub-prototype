@@ -44,6 +44,7 @@ export interface Message {
   provider?: "claude" | "gemini" | "openai" | "user" | "memo" | "image_gen" | "unknown";
   model_id?: string | null;
   created_at: string;
+  message_number?: number | null;
   parent_id?: string | null;
   is_hidden?: boolean;
   is_active?: boolean;
