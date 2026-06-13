@@ -134,6 +134,7 @@ export default function ChatPanel({
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{top: number; right: number} | null>(null);
   const [navExpanded, setNavExpanded] = useState(false);
+  const [navWide, setNavWide] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [editTitle, setEditTitle] = useState("");
 
@@ -217,6 +218,10 @@ export default function ChatPanel({
 
   useEffect(() => {
     setNavExpanded(localStorage.getItem('kabehub_nav_expanded_always') === 'true');
+  }, []);
+
+  useEffect(() => {
+    setNavWide(localStorage.getItem("kabehub_nav_wide") === "true");
   }, []);
 
   useEffect(() => {
@@ -2004,15 +2009,40 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         {/* 展開時サイドペイン */}
         {isDesktop && navExpanded && (
           <div style={{
-            width: 180,
+            width: navWide ? 260 : 180,
             borderLeft: "1px solid var(--border)",
             background: "var(--paper)",
             overflowY: "auto",
             padding: "12px 8px",
             flexShrink: 0,
           }}>
-            <div style={{ fontSize: "10px", color: "var(--ink-faint)", marginBottom: "8px", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em" }}>
-              会話履歴
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              <div style={{ fontSize: "10px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em" }}>
+                会話履歴
+              </div>
+              <button
+                onClick={() => {
+                  setNavWide((v) => {
+                    const next = !v;
+                    localStorage.setItem("kabehub_nav_wide", String(next));
+                    return next;
+                  });
+                }}
+                title={navWide ? "幅を戻す" : "幅を広げる"}
+                aria-label={navWide ? "会話履歴ペインの幅を戻す" : "会話履歴ペインの幅を広げる"}
+                style={{
+                  background: "none",
+                  border: "1px solid var(--border)",
+                  borderRadius: "4px",
+                  color: "var(--ink-faint)",
+                  fontSize: "10px",
+                  cursor: "pointer",
+                  padding: "1px 6px",
+                  lineHeight: 1.4,
+                }}
+              >
+                {navWide ? "縮小" : "拡大"}
+              </button>
             </div>
             {dotPositions.map(({ id, role }) => {
               const msg = orderedMessages.find(m => String(m.id) === id);
@@ -2073,7 +2103,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                     >
                       <div
                         style={{
-                          marginBottom: "4px",
+                          marginBottom: "8px",
                           color: "var(--ink-faint)",
                           fontSize: "10px",
                           fontFamily: "'JetBrains Mono', monospace",
@@ -2088,8 +2118,12 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                         <button
                           key={`${branchBlock.anchorKey}:${lane.branchIndex}:${lane.isActive ? "active" : "inactive"}`}
                           type="button"
-                          onClick={() => handleBranchLaneClick(lane, branchBlock)}
+                          onClick={() => {
+                            if (isLoading || lane.isActive) return;
+                            handleBranchLaneClick(lane, branchBlock);
+                          }}
                           disabled={isLoading || lane.isActive}
+                          aria-current={lane.isActive ? "true" : undefined}
                           style={{
                             display: "block",
                             width: "100%",
@@ -2101,12 +2135,38 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                             color: lane.isActive ? "white" : "var(--ink-muted)",
                             cursor: isLoading || lane.isActive ? "default" : "pointer",
                             opacity: !lane.isActive && isLoading ? 0.45 : 1,
+                            fontWeight: lane.isActive ? 600 : 400,
+                            boxShadow: lane.isActive ? "inset 0 0 0 1px rgba(255,255,255,0.25)" : "none",
                             fontSize: "11px",
                             fontFamily: "'DM Sans', sans-serif",
                             textAlign: "left",
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!lane.isActive) {
+                              e.currentTarget.style.borderColor = "var(--accent-muted)";
+                              e.currentTarget.style.background = "var(--sidebar-bg)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!lane.isActive) {
+                              e.currentTarget.style.borderColor = "var(--border)";
+                              e.currentTarget.style.background = "transparent";
+                            }
+                          }}
+                          onFocus={(e) => {
+                            if (!lane.isActive) {
+                              e.currentTarget.style.borderColor = "var(--accent-muted)";
+                              e.currentTarget.style.background = "var(--sidebar-bg)";
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (!lane.isActive) {
+                              e.currentTarget.style.borderColor = "var(--border)";
+                              e.currentTarget.style.background = "transparent";
+                            }
                           }}
                           title={lane.label}
                         >
