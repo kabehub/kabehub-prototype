@@ -68,7 +68,7 @@ interface ChatPanelProps {
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
   githubProgressMessages?: string[];
   onSendMemoToAI?: (content: string) => void;
-  onRestoreBranch?: (branchRootId: string, branchIndex: number) => void;
+  onRestoreBranch?: (branchRootId: string, branchIndex: number) => void | Promise<void>;
   onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => void;
   onDiscuss?: (messageId: string) => void;
   imageContextId?: string | null;
@@ -911,6 +911,20 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     {}
   );
 
+  type BranchLane = {
+    branchIndex: number;
+    isActive: boolean;
+    label: string;
+  };
+
+  type BranchBlock = {
+    anchorKey: string;
+    anchorMessageId: string;
+    branchRootId: string;
+    branchPointNumber: number | null;
+    lanes: BranchLane[];
+  };
+
   Object.values(inactiveBranchGroupsByAnchor).forEach((groups) => {
     groups.sort((a, b) => {
       const aIndex = typeof a[0]?.branch_index === "number" ? a[0].branch_index : Number.MAX_SAFE_INTEGER;
@@ -919,6 +933,54 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       return new Date(a[0]?.created_at ?? 0).getTime() - new Date(b[0]?.created_at ?? 0).getTime();
     });
   });
+
+  const activeMessageIndexByAnchorKey = activeMessages.reduce<Record<string, number>>((acc, msg, index) => {
+    acc[getAnchorKey(msg)] = index;
+    return acc;
+  }, {});
+
+  const branchBlocksByAnchor = Object.entries(inactiveBranchGroupsByAnchor).reduce<Record<string, BranchBlock>>(
+    (acc, [anchorKey, groups]) => {
+      const branchRootId = groups[0]?.[0]?.branch_root_id;
+      if (!branchRootId) return acc;
+
+      const anchorMsg = orderedMessages.find((m) => getAnchorKey(m) === anchorKey);
+      if (!anchorMsg) return acc;
+
+      const anchorIdx = activeMessageIndexByAnchorKey[anchorKey];
+      const activeTail = activeMessages.slice((anchorIdx ?? -1) + 1);
+      const activeBranchMsg = activeTail.find((m) => m.branch_root_id === branchRootId);
+      const activeLabelMsg = activeTail.find((m) => m.provider !== "memo");
+      const activeLane: BranchLane = {
+        branchIndex: activeBranchMsg?.branch_index ?? 0,
+        isActive: true,
+        label: activeLabelMsg
+          ? generateMessageSummary(typeof activeLabelMsg.content === "string" ? activeLabelMsg.content : "")
+          : "(このまま継続)",
+      };
+      const inactiveLanes = groups.map<BranchLane>((group) => ({
+        branchIndex: group[0]?.branch_index ?? 0,
+        isActive: false,
+        label: generateMessageSummary(group[0]?.content ?? ""),
+      }));
+
+      acc[anchorKey] = {
+        anchorKey,
+        anchorMessageId: anchorMsg.id,
+        branchRootId,
+        branchPointNumber: messageNumbers[anchorMsg.id] ?? null,
+        lanes: [activeLane, ...inactiveLanes].sort((a, b) => a.branchIndex - b.branchIndex),
+      };
+      return acc;
+    },
+    {}
+  );
+
+  const handleBranchLaneClick = async (lane: BranchLane, block: BranchBlock) => {
+    if (isLoading || lane.isActive) return;
+    await onRestoreBranch?.(block.branchRootId, lane.branchIndex);
+    scrollToMessage(block.anchorMessageId);
+  };
 
   const isInitialInputMode =
     (!thread || orderedMessages.length === 0) && !isLoading;
@@ -1944,38 +2006,103 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
               const label = generateMessageSummary(
                 typeof msg.content === "string" ? msg.content : ""
               );
+              const branchBlock = branchBlocksByAnchor[getAnchorKey(msg)];
               return (
-                <div
-                  key={id}
-                  onClick={() => scrollToMessage(id)}
-                  style={{
-                    padding: "5px 7px",
-                    marginBottom: "3px",
-                    borderRadius: "5px",
-                    fontSize: "11px",
-                    fontFamily: "'DM Sans', sans-serif",
-                    cursor: "pointer",
-                    background: role === "user" ? "var(--sidebar-bg)" : "transparent",
-                    border: "1px solid transparent",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    color: role === "user" ? "var(--ink)" : "var(--ink-muted)",
-                    transition: "all 0.1s",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
-                  }}
-                  title={label}
-                >
-                  <span style={{ marginRight: "4px", fontSize: "9px" }}>
-                    {role === "user" ? "👤" : "🤖"}
-                  </span>
-                  {label}
-                </div>
+                <Fragment key={id}>
+                  <div
+                    onClick={() => scrollToMessage(id)}
+                    style={{
+                      padding: "5px 7px",
+                      marginBottom: "3px",
+                      borderRadius: "5px",
+                      fontSize: "11px",
+                      fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer",
+                      background: role === "user" ? "var(--sidebar-bg)" : "transparent",
+                      border: "1px solid transparent",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      color: role === "user" ? "var(--ink)" : "var(--ink-muted)",
+                      transition: "all 0.1s",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
+                    }}
+                    title={label}
+                  >
+                    <span style={{ marginRight: "4px", fontSize: "9px" }}>
+                      {role === "user" ? "👤" : "🤖"}
+                    </span>
+                    {branchBlock && (
+                      <span
+                        title={`分岐あり(${branchBlock.lanes.length}世界線)`}
+                        style={{ marginRight: "4px", color: "var(--accent)", fontSize: "10px" }}
+                      >
+                        ◎
+                      </span>
+                    )}
+                    {label}
+                  </div>
+                  {branchBlock && (
+                    <div
+                      style={{
+                        margin: "0 0 6px 12px",
+                        padding: "5px 0 3px 7px",
+                        borderLeft: "2px solid var(--accent)",
+                        fontSize: "11px",
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    >
+                      <div
+                        style={{
+                          marginBottom: "4px",
+                          color: "var(--ink-faint)",
+                          fontSize: "10px",
+                          fontFamily: "'JetBrains Mono', monospace",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        分岐点 #{branchBlock.branchPointNumber ?? "?"} — {branchBlock.lanes.length}個の世界線
+                      </div>
+                      {branchBlock.lanes.map((lane) => (
+                        <button
+                          key={`${branchBlock.anchorKey}:${lane.branchIndex}:${lane.isActive ? "active" : "inactive"}`}
+                          type="button"
+                          onClick={() => handleBranchLaneClick(lane, branchBlock)}
+                          disabled={isLoading || lane.isActive}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginBottom: "3px",
+                            padding: "4px 6px",
+                            borderRadius: "5px",
+                            border: lane.isActive ? "1px solid var(--accent)" : "1px solid var(--border)",
+                            background: lane.isActive ? "var(--accent)" : "transparent",
+                            color: lane.isActive ? "white" : "var(--ink-muted)",
+                            cursor: isLoading || lane.isActive ? "default" : "pointer",
+                            opacity: !lane.isActive && isLoading ? 0.45 : 1,
+                            fontSize: "11px",
+                            fontFamily: "'DM Sans', sans-serif",
+                            textAlign: "left",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                          title={lane.label}
+                        >
+                          {lane.isActive ? "▶ 表示中: " : `世界線${lane.branchIndex}: `}
+                          {lane.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Fragment>
               );
             })}
           </div>
