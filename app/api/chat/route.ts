@@ -599,22 +599,38 @@ export async function POST(req: NextRequest) {
       }
 
       if (baseUser) {
-        const branchRootId = baseUser.branch_root_id ?? baseUser.id;
-        const oldBranchIndex = baseUser.branch_index ?? 0;
+        if (baseUser.message_number == null) {
+          return new Response(JSON.stringify({ error: "baseUser message_number is missing" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const branchRootId = baseUser.id;
 
         // 2. baseUser以降のactive messagesをすべてinactive化
-        await supabase
+        // branchEditでは、編集対象メッセージ自身を常に新しい分岐rootにする。
+        // 退避される現在のactive tailは、この新root配下の「元の流れ」なので branch_index=0 に固定する。
+        // 注意: 現行スキーマでは、親分岐と子分岐への二重所属は保持できない
+        // （baseUser自身が既に別rootのbranch_index=1等であった場合、その情報は本UPDATEで上書きされる）。
+        const { error: archiveError } = await supabase
           .from("messages")
           .update({
             is_active: false,
             branch_root_id: branchRootId,
-            branch_index: oldBranchIndex,
+            branch_index: 0,
           })
           .eq("thread_id", threadId)
           .eq("user_id", userId)
           .gte("message_number", baseUser.message_number)
-          .not("is_active", "eq", false)
-          .select("id, message_number, role, content");
+          .eq("is_active", true);
+
+        if (archiveError) {
+          return new Response(JSON.stringify({ error: archiveError.message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
         // 3. branch_root_id と branch_index を決定
         const { data: maxBranchRow } = await supabase
