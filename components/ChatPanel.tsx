@@ -1954,36 +1954,50 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         {/* 最小化インジケーター */}
         {isDesktop && !navExpanded && (
           <div style={{ position: "absolute", right: 0, top: 0, width: 16, height: "100%", pointerEvents: "none" }}>
-            {dotPositions.map(({ id, topPct, role }) => (
-              <div
-                key={id}
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  top: `${topPct}%`,
-                  width: 4,
-                  height: role === "user" ? 14 : 8,
-                  background: role === "user" ? "var(--accent)" : "var(--ink-faint)",
-                  borderRadius: 2,
-                  opacity: 0.75,
-                  cursor: "pointer",
-                  pointerEvents: "auto",
-                }}
-                onClick={() => scrollToMessage(id)}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setTooltipPos({ top: rect.top + rect.height / 2, right: window.innerWidth - rect.left + 8 });
-                  setHoveredMsgId(id);
-                }}
-                onMouseLeave={() => { setHoveredMsgId(null); setTooltipPos(null); }}
-              />
-            ))}
-            {hoveredMsgId && tooltipPos && orderedMessages.find(m => String(m.id) === hoveredMsgId) && (
-              <div style={{ position: "fixed", top: tooltipPos.top, right: tooltipPos.right, transform: "translateY(-50%)", background: "rgba(30,30,30,0.88)", color: "white", fontSize: 11, padding: "3px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 200 }}>
-                {generateMessageSummary(orderedMessages.find(m => String(m.id) === hoveredMsgId)!.content)}
-              </div>
-            )}
+            {dotPositions.map(({ id, topPct, role }) => {
+              const msg = messageById[id];
+              if (!msg) return null;
+              const branchBlock = branchBlocksByAnchor[getAnchorKey(msg)];
+              return (
+                <div
+                  key={id}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    top: `${topPct}%`,
+                    width: 4,
+                    height: role === "user" ? 14 : 8,
+                    background: role === "user" ? "var(--accent)" : "var(--ink-faint)",
+                    borderRadius: 2,
+                    opacity: branchBlock ? 0.95 : 0.75,
+                    cursor: "pointer",
+                    pointerEvents: "auto",
+                    ...(branchBlock ? { boxShadow: "0 0 0 2px var(--accent-muted)" } : {}),
+                  }}
+                  onClick={() => scrollToMessage(id)}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setTooltipPos({ top: rect.top + rect.height / 2, right: window.innerWidth - rect.left + 8 });
+                    setHoveredMsgId(id);
+                  }}
+                  onMouseLeave={() => { setHoveredMsgId(null); setTooltipPos(null); }}
+                />
+              );
+            })}
+            {hoveredMsgId && tooltipPos && (() => {
+              const hoveredMsg = messageById[hoveredMsgId];
+              if (!hoveredMsg) return null;
+              const hoveredBranch = branchBlocksByAnchor[getAnchorKey(hoveredMsg)];
+              const summary = generateMessageSummary(
+                typeof hoveredMsg.content === "string" ? hoveredMsg.content : ""
+              );
+              return (
+                <div style={{ position: "fixed", top: tooltipPos.top, right: tooltipPos.right, transform: "translateY(-50%)", background: "rgba(30,30,30,0.88)", color: "white", fontSize: 11, padding: "3px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 200 }}>
+                  {hoveredBranch ? `${summary}（分岐あり・${hoveredBranch.lanes.length}世界線）` : summary}
+                </div>
+              );
+            })()}
           </div>
         )}
 
