@@ -868,7 +868,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     return acc;
   }, {});
 
-  const activeAnchorByInactiveRootKey = activeMessages.reduce<Record<string, string>>((acc, msg) => {
+  const activeAnchorByInactiveRootKeyDirect = activeMessages.reduce<Record<string, string>>((acc, msg) => {
     if (msg.role !== "user" || !msg.branch_root_id) return acc;
     const rootMessage = messageById[msg.branch_root_id];
     if (!rootMessage || rootMessage.is_active !== false) return acc;
@@ -878,6 +878,70 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     }
     return acc;
   }, {});
+
+  const childGroupKeysByParentRootId = orderedMessages.reduce<Record<string, string[]>>((acc, msg) => {
+    if (
+      msg.is_active !== false ||
+      msg.role !== "user" ||
+      !msg.parent_id ||
+      !msg.branch_root_id ||
+      msg.branch_root_id !== msg.id ||
+      msg.branch_index !== 0
+    ) {
+      return acc;
+    }
+
+    const parent = messageById[msg.parent_id];
+    if (!parent || parent.is_active !== false || parent.branch_root_id !== parent.id) return acc;
+
+    const parentRootKey = getAnchorKey(parent);
+    const childRootKey = getAnchorKey(msg);
+    if (!acc[parentRootKey]) acc[parentRootKey] = [];
+    if (!acc[parentRootKey].includes(childRootKey)) {
+      acc[parentRootKey].push(childRootKey);
+    }
+    return acc;
+  }, {});
+
+  const resolveActiveAnchorForInactiveRoot = (
+    rootKey: string,
+    visited: Set<string> = new Set()
+  ): string | undefined => {
+    if (visited.has(rootKey)) return undefined;
+    visited.add(rootKey);
+
+    const directAnchor = activeAnchorByInactiveRootKeyDirect[rootKey];
+    if (directAnchor) return directAnchor;
+
+    const childRootKeys = childGroupKeysByParentRootId[rootKey] ?? [];
+    for (const childRootKey of childRootKeys) {
+      const resolvedAnchor = resolveActiveAnchorForInactiveRoot(childRootKey, new Set(visited));
+      if (resolvedAnchor) return resolvedAnchor;
+    }
+
+    return undefined;
+  };
+
+  const activeAnchorByInactiveRootKey = orderedMessages.reduce<Record<string, string>>(
+    (acc, msg) => {
+      if (
+        msg.is_active !== false ||
+        msg.role !== "user" ||
+        !msg.branch_root_id ||
+        msg.branch_root_id !== msg.id
+      ) {
+        return acc;
+      }
+
+      const rootKey = getAnchorKey(msg);
+      const resolvedAnchor = resolveActiveAnchorForInactiveRoot(rootKey);
+      if (resolvedAnchor) {
+        acc[rootKey] = resolvedAnchor;
+      }
+      return acc;
+    },
+    { ...activeAnchorByInactiveRootKeyDirect }
+  );
 
   const branchGroupsByAnchor = orderedMessages.reduce<{
     groups: Record<string, Message[]>;
@@ -917,6 +981,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   );
 
   type BranchLane = {
+    branchRootId: string;
     branchIndex: number;
     isActive: boolean;
     label: string;
@@ -925,7 +990,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   type BranchBlock = {
     anchorKey: string;
     anchorMessageId: string;
-    branchRootId: string;
     branchPointNumber: number | null;
     lanes: BranchLane[];
   };
@@ -946,35 +1010,59 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
   const branchBlocksByAnchor = Object.entries(inactiveBranchGroupsByAnchor).reduce<Record<string, BranchBlock>>(
     (acc, [anchorKey, groups]) => {
-      const branchRootId = groups[0]?.[0]?.branch_root_id;
-      if (!branchRootId) return acc;
-
       const anchorMsg = orderedMessages.find((m) => getAnchorKey(m) === anchorKey);
       if (!anchorMsg) return acc;
 
       const anchorIdx = activeMessageIndexByAnchorKey[anchorKey];
       const activeTail = activeMessages.slice((anchorIdx ?? -1) + 1);
-      const activeBranchMsg = activeTail.find((m) => m.branch_root_id === branchRootId);
-      const activeLabelMsg = activeTail.find((m) => m.provider !== "memo");
-      const activeLane: BranchLane = {
-        branchIndex: activeBranchMsg?.branch_index ?? 0,
-        isActive: true,
-        label: activeLabelMsg
-          ? generateMessageSummary(typeof activeLabelMsg.content === "string" ? activeLabelMsg.content : "")
-          : "(このまま継続)",
-      };
-      const inactiveLanes = groups.map<BranchLane>((group) => ({
-        branchIndex: group[0]?.branch_index ?? 0,
-        isActive: false,
-        label: generateMessageSummary(group[0]?.content ?? ""),
-      }));
+      const branchRootIds = Array.from(
+        new Set(groups.map((group) => group[0]?.branch_root_id).filter((id): id is string => Boolean(id)))
+      );
+      if (branchRootIds.length === 0) return acc;
+
+      const activeLanes = branchRootIds.flatMap<BranchLane>((branchRootId) => {
+        const activeBranchMsg = activeTail.find((m) => m.branch_root_id === branchRootId);
+        if (!activeBranchMsg || activeBranchMsg.branch_index == null) return [];
+
+        const activeLabelMsg =
+          activeTail.find((m) => m.branch_root_id === branchRootId && m.provider !== "memo") ??
+          activeTail.find((m) => m.provider !== "memo");
+
+        return [{
+          branchRootId,
+          branchIndex: activeBranchMsg.branch_index,
+          isActive: true,
+          label: activeLabelMsg
+            ? generateMessageSummary(typeof activeLabelMsg.content === "string" ? activeLabelMsg.content : "")
+            : "(このまま継続)",
+        }];
+      });
+
+      const inactiveLanes = groups.flatMap<BranchLane>((group) => {
+        const branchRootId = group[0]?.branch_root_id;
+        if (!branchRootId) return [];
+        return [{
+          branchRootId,
+          branchIndex: group[0]?.branch_index ?? 0,
+          isActive: false,
+          label: generateMessageSummary(group[0]?.content ?? ""),
+        }];
+      });
 
       acc[anchorKey] = {
         anchorKey,
         anchorMessageId: anchorMsg.id,
-        branchRootId,
         branchPointNumber: messageNumbers[anchorMsg.id] ?? null,
-        lanes: [activeLane, ...inactiveLanes].sort((a, b) => a.branchIndex - b.branchIndex),
+        lanes: [...activeLanes, ...inactiveLanes].sort((a, b) => {
+          const aRoot = messageById[a.branchRootId];
+          const bRoot = messageById[b.branchRootId];
+          const aOrder = aRoot ? getOrderNo(aRoot) : null;
+          const bOrder = bRoot ? getOrderNo(bRoot) : null;
+          if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
+          if (a.branchRootId !== b.branchRootId) return a.branchRootId.localeCompare(b.branchRootId);
+          if (a.branchIndex !== b.branchIndex) return a.branchIndex - b.branchIndex;
+          return Number(b.isActive) - Number(a.isActive);
+        }),
       };
       return acc;
     },
@@ -983,7 +1071,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
   const handleBranchLaneClick = async (lane: BranchLane, block: BranchBlock) => {
     if (isLoading || lane.isActive) return;
-    await onRestoreBranch?.(block.branchRootId, lane.branchIndex);
+    await onRestoreBranch?.(lane.branchRootId, lane.branchIndex);
     scrollToMessage(block.anchorMessageId);
   };
 
@@ -2116,7 +2204,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                       </div>
                       {branchBlock.lanes.map((lane) => (
                         <button
-                          key={`${branchBlock.anchorKey}:${lane.branchIndex}:${lane.isActive ? "active" : "inactive"}`}
+                          key={`${branchBlock.anchorKey}:${lane.branchRootId}:${lane.branchIndex}:${lane.isActive ? "active" : "inactive"}`}
                           type="button"
                           onClick={() => {
                             if (isLoading || lane.isActive) return;

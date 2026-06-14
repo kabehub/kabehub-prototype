@@ -19,27 +19,38 @@ export async function PATCH(
 
   const threadId = params.id;
 
-  // branch_root_id が同じメッセージ群を一括切り替え
-  // targetIndex の分岐を active に、それ以外を inactive に
-  const { data: targets, error: fetchError } = await supabase
+  const { data: rootMessage, error: rootFetchError } = await supabase
     .from("messages")
-    .select("id, branch_root_id, branch_index")
+    .select("id, message_number")
     .eq("thread_id", threadId)
     .eq("user_id", user.id)
-    .eq("branch_root_id", branchRootId);
+    .eq("id", branchRootId)
+    .single();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (rootFetchError) return NextResponse.json({ error: rootFetchError.message }, { status: 500 });
+  if (rootMessage?.message_number == null) {
+    return NextResponse.json({ error: "branch root message_number is missing" }, { status: 400 });
+  }
 
-  const patches = (targets ?? []).map((msg) => {
-    const isTarget = msg.branch_index === branchIndex;
-    return supabase
-      .from("messages")
-      .update({ is_active: isTarget })
-      .eq("id", msg.id)
-      .eq("user_id", user.id);
-  });
+  const { error: deactivateError } = await supabase
+    .from("messages")
+    .update({ is_active: false })
+    .eq("thread_id", threadId)
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .gte("message_number", rootMessage.message_number);
 
-  await Promise.all(patches);
+  if (deactivateError) return NextResponse.json({ error: deactivateError.message }, { status: 500 });
+
+  const { error: activateError } = await supabase
+    .from("messages")
+    .update({ is_active: true })
+    .eq("thread_id", threadId)
+    .eq("user_id", user.id)
+    .eq("branch_root_id", branchRootId)
+    .eq("branch_index", branchIndex);
+
+  if (activateError) return NextResponse.json({ error: activateError.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }
