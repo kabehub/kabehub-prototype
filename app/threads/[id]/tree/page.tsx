@@ -61,14 +61,6 @@ export default function ThreadTreePage() {
     const orderedMessages = [...messages].sort(compareMessagesForDisplay);
     const treeMessages = orderedMessages.filter((msg) => msg.provider !== "memo");
 
-    console.log(treeMessages.map((m) => ({
-      num: m.message_number,
-      id: m.id.slice(0, 8),
-      parent: m.parent_id?.slice(0, 8) ?? null,
-      branchRoot: m.branch_root_id?.slice(0, 8) ?? null,
-      branchIndex: m.branch_index,
-    })));
-
     const messageById = buildMessageById(treeMessages);
     const chains = buildChainBlocksByRootAnchor(treeMessages, messageById);
     const currentLaneKeys = buildCurrentLaneKeyByBranchRootId(chains, treeMessages);

@@ -109,4 +109,35 @@ assert.equal(nodeById.u3c.isCurrentLane, true);
 assert.equal(nodeById.u4c.isCurrentLane, true);
 assert.equal(edges.some((edge) => edge.fromId === "u2" && edge.toId === "u3c"), true);
 
+const fixtureMessages = [
+  msg({ id: "m1", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 1, content: "①" }),
+  msg({ id: "m2", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 2, content: "②" }),
+  msg({ id: "m3", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 3, content: "③" }),
+  msg({ id: "m4", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 4, content: "④" }),
+  msg({ id: "m5", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 5, content: "⑤" }),
+  msg({ id: "m6", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 6, content: "⑥" }),
+  msg({ id: "m7", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 7, content: "⑦" }),
+  msg({ id: "m8", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 8, content: "⑧" }),
+  msg({ id: "m9", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 9, branch_root_id: "m9", branch_index: 0, content: "⑨" }),
+  msg({ id: "m10", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 10, branch_root_id: "m9", branch_index: 1, content: "⑩" }),
+  msg({ id: "m11", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 11, branch_root_id: "m9", branch_index: 0, content: "⑪" }),
+  msg({ id: "m12", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 12, parent_id: "m11", branch_root_id: "m9", branch_index: 0, content: "⑫" }),
+  msg({ id: "m13", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 13, parent_id: "m8", branch_root_id: "m13", branch_index: 0, content: "⑬" }),
+  msg({ id: "m14", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 14, parent_id: "m13", branch_root_id: "m13", branch_index: 0, content: "⑭" }),
+  msg({ id: "m15", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 15, branch_root_id: "m15", branch_index: 0, content: "⑮" }),
+  msg({ id: "m16", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 16, parent_id: "m15", branch_root_id: "m15", branch_index: 0, content: "⑯" }),
+  msg({ id: "m17", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 17, parent_id: "m16", branch_root_id: "m15", branch_index: 0, content: "⑰" }),
+  msg({ id: "m18", thread_id: "e14b622b-6236-4325-ae43-84f906c97749", message_number: 18, parent_id: "m17", branch_root_id: "m15", branch_index: 0, content: "⑱" }),
+].sort(compareMessagesForDisplay);
+
+const fixtureDisplayParents = buildDisplayParentIdMap(fixtureMessages);
+assert.deepEqual(
+  ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"].map((id) => fixtureDisplayParents[id]),
+  [SYNTHETIC_ROOT_ID, "m1", "m2", "m3", "m4", "m5", "m6", "m7"]
+);
+assert.equal(fixtureDisplayParents.m9, "m8");
+assert.equal(fixtureDisplayParents.m13, "m8");
+assert.equal(fixtureDisplayParents.m11, "m9");
+assert.equal(fixtureDisplayParents.m15, "m14");
+
 console.log("branchTree tests passed");
