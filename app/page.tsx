@@ -1134,6 +1134,24 @@ export default function Home() {
     }
   }, [fetchThreads, selectThread]);
 
+  const handleBranchToNewChat = useCallback(async (message: Message) => {
+    if (!activeThreadId) return;
+    try {
+      const res = await fetch(`/api/threads/${activeThreadId}/branch-to`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anchorMessageId: message.id }),
+      });
+      if (!res.ok) throw new Error('分岐失敗');
+      const { thread: newThread } = await res.json();
+      await fetchThreads();
+      selectThread(newThread.id);
+    } catch (err) {
+      console.error('分岐失敗:', err);
+      alert('分岐に失敗しました');
+    }
+  }, [activeThreadId, fetchThreads, selectThread]);
+
   // ── Novel設定抽出 ──────────────────────────────────────────
   const handleExtractSettings = async () => {
     if (isExtracting || !activeThreadId) return;
@@ -1237,6 +1255,7 @@ export default function Home() {
         isTemporary={isTemporary}
         onSwitchTemporary={handleSwitchTemporary}
         onCopyThread={handleCopyThread}
+        onBranchToNewChat={handleBranchToNewChat}
         searchMatchIds={searchMatchIds}
         searchMatchIndex={searchMatchIndex}
         onMatchNavigate={handleMatchNavigate}

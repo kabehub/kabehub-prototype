@@ -55,6 +55,7 @@ interface ChatPanelProps {
   onDeleteMessage?: (message: Message) => void;
   onDeleteImage?: (message: Message) => void;
   onMemoizeMessage?: (message: Message) => void;
+  onBranchToNewChat?: (message: Message) => void;
   isTemporary: boolean;
   onSwitchTemporary: () => void;
   onCopyThread: (threadId: string) => void;
@@ -100,6 +101,7 @@ export default function ChatPanel({
   onDeleteMessage,
   onDeleteImage,
   onMemoizeMessage,
+  onBranchToNewChat,
   isTemporary,
   onSwitchTemporary,
   onCopyThread,
@@ -1988,6 +1990,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         onDiscuss={onDiscuss}
         onImageRef={onImageRef}
         onSendMemoToAI={onSendMemoToAI}
+        onBranchToNewChat={onBranchToNewChat}
       />
     )}
   </div>

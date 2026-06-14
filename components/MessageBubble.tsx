@@ -42,6 +42,7 @@ interface MessageBubbleProps {
   onDeleteImage?: (message: Message) => void;
   onImageRef?: (messageId: string) => void;
   onSendMemoToAI?: (content: string) => void;
+  onBranchToNewChat?: (message: Message) => void;
 }
 
 function MessageBubble({
@@ -69,6 +70,7 @@ function MessageBubble({
   onDeleteImage,
   onImageRef,
   onSendMemoToAI,
+  onBranchToNewChat,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
@@ -1049,6 +1051,20 @@ function MessageBubble({
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
             >
               📝 メモ化
+            </button>
+          )}
+          {!isUser && !isMemo && onBranchToNewChat && (
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                setRegenSubOpen(false);
+                onBranchToNewChat(message);
+              }}
+              style={menuItemStyle}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f7f7f5"; setRegenSubOpen(false); }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+            >
+              新しいチャットに分岐
             </button>
           )}
           {/* 削除（このメッセージ以降を全て削除 / 画像削除 / tombstone除去） */}
