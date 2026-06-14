@@ -868,6 +868,7 @@ export default function Home() {
     assistantMsg?: Message,
     modelId?: string,
     mode: "branch" | "light" = "branch",
+    editedUserContent?: string,
   ) => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
@@ -907,6 +908,8 @@ export default function Home() {
       }
 
       const branchId = mode === "branch" ? crypto.randomUUID() : undefined;
+      const userContentToSend = editedUserContent ?? lastUser.content;
+      const userContentChanged = editedUserContent != null && editedUserContent !== lastUser.content;
 
       if (mode === "branch") {
         // DBで is_active: false に更新（削除しない）
@@ -934,12 +937,13 @@ export default function Home() {
           messages: newMessages
             .filter(m => m.is_active !== false)
             .map(m => ({ role: m.role, content: m.content, provider: m.provider })),
-          userContent: lastUser.content,
+          userContent: userContentToSend,
           provider: targetProvider,
           modelId: modelId,
           isRegenerate: true,
           regenerateMode: mode,
           ...(mode === "light" ? { targetMessageId: lastAssistant.id } : {}),
+          ...(userContentChanged ? { targetUserMessageId: lastUser.id } : {}),
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
         (accumulated) => {
@@ -948,11 +952,15 @@ export default function Home() {
       );
 
       if (mode === "light") {
-        setMessages(prev => prev.map(m =>
-          m.id === lastAssistant.id
-            ? { ...m, content: assistantMessage.content, model_id: assistantMessage.model_id }
-            : m
-        ));
+        setMessages(prev => prev.map(m => {
+          if (m.id === lastAssistant.id) {
+            return { ...m, content: assistantMessage.content, model_id: assistantMessage.model_id };
+          }
+          if (userContentChanged && m.id === lastUser.id) {
+            return { ...m, content: userContentToSend };
+          }
+          return m;
+        }));
       } else {
         setMessages((prev) => [...prev, { ...assistantMessage, branch_id: branchId, is_active: true }]);
       }

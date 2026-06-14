@@ -20,7 +20,8 @@ interface RoleplayBubbleProps {
     targetProvider: "claude" | "gemini" | "openai",
     assistantMsg: Message,
     modelId?: string,
-    mode?: "branch" | "light"
+    mode?: "branch" | "light",
+    editedUserContent?: string
   ) => void;
   onTrimFrom?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;

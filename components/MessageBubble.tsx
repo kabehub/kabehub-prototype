@@ -15,7 +15,8 @@ interface MessageBubbleProps {
     targetProvider: "claude" | "gemini" | "openai",
     assistantMsg: Message,
     modelId?: string,
-    mode?: "branch" | "light"
+    mode?: "branch" | "light",
+    editedUserContent?: string
   ) => void;
   onEditAndRegenerate?: (
     assistantMsg: Message,
@@ -102,6 +103,7 @@ function MessageBubble({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [editRegenOpen, setEditRegenOpen] = useState(false);
   const [editRegenContent, setEditRegenContent] = useState("");
+  const [editRegenMode, setEditRegenMode] = useState<"branch" | "light">("branch");
   const [editRegenProvider, setEditRegenProvider] = useState<"claude" | "gemini" | "openai">("claude");
   const [editRegenModelId, setEditRegenModelId] = useState<string | undefined>(undefined);
   const USER_COLLAPSE_THRESHOLD = 128;
@@ -336,8 +338,13 @@ function MessageBubble({
       ? message.provider
       : "claude";
 
-  const openEditRegenModal = (initialContent: string, defaultModelSource?: Message) => {
+  const openEditRegenModal = (
+    initialContent: string,
+    defaultModelSource?: Message,
+    mode: "branch" | "light" = "branch",
+  ) => {
     setEditRegenContent(initialContent);
+    setEditRegenMode(mode);
     const src = defaultModelSource ?? (!isUser ? message : undefined);
     const srcProvider =
       src?.provider === "claude" || src?.provider === "gemini" || src?.provider === "openai"
@@ -349,7 +356,14 @@ function MessageBubble({
   };
 
   const submitEditRegen = () => {
-    if (!editRegenContent.trim() || !onEditAndRegenerate) return;
+    if (!editRegenContent.trim()) return;
+    if (editRegenMode === "light") {
+      if (!onRegenerate) return;
+      onRegenerate(editRegenProvider, message, editRegenModelId, "light", editRegenContent.trim());
+      setEditRegenOpen(false);
+      return;
+    }
+    if (!onEditAndRegenerate) return;
     const target = (isUser && canEditAndRegenerateFromUser)
       ? message
       : (!isUser ? message : editRegenAssistantMsg);
@@ -933,7 +947,7 @@ function MessageBubble({
         {!isUser && !isMemo && isLast && !isLoading && onRegenerate && (
           <div style={{ display: "flex", gap: "6px", marginTop: "6px", position: "relative", zIndex: 1 }}>
             <button
-              onClick={() => onRegenerate(regenProvider, message, message.model_id ?? undefined, "light")}
+              onClick={() => openEditRegenModal(prevUserContent ?? "", message, "light")}
               style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--accent)", background: "white", color: "var(--accent)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "white"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "white"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
@@ -1163,10 +1177,12 @@ function MessageBubble({
             boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
           }}>
             <div style={{ fontSize: "14px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)" }}>
-              ✏️ プロンプトを編集して再生成
+              {editRegenMode === "light" ? "✏️ プロンプトを編集して上書き再生成" : "✏️ プロンプトを編集して再生成"}
             </div>
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
-              元の回答を分岐として保存し、編集後のプロンプトで再生成します。
+              {editRegenMode === "light"
+                ? "世界線は分かれません。あなたの発言とAIの回答を、この場で上書きします。"
+                : "元の回答を分岐として保存し、編集後のプロンプトで再生成します。"}
             </div>
 
             <textarea
@@ -1245,7 +1261,7 @@ function MessageBubble({
                   cursor: editRegenContent.trim() ? "pointer" : "default",
                 }}
               >
-                再生成
+                {editRegenMode === "light" ? "上書き再生成" : "再生成"}
               </button>
             </div>
           </div>

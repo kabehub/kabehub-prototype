@@ -30,6 +30,14 @@ const dropTrailingDuplicateUser = (
   return source;
 };
 
+const dropTrailingUserUnconditional = (source: ChatMessage[]): ChatMessage[] => {
+  const last = source[source.length - 1];
+  if (last?.role === "user") {
+    return source.slice(0, -1);
+  }
+  return source;
+};
+
 const DEFAULT_MODELS: Record<string, ModelId> = {
   claude: "claude-sonnet-4-5",
   gemini: "gemini-2.5-flash",
@@ -504,7 +512,7 @@ export async function POST(req: NextRequest) {
   const {
     threadId, messages, userContent, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
-    imageContextId, branchEdit, regenerateMode, targetMessageId,
+    imageContextId, branchEdit, regenerateMode, targetMessageId, targetUserMessageId,
   } = await req.json();
 
   // ── Rate limiting ───────────────────────────────────────────────────────────
@@ -578,17 +586,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ユーザーメッセージ保存
-  const userMessageId = uuidv4();
-  const userMessage = {
-    id: userMessageId,
-    thread_id: threadId,
-    role: "user" as const,
-    content: userContent,
-    provider: (isMemo ? "memo" : "user") as "memo" | "user",
-    created_at: new Date().toISOString(),
-  };
   const isLightRegenerate = regenerateMode === "light" && !!targetMessageId;
+  let targetUserMessage: { id: string; content: string } | null = null;
 
   if (isLightRegenerate) {
     const { data: targetAssistant } = await supabase
@@ -606,7 +605,54 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    if (targetUserMessageId) {
+      const { data: targetUser } = await supabase
+        .from("messages")
+        .select("id, content")
+        .eq("id", targetUserMessageId)
+        .eq("thread_id", threadId)
+        .eq("user_id", userId)
+        .eq("role", "user")
+        .maybeSingle();
+
+      if (!targetUser) {
+        return new Response(JSON.stringify({ error: "target user message not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      targetUserMessage = targetUser;
+    }
   }
+
+  if (targetUserMessage) {
+    const { error: userUpdateError } = await supabase
+      .from("messages")
+      .update({ content: userContent })
+      .eq("id", targetUserMessage.id)
+      .eq("thread_id", threadId)
+      .eq("user_id", userId)
+      .eq("role", "user");
+
+    if (userUpdateError) {
+      return new Response(JSON.stringify({ error: userUpdateError.message }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // ユーザーメッセージ保存
+  const userMessageId = (isLightRegenerate && targetUserMessage) ? targetUserMessage.id : uuidv4();
+  const userMessage = {
+    id: userMessageId,
+    thread_id: threadId,
+    role: "user" as const,
+    content: userContent,
+    provider: (isMemo ? "memo" : "user") as "memo" | "user",
+    created_at: new Date().toISOString(),
+  };
 
   const assistantMessageId = isLightRegenerate ? String(targetMessageId) : uuidv4();
   let branchEditMessagesForApi: ChatMessage[] | null = null;
@@ -855,16 +901,15 @@ export async function POST(req: NextRequest) {
     ? `\n\n【会話の参加者】このスレッドには複数のAIが参加しています：${participants.join("、")}`
     : "";
 
+  const filteredMessages = (messages ?? [])
+    .filter((m: ChatMessage) => m.provider !== "memo")
+    .filter((m: ChatMessage) => m.is_active !== false);
+
   const activeMessagesForApi = (isRegenerate || isLightRegenerate)
-    ? dropTrailingDuplicateUser(
-        (messages ?? [])
-          .filter((m: ChatMessage) => m.provider !== "memo")
-          .filter((m: ChatMessage) => m.is_active !== false),
-        userContent,
-      )
-    : (messages ?? [])
-        .filter((m: ChatMessage) => m.provider !== "memo")
-        .filter((m: ChatMessage) => m.is_active !== false);
+    ? (targetUserMessage
+        ? dropTrailingUserUnconditional(filteredMessages)
+        : dropTrailingDuplicateUser(filteredMessages, userContent))
+    : filteredMessages;
 
   const messagesForApi = branchEditMessagesForApi
     ? branchEditMessagesForApi

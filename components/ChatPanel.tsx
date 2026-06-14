@@ -42,7 +42,8 @@ interface ChatPanelProps {
     targetProvider: "claude" | "gemini" | "openai",
     assistantMsg?: Message,
     modelId?: string,
-    mode?: "branch" | "light"
+    mode?: "branch" | "light",
+    editedUserContent?: string
   ) => void;
   onEditAndRegenerate: (
     baseUserMsg: Message,
