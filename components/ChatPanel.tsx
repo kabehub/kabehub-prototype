@@ -243,7 +243,7 @@ export default function ChatPanel({
     return acc;
   }, {});
 
-  const resolveCurrentChainAnchor = (chain: ChainBlock) => {
+  const resolveCurrentLaneKey = (chain: ChainBlock): string | null => {
     const activeCandidates = orderedMessages.filter((msg) =>
       msg.is_active !== false &&
       msg.role === "user" &&
@@ -253,20 +253,22 @@ export default function ChatPanel({
       msg.branch_index != null
     );
 
-    return activeCandidates.reduce<Message | null>((current, msg) => {
+    const currentMsg = activeCandidates.reduce<Message | null>((current, msg) => {
       if (!current) return msg;
       const currentOrder = getOrderNo(current) ?? Number.NEGATIVE_INFINITY;
       const msgOrder = getOrderNo(msg) ?? Number.NEGATIVE_INFINITY;
       if (msgOrder !== currentOrder) return msgOrder > currentOrder ? msg : current;
       return compareMessagesForDisplay(msg, current) > 0 ? msg : current;
     }, null);
+
+    if (!currentMsg || !currentMsg.branch_root_id || currentMsg.branch_index == null) return null;
+    return `${currentMsg.branch_root_id}:${currentMsg.branch_index}`;
   };
 
   const currentLaneKeyByBranchRootId = Object.values(chainBlocksByRootAnchor).reduce<Record<string, string | null>>(
     (acc, chain) => {
-      const anchorMsg = resolveCurrentChainAnchor(chain);
-      if (!anchorMsg || !anchorMsg.branch_root_id || anchorMsg.branch_index == null) return acc;
-      const currentLaneKey = `${anchorMsg.branch_root_id}:${anchorMsg.branch_index}`;
+      const currentLaneKey = resolveCurrentLaneKey(chain);
+      if (!currentLaneKey) return acc;
       chain.branchRootIds.forEach((branchRootId) => {
         acc[branchRootId] = currentLaneKey;
       });
@@ -284,6 +286,16 @@ export default function ChatPanel({
     const laneKey = `${msg.branch_root_id}:${msg.branch_index}`;
     return laneKey === currentLaneKey;
   });
+
+  const resolveBranchBlockAnchor = (currentLaneKey: string): Message | null => {
+    return visibleMessages.find((msg) =>
+      msg.role === "user" &&
+      msg.provider !== "memo" &&
+      msg.branch_root_id != null &&
+      msg.branch_index != null &&
+      `${msg.branch_root_id}:${msg.branch_index}` === currentLaneKey
+    ) ?? null;
+  };
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1280);
@@ -1097,11 +1109,11 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
   const branchBlocksByAnchor = Object.values(chainBlocksByRootAnchor).reduce<Record<string, BranchBlock>>(
     (acc, chain) => {
-      const anchorMsg = resolveCurrentChainAnchor(chain);
-      if (!anchorMsg || !anchorMsg.branch_root_id || anchorMsg.branch_index == null) return acc;
-
+      const currentLaneKey = resolveCurrentLaneKey(chain);
+      if (!currentLaneKey) return acc;
+      const anchorMsg = resolveBranchBlockAnchor(currentLaneKey);
+      if (!anchorMsg) return acc;
       const anchorKey = getAnchorKey(anchorMsg);
-      const currentLaneKey = `${anchorMsg.branch_root_id}:${anchorMsg.branch_index}`;
       const lanes = Array.from(chain.branchRootIds).flatMap<BranchLane>((branchRootId) => {
         const groupsByBranchIndex = orderedMessages
           .filter((msg) => msg.branch_root_id === branchRootId && msg.branch_index != null)
