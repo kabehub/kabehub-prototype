@@ -38,7 +38,12 @@ interface ChatPanelProps {
   provider: Provider;
   onProviderChange: (p: Provider) => void;
   onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
-  onRegenerate: (targetProvider: "claude" | "gemini" | "openai", assistantMsg?: Message, modelId?: string) => void;
+  onRegenerate: (
+    targetProvider: "claude" | "gemini" | "openai",
+    assistantMsg?: Message,
+    modelId?: string,
+    mode?: "branch" | "light"
+  ) => void;
   onEditAndRegenerate: (
     baseUserMsg: Message,
     editedContent: string,

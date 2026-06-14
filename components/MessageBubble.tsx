@@ -11,7 +11,12 @@ interface MessageBubbleProps {
   isLast?: boolean;
   isLoading?: boolean;
   provider?: string;
-  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message, modelId?: string) => void;
+  onRegenerate?: (
+    targetProvider: "claude" | "gemini" | "openai",
+    assistantMsg: Message,
+    modelId?: string,
+    mode?: "branch" | "light"
+  ) => void;
   onEditAndRegenerate?: (
     assistantMsg: Message,
     editedContent: string,
@@ -927,6 +932,14 @@ function MessageBubble({
         {/* 再生成ボタン（isLast の場合のみ） */}
         {!isUser && !isMemo && isLast && !isLoading && onRegenerate && (
           <div style={{ display: "flex", gap: "6px", marginTop: "6px", position: "relative", zIndex: 1 }}>
+            <button
+              onClick={() => onRegenerate(regenProvider, message, message.model_id ?? undefined, "light")}
+              style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--accent)", background: "white", color: "var(--accent)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.15s" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "white"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "white"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+            >
+              上書き再生成
+            </button>
             {regenTargets.map((p) => (
               <button
                 key={p}

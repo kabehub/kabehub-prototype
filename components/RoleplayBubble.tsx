@@ -16,7 +16,12 @@ interface RoleplayBubbleProps {
   isLast?: boolean;
   isLoading?: boolean;
   provider?: string;
-  onRegenerate?: (targetProvider: "claude" | "gemini" | "openai", assistantMsg: Message, modelId?: string) => void;
+  onRegenerate?: (
+    targetProvider: "claude" | "gemini" | "openai",
+    assistantMsg: Message,
+    modelId?: string,
+    mode?: "branch" | "light"
+  ) => void;
   onTrimFrom?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;
   messageNotes?: MessageNote[];

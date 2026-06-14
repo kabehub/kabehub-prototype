@@ -19,6 +19,17 @@ type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephem
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
 type BranchMeta = { branch_root_id: string; branch_index: number; parent_id: string };
 
+const dropTrailingDuplicateUser = (
+  source: ChatMessage[],
+  currentUserContent: string,
+): ChatMessage[] => {
+  const last = source[source.length - 1];
+  if (last?.role === "user" && last.content === currentUserContent) {
+    return source.slice(0, -1);
+  }
+  return source;
+};
+
 const DEFAULT_MODELS: Record<string, ModelId> = {
   claude: "claude-sonnet-4-5",
   gemini: "gemini-2.5-flash",
@@ -493,7 +504,7 @@ export async function POST(req: NextRequest) {
   const {
     threadId, messages, userContent, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
-    imageContextId, branchEdit,
+    imageContextId, branchEdit, regenerateMode, targetMessageId,
   } = await req.json();
 
   // ── Rate limiting ───────────────────────────────────────────────────────────
@@ -577,10 +588,31 @@ export async function POST(req: NextRequest) {
     provider: (isMemo ? "memo" : "user") as "memo" | "user",
     created_at: new Date().toISOString(),
   };
+  const isLightRegenerate = regenerateMode === "light" && !!targetMessageId;
+
+  if (isLightRegenerate) {
+    const { data: targetAssistant } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("id", targetMessageId)
+      .eq("thread_id", threadId)
+      .eq("user_id", userId)
+      .eq("role", "assistant")
+      .maybeSingle();
+
+    if (!targetAssistant) {
+      return new Response(JSON.stringify({ error: "target assistant message not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  const assistantMessageId = isLightRegenerate ? String(targetMessageId) : uuidv4();
   let branchEditMessagesForApi: ChatMessage[] | null = null;
   let branchEditMeta: BranchMeta | null = null;
 
-  if (!isRegenerate && !isTemporary) {
+  if (!isRegenerate && !isLightRegenerate && !isTemporary) {
     if (branchEdit?.baseUserMessageId) {
       // branchEditモード: 旧user以降を inactive化 → 新userを新規insert
       // 1. baseUserを取得してmessage_numberを確認
@@ -823,6 +855,17 @@ export async function POST(req: NextRequest) {
     ? `\n\n【会話の参加者】このスレッドには複数のAIが参加しています：${participants.join("、")}`
     : "";
 
+  const activeMessagesForApi = (isRegenerate || isLightRegenerate)
+    ? dropTrailingDuplicateUser(
+        (messages ?? [])
+          .filter((m: ChatMessage) => m.provider !== "memo")
+          .filter((m: ChatMessage) => m.is_active !== false),
+        userContent,
+      )
+    : (messages ?? [])
+        .filter((m: ChatMessage) => m.provider !== "memo")
+        .filter((m: ChatMessage) => m.is_active !== false);
+
   const messagesForApi = branchEditMessagesForApi
     ? branchEditMessagesForApi
         .filter((m: ChatMessage) => m.provider !== "memo")
@@ -832,18 +875,15 @@ export async function POST(req: NextRequest) {
           return { role: "assistant" as string, content: cleanContent };
         })
     : [
-        ...messages
-          .filter((m: ChatMessage) => m.provider !== "memo")
-          .filter((m: ChatMessage) => m.is_active !== false)
-          .map((m: ChatMessage) => {
-            if (m.role !== "assistant") return { role: m.role as string, content: m.content };
-            // 改行あり・なし・スペース区切りすべてのラベルパターンを除去
-            // 既存DBの汚染データ（[claude][claude]...）も一網打尽にする
-            const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
-            // ⚠️ [${label}]\n の付与をやめる
-            // AIへの発言者情報の伝達は participantNote（systemPrompt末尾の参加者リスト）で担う
-            return { role: "assistant" as string, content: cleanContent };
-          }),
+        ...activeMessagesForApi.map((m: ChatMessage) => {
+          if (m.role !== "assistant") return { role: m.role as string, content: m.content };
+          // 改行あり・なし・スペース区切りすべてのラベルパターンを除去
+          // 既存DBの汚染データ（[claude][claude]...）も一網打尽にする
+          const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
+          // ⚠️ [${label}]\n の付与をやめる
+          // AIへの発言者情報の伝達は participantNote（systemPrompt末尾の参加者リスト）で担う
+          return { role: "assistant" as string, content: cleanContent };
+        }),
         { role: "user" as string, content: userContent },
       ];
 
@@ -1045,7 +1085,6 @@ export async function POST(req: NextRequest) {
   // エラー時は非ストリーミングで返す
   if (errorMessage || !aiStream) {
     const content = errorMessage ?? "（応答の取得に失敗しました）";
-    const assistantMessageId = uuidv4();
     const assistantMessage = {
       id: assistantMessageId,
       thread_id: threadId,
@@ -1063,7 +1102,6 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── ストリーミングレスポンス構築 ───────────────────────────────────────
-  const assistantMessageId = uuidv4();
   const now = new Date().toISOString();
 
   // フロントに最初にuserMessageとassistantMessageのIDを通知するため

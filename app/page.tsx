@@ -867,6 +867,7 @@ export default function Home() {
     targetProvider: "claude" | "gemini" | "openai",
     assistantMsg?: Message,
     modelId?: string,
+    mode: "branch" | "light" = "branch",
   ) => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
@@ -905,23 +906,25 @@ export default function Home() {
         newMessages = activeLatestMessages.filter((m) => m.id !== lastAssistant.id);
       }
 
-      const branchId = crypto.randomUUID();
+      const branchId = mode === "branch" ? crypto.randomUUID() : undefined;
 
-      // DBで is_active: false に更新（削除しない）
-      await fetch(`/api/threads/${activeThreadId}/messages/${lastAssistant.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: false, branch_id: branchId }),
-      });
+      if (mode === "branch") {
+        // DBで is_active: false に更新（削除しない）
+        await fetch(`/api/threads/${activeThreadId}/messages/${lastAssistant.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_active: false, branch_id: branchId }),
+        });
 
-      // フロントのstateでも is_active: false に更新（削除しない）
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === lastAssistant.id
-            ? { ...m, is_active: false, branch_id: branchId }
-            : m
-        )
-      );
+        // フロントのstateでも is_active: false に更新（削除しない）
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === lastAssistant.id
+              ? { ...m, is_active: false, branch_id: branchId }
+              : m
+          )
+        );
+      }
 
       const { assistantMessage } = await fetchWithStreaming(
         "/api/chat",
@@ -935,6 +938,8 @@ export default function Home() {
           provider: targetProvider,
           modelId: modelId,
           isRegenerate: true,
+          regenerateMode: mode,
+          ...(mode === "light" ? { targetMessageId: lastAssistant.id } : {}),
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
         (accumulated) => {
@@ -942,7 +947,15 @@ export default function Home() {
         },
       );
 
-      setMessages((prev) => [...prev, { ...assistantMessage, branch_id: branchId, is_active: true }]);
+      if (mode === "light") {
+        setMessages(prev => prev.map(m =>
+          m.id === lastAssistant.id
+            ? { ...m, content: assistantMessage.content, model_id: assistantMessage.model_id }
+            : m
+        ));
+      } else {
+        setMessages((prev) => [...prev, { ...assistantMessage, branch_id: branchId, is_active: true }]);
+      }
     } catch (err) {
       console.error("再生成失敗:", err);
     } finally {
