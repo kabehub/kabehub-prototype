@@ -11,25 +11,18 @@ import { generateMessageSummary } from "@/lib/stringUtils";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
 import PublishConfirmModal from "./PublishConfirmModal";
 import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
-
-const getOrderNo = (m: Message) =>
-  typeof m.message_number === "number" ? m.message_number : null;
-
-const compareMessagesForDisplay = (a: Message, b: Message) => {
-  const aOrder = getOrderNo(a);
-  const bOrder = getOrderNo(b);
-  if (aOrder != null && bOrder != null && aOrder !== bOrder) {
-    return aOrder - bOrder;
-  }
-  if (aOrder != null && bOrder == null) return -1;
-  if (aOrder == null && bOrder != null) return 1;
-  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-};
-
-const getAnchorKey = (m: Message) => {
-  const orderNo = getOrderNo(m);
-  return orderNo != null ? `no:${orderNo}` : `id:${m.id}`;
-};
+import {
+  buildBranchLanes,
+  buildChainBlocksByRootAnchor,
+  buildCurrentLaneKeyByBranchRootId,
+  buildMessageById,
+  compareMessagesForDisplay,
+  getAnchorKey,
+  getOrderNo,
+  resolveBranchBlockAnchor,
+  resolveCurrentLaneKey,
+  type BranchLane,
+} from "@/lib/branching";
 
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
@@ -208,73 +201,14 @@ export default function ChatPanel({
     () => [...messages].sort(compareMessagesForDisplay),
     [messages]
   );
-  const messageById = orderedMessages.reduce<Record<string, Message>>((acc, msg) => {
-    acc[msg.id] = msg;
-    return acc;
-  }, {});
+  const messageById = buildMessageById(orderedMessages);
   const dbActiveMessages = orderedMessages.filter(msg => msg.is_active !== false);
 
-  type ChainBlock = {
-    branchRootIds: Set<string>;
-  };
+  const chainBlocksByRootAnchor = buildChainBlocksByRootAnchor(orderedMessages, messageById);
 
-  const rootUserMessages = orderedMessages.filter(
-    (msg) => msg.role === "user" && msg.branch_root_id === msg.id
-  );
-
-  const chainBlocksByRootAnchor = rootUserMessages.reduce<Record<string, ChainBlock>>((acc, msg) => {
-    let chainRoot = msg;
-    const visited = new Set<string>();
-
-    while (chainRoot.parent_id && !visited.has(chainRoot.id)) {
-      visited.add(chainRoot.id);
-      const parent = messageById[chainRoot.parent_id];
-      if (!parent || parent.role !== "user" || parent.branch_root_id !== parent.id) break;
-      chainRoot = parent;
-    }
-
-    const chainRootAnchorKey = getAnchorKey(chainRoot);
-    if (!acc[chainRootAnchorKey]) {
-      acc[chainRootAnchorKey] = {
-        branchRootIds: new Set<string>(),
-      };
-    }
-    acc[chainRootAnchorKey].branchRootIds.add(msg.id);
-    return acc;
-  }, {});
-
-  const resolveCurrentLaneKey = (chain: ChainBlock): string | null => {
-    const activeCandidates = orderedMessages.filter((msg) =>
-      msg.is_active !== false &&
-      msg.role === "user" &&
-      msg.provider !== "memo" &&
-      msg.branch_root_id != null &&
-      chain.branchRootIds.has(msg.branch_root_id) &&
-      msg.branch_index != null
-    );
-
-    const currentMsg = activeCandidates.reduce<Message | null>((current, msg) => {
-      if (!current) return msg;
-      const currentOrder = getOrderNo(current) ?? Number.NEGATIVE_INFINITY;
-      const msgOrder = getOrderNo(msg) ?? Number.NEGATIVE_INFINITY;
-      if (msgOrder !== currentOrder) return msgOrder > currentOrder ? msg : current;
-      return compareMessagesForDisplay(msg, current) > 0 ? msg : current;
-    }, null);
-
-    if (!currentMsg || !currentMsg.branch_root_id || currentMsg.branch_index == null) return null;
-    return `${currentMsg.branch_root_id}:${currentMsg.branch_index}`;
-  };
-
-  const currentLaneKeyByBranchRootId = Object.values(chainBlocksByRootAnchor).reduce<Record<string, string | null>>(
-    (acc, chain) => {
-      const currentLaneKey = resolveCurrentLaneKey(chain);
-      if (!currentLaneKey) return acc;
-      chain.branchRootIds.forEach((branchRootId) => {
-        acc[branchRootId] = currentLaneKey;
-      });
-      return acc;
-    },
-    {}
+  const currentLaneKeyByBranchRootId = buildCurrentLaneKeyByBranchRootId(
+    chainBlocksByRootAnchor,
+    orderedMessages
   );
 
   const visibleMessages = dbActiveMessages.filter((msg) => {
@@ -286,16 +220,6 @@ export default function ChatPanel({
     const laneKey = `${msg.branch_root_id}:${msg.branch_index}`;
     return laneKey === currentLaneKey;
   });
-
-  const resolveBranchBlockAnchor = (currentLaneKey: string): Message | null => {
-    return visibleMessages.find((msg) =>
-      msg.role === "user" &&
-      msg.provider !== "memo" &&
-      msg.branch_root_id != null &&
-      msg.branch_index != null &&
-      `${msg.branch_root_id}:${msg.branch_index}` === currentLaneKey
-    ) ?? null;
-  };
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1280);
@@ -1083,14 +1007,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     {}
   );
 
-  type BranchLane = {
-    branchRootId: string;
-    branchIndex: number;
-    isCurrent: boolean;
-    isOnPath: boolean;
-    label: string;
-  };
-
   type BranchBlock = {
     anchorKey: string;
     anchorMessageId: string;
@@ -1109,46 +1025,17 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
   const branchBlocksByAnchor = Object.values(chainBlocksByRootAnchor).reduce<Record<string, BranchBlock>>(
     (acc, chain) => {
-      const currentLaneKey = resolveCurrentLaneKey(chain);
+      const currentLaneKey = resolveCurrentLaneKey(chain, orderedMessages);
       if (!currentLaneKey) return acc;
-      const anchorMsg = resolveBranchBlockAnchor(currentLaneKey);
+      const anchorMsg = resolveBranchBlockAnchor(currentLaneKey, visibleMessages);
       if (!anchorMsg) return acc;
       const anchorKey = getAnchorKey(anchorMsg);
-      const lanes = Array.from(chain.branchRootIds).flatMap<BranchLane>((branchRootId) => {
-        const groupsByBranchIndex = orderedMessages
-          .filter((msg) => msg.branch_root_id === branchRootId && msg.branch_index != null)
-          .reduce<Record<number, Message[]>>((groups, msg) => {
-            const branchIndex = msg.branch_index ?? 0;
-            if (!groups[branchIndex]) groups[branchIndex] = [];
-            groups[branchIndex].push(msg);
-            return groups;
-          }, {});
-
-        return Object.entries(groupsByBranchIndex).map<BranchLane>(([branchIndexKey, group]) => {
-          const branchIndex = Number(branchIndexKey);
-          const labelMsg = group.find((msg) => msg.role === "user" && msg.provider !== "memo");
-          const laneKey = `${branchRootId}:${branchIndex}`;
-
-          return {
-            branchRootId,
-            branchIndex,
-            isCurrent: laneKey === currentLaneKey,
-            isOnPath: group.some((msg) => msg.is_active !== false),
-            label: labelMsg
-              ? generateMessageSummary(typeof labelMsg.content === "string" ? labelMsg.content : "")
-              : "(このまま継続)",
-          };
-        });
-      }).sort((a, b) => {
-        const aRoot = messageById[a.branchRootId];
-        const bRoot = messageById[b.branchRootId];
-        const aOrder = aRoot ? getOrderNo(aRoot) : null;
-        const bOrder = bRoot ? getOrderNo(bRoot) : null;
-        if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
-        if (a.branchRootId !== b.branchRootId) return a.branchRootId.localeCompare(b.branchRootId);
-        if (a.branchIndex !== b.branchIndex) return a.branchIndex - b.branchIndex;
-        return Number(b.isCurrent) - Number(a.isCurrent);
-      });
+      const lanes = buildBranchLanes(
+        chain.branchRootIds,
+        currentLaneKey,
+        orderedMessages,
+        messageById
+      );
 
       if (lanes.length < 2 || !lanes.some((lane) => lane.isCurrent)) return acc;
 
@@ -1257,6 +1144,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                       <div style={{ position: "fixed", inset: 0, zIndex: 10 }} onClick={() => setShowMoreMenu(false)} />
                       <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20, background: "white", border: "1px solid var(--border)", borderRadius: "8px", padding: "4px", minWidth: "170px", boxShadow: "0 4px 16px rgba(0,0,0,0.10)" }}>
                         {[
+                          { label: "🌳 分岐ツリー",        action: () => { window.location.href = `/threads/${thread.id}/tree`; } },
                           { label: "📋 この会話をコピー", action: async () => { const ok = window.confirm("この会話をベースに新しいスレッドを作成します。よろしいですか？"); if (ok) await onCopyThread(thread.id); } },
                           { label: "✎ タイトル編集",      action: () => openDialog() },
                           { label: "🔑 APIキー",           action: () => handleOpenApiKeys() },

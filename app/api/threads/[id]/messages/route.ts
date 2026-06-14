@@ -7,11 +7,17 @@ export async function GET(
 ) {
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json([], { status: 401 });
+  }
 
   const { data, error } = await supabase
     .from("messages")
     .select("*")
     .eq("thread_id", params.id)
+    .eq("user_id", user.id)
     .order("message_number", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
 
