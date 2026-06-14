@@ -117,6 +117,29 @@ export function buildDisplayParentIdMap(messages: Message[]): DisplayParentIdMap
     });
   });
 
+  const laneHeadsByKey = treeMessages
+    .filter((msg) => msg.branch_root_id != null && msg.branch_index != null)
+    .reduce<Record<string, Message>>((acc, msg) => {
+      const laneKey = `${msg.branch_root_id}:${msg.branch_index}`;
+      const currentHead = acc[laneKey];
+      if (!currentHead || compareMessagesForDisplay(msg, currentHead) < 0) {
+        acc[laneKey] = msg;
+      }
+      return acc;
+    }, {});
+
+  Object.values(laneHeadsByKey).forEach((msg) => {
+    if (!msg.parent_id || !msg.branch_root_id) return;
+    if (msg.parent_id !== msg.branch_root_id) return;
+    if (msg.branch_root_id === msg.id) return;
+    if (!messageById[msg.branch_root_id]) return;
+
+    const branchRootDisplayParentId = displayParentIdById[msg.branch_root_id];
+    if (branchRootDisplayParentId === undefined) return;
+
+    displayParentIdById[msg.id] = branchRootDisplayParentId;
+  });
+
   return displayParentIdById;
 }
 

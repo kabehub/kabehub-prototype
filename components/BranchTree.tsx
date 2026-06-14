@@ -119,7 +119,7 @@ export default function BranchTree({ threadId, nodes, edges }: BranchTreeProps) 
               <span style={{ fontSize: 11, lineHeight: 1, color: node.isCurrentLane ? "#2563eb" : "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
                 {number}
               </span>
-              <span style={{ fontSize: 12, lineHeight: 1.3, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+              <span style={{ fontSize: 12, lineHeight: 1.3, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden", display: "block", width: "100%", minWidth: 0 }}>
                 {summary || "(空のメッセージ)"}
               </span>
             </button>

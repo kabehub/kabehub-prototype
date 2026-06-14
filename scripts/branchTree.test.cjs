@@ -140,4 +140,32 @@ assert.equal(fixtureDisplayParents.m13, "m8");
 assert.equal(fixtureDisplayParents.m11, "m9");
 assert.equal(fixtureDisplayParents.m15, "m14");
 
+const phaseBMessages = [
+  msg({ id: "p1", message_number: 1, content: "#1" }),
+  msg({ id: "p2", message_number: 2, parent_id: "p1", content: "#2" }),
+  msg({ id: "p3", message_number: 3, parent_id: "p2", content: "#3" }),
+  msg({ id: "p4", message_number: 4, parent_id: "p3", content: "#4" }),
+  msg({ id: "p5", message_number: 5, parent_id: "p4", branch_root_id: "p5", branch_index: 0, content: "#5" }),
+  msg({ id: "p6", message_number: 6, parent_id: "p5", branch_root_id: "p5", branch_index: 0, content: "#6" }),
+  msg({ id: "p9", message_number: 9, parent_id: "p5", branch_root_id: "p5", branch_index: 1, content: "#9" }),
+  msg({ id: "p10", message_number: 10, parent_id: "p9", branch_root_id: "p5", branch_index: 1, content: "#10" }),
+  msg({ id: "p13", message_number: 13, parent_id: "p5", branch_root_id: "p5", branch_index: 2, content: "#13" }),
+  msg({ id: "p14", message_number: 14, parent_id: "p13", branch_root_id: "p5", branch_index: 2, content: "#14" }),
+].sort(compareMessagesForDisplay);
+
+const phaseBDisplayParents = buildDisplayParentIdMap(phaseBMessages);
+assert.equal(phaseBDisplayParents.p9, "p4");
+assert.equal(phaseBDisplayParents.p13, "p4");
+assert.equal(phaseBDisplayParents.p5, "p4");
+assert.equal(phaseBDisplayParents.p6, "p5");
+
+const phaseBChildrenOf = buildChildrenOf(phaseBMessages, phaseBDisplayParents);
+assert.deepEqual(phaseBChildrenOf.p4.map((m) => m.id), ["p5", "p9", "p13"]);
+assert.equal(phaseBChildrenOf.p4.some((m) => m.id === "p5"), true);
+assert.equal(phaseBChildrenOf.p4.some((m) => m.id === "p9"), true);
+assert.equal(phaseBChildrenOf.p4.some((m) => m.id === "p13"), true);
+assert.deepEqual(phaseBChildrenOf.p5.map((m) => m.id), ["p6"]);
+assert.equal(phaseBChildrenOf.p5.some((m) => m.id === "p9"), false);
+assert.equal(phaseBChildrenOf.p5.some((m) => m.id === "p13"), false);
+
 console.log("branchTree tests passed");
