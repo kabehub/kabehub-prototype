@@ -1006,7 +1006,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   type BranchLane = {
     branchRootId: string;
     branchIndex: number;
-    isActive: boolean;
+    isCurrent: boolean;
+    isOnPath: boolean;
     label: string;
   };
 
@@ -1026,79 +1027,104 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     });
   });
 
-  const activeMessageIndexByAnchorKey = activeMessages.reduce<Record<string, number>>((acc, msg, index) => {
-    acc[getAnchorKey(msg)] = index;
+  const rootUserMessages = orderedMessages.filter(
+    (msg) => msg.role === "user" && msg.branch_root_id === msg.id
+  );
+
+  const chainBlocksByRootAnchor = rootUserMessages.reduce<Record<string, {
+    branchRootIds: Set<string>;
+    activeMembers: Message[];
+  }>>((acc, msg) => {
+    let chainRoot = msg;
+    const visited = new Set<string>();
+
+    while (chainRoot.parent_id && !visited.has(chainRoot.id)) {
+      visited.add(chainRoot.id);
+      const parent = messageById[chainRoot.parent_id];
+      if (!parent || parent.role !== "user" || parent.branch_root_id !== parent.id) break;
+      chainRoot = parent;
+    }
+
+    const chainRootAnchorKey = getAnchorKey(chainRoot);
+    if (!acc[chainRootAnchorKey]) {
+      acc[chainRootAnchorKey] = {
+        branchRootIds: new Set<string>(),
+        activeMembers: [],
+      };
+    }
+    acc[chainRootAnchorKey].branchRootIds.add(msg.id);
+    if (msg.is_active !== false) {
+      acc[chainRootAnchorKey].activeMembers.push(msg);
+    }
     return acc;
   }, {});
 
-  const branchBlocksByAnchor = Object.entries(inactiveBranchGroupsByAnchor).reduce<Record<string, BranchBlock>>(
-    (acc, [anchorKey, groups]) => {
-      const anchorMsg = orderedMessages.find((m) => getAnchorKey(m) === anchorKey);
-      if (!anchorMsg) return acc;
+  const branchBlocksByAnchor = Object.values(chainBlocksByRootAnchor).reduce<Record<string, BranchBlock>>(
+    (acc, chain) => {
+      const anchorMsg = chain.activeMembers.reduce<Message | null>((current, msg) => {
+        if (!current) return msg;
+        const currentOrder = getOrderNo(current) ?? Number.NEGATIVE_INFINITY;
+        const msgOrder = getOrderNo(msg) ?? Number.NEGATIVE_INFINITY;
+        if (msgOrder !== currentOrder) return msgOrder > currentOrder ? msg : current;
+        return compareMessagesForDisplay(msg, current) > 0 ? msg : current;
+      }, null);
+      if (!anchorMsg || !anchorMsg.branch_root_id || anchorMsg.branch_index == null) return acc;
 
-      const anchorIdx = activeMessageIndexByAnchorKey[anchorKey];
-      const activeTail = activeMessages.slice((anchorIdx ?? -1) + 1);
-      const branchRootIds = Array.from(
-        new Set([
-          ...groups.map((group) => group[0]?.branch_root_id),
-          anchorMsg.branch_root_id,
-        ].filter((id): id is string => Boolean(id)))
-      );
-      if (branchRootIds.length === 0) return acc;
+      const anchorKey = getAnchorKey(anchorMsg);
+      const currentLaneKey = `${anchorMsg.branch_root_id}:${anchorMsg.branch_index}`;
+      const lanes = Array.from(chain.branchRootIds).flatMap<BranchLane>((branchRootId) => {
+        const groupsByBranchIndex = orderedMessages
+          .filter((msg) => msg.branch_root_id === branchRootId && msg.branch_index != null)
+          .reduce<Record<number, Message[]>>((groups, msg) => {
+            const branchIndex = msg.branch_index ?? 0;
+            if (!groups[branchIndex]) groups[branchIndex] = [];
+            groups[branchIndex].push(msg);
+            return groups;
+          }, {});
 
-      const activeLanes = branchRootIds.flatMap<BranchLane>((branchRootId) => {
-        const activeBranchMsg = activeTail.find((m) => m.branch_root_id === branchRootId);
-        if (!activeBranchMsg || activeBranchMsg.branch_index == null) return [];
+        return Object.entries(groupsByBranchIndex).map<BranchLane>(([branchIndexKey, group]) => {
+          const branchIndex = Number(branchIndexKey);
+          const labelMsg = group.find((msg) => msg.role === "user" && msg.provider !== "memo");
+          const laneKey = `${branchRootId}:${branchIndex}`;
 
-        const activeLabelMsg =
-          activeTail.find((m) => m.branch_root_id === branchRootId && m.provider !== "memo") ??
-          activeTail.find((m) => m.provider !== "memo");
-
-        return [{
-          branchRootId,
-          branchIndex: activeBranchMsg.branch_index,
-          isActive: true,
-          label: activeLabelMsg
-            ? generateMessageSummary(typeof activeLabelMsg.content === "string" ? activeLabelMsg.content : "")
-            : "(このまま継続)",
-        }];
+          return {
+            branchRootId,
+            branchIndex,
+            isCurrent: laneKey === currentLaneKey,
+            isOnPath: group.some((msg) => msg.is_active !== false),
+            label: labelMsg
+              ? generateMessageSummary(typeof labelMsg.content === "string" ? labelMsg.content : "")
+              : "(このまま継続)",
+          };
+        });
+      }).sort((a, b) => {
+        const aRoot = messageById[a.branchRootId];
+        const bRoot = messageById[b.branchRootId];
+        const aOrder = aRoot ? getOrderNo(aRoot) : null;
+        const bOrder = bRoot ? getOrderNo(bRoot) : null;
+        if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
+        if (a.branchRootId !== b.branchRootId) return a.branchRootId.localeCompare(b.branchRootId);
+        if (a.branchIndex !== b.branchIndex) return a.branchIndex - b.branchIndex;
+        return Number(b.isCurrent) - Number(a.isCurrent);
       });
 
-      const inactiveLanes = groups.flatMap<BranchLane>((group) => {
-        const branchRootId = group[0]?.branch_root_id;
-        if (!branchRootId) return [];
-        return [{
-          branchRootId,
-          branchIndex: group[0]?.branch_index ?? 0,
-          isActive: false,
-          label: generateMessageSummary(group[0]?.content ?? ""),
-        }];
-      });
+      if (lanes.length < 2 || !lanes.some((lane) => lane.isCurrent)) return acc;
 
       acc[anchorKey] = {
         anchorKey,
         anchorMessageId: anchorMsg.id,
         branchPointNumber: messageNumbers[anchorMsg.id] ?? null,
-        lanes: [...activeLanes, ...inactiveLanes].sort((a, b) => {
-          const aRoot = messageById[a.branchRootId];
-          const bRoot = messageById[b.branchRootId];
-          const aOrder = aRoot ? getOrderNo(aRoot) : null;
-          const bOrder = bRoot ? getOrderNo(bRoot) : null;
-          if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
-          if (a.branchRootId !== b.branchRootId) return a.branchRootId.localeCompare(b.branchRootId);
-          if (a.branchIndex !== b.branchIndex) return a.branchIndex - b.branchIndex;
-          return Number(b.isActive) - Number(a.isActive);
-        }),
+        lanes,
       };
       return acc;
     },
     {}
   );
 
-  const handleBranchLaneClick = async (lane: BranchLane, block: BranchBlock) => {
-    if (isLoading || lane.isActive) return;
+  const handleBranchLaneClick = async (lane: BranchLane) => {
+    if (isLoading || lane.isCurrent) return;
     await onRestoreBranch?.(lane.branchRootId, lane.branchIndex);
-    scrollToMessage(block.anchorMessageId);
+    scrollToMessage(lane.branchRootId);
   };
 
   const isInitialInputMode =
@@ -2230,27 +2256,27 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                       </div>
                       {branchBlock.lanes.map((lane) => (
                         <button
-                          key={`${branchBlock.anchorKey}:${lane.branchRootId}:${lane.branchIndex}:${lane.isActive ? "active" : "inactive"}`}
+                          key={`${branchBlock.anchorKey}:${lane.branchRootId}:${lane.branchIndex}:${lane.isCurrent ? "current" : "branch"}`}
                           type="button"
                           onClick={() => {
-                            if (isLoading || lane.isActive) return;
-                            handleBranchLaneClick(lane, branchBlock);
+                            if (isLoading || lane.isCurrent) return;
+                            handleBranchLaneClick(lane);
                           }}
-                          disabled={isLoading || lane.isActive}
-                          aria-current={lane.isActive ? "true" : undefined}
+                          disabled={isLoading || lane.isCurrent}
+                          aria-current={lane.isCurrent ? "true" : undefined}
                           style={{
                             display: "block",
                             width: "100%",
                             marginBottom: "3px",
                             padding: "4px 6px",
                             borderRadius: "5px",
-                            border: lane.isActive ? "1px solid var(--accent)" : "1px solid var(--border)",
-                            background: lane.isActive ? "var(--accent)" : "transparent",
-                            color: lane.isActive ? "white" : "var(--ink-muted)",
-                            cursor: isLoading || lane.isActive ? "default" : "pointer",
-                            opacity: !lane.isActive && isLoading ? 0.45 : 1,
-                            fontWeight: lane.isActive ? 600 : 400,
-                            boxShadow: lane.isActive ? "inset 0 0 0 1px rgba(255,255,255,0.25)" : "none",
+                            border: lane.isCurrent ? "1px solid var(--accent)" : "1px solid var(--border)",
+                            background: lane.isCurrent ? "var(--accent)" : "transparent",
+                            color: lane.isCurrent ? "white" : "var(--ink-muted)",
+                            cursor: isLoading || lane.isCurrent ? "default" : "pointer",
+                            opacity: !lane.isCurrent && isLoading ? 0.45 : 1,
+                            fontWeight: lane.isCurrent ? 600 : 400,
+                            boxShadow: lane.isCurrent ? "inset 0 0 0 1px rgba(255,255,255,0.25)" : "none",
                             fontSize: "11px",
                             fontFamily: "'DM Sans', sans-serif",
                             textAlign: "left",
@@ -2259,32 +2285,32 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                             textOverflow: "ellipsis",
                           }}
                           onMouseEnter={(e) => {
-                            if (!lane.isActive) {
+                            if (!lane.isCurrent) {
                               e.currentTarget.style.borderColor = "var(--accent-muted)";
                               e.currentTarget.style.background = "var(--sidebar-bg)";
                             }
                           }}
                           onMouseLeave={(e) => {
-                            if (!lane.isActive) {
+                            if (!lane.isCurrent) {
                               e.currentTarget.style.borderColor = "var(--border)";
                               e.currentTarget.style.background = "transparent";
                             }
                           }}
                           onFocus={(e) => {
-                            if (!lane.isActive) {
+                            if (!lane.isCurrent) {
                               e.currentTarget.style.borderColor = "var(--accent-muted)";
                               e.currentTarget.style.background = "var(--sidebar-bg)";
                             }
                           }}
                           onBlur={(e) => {
-                            if (!lane.isActive) {
+                            if (!lane.isCurrent) {
                               e.currentTarget.style.borderColor = "var(--border)";
                               e.currentTarget.style.background = "transparent";
                             }
                           }}
                           title={lane.label}
                         >
-                          {lane.isActive ? "▶ 表示中: " : `世界線${lane.branchIndex}: `}
+                          {lane.isCurrent ? "▶ 表示中: " : `世界線${lane.branchIndex}: `}
                           {lane.label}
                         </button>
                       ))}
