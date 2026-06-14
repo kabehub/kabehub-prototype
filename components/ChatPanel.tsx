@@ -2335,7 +2335,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       )}
 
       {/* Input */}
-      {!isInitialInputMode && orderedMessages.length > 0 && (
+      {!isInitialInputMode && orderedMessages.length > 0 && !isLoading && (
         <ChatInput
           value={inputValue}
           onChange={onInputChange}
