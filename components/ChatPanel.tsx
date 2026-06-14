@@ -903,6 +903,26 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     return acc;
   }, {});
 
+  // inactiveなrootメッセージ自身のparent_idがactiveを指す場合の直接マッピング。
+  const parentAnchorByInactiveRootKeyDirect = orderedMessages.reduce<Record<string, string>>((acc, msg) => {
+    if (
+      msg.is_active !== false ||
+      msg.role !== "user" ||
+      !msg.parent_id ||
+      !msg.branch_root_id ||
+      msg.branch_root_id !== msg.id
+    ) {
+      return acc;
+    }
+
+    const parent = messageById[msg.parent_id];
+    if (!parent || parent.is_active === false) return acc;
+
+    const rootKey = getAnchorKey(msg);
+    acc[rootKey] = getAnchorKey(parent);
+    return acc;
+  }, {});
+
   const resolveActiveAnchorForInactiveRoot = (
     rootKey: string,
     visited: Set<string> = new Set()
@@ -912,6 +932,9 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
     const directAnchor = activeAnchorByInactiveRootKeyDirect[rootKey];
     if (directAnchor) return directAnchor;
+
+    const parentAnchor = parentAnchorByInactiveRootKeyDirect[rootKey];
+    if (parentAnchor) return parentAnchor;
 
     const childRootKeys = childGroupKeysByParentRootId[rootKey] ?? [];
     for (const childRootKey of childRootKeys) {
@@ -1016,7 +1039,10 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       const anchorIdx = activeMessageIndexByAnchorKey[anchorKey];
       const activeTail = activeMessages.slice((anchorIdx ?? -1) + 1);
       const branchRootIds = Array.from(
-        new Set(groups.map((group) => group[0]?.branch_root_id).filter((id): id is string => Boolean(id)))
+        new Set([
+          ...groups.map((group) => group[0]?.branch_root_id),
+          anchorMsg.branch_root_id,
+        ].filter((id): id is string => Boolean(id)))
       );
       if (branchRootIds.length === 0) return acc;
 
