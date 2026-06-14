@@ -208,6 +208,82 @@ export default function ChatPanel({
     () => [...messages].sort(compareMessagesForDisplay),
     [messages]
   );
+  const messageById = orderedMessages.reduce<Record<string, Message>>((acc, msg) => {
+    acc[msg.id] = msg;
+    return acc;
+  }, {});
+  const dbActiveMessages = orderedMessages.filter(msg => msg.is_active !== false);
+
+  type ChainBlock = {
+    branchRootIds: Set<string>;
+  };
+
+  const rootUserMessages = orderedMessages.filter(
+    (msg) => msg.role === "user" && msg.branch_root_id === msg.id
+  );
+
+  const chainBlocksByRootAnchor = rootUserMessages.reduce<Record<string, ChainBlock>>((acc, msg) => {
+    let chainRoot = msg;
+    const visited = new Set<string>();
+
+    while (chainRoot.parent_id && !visited.has(chainRoot.id)) {
+      visited.add(chainRoot.id);
+      const parent = messageById[chainRoot.parent_id];
+      if (!parent || parent.role !== "user" || parent.branch_root_id !== parent.id) break;
+      chainRoot = parent;
+    }
+
+    const chainRootAnchorKey = getAnchorKey(chainRoot);
+    if (!acc[chainRootAnchorKey]) {
+      acc[chainRootAnchorKey] = {
+        branchRootIds: new Set<string>(),
+      };
+    }
+    acc[chainRootAnchorKey].branchRootIds.add(msg.id);
+    return acc;
+  }, {});
+
+  const resolveCurrentChainAnchor = (chain: ChainBlock) => {
+    const activeCandidates = orderedMessages.filter((msg) =>
+      msg.is_active !== false &&
+      msg.role === "user" &&
+      msg.provider !== "memo" &&
+      msg.branch_root_id != null &&
+      chain.branchRootIds.has(msg.branch_root_id) &&
+      msg.branch_index != null
+    );
+
+    return activeCandidates.reduce<Message | null>((current, msg) => {
+      if (!current) return msg;
+      const currentOrder = getOrderNo(current) ?? Number.NEGATIVE_INFINITY;
+      const msgOrder = getOrderNo(msg) ?? Number.NEGATIVE_INFINITY;
+      if (msgOrder !== currentOrder) return msgOrder > currentOrder ? msg : current;
+      return compareMessagesForDisplay(msg, current) > 0 ? msg : current;
+    }, null);
+  };
+
+  const currentLaneKeyByBranchRootId = Object.values(chainBlocksByRootAnchor).reduce<Record<string, string | null>>(
+    (acc, chain) => {
+      const anchorMsg = resolveCurrentChainAnchor(chain);
+      if (!anchorMsg || !anchorMsg.branch_root_id || anchorMsg.branch_index == null) return acc;
+      const currentLaneKey = `${anchorMsg.branch_root_id}:${anchorMsg.branch_index}`;
+      chain.branchRootIds.forEach((branchRootId) => {
+        acc[branchRootId] = currentLaneKey;
+      });
+      return acc;
+    },
+    {}
+  );
+
+  const visibleMessages = dbActiveMessages.filter((msg) => {
+    if (!msg.branch_root_id || msg.branch_index == null) return true;
+
+    const currentLaneKey = currentLaneKeyByBranchRootId[msg.branch_root_id];
+    if (!currentLaneKey) return true;
+
+    const laneKey = `${msg.branch_root_id}:${msg.branch_index}`;
+    return laneKey === currentLaneKey;
+  });
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1280);
@@ -230,7 +306,7 @@ export default function ChatPanel({
     const compute = () => {
       const scrollH = el.scrollHeight;
       if (!scrollH) return;
-      const navMsgs = orderedMessages.filter(m => m.provider !== "memo" && m.is_active !== false);
+      const navMsgs = visibleMessages.filter(m => m.provider !== "memo");
       const positions = navMsgs.map(msg => {
         const dom = document.getElementById(`msg-${String(msg.id)}`);
         if (!dom) return null;
@@ -785,8 +861,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
 
 const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptions = { omitCsv: false }) => {
   if (!thread || orderedMessages.length === 0) return;
-  const activeMessages = orderedMessages.filter(m => m.is_active !== false);
-  const content = buildExportContent(format, thread, activeMessages, options);
+  const content = buildExportContent(format, thread, visibleMessages, options);
   const mimeType =
     format === "md" || format === "md2" ? "text/markdown;charset=utf-8" :
     format === "csv" ? "text/csv;charset=utf-8" :
@@ -818,13 +893,12 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     setShowDialog(false);
   };
 
-  const activeMessages = orderedMessages.filter(msg => msg.is_active !== false);
-  const lastAssistantIndex = activeMessages.reduce(
+  const lastAssistantIndex = visibleMessages.reduce(
     (last, msg, i) => (msg.role === "assistant" ? i : last),
     -1
   );
   const lastAssistantMsg =
-    lastAssistantIndex >= 0 ? activeMessages[lastAssistantIndex] : null;
+    lastAssistantIndex >= 0 ? visibleMessages[lastAssistantIndex] : null;
 
   const handleEditAndRegenerateFromBubble = useCallback((
     assistantOrUserMsg: Message,
@@ -837,15 +911,14 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       return;
     }
 
-    const activeMessages = orderedMessages.filter(m => m.is_active !== false);
-    const idx = activeMessages.findIndex((m) => m.id === assistantOrUserMsg.id);
+    const idx = visibleMessages.findIndex((m) => m.id === assistantOrUserMsg.id);
     for (let i = idx - 1; i >= 0; i--) {
-      if (activeMessages[i].role === "user" && activeMessages[i].provider !== "memo") {
-        onEditAndRegenerate(activeMessages[i], editedContent, targetProvider, modelId);
+      if (visibleMessages[i].role === "user" && visibleMessages[i].provider !== "memo") {
+        onEditAndRegenerate(visibleMessages[i], editedContent, targetProvider, modelId);
         return;
       }
     }
-  }, [orderedMessages, onEditAndRegenerate]);
+  }, [visibleMessages, onEditAndRegenerate]);
 
   const handleRestoreBranchFromBubble = (message: Message) => {
     if (!message.branch_root_id || message.branch_index == null) return;
@@ -855,7 +928,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
 
   let msgCounter = 0;
-  const messageNumbers = activeMessages.reduce<Record<string, number>>((acc, msg) => {
+  const messageNumbers = visibleMessages.reduce<Record<string, number>>((acc, msg) => {
     if (msg.provider !== 'memo') {
       msgCounter++;
       acc[msg.id] = msgCounter;
@@ -863,12 +936,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     return acc;
   }, {});
 
-  const messageById = orderedMessages.reduce<Record<string, Message>>((acc, msg) => {
-    acc[msg.id] = msg;
-    return acc;
-  }, {});
-
-  const activeAnchorByInactiveRootKeyDirect = activeMessages.reduce<Record<string, string>>((acc, msg) => {
+  const activeAnchorByInactiveRootKeyDirect = dbActiveMessages.reduce<Record<string, string>>((acc, msg) => {
     if (msg.role !== "user" || !msg.branch_root_id) return acc;
     const rootMessage = messageById[msg.branch_root_id];
     if (!rootMessage || rootMessage.is_active !== false) return acc;
@@ -1027,47 +1095,9 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     });
   });
 
-  const rootUserMessages = orderedMessages.filter(
-    (msg) => msg.role === "user" && msg.branch_root_id === msg.id
-  );
-
-  const chainBlocksByRootAnchor = rootUserMessages.reduce<Record<string, {
-    branchRootIds: Set<string>;
-    activeMembers: Message[];
-  }>>((acc, msg) => {
-    let chainRoot = msg;
-    const visited = new Set<string>();
-
-    while (chainRoot.parent_id && !visited.has(chainRoot.id)) {
-      visited.add(chainRoot.id);
-      const parent = messageById[chainRoot.parent_id];
-      if (!parent || parent.role !== "user" || parent.branch_root_id !== parent.id) break;
-      chainRoot = parent;
-    }
-
-    const chainRootAnchorKey = getAnchorKey(chainRoot);
-    if (!acc[chainRootAnchorKey]) {
-      acc[chainRootAnchorKey] = {
-        branchRootIds: new Set<string>(),
-        activeMembers: [],
-      };
-    }
-    acc[chainRootAnchorKey].branchRootIds.add(msg.id);
-    if (msg.is_active !== false) {
-      acc[chainRootAnchorKey].activeMembers.push(msg);
-    }
-    return acc;
-  }, {});
-
   const branchBlocksByAnchor = Object.values(chainBlocksByRootAnchor).reduce<Record<string, BranchBlock>>(
     (acc, chain) => {
-      const anchorMsg = chain.activeMembers.reduce<Message | null>((current, msg) => {
-        if (!current) return msg;
-        const currentOrder = getOrderNo(current) ?? Number.NEGATIVE_INFINITY;
-        const msgOrder = getOrderNo(msg) ?? Number.NEGATIVE_INFINITY;
-        if (msgOrder !== currentOrder) return msgOrder > currentOrder ? msg : current;
-        return compareMessagesForDisplay(msg, current) > 0 ? msg : current;
-      }, null);
+      const anchorMsg = resolveCurrentChainAnchor(chain);
       if (!anchorMsg || !anchorMsg.branch_root_id || anchorMsg.branch_index == null) return acc;
 
       const anchorKey = getAnchorKey(anchorMsg);
@@ -1962,8 +1992,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             displayName={displayName}
           />
         )}
-        {activeMessages.map((msg) => {
-  const activeIdx = activeMessages.indexOf(msg);
+        {visibleMessages.map((msg) => {
+  const activeIdx = visibleMessages.indexOf(msg);
   return (
   <Fragment key={msg.id}>
   <div id={`msg-${msg.id}`}
@@ -2025,16 +2055,16 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         })()}
         editRegenAssistantMsg={(() => {
           if (msg.role !== "user") return lastAssistantMsg ?? undefined;
-          const activeIdx = activeMessages.findIndex(m => m.id === msg.id);
+          const activeIdx = visibleMessages.findIndex(m => m.id === msg.id);
           if (activeIdx === -1) return undefined;
-          return activeMessages.slice(activeIdx + 1).find(m => m.role === "assistant");
+          return visibleMessages.slice(activeIdx + 1).find(m => m.role === "assistant");
         })()}
         canEditAndRegenerateFromUser={
           msg.role === "user" &&
           msg.provider !== "memo" &&
           (() => {
-            const activeIdx = activeMessages.findIndex(m => m.id === msg.id);
-            return activeIdx !== -1 && activeMessages.some((m, j) => j > activeIdx && m.role === "assistant");
+            const activeIdx = visibleMessages.findIndex(m => m.id === msg.id);
+            return activeIdx !== -1 && visibleMessages.some((m, j) => j > activeIdx && m.role === "assistant");
           })()
         }
         onTrimFrom={onTrimFrom}
