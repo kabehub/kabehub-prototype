@@ -68,9 +68,10 @@ export async function POST(
       .insert(newMessages)
 
     if (insertError) {
+      console.error('copy insertError:', JSON.stringify(insertError))
       // スレッドだけ作成されてメッセージが入らない中途半端な状態を防ぐ
       await supabase.from('threads').delete().eq('id', newThread.id)
-      return NextResponse.json({ error: 'Failed to copy messages' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to copy messages', detail: insertError }, { status: 500 })
     }
   }
 
