@@ -27,7 +27,7 @@ export type AttachedFile = AttachedTextFile | AttachedImageFile;
 // 1. mediaTypeをimage/jpegに固定（出力がJPEGのため）
 // 2. 透過PNG等の「背景真っ黒」を白塗りで防止
 // 3. ObjectURLのメモリリークをrevokeObjectURLで解放
-async function compressImage(file: File): Promise<{ base64: string; mediaType: "image/jpeg"; sizeKB: number }> {
+export async function compressImage(file: File): Promise<{ base64: string; mediaType: "image/jpeg"; sizeKB: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -151,19 +151,19 @@ interface ChatInputProps {
   onImageRefUploadClear?: () => void;
 }
 
-const FILE_SIZE_LIMIT_KB = 500;
-const IMAGE_SIZE_LIMIT_MB = 5;
-const MAX_IMAGES = 3;      // 画像の上限枚数
-const MAX_TEXT_FILES = 3;  // テキストファイルの上限数
-const PREVIEW_LINES = 5;
+export const FILE_SIZE_LIMIT_KB = 500;
+export const IMAGE_SIZE_LIMIT_MB = 5;
+export const MAX_IMAGES = 3;      // 画像の上限枚数
+export const MAX_TEXT_FILES = 3;  // テキストファイルの上限数
+export const PREVIEW_LINES = 5;
 
 /** UTF-8で読んだ結果に文字化けが含まれるか判定 */
-function hasMojibake(text: string): boolean {
+export function hasMojibake(text: string): boolean {
   return text.includes("\uFFFD");
 }
 
 /** FileをUTF-8で読み、文字化けがあればShift-JISで読み直す */
-function readFileWithFallback(
+export function readFileWithFallback(
   file: File,
   onSuccess: (content: string) => void,
   onError: (msg: string) => void

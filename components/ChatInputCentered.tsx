@@ -1,10 +1,29 @@
 "use client";
 
-import { KeyboardEvent, useEffect, useMemo, useState } from "react";
 import {
+  ChangeEvent,
+  ClipboardEvent,
+  DragEvent,
+  KeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  FILE_SIZE_LIMIT_KB,
+  IMAGE_SIZE_LIMIT_MB,
+  MAX_IMAGES,
+  MAX_TEXT_FILES,
   MODEL_CONFIG,
+  PREVIEW_LINES,
+  compressImage,
   loadModel,
+  readFileWithFallback,
   saveModel,
+  type AttachedFile,
+  type AttachedImageFile,
+  type AttachedTextFile,
   type ModelId,
   type Provider,
 } from "./ChatInput";
@@ -12,7 +31,13 @@ import {
 interface ChatInputCenteredProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId) => void;
+  onSubmit: (
+    content: string,
+    modelId: ModelId,
+    attachedImages?: AttachedImageFile[],
+    isDeepThinking?: boolean
+  ) => void;
+  onMemoSubmit: () => void;
   isLoading: boolean;
   provider: Provider;
   onProviderChange: (p: Provider) => void;
@@ -27,20 +52,41 @@ export default function ChatInputCentered({
   value,
   onChange,
   onSubmit,
+  onMemoSubmit,
   isLoading,
   provider,
   onProviderChange,
   displayName,
 }: ChatInputCenteredProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeProvider: TextProvider = useMemo(
     () => (TEXT_PROVIDERS.includes(provider as TextProvider) ? (provider as TextProvider) : "claude"),
     [provider],
   );
+
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [githubPanelOpen, setGithubPanelOpen] = useState(false);
+  const [githubUrl, setGithubUrl] = useState("");
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(activeProvider));
-  const canSubmit = value.trim().length > 0 && !isLoading;
+  const [isDeepThinking, setIsDeepThinking] = useState(false);
+
+  const hasAnyFile = attachedFiles.length > 0;
+  const canSubmit = (value.trim().length > 0 || hasAnyFile) && !isLoading && !isCompressing;
+  const isDeepThinkingDisabled =
+    selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || isLoading;
 
   useEffect(() => {
     setSelectedModel(loadModel(activeProvider));
+  }, [activeProvider]);
+
+  useEffect(() => {
+    if (activeProvider !== "claude") setIsDeepThinking(false);
   }, [activeProvider]);
 
   const handleProviderChange = (nextProvider: TextProvider) => {
@@ -53,18 +99,210 @@ export default function ChatInputCentered({
     saveModel(activeProvider, modelId);
   };
 
+  const processFiles = async (files: FileList | File[]) => {
+    setFileError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    const fileArray = Array.from(files);
+    let currentImages = attachedFiles.filter((f) => f.kind === "image").length;
+    let currentTexts = attachedFiles.filter((f) => f.kind === "text").length;
+
+    for (const file of fileArray) {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      const isImage = file.type.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp"].includes(ext ?? "");
+      const isText = ext === "csv" || ext === "txt" || ext === "md";
+
+      if (isImage) {
+        if (currentImages >= MAX_IMAGES) {
+          setFileError(`画像は最大${MAX_IMAGES}枚まで添付できます`);
+          continue;
+        }
+        if (file.size > IMAGE_SIZE_LIMIT_MB * 1024 * 1024) {
+          setFileError(`画像は${IMAGE_SIZE_LIMIT_MB}MB以下にしてください（${file.name}）`);
+          continue;
+        }
+        setIsCompressing(true);
+        const previewUrl = URL.createObjectURL(file);
+        try {
+          const { base64, mediaType, sizeKB } = await compressImage(file);
+          const imageFile: AttachedImageFile = { kind: "image", name: file.name, base64, mediaType, previewUrl, sizeKB };
+          setAttachedFiles((prev) => [...prev, imageFile]);
+          currentImages++;
+        } catch {
+          URL.revokeObjectURL(previewUrl);
+          setFileError(`画像の圧縮に失敗しました（${file.name}）`);
+        } finally {
+          setIsCompressing(false);
+        }
+      } else if (isText) {
+        if (currentTexts >= MAX_TEXT_FILES) {
+          setFileError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+          continue;
+        }
+        const sizeKB = file.size / 1024;
+        if (sizeKB > FILE_SIZE_LIMIT_KB) {
+          setFileError(`ファイルサイズが${FILE_SIZE_LIMIT_KB}KBを超えています（${file.name}）`);
+          continue;
+        }
+        await new Promise<void>((resolve) => {
+          readFileWithFallback(
+            file,
+            (content) => {
+              const textFile: AttachedTextFile = { kind: "text", name: file.name, content, sizeKB };
+              setAttachedFiles((prev) => [...prev, textFile]);
+              currentTexts++;
+              resolve();
+            },
+            (msg) => {
+              setFileError(msg);
+              resolve();
+            },
+          );
+        });
+      } else {
+        setFileError("対応形式: CSV / TXT / MD / PNG / JPEG / GIF / WebP");
+      }
+    }
+  };
+
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) await processFiles(files);
+  };
+
+  const handlePaste = async (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (isLoading) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles = Array.from(items)
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null);
+
+    if (imageFiles.length === 0) return;
+
+    e.preventDefault();
+    await processFiles(imageFiles);
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    if (!isLoading) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = async (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (isLoading) return;
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    await processFiles(files);
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setAttachedFiles((prev) => {
+      const target = prev[index];
+      if (target.kind === "image") URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleGithubFetch = async () => {
+    const trimmed = githubUrl.trim();
+    if (!trimmed) return;
+
+    setGithubLoading(true);
+    setGithubError(null);
+
+    try {
+      const res = await fetch("/api/fetch-github", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+      });
+
+      const result: { content: string; truncated: boolean } | { error: string } = await res.json();
+
+      if ("error" in result) {
+        setGithubError(result.error);
+        return;
+      }
+
+      const currentTextCount = attachedFiles.filter((f) => f.kind === "text").length;
+      if (currentTextCount >= MAX_TEXT_FILES) {
+        setGithubError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+        return;
+      }
+
+      const fileName = trimmed.split("/").pop() ?? "file";
+      const content = result.truncated
+        ? result.content + "\n（※長いため一部省略）"
+        : result.content;
+      const sizeKB = Math.round((content.length / 1024) * 10) / 10;
+
+      const githubFile: AttachedTextFile = {
+        kind: "text",
+        name: fileName,
+        content,
+        sizeKB,
+      };
+
+      setAttachedFiles((prev) => [...prev, githubFile]);
+      setGithubUrl("");
+      setGithubPanelOpen(false);
+      setGithubError(null);
+    } catch {
+      setGithubError("ネットワークエラーが発生しました");
+    } finally {
+      setGithubLoading(false);
+    }
+  };
+
   const handleSubmit = () => {
-    if (!canSubmit) return;
-    onSubmit(value.trim(), selectedModel);
+    const textFiles = attachedFiles.filter((f): f is AttachedTextFile => f.kind === "text");
+    const imageFiles = attachedFiles.filter((f): f is AttachedImageFile => f.kind === "image");
+    if (!value.trim() && attachedFiles.length === 0) return;
+
+    let finalContent = value;
+    if (textFiles.length > 0) {
+      const fileBlocks = textFiles.map((f) => {
+        const ext = f.name.split(".").pop()?.toLowerCase() ?? "txt";
+        const lang = ext === "csv" ? "csv" : ext === "md" ? "markdown" : "text";
+        return `\`\`\`${lang}\n${f.content}\n\`\`\``;
+      });
+      finalContent = value.trim()
+        ? `${value}\n\n${fileBlocks.join("\n\n")}`
+        : fileBlocks.join("\n\n");
+    }
+
     onChange("");
+    onSubmit(finalContent, selectedModel, imageFiles.length > 0 ? imageFiles : undefined, isDeepThinking);
+    attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
+      URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
+    });
+    setAttachedFiles([]);
+    setIsPreviewExpanded(false);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      if (canSubmit) handleSubmit();
     }
   };
+
+  const firstTextFile = attachedFiles.find((f): f is AttachedTextFile => f.kind === "text") ?? null;
+  const previewLines = firstTextFile?.content.split("\n").slice(0, PREVIEW_LINES) ?? [];
+  const totalLines = firstTextFile?.content.split("\n").length ?? 0;
+  const hasMoreLines = totalLines > PREVIEW_LINES;
 
   return (
     <div
@@ -74,8 +312,34 @@ export default function ChatInputCentered({
         alignItems: "center",
         justifyContent: "center",
         padding: "32px 16px",
+        position: "relative",
       }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
+      {isDragging && (
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(196,98,45,0.08)",
+          border: "2px dashed var(--accent)",
+          borderRadius: "10px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10,
+          pointerEvents: "none",
+        }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", color: "var(--accent)" }}>
+            <span style={{ fontSize: "24px" }}>📎</span>
+            <span style={{ fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+              ここにドロップ
+            </span>
+          </div>
+        </div>
+      )}
+
       <div style={{ width: "min(720px, 100%)" }}>
         <h2
           style={{
@@ -146,11 +410,185 @@ export default function ChatInputCentered({
               ))}
             </div>
 
+            {githubPanelOpen && (
+              <div style={{ marginBottom: "8px" }}>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    value={githubUrl}
+                    onChange={(e) => { setGithubUrl(e.target.value); setGithubError(null); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); handleGithubFetch(); }
+                      if (e.key === "Escape") { setGithubPanelOpen(false); setGithubUrl(""); setGithubError(null); }
+                    }}
+                    placeholder="https://github.com/.../blob/main/..."
+                    disabled={githubLoading}
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      padding: "6px 10px",
+                      border: `1px solid ${githubError ? "#e53e3e" : "var(--border)"}`,
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      outline: "none",
+                      color: "var(--ink)",
+                      boxSizing: "border-box",
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = githubError ? "#e53e3e" : "var(--accent-muted)"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = githubError ? "#e53e3e" : "var(--border)"; }}
+                  />
+                  <button
+                    onClick={handleGithubFetch}
+                    disabled={githubLoading || !githubUrl.trim()}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background: githubLoading || !githubUrl.trim() ? "var(--ink-faint)" : "var(--accent)",
+                      color: "white",
+                      fontSize: "11px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: githubLoading || !githubUrl.trim() ? "default" : "pointer",
+                      whiteSpace: "nowrap",
+                      transition: "background 0.15s",
+                    }}
+                  >
+                    {githubLoading ? "読込中…" : "読み込む"}
+                  </button>
+                  <button
+                    onClick={() => { setGithubPanelOpen(false); setGithubUrl(""); setGithubError(null); }}
+                    disabled={githubLoading}
+                    style={{
+                      padding: "6px 8px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--ink-muted)",
+                      fontSize: "12px",
+                      cursor: githubLoading ? "default" : "pointer",
+                    }}
+                    title="閉じる"
+                  >
+                    ×
+                  </button>
+                </div>
+                {githubError && (
+                  <div style={{
+                    marginTop: "4px",
+                    fontSize: "11px",
+                    color: "#e53e3e",
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}>
+                    {githubError}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasAnyFile && (
+              <div style={{ marginBottom: "8px" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: attachedFiles.some(f => f.kind === "text") ? "6px" : "0" }}>
+                  {attachedFiles.map((f, i) => (
+                    <div key={i} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      padding: "3px 8px 3px 4px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: f.kind === "image" ? "#f0f9ff" : "#fafafa",
+                      fontSize: "11px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {f.kind === "image" ? (
+                        <img
+                          src={f.previewUrl}
+                          alt={f.name}
+                          style={{ width: 28, height: 28, objectFit: "cover", borderRadius: "3px" }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: "14px" }}>📄</span>
+                      )}
+                      <span style={{ color: "var(--ink)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {f.name}
+                      </span>
+                      <span style={{ color: "var(--ink-muted)", fontSize: "10px" }}>
+                        {Math.round(f.sizeKB * 10) / 10}KB
+                      </span>
+                      <button
+                        onClick={() => handleRemoveFile(i)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-muted)", fontSize: "12px", padding: "0 0 0 2px", lineHeight: 1 }}
+                        title="削除"
+                      >✕</button>
+                    </div>
+                  ))}
+                  {isCompressing && (
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: "5px",
+                      padding: "3px 10px", borderRadius: "6px",
+                      border: "1px dashed var(--border)", background: "#fafafa",
+                      fontSize: "11px", color: "var(--ink-muted)", fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      ⏳ 圧縮中…
+                    </div>
+                  )}
+                </div>
+
+                {firstTextFile && (
+                  <div style={{ border: "1px solid var(--border)", borderRadius: "8px", background: "#fafafa", overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: "#f5f5f5", borderBottom: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)" }}>
+                        {firstTextFile.name} · {totalLines}行
+                      </span>
+                    </div>
+                    <div style={{ padding: "8px 10px" }}>
+                      <pre style={{ margin: 0, fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                        {isPreviewExpanded ? firstTextFile.content : previewLines.join("\n")}
+                      </pre>
+                      {hasMoreLines && (
+                        <button
+                          onClick={() => setIsPreviewExpanded((v) => !v)}
+                          style={{ marginTop: "4px", background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", padding: 0 }}
+                        >
+                          {isPreviewExpanded ? "▲ 折りたたむ" : `▼ さらに ${totalLines - PREVIEW_LINES} 行を表示`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {fileError && (
+              <div style={{
+                marginBottom: "8px",
+                padding: "6px 10px",
+                background: "#fff0f0",
+                border: "1px solid #fca5a5",
+                borderRadius: "6px",
+                fontSize: "11px",
+                color: "#b91c1c",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}>
+                <span>⚠️ {fileError}</span>
+                <button
+                  onClick={() => setFileError(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c", fontSize: "12px" }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             <textarea
               value={value}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="いま考えたいことを書く"
+              onPaste={handlePaste}
+              placeholder={hasAnyFile ? "ファイルについて質問… (Enter で送信)" : "いま考えたいことを書く"}
               rows={6}
               disabled={isLoading}
               style={{
@@ -158,7 +596,7 @@ export default function ChatInputCentered({
                 resize: "vertical",
                 minHeight: "150px",
                 maxHeight: "320px",
-                border: "1px solid var(--border)",
+                border: isDragging ? "1px solid var(--accent)" : "1px solid var(--border)",
                 borderRadius: "8px",
                 padding: "14px",
                 outline: "none",
@@ -171,7 +609,123 @@ export default function ChatInputCentered({
               }}
             />
 
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  onClick={onMemoSubmit}
+                  disabled={!value.trim() || isLoading}
+                  title="AIに送らずメモとして記録"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    border: "1px solid",
+                    borderColor: value.trim() && !isLoading ? "#d69e2e" : "var(--border)",
+                    background: value.trim() && !isLoading ? "#fefce8" : "transparent",
+                    color: value.trim() && !isLoading ? "#92400e" : "var(--ink-faint)",
+                    fontSize: "11px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: value.trim() && !isLoading ? "pointer" : "default",
+                    transition: "all 0.15s",
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  📝 メモ
+                </button>
+
+                {activeProvider === "claude" && (
+                  <button
+                    onClick={() => setIsDeepThinking((v) => !v)}
+                    disabled={isDeepThinkingDisabled}
+                    title={
+                      selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" :
+                      selectedModel === "claude-fable-5" ? "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
+                      "Extended Thinking: AIが回答前に深く考えます"
+                    }
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      padding: "4px 12px",
+                      borderRadius: "20px",
+                      border: "1px solid",
+                      borderColor: isDeepThinking ? "var(--accent)" : "var(--border)",
+                      background: isDeepThinking ? "rgba(196,98,45,0.12)" : "transparent",
+                      color: isDeepThinking ? "var(--accent)" : isDeepThinkingDisabled ? "var(--ink-faint)" : "var(--ink-muted)",
+                      fontSize: "11px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: isDeepThinkingDisabled ? "not-allowed" : "pointer",
+                      transition: "all 0.15s",
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    🧠 深く考える
+                  </button>
+                )}
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    border: "1px solid",
+                    borderColor: hasAnyFile ? "var(--accent)" : "var(--border)",
+                    background: hasAnyFile ? "rgba(196,98,45,0.08)" : "transparent",
+                    color: hasAnyFile ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                    fontSize: "11px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: isLoading ? "default" : "pointer",
+                    transition: "all 0.15s",
+                    letterSpacing: "0.03em",
+                  }}
+                  title="CSV / TXT / MD / 画像（PNG・JPEG・GIF・WebP）を添付"
+                >
+                  📎 {hasAnyFile ? `添付中 (${attachedFiles.length})` : "ファイル"}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setGithubPanelOpen((prev) => !prev);
+                    setGithubError(null);
+                  }}
+                  disabled={isLoading}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    border: "1px solid",
+                    borderColor: githubPanelOpen ? "var(--accent)" : "var(--border)",
+                    background: githubPanelOpen ? "rgba(196,98,45,0.08)" : "transparent",
+                    color: githubPanelOpen ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                    fontSize: "11px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: isLoading ? "default" : "pointer",
+                    transition: "all 0.15s",
+                    letterSpacing: "0.03em",
+                  }}
+                  title="GitHub の公開ファイルを添付"
+                >
+                  GitHub
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.txt,.md,image/png,image/jpeg,image/gif,image/webp"
+                  multiple
+                  onChange={handleFileChange}
+                  style={{ display: "none" }}
+                />
+              </div>
+
               <button
                 type="button"
                 onClick={handleSubmit}

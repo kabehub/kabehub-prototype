@@ -1894,6 +1894,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             value={inputValue}
             onChange={onInputChange}
             onSubmit={onSubmit}
+            onMemoSubmit={onMemoSubmit}
             isLoading={isLoading}
             provider={provider}
             onProviderChange={onProviderChange}
