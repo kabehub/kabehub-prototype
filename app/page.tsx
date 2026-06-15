@@ -280,11 +280,12 @@ export default function Home() {
     setTemporaryMessages([]);
     const id = uuidv4();
     try {
-      await fetch(`/api/threads/${id}`, {
+      const res = await fetch(`/api/threads/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "新しい壁打ち", folder_name: folderName }),
       });
+      if (!res.ok) throw new Error("フォルダ内スレッド作成失敗");
       await fetchThreads();
       setActiveThreadId(id);
       setMessages([]);

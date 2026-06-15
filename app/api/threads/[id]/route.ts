@@ -63,17 +63,19 @@ export async function PATCH(
   // ✅ v76: スナップショット型共有のPush時刻
   if (body.shared_at !== undefined) updates.shared_at = body.shared_at;
 
-  const { data: thread } = await supabase
+  const { data: thread, error: threadError } = await supabase
     .from("threads")
     .select("id, share_token")
     .eq("id", params.id)
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (!thread) return NextResponse.json({ error: "Not Found" }, { status: 404 });
+  if (threadError) {
+    return NextResponse.json({ error: threadError.message }, { status: 500 });
+  }
 
   if (body.needsToken && body.is_public) {
-    if (!thread.share_token) {
+    if (!thread?.share_token) {
       updates.share_token = uuidv4();
     }
   }
