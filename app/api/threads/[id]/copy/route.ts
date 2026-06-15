@@ -43,7 +43,7 @@ export async function POST(
         title: `${sourceThread.title}（コピー）`,
         user_id: user.id,
         system_prompt: sourceThread.system_prompt,
-        copied_from: sourceThreadId,
+        forked_from_id: sourceThreadId,
         roleplay_mode: false,
         rp_char_name: null,
         rp_char_icon_url: null,
