@@ -211,17 +211,24 @@ export default function MarkdownRenderer({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          pre({ children }) {
+            const codeElement = React.Children.toArray(children).find(
+              React.isValidElement
+            );
+            const codeProps = codeElement?.props as
+              | { className?: string; children?: React.ReactNode }
+              | undefined;
+
+            return (
+              <CodeBlock className={codeProps?.className} variant={variant}>
+                {codeProps?.children}
+              </CodeBlock>
+            );
+          },
           code({ className, children, ...props }) {
-            const isBlock = /language-(\w+)/.exec(className || "");
-            if (isBlock) {
-              return (
-                <CodeBlock className={className} variant={variant}>
-                  {children}
-                </CodeBlock>
-              );
-            }
             return (
               <code
+                className={className}
                 style={{
                   background: isShare ? "#f1f5f9" : "#e8eef5",
                   color: isShare ? "#1e293b" : "#334155",
