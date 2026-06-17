@@ -1,5 +1,5 @@
 export const ALLOWED_EXTENSIONS = [
-  ".ts", ".tsx", ".js", ".jsx",
+  ".ts", ".tsx", ".js", ".jsx", ".py",
   ".md", ".mdx", ".sql", ".txt",
   ".json", ".yml", ".yaml", ".css", ".html",
   ".prisma", ".toml", ".mjs", ".cjs",
