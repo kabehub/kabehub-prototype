@@ -335,15 +335,21 @@ export async function runGithubToolLoop(
   console.log("[DEBUG][Phase1] Claude response:", responseText.slice(0, 200));
 
   let pathsToRead: string[] = [];
-  try {
-    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
+  let parsedPathList = false;
+  const jsonMatches = responseText.matchAll(/\[[\s\S]*?\]/g);
+  for (const jsonMatch of jsonMatches) {
+    try {
       const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed)) {
-        pathsToRead = parsed.filter((p): p is string => typeof p === "string").slice(0, maxReadFiles);
+      if (Array.isArray(parsed) && parsed.every((p): p is string => typeof p === "string")) {
+        pathsToRead = parsed.slice(0, maxReadFiles);
+        parsedPathList = true;
+        break;
       }
+    } catch {
+      // 次のJSON配列候補を試す
     }
-  } catch {
+  }
+  if (!parsedPathList) {
     warnings.push("ファイルパスリストのパース失敗");
   }
 
