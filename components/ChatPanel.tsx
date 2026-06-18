@@ -1069,6 +1069,12 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: isTemporary ? "#f1f1f0" : "var(--chat-bg)", overflow: "hidden" }}>
+      <style>{`
+        [data-chat-title-edit-button]:hover [data-chat-title-edit-icon],
+        [data-chat-title-edit-button]:focus-visible [data-chat-title-edit-icon] {
+          opacity: 1 !important;
+        }
+      `}</style>
       {/* Header */}
       {!(isInitialInputMode && !thread) && (
       <div style={{ padding: "12px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)" }}>
@@ -1078,9 +1084,54 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             <div style={{ display: "flex", alignItems: "center", gap: "12px", minHeight: "36px" }}>
               <div style={{ width: "4px", height: "18px", background: "var(--accent)", borderRadius: "2px", flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <h1 style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 500, color: "var(--ink)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {thread.title}
-                </h1>
+                <button
+                  type="button"
+                  title="タイトルを編集"
+                  aria-label="タイトルを編集"
+                  data-chat-title-edit-button
+                  onClick={openDialog}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    width: "fit-content",
+                    maxWidth: "100%",
+                    minWidth: 0,
+                    padding: 0,
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--ink)",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontFamily: "'Lora', serif",
+                      fontSize: "16px",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {thread.title}
+                  </span>
+                  <span
+                    data-chat-title-edit-icon
+                    aria-hidden="true"
+                    style={{
+                      flexShrink: 0,
+                      opacity: 0,
+                      transition: "opacity 0.15s",
+                      fontSize: "13px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ✏️
+                  </span>
+                </button>
                 {(() => {
                   const userCount = orderedMessages.filter((m) => m.role === "user" && m.provider !== "memo").length;
                   const aiCount = orderedMessages.filter((m) => m.role === "assistant").length;
