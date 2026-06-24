@@ -230,6 +230,7 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRefUploadInputRef = useRef<HTMLInputElement>(null);
+  const toolMenuRef = useRef<HTMLDivElement | null>(null);
 
   // 複数ファイル対応（テキスト＋画像の混在）
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -242,6 +243,7 @@ export default function ChatInput({
   const [githubUrl, setGithubUrl] = useState("");
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
+  const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
 
   // モデル選択 state（LocalStorageから初期値を読み込む）
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
@@ -265,6 +267,22 @@ export default function ChatInput({
   useEffect(() => {
     if (provider !== "claude") setIsDeepThinking(false);
   }, [provider]);
+
+  useEffect(() => {
+    if (!isToolMenuOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        toolMenuRef.current &&
+        !toolMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsToolMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isToolMenuOpen]);
 
   const handleModelChange = (modelId: ModelId) => {
     setSelectedModel(modelId);
@@ -411,7 +429,10 @@ export default function ChatInput({
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) await processFiles(files);
+    if (files && files.length > 0) {
+      await processFiles(files);
+      setIsToolMenuOpen(false);
+    }
   };
 
   const handleImageRefUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -542,6 +563,7 @@ export default function ChatInput({
       setAttachedFiles((prev) => [...prev, githubFile]);
       setGithubUrl("");
       setGithubPanelOpen(false);
+      setIsToolMenuOpen(false);
       setGithubError(null);
     } catch {
       setGithubError("ネットワークエラーが発生しました");
@@ -678,7 +700,7 @@ export default function ChatInput({
       )}
 
       {/* AI切り替えボタン＋モデル選択 */}
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", flexWrap: "wrap" }}>
+      <div className="mobile-scroll-row" style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
         {/* プロバイダー選択 */}
         {(["claude", "gemini", "openai", "image_gen"] as const).map((p) => (
           <button
@@ -696,6 +718,7 @@ export default function ChatInput({
               cursor: "pointer",
               transition: "all 0.15s",
               letterSpacing: "0.05em",
+              flex: "0 0 auto",
             }}
           >
             {PROVIDER_LABELS[p]}
@@ -703,7 +726,7 @@ export default function ChatInput({
         ))}
 
         {/* セパレーター */}
-        <span style={{ color: "var(--border)", fontSize: "12px", margin: "0 2px" }}>|</span>
+        <span style={{ color: "var(--border)", fontSize: "12px", margin: "0 2px", flex: "0 0 auto" }}>|</span>
 
         {/* モデル選択（現在のプロバイダーのモデルのみ表示） */}
         {MODEL_CONFIG[provider].models.map((m) => {
@@ -727,6 +750,7 @@ export default function ChatInput({
                 transition: "all 0.15s",
                 letterSpacing: "0.03em",
                 opacity: isImg2imgDisabled ? 0.4 : 1,
+                flex: "0 0 auto",
               }}
             >
               {m.label}
@@ -1157,6 +1181,120 @@ export default function ChatInput({
       {/* 下部ボタン行 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {isMobile && (
+            <div ref={toolMenuRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={isToolMenuOpen}
+                aria-label="ツールメニューを開く"
+                onClick={() => setIsToolMenuOpen((v) => !v)}
+                disabled={isLoading || disabled}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "30px",
+                  height: "30px",
+                  borderRadius: "20px",
+                  border: "1px solid var(--border)",
+                  background: isToolMenuOpen ? "rgba(196,98,45,0.08)" : "transparent",
+                  color: isToolMenuOpen ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                  fontSize: "18px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  cursor: isLoading || disabled ? "default" : "pointer",
+                  transition: "all 0.15s",
+                  lineHeight: 1,
+                }}
+              >
+                ＋
+              </button>
+
+              {isToolMenuOpen && (
+                <div
+                  role="menu"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    bottom: "calc(100% + 8px)",
+                    zIndex: 50,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "10px",
+                    padding: "8px",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setIsToolMenuOpen(false);
+                    }}
+                    disabled={isLoading || disabled}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      padding: "4px 12px",
+                      borderRadius: "20px",
+                      border: "1px solid",
+                      borderColor: hasAnyFile ? "var(--accent)" : "var(--border)",
+                      background: hasAnyFile ? "rgba(196,98,45,0.08)" : "transparent",
+                      color: hasAnyFile ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                      fontSize: "11px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: isLoading || disabled ? "default" : "pointer",
+                      transition: "all 0.15s",
+                      letterSpacing: "0.03em",
+                      whiteSpace: "nowrap",
+                    }}
+                    title="CSV / TXT / MD / 画像（PNG・JPEG・GIF・WebP）を添付"
+                  >
+                    📎 {hasAnyFile ? `添付中 (${attachedFiles.length})` : "ファイル"}
+                  </button>
+
+                  {provider !== "image_gen" && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setGithubPanelOpen((prev) => !prev);
+                        setGithubError(null);
+                        setIsToolMenuOpen(false);
+                      }}
+                      disabled={isLoading || disabled}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        padding: "4px 12px",
+                        borderRadius: "20px",
+                        border: "1px solid",
+                        borderColor: githubPanelOpen ? "var(--accent)" : "var(--border)",
+                        background: githubPanelOpen ? "rgba(196,98,45,0.08)" : "transparent",
+                        color: githubPanelOpen ? "var(--accent)" : isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                        fontSize: "11px",
+                        fontFamily: "'JetBrains Mono', monospace",
+                        cursor: isLoading || disabled ? "default" : "pointer",
+                        transition: "all 0.15s",
+                        letterSpacing: "0.03em",
+                        whiteSpace: "nowrap",
+                      }}
+                      title="GitHub の公開ファイルを添付"
+                    >
+                      GitHub
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 📝 メモボタン */}
           {provider !== "image_gen" && (
           <button
@@ -1242,6 +1380,8 @@ export default function ChatInput({
             </button>
           )}
 
+          {!isMobile && (
+            <>
           {/* 📎 ファイル添付ボタン */}
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -1295,6 +1435,8 @@ export default function ChatInput({
             >
               GitHub
             </button>
+          )}
+            </>
           )}
 
           <input
