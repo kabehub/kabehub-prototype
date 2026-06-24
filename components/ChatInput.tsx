@@ -231,6 +231,7 @@ export default function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRefUploadInputRef = useRef<HTMLInputElement>(null);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
+  const modelMenuRootRef = useRef<HTMLDivElement | null>(null);
 
   // 複数ファイル対応（テキスト＋画像の混在）
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -244,6 +245,7 @@ export default function ChatInput({
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
+  const [openModelProvider, setOpenModelProvider] = useState<Provider | null>(null);
 
   // モデル選択 state（LocalStorageから初期値を読み込む）
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
@@ -283,6 +285,29 @@ export default function ChatInput({
       document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [isToolMenuOpen]);
+
+  useEffect(() => {
+    if (!openModelProvider) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        modelMenuRootRef.current &&
+        !modelMenuRootRef.current.contains(event.target as Node)
+      ) {
+        setOpenModelProvider(null);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOpenModelProvider(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openModelProvider]);
 
   const handleModelChange = (modelId: ModelId) => {
     setSelectedModel(modelId);
@@ -700,67 +725,145 @@ export default function ChatInput({
       )}
 
       {/* AI切り替えボタン＋モデル選択 */}
-      <div className="mobile-scroll-row" style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
-        {/* プロバイダー選択 */}
-        {(["claude", "gemini", "openai", "image_gen"] as const).map((p) => (
-          <button
-            key={p}
-            onClick={() => onProviderChange(p)}
+      <div ref={modelMenuRootRef} style={{ position: "relative", marginBottom: "10px" }}>
+        <div className="mobile-scroll-row" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          {/* プロバイダー選択 */}
+          {(["claude", "gemini", "openai", "image_gen"] as const).map((p) => {
+            const models = MODEL_CONFIG[p]?.models ?? [];
+            const hasModels = p !== "image_gen" && models.length > 0;
+
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => {
+                  onProviderChange(p);
+                  setIsToolMenuOpen(false);
+
+                  if (!isMobile || !hasModels) {
+                    setOpenModelProvider(null);
+                    return;
+                  }
+
+                  setOpenModelProvider((current) => (current === p ? null : p));
+                }}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: "20px",
+                  border: "1px solid",
+                  borderColor: provider === p ? "var(--accent)" : "var(--border)",
+                  background: provider === p ? "var(--accent)" : "white",
+                  color: provider === p ? "white" : "var(--ink-muted)",
+                  fontSize: "11px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                  letterSpacing: "0.05em",
+                  flex: "0 0 auto",
+                }}
+              >
+                {PROVIDER_LABELS[p]}{isMobile && hasModels ? " ▾" : ""}
+              </button>
+            );
+          })}
+        </div>
+
+        {isMobile && openModelProvider && (
+          <div
             style={{
-              padding: "4px 12px",
-              borderRadius: "20px",
-              border: "1px solid",
-              borderColor: provider === p ? "var(--accent)" : "var(--border)",
-              background: provider === p ? "var(--accent)" : "white",
-              color: provider === p ? "white" : "var(--ink-muted)",
-              fontSize: "11px",
-              fontFamily: "'JetBrains Mono', monospace",
-              cursor: "pointer",
-              transition: "all 0.15s",
-              letterSpacing: "0.05em",
-              flex: "0 0 auto",
+              position: "absolute",
+              left: 0,
+              top: "calc(100% + 8px)",
+              zIndex: 50,
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+              padding: "8px",
+              minWidth: "180px",
+              maxHeight: "240px",
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
             }}
           >
-            {PROVIDER_LABELS[p]}
-          </button>
-        ))}
+            <div style={{ fontSize: "10px", color: "var(--ink-faint)", padding: "0 4px 6px" }}>
+              {PROVIDER_LABELS[openModelProvider]} のモデルを選択
+            </div>
+            {MODEL_CONFIG[openModelProvider].models.map((m) => {
+              const isImg2imgDisabled = (!!imageRefId || !!imageRefUpload) && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro");
 
-        {/* セパレーター */}
-        <span style={{ color: "var(--border)", fontSize: "12px", margin: "0 2px", flex: "0 0 auto" }}>|</span>
-
-        {/* モデル選択（現在のプロバイダーのモデルのみ表示） */}
-        {MODEL_CONFIG[provider].models.map((m) => {
-          const isImg2imgDisabled = (!!imageRefId || !!imageRefUpload) && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro")
-          return (
-            <button
-              key={m.id}
-              onClick={() => !isImg2imgDisabled && handleModelChange(m.id)}
-              title={isImg2imgDisabled ? "このモデルはimg2imgに非対応です" : m.badge}
-              disabled={isImg2imgDisabled}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "20px",
-                border: "1px solid",
-                borderColor: isImg2imgDisabled ? "var(--border)" : selectedModel === m.id ? "var(--accent)" : "var(--border)",
-                background: isImg2imgDisabled ? "transparent" : selectedModel === m.id ? "rgba(196,98,45,0.12)" : "transparent",
-                color: isImg2imgDisabled ? "var(--ink-faint)" : selectedModel === m.id ? "var(--accent)" : "var(--ink-muted)",
-                fontSize: "10px",
-                fontFamily: "'JetBrains Mono', monospace",
-                cursor: isImg2imgDisabled ? "not-allowed" : "pointer",
-                transition: "all 0.15s",
-                letterSpacing: "0.03em",
-                opacity: isImg2imgDisabled ? 0.4 : 1,
-                flex: "0 0 auto",
-              }}
-            >
-              {m.label}
-              {m.badge === "高性能" && !isImg2imgDisabled && (
-                <span style={{ marginLeft: "3px", fontSize: "8px", opacity: 0.7 }}>↑</span>
-              )}
-            </button>
-          )
-        })}
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    if (isImg2imgDisabled) return;
+                    handleModelChange(m.id);
+                    setOpenModelProvider(null);
+                  }}
+                  disabled={isImg2imgDisabled}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "6px 10px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background: selectedModel === m.id ? "rgba(196,98,45,0.1)" : "transparent",
+                    color: isImg2imgDisabled ? "var(--ink-faint)" : selectedModel === m.id ? "var(--accent)" : "var(--ink)",
+                    fontSize: "12px",
+                    textAlign: "left",
+                    cursor: isImg2imgDisabled ? "not-allowed" : "pointer",
+                    opacity: isImg2imgDisabled ? 0.4 : 1,
+                  }}
+                >
+                  <span style={{ display: "inline-block", width: "1.2em" }}>
+                    {selectedModel === m.id ? "●" : ""}
+                  </span>
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {!isMobile && (
+        <div className="mobile-scroll-row" style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
+          {/* モデル選択（現在のプロバイダーのモデルのみ表示） */}
+          {MODEL_CONFIG[provider].models.map((m) => {
+            const isImg2imgDisabled = (!!imageRefId || !!imageRefUpload) && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro")
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => !isImg2imgDisabled && handleModelChange(m.id)}
+                title={isImg2imgDisabled ? "このモデルはimg2imgに非対応です" : m.badge}
+                disabled={isImg2imgDisabled}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "20px",
+                  border: "1px solid",
+                  borderColor: isImg2imgDisabled ? "var(--border)" : selectedModel === m.id ? "var(--accent)" : "var(--border)",
+                  background: isImg2imgDisabled ? "transparent" : selectedModel === m.id ? "rgba(196,98,45,0.12)" : "transparent",
+                  color: isImg2imgDisabled ? "var(--ink-faint)" : selectedModel === m.id ? "var(--accent)" : "var(--ink-muted)",
+                  fontSize: "10px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  cursor: isImg2imgDisabled ? "not-allowed" : "pointer",
+                  transition: "all 0.15s",
+                  letterSpacing: "0.03em",
+                  opacity: isImg2imgDisabled ? 0.4 : 1,
+                  flex: "0 0 auto",
+                }}
+              >
+                {m.label}
+                {m.badge === "高性能" && !isImg2imgDisabled && (
+                  <span style={{ marginLeft: "3px", fontSize: "8px", opacity: 0.7 }}>↑</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* 画像コンテキストピル */}
       {imageContextId && (

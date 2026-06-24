@@ -73,6 +73,7 @@ export default function ChatInputCentered({
 }: ChatInputCenteredProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
+  const modelMenuRootRef = useRef<HTMLDivElement | null>(null);
   const activeProvider: TextProvider = useMemo(
     () => (TEXT_PROVIDERS.includes(provider as TextProvider) ? (provider as TextProvider) : "claude"),
     [provider],
@@ -88,6 +89,7 @@ export default function ChatInputCentered({
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
+  const [openModelProvider, setOpenModelProvider] = useState<Provider | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(activeProvider));
   const [isDeepThinking, setIsDeepThinking] = useState(false);
 
@@ -119,6 +121,29 @@ export default function ChatInputCentered({
       document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [isToolMenuOpen]);
+
+  useEffect(() => {
+    if (!openModelProvider) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        modelMenuRootRef.current &&
+        !modelMenuRootRef.current.contains(event.target as Node)
+      ) {
+        setOpenModelProvider(null);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOpenModelProvider(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openModelProvider]);
 
   const handleProviderChange = (nextProvider: TextProvider) => {
     onProviderChange(nextProvider);
@@ -432,52 +457,122 @@ export default function ChatInputCentered({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div className="mobile-scroll-row" style={{ display: "flex", gap: "8px" }}>
-              {TEXT_PROVIDERS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => handleProviderChange(p)}
+            <div ref={modelMenuRootRef} style={{ position: "relative" }}>
+              <div className="mobile-scroll-row" style={{ display: "flex", gap: "8px" }}>
+                {TEXT_PROVIDERS.map((p) => {
+                  const models = MODEL_CONFIG[p]?.models ?? [];
+                  const hasModels = models.length > 0;
+
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        handleProviderChange(p);
+                        setIsToolMenuOpen(false);
+
+                        if (!isMobile || !hasModels) {
+                          setOpenModelProvider(null);
+                          return;
+                        }
+
+                        setOpenModelProvider((current) => (current === p ? null : p));
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        border: `1px solid ${activeProvider === p ? "var(--accent)" : "var(--border)"}`,
+                        background: activeProvider === p ? "var(--accent)" : "white",
+                        color: activeProvider === p ? "white" : "var(--ink-muted)",
+                        fontSize: "12px",
+                        fontFamily: "'JetBrains Mono', monospace",
+                        cursor: "pointer",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      {MODEL_CONFIG[p].label}{isMobile && hasModels ? " ▾" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {isMobile && openModelProvider && (
+                <div
                   style={{
-                    padding: "6px 12px",
-                    borderRadius: "6px",
-                    border: `1px solid ${activeProvider === p ? "var(--accent)" : "var(--border)"}`,
-                    background: activeProvider === p ? "var(--accent)" : "white",
-                    color: activeProvider === p ? "white" : "var(--ink-muted)",
-                    fontSize: "12px",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    cursor: "pointer",
-                    flex: "0 0 auto",
+                    position: "absolute",
+                    left: 0,
+                    top: "calc(100% + 8px)",
+                    zIndex: 50,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "10px",
+                    padding: "8px",
+                    minWidth: "180px",
+                    maxHeight: "240px",
+                    overflowY: "auto",
+                    WebkitOverflowScrolling: "touch",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
                   }}
                 >
-                  {MODEL_CONFIG[p].label}
-                </button>
-              ))}
+                  <div style={{ fontSize: "10px", color: "var(--ink-faint)", padding: "0 4px 6px" }}>
+                    {MODEL_CONFIG[openModelProvider].label} のモデルを選択
+                  </div>
+                  {MODEL_CONFIG[openModelProvider].models.map((model) => (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => {
+                        handleModelChange(model.id);
+                        setOpenModelProvider(null);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "6px 10px",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: selectedModel === model.id ? "rgba(196,98,45,0.1)" : "transparent",
+                        color: selectedModel === model.id ? "var(--accent)" : "var(--ink)",
+                        fontSize: "12px",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span style={{ display: "inline-block", width: "1.2em" }}>
+                        {selectedModel === model.id ? "●" : ""}
+                      </span>
+                      {model.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="mobile-scroll-row" style={{ display: "flex", gap: "6px" }}>
-              {MODEL_CONFIG[activeProvider].models.map((model) => (
-                <button
-                  key={model.id}
-                  type="button"
-                  onClick={() => handleModelChange(model.id)}
-                  title={model.badge}
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: "6px",
-                    border: `1px solid ${selectedModel === model.id ? "var(--accent)" : "var(--border)"}`,
-                    background: selectedModel === model.id ? "rgba(196,98,45,0.12)" : "transparent",
-                    color: selectedModel === model.id ? "var(--accent)" : "var(--ink-muted)",
-                    fontSize: "11px",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    cursor: "pointer",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  {model.label}
-                </button>
-              ))}
-            </div>
+            {!isMobile && (
+              <div className="mobile-scroll-row" style={{ display: "flex", gap: "6px" }}>
+                {MODEL_CONFIG[activeProvider].models.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => handleModelChange(model.id)}
+                    title={model.badge}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: "6px",
+                      border: `1px solid ${selectedModel === model.id ? "var(--accent)" : "var(--border)"}`,
+                      background: selectedModel === model.id ? "rgba(196,98,45,0.12)" : "transparent",
+                      color: selectedModel === model.id ? "var(--accent)" : "var(--ink-muted)",
+                      fontSize: "11px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: "pointer",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    {model.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {githubPanelOpen && (
               <div style={{ marginBottom: "8px" }}>
