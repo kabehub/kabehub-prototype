@@ -1245,31 +1245,6 @@ export default function Home() {
           <span>⏳</span> 一時メッセージを保存中...
         </div>
       )}
-      {isMobileViewport && !isMobileSidebarOpen && (
-        <button
-          type="button"
-          aria-label="サイドバーを開く"
-          onClick={() => setIsMobileSidebarOpen(true)}
-          style={{
-            position: "fixed",
-            top: "10px",
-            left: "10px",
-            zIndex: 900,
-            width: "42px",
-            height: "42px",
-            border: "1px solid var(--border)",
-            borderRadius: "8px",
-            background: "var(--chat-bg)",
-            color: "var(--ink)",
-            fontSize: "22px",
-            lineHeight: 1,
-            cursor: "pointer",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.10)",
-          }}
-        >
-          ☰
-        </button>
-      )}
       {isMobileViewport && isMobileSidebarOpen && (
         <div
           aria-hidden="true"
@@ -1358,6 +1333,7 @@ export default function Home() {
           return null
         })}
         hasMobileSidebarButton={isMobileViewport}
+        onMobileSidebarOpen={() => setIsMobileSidebarOpen(true)}
       />
       <OutlinePane
         messages={messages}

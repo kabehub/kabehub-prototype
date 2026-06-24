@@ -82,6 +82,7 @@ interface ChatPanelProps {
   onImageRefUpload?: (data: { base64: string; mimeType: string; previewUrl: string }) => void;
   onImageRefUploadClear?: () => void;
   hasMobileSidebarButton?: boolean;
+  onMobileSidebarOpen?: () => void;
 }
 
 export default function ChatPanel({
@@ -130,6 +131,7 @@ export default function ChatPanel({
   onImageRefUpload,
   onImageRefUploadClear,
   hasMobileSidebarButton = false,
+  onMobileSidebarOpen,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -1078,13 +1080,15 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         }
       `}</style>
       {/* Header */}
-      {!(isInitialInputMode && !thread) && (
-      <div style={{ padding: hasMobileSidebarButton ? "12px 16px 12px 64px" : "12px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)" }}>
+      {(!(isInitialInputMode && !thread) || hasMobileSidebarButton) && (
+      <div style={{ padding: hasMobileSidebarButton ? "10px 14px" : "12px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)" }}>
         {thread ? (
           <>
             {/* 1行目: タイトル + ボタン群 */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", minHeight: "36px" }}>
-              <div style={{ width: "4px", height: "18px", background: "var(--accent)", borderRadius: "2px", flexShrink: 0 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: hasMobileSidebarButton ? "8px" : "12px", minHeight: "36px", flexWrap: hasMobileSidebarButton ? "wrap" : "nowrap" }}>
+              {!hasMobileSidebarButton && (
+                <div style={{ width: "4px", height: "18px", background: "var(--accent)", borderRadius: "2px", flexShrink: 0 }} />
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <button
                   type="button"
@@ -1096,7 +1100,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    width: "fit-content",
+                    width: hasMobileSidebarButton ? "100%" : "fit-content",
                     maxWidth: "100%",
                     minWidth: 0,
                     padding: 0,
@@ -1105,10 +1109,12 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                     color: "var(--ink)",
                     cursor: "pointer",
                     textAlign: "left",
+                    overflow: "hidden",
                   }}
                 >
                   <span
                     style={{
+                      flex: 1,
                       minWidth: 0,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -1124,6 +1130,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                     data-chat-title-edit-icon
                     aria-hidden="true"
                     style={{
+                      display: hasMobileSidebarButton ? "none" : "inline",
                       flexShrink: 0,
                       opacity: 0,
                       transition: "opacity 0.15s",
@@ -1146,7 +1153,32 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                 })()}
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+              {hasMobileSidebarButton && (
+                <button
+                  type="button"
+                  aria-label="サイドバーを開く"
+                  onClick={onMobileSidebarOpen}
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    flexShrink: 0,
+                    border: "1px solid var(--border)",
+                    borderRadius: "8px",
+                    background: "white",
+                    color: "var(--ink)",
+                    fontSize: "22px",
+                    lineHeight: 1,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  ☰
+                </button>
+              )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, flexWrap: hasMobileSidebarButton ? "wrap" : "nowrap", width: hasMobileSidebarButton ? "100%" : "auto", marginTop: hasMobileSidebarButton ? "6px" : 0 }}>
 
                 {/* 公開/非公開 */}
                 <button
@@ -1281,10 +1313,34 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             </div>
           </>
         ) : (
-          <div style={{ minHeight: "36px", display: "flex", alignItems: "center" }}>
-            <div style={{ fontSize: "13px", color: "var(--ink-muted)", fontStyle: "italic" }}>
+          <div style={{ minHeight: "36px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ flex: 1, minWidth: 0, fontSize: "13px", color: "var(--ink-muted)", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               スレッドを選択するか、新規作成してください
             </div>
+            {hasMobileSidebarButton && (
+              <button
+                type="button"
+                aria-label="サイドバーを開く"
+                onClick={onMobileSidebarOpen}
+                style={{
+                  width: "38px",
+                  height: "38px",
+                  flexShrink: 0,
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  background: "white",
+                  color: "var(--ink)",
+                  fontSize: "22px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ☰
+              </button>
+            )}
           </div>
         )}
       </div>
