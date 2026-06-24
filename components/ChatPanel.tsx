@@ -2602,7 +2602,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                     title={label}
                   >
                     <span style={{ marginRight: "6px", fontSize: "11px" }}>
-                      {role === "user" ? "" : ""}
+                      {role === "user" ? "👤" : "🤖"}
                     </span>
                     {branchBlock && (
                       <span style={{ marginRight: "4px", color: "var(--accent)", fontSize: "11px" }}>
