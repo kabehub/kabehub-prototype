@@ -208,6 +208,7 @@ export default function ChatPanel({
   const [rpCharIconUrl, setRpCharIconUrl] = useState<string | null>(null);
   const [rpIconSaving, setRpIconSaving] = useState(false);
   const [rpSaving, setRpSaving] = useState(false);
+  const [showMobileHistory, setShowMobileHistory] = useState(false);
   const rpIconInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(
     () => [...messages].sort(compareMessagesForDisplay),
@@ -1249,8 +1250,14 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                           { label: `📋 下書き${drafts.length > 0 ? ` (${drafts.length})` : ""}`, action: () => handleOpenDrafts() },
                           { label: `🎭 なりきりモード${roleplayMode ? " ✓" : ""}`, action: () => handleOpenRoleplay(), active: roleplayMode },
                           {
-                            label: navExpanded ? " 履歴ON ✓" : " 履歴OFF",
-                            action: () => setNavExpanded((v: boolean) => !v),
+                            label: " 会話履歴",
+                            action: () => {
+                              if (isDesktop) {
+                                setNavExpanded((v: boolean) => !v);
+                              } else {
+                                setShowMobileHistory(true);
+                              }
+                            },
                           },
                         ].map((item) => (
                           <button
@@ -2498,6 +2505,129 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         setPendingDefaultTitle(null);
       }}
     />
+
+      {showMobileHistory && (
+        <>
+          {/* オーバーレイ */}
+          <div
+            onClick={() => setShowMobileHistory(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              zIndex: 200,
+            }}
+          />
+          {/* 履歴ドロワー（右側） */}
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: "80%",
+              maxWidth: "320px",
+              background: "var(--paper, white)",
+              zIndex: 201,
+              overflowY: "auto",
+              padding: "16px 12px",
+              boxShadow: "-4px 0 16px rgba(0,0,0,0.15)",
+            }}
+          >
+            {/* ヘッダー */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "12px",
+            }}>
+              <div style={{
+                fontSize: "11px",
+                color: "var(--ink-faint)",
+                fontFamily: "'JetBrains Mono', monospace",
+                letterSpacing: "0.05em",
+              }}>
+                会話履歴
+              </div>
+              <button
+                onClick={() => setShowMobileHistory(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "18px",
+                  color: "var(--ink-muted)",
+                  cursor: "pointer",
+                  padding: "0 4px",
+                }}
+              >×</button>
+            </div>
+
+            {/* 履歴リスト（既存の展開サイドペインと同じ内容） */}
+            {dotPositions.map(({ id, role }) => {
+              const msg = orderedMessages.find(m => String(m.id) === id);
+              if (!msg) return null;
+              const label = generateMessageSummary(
+                typeof msg.content === "string" ? msg.content : ""
+              );
+              const branchBlock = branchBlocksByAnchor[getAnchorKey(msg)];
+              return (
+                <Fragment key={id}>
+                  <div
+                    onClick={() => {
+                      scrollToMessage(id);
+                      setShowMobileHistory(false);
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      marginBottom: "4px",
+                      borderRadius: "6px",
+                      fontSize: "13px",
+                      fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer",
+                      background: role === "user" ? "var(--sidebar-bg, #f5f5f5)" : "transparent",
+                      border: "1px solid transparent",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      color: role === "user" ? "var(--ink)" : "var(--ink-muted)",
+                    }}
+                    onTouchStart={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.background =
+                        role === "user" ? "#ebebeb" : "#f5f5f5";
+                    }}
+                    onTouchEnd={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.background =
+                        role === "user" ? "var(--sidebar-bg, #f5f5f5)" : "transparent";
+                    }}
+                    title={label}
+                  >
+                    <span style={{ marginRight: "6px", fontSize: "11px" }}>
+                      {role === "user" ? "" : ""}
+                    </span>
+                    {branchBlock && (
+                      <span style={{ marginRight: "4px", color: "var(--accent)", fontSize: "11px" }}>
+                        ◎
+                      </span>
+                    )}
+                    {label}
+                  </div>
+                </Fragment>
+              );
+            })}
+
+            {dotPositions.length === 0 && (
+              <div style={{
+                fontSize: "12px",
+                color: "var(--ink-faint)",
+                fontFamily: "'DM Sans', sans-serif",
+                padding: "8px 4px",
+              }}>
+                会話がまだありません
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* タイトル編集ダイアログ */}
       {showDialog && (
