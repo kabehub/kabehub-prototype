@@ -1315,7 +1315,9 @@ export default function ChatInput({
         </div>
 
         <div style={{ fontSize: "10px", color: "var(--ink-faint)", letterSpacing: "0.03em" }}>
-          Enter で送信 · Shift+Enter で改行
+          {loadEnterMode() === "send"
+            ? "Enter で送信 · Shift+Enter で改行"
+            : "Enter で改行 · Ctrl・⌘+Enter で送信"}
         </div>
       </div>
     </div>
