@@ -501,7 +501,8 @@ export default function ChatInputCentered({
                   style={{
                     position: "absolute",
                     left: 0,
-                    top: "calc(100% + 8px)",
+                    bottom: "calc(100% + 8px)",
+                    top: "auto",
                     zIndex: 50,
                     background: "var(--bg)",
                     border: "1px solid var(--border)",
@@ -1011,12 +1012,12 @@ export default function ChatInputCentered({
                 onClick={handleSubmit}
                 disabled={!canSubmit}
                 style={{
-                  padding: "9px 18px",
+                  padding: "12px 23px",
                   borderRadius: "6px",
                   border: "1px solid var(--accent)",
                   background: canSubmit ? "var(--accent)" : "transparent",
                   color: canSubmit ? "white" : "var(--ink-faint)",
-                  fontSize: "13px",
+                  fontSize: "17px",
                   fontFamily: "'JetBrains Mono', monospace",
                   cursor: canSubmit ? "pointer" : "not-allowed",
                 }}

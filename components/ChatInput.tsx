@@ -322,20 +322,6 @@ export default function ChatInput({
     }
   }, [value]);
 
-  const handleNewline = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newValue = value.substring(0, start) + "\n" + value.substring(end);
-    onChange(newValue);
-    setTimeout(() => {
-      textarea.selectionStart = start + 1;
-      textarea.selectionEnd = start + 1;
-      textarea.focus();
-    }, 0);
-  };
-
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.key === "Process") return;
 
@@ -773,7 +759,8 @@ export default function ChatInput({
             style={{
               position: "absolute",
               left: 0,
-              top: "calc(100% + 8px)",
+              bottom: "calc(100% + 8px)",
+              top: "auto",
               zIndex: 50,
               background: "var(--bg)",
               border: "1px solid var(--border)",
@@ -1213,41 +1200,6 @@ export default function ChatInput({
             overflowY: "auto",
           }}
         />
-        {/* 改行ボタン（送信ボタン左隣） */}
-        <button
-          onClick={handleNewline}
-          disabled={disabled || isLoading}
-          style={{
-            position: "absolute",
-            right: "48px",
-            bottom: "10px",
-            width: "26px",
-            height: "26px",
-            borderRadius: "6px",
-            border: "1px solid var(--border)",
-            background: "transparent",
-            color: disabled || isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
-            cursor: disabled || isLoading ? "default" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "13px",
-            transition: "background 0.15s, color 0.15s",
-          }}
-          title="改行を挿入"
-          onMouseEnter={(e) => {
-            if (!disabled && !isLoading) {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--ink-faint)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--ink)";
-            }
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            (e.currentTarget as HTMLButtonElement).style.color = disabled || isLoading ? "var(--ink-faint)" : "var(--ink-muted)";
-          }}
-        >
-          ↵
-        </button>
         {/* 送信ボタン（右下） */}
         <button
           onClick={handleSubmit}
@@ -1256,8 +1208,8 @@ export default function ChatInput({
             position: "absolute",
             right: "10px",
             bottom: "10px",
-            width: "32px",
-            height: "32px",
+            width: "42px",
+            height: "42px",
             borderRadius: "7px",
             border: "none",
             background: isLoading || isCompressing || (!value.trim() && attachedFiles.length === 0) ? "var(--ink-faint)" : "var(--accent)",
@@ -1267,14 +1219,14 @@ export default function ChatInput({
             alignItems: "center",
             justifyContent: "center",
             transition: "background 0.15s, transform 0.1s",
-            fontSize: "14px",
+            fontSize: "18px",
           }}
           title={enterMode === "send" ? "AIに送信 (Enter)" : "AIに送信 (Ctrl/⌘+Enter)"}
         >
           {isLoading ? (
-            <span style={{ fontSize: "10px", letterSpacing: "1px" }}>…</span>
+            <span style={{ fontSize: "13px", letterSpacing: "1px" }}>…</span>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
               <path d="M7 12V2M7 2L2 7M7 2L12 7" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           )}
