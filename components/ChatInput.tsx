@@ -130,6 +130,19 @@ export function saveModel(provider: Provider, modelId: ModelId) {
 }
 // ─────────────────────────────────────────────────────────────────────────
 
+const LS_ENTER_MODE = "kabehub_enter_mode" as const;
+type EnterMode = "send" | "newline";
+
+function loadEnterMode(): EnterMode {
+  if (typeof window === "undefined") return "send";
+  return localStorage.getItem(LS_ENTER_MODE) === "newline" ? "newline" : "send";
+}
+
+function isMobileViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
@@ -281,9 +294,30 @@ export default function ChatInput({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (!isLoading && !isCompressing && (value.trim() || attachedFiles.length > 0)) handleSubmit();
+    if (e.nativeEvent.isComposing || e.key === "Process") return;
+
+    if (e.key !== "Enter") return;
+
+    const enterMode = loadEnterMode();
+    const isMobile = isMobileViewport();
+    const canSubmit =
+      !disabled &&
+      !isLoading &&
+      !isCompressing &&
+      (value.trim() || attachedFiles.length > 0);
+
+    if (isMobile) return;
+
+    if (enterMode === "send") {
+      if (!e.shiftKey) {
+        e.preventDefault();
+        if (canSubmit) handleSubmit();
+      }
+    } else {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (canSubmit) handleSubmit();
+      }
     }
   };
 
@@ -589,6 +623,22 @@ export default function ChatInput({
   const totalLines = firstTextFile?.content.split("\n").length ?? 0;
   const hasMoreLines = totalLines > PREVIEW_LINES;
   const hasAnyFile = attachedFiles.length > 0;
+  const enterMode = loadEnterMode();
+  const isMobile = isMobileViewport();
+  const placeholder =
+    provider === "image_gen"
+      ? "画像生成のプロンプトを入力…"
+      : isMobile
+        ? hasAnyFile
+          ? "ファイルについて質問…"
+          : "思考を入力…"
+        : enterMode === "send"
+          ? hasAnyFile
+            ? "ファイルについて質問… (Enter で送信 / Shift+Enter で改行)"
+            : "思考を入力… (Enter で送信 / Shift+Enter で改行)"
+          : hasAnyFile
+            ? "ファイルについて質問… (Enter で改行 / Ctrl・⌘+Enter で送信)"
+            : "思考を入力… (Enter で改行 / Ctrl・⌘+Enter で送信)";
 
   return (
     <div
@@ -1018,7 +1068,7 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           disabled={disabled || isLoading}
-          placeholder={provider === "image_gen" ? "画像生成のプロンプトを入力… (Enter で生成)" : hasAnyFile ? "ファイルについて質問… (Enter で送信)" : "思考を入力… (Enter で送信 / Shift+Enter で改行)"}
+          placeholder={placeholder}
           rows={3}
           style={{
             width: "100%",
@@ -1092,7 +1142,7 @@ export default function ChatInput({
             transition: "background 0.15s, transform 0.1s",
             fontSize: "14px",
           }}
-          title="AIに送信 (Enter)"
+          title={enterMode === "send" ? "AIに送信 (Enter)" : "AIに送信 (Ctrl/⌘+Enter)"}
         >
           {isLoading ? (
             <span style={{ fontSize: "10px", letterSpacing: "1px" }}>…</span>

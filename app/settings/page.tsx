@@ -98,6 +98,7 @@ function SettingsContent() {
 
   // UI設定 state
   const [navAlwaysOn, setNavAlwaysOn] = useState(false)
+  const [enterMode, setEnterMode] = useState<'send' | 'newline'>('send')
 
   // ① LocalStorageからAPIキーとモデルを読み込む
   useEffect(() => {
@@ -110,6 +111,9 @@ function SettingsContent() {
     setGeminiModel(loadModel('gemini'))
     setOpenaiModel(loadModel('openai'))
     setNavAlwaysOn(localStorage.getItem('kabehub_nav_expanded_always') === 'true')
+    setEnterMode(
+      localStorage.getItem('kabehub_enter_mode') === 'newline' ? 'newline' : 'send'
+    )
   }, [])
 
   const fetchMcpTokens = useCallback(async () => {
@@ -971,6 +975,37 @@ function SettingsContent() {
                   }}
                 />
               </button>
+            </div>
+
+            {/* 送信キー設定 */}
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-gray-400">
+                送信キー設定（PC）
+              </label>
+              <div className="flex flex-col gap-2">
+                {[
+                  { value: 'send' as const, label: 'Enter で送信 / Shift+Enter で改行' },
+                  { value: 'newline' as const, label: 'Enter で改行 / Ctrl・⌘+Enter で送信' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      localStorage.setItem('kabehub_enter_mode', opt.value)
+                      setEnterMode(opt.value)
+                    }}
+                    className={`px-3 py-2 rounded-lg text-xs border text-left transition-colors ${
+                      enterMode === opt.value
+                        ? 'border-orange-500/60 bg-orange-500/10 text-orange-300'
+                        : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-600">
+                スマホでは常に Enter = 改行・送信ボタンで送信されます
+              </p>
             </div>
           </div>
         </section>

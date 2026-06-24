@@ -1206,12 +1206,14 @@ function MessageBubble({
               value={editRegenContent}
               onChange={(e) => setEditRegenContent(e.target.value)}
               onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing || e.key === "Process") return;
                 if (e.key !== "Enter") return;
-                if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
-                if (e.nativeEvent.isComposing) return;
+                if (!(e.ctrlKey || e.metaKey)) return;
+                if (e.shiftKey || e.altKey) return;
                 e.preventDefault();
                 submitEditRegen();
               }}
+              placeholder="Ctrl/⌘+Enter で再生成"
               rows={6}
               style={{
                 width: "100%", padding: "10px 12px",
