@@ -16,6 +16,7 @@ interface SidebarProps {
   onLogout: () => void;
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
   onNewThreadInFolder: (folderName: string) => void;
+  isMobileOverlay?: boolean;
 }
 
 function timeAgo(dateStr: string): string {
@@ -593,6 +594,7 @@ export default function Sidebar({
   onLogout,
   onUpdateFolder,
   onNewThreadInFolder,
+  isMobileOverlay = false,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<"title" | "message" | "both">("both");
@@ -738,9 +740,10 @@ export default function Sidebar({
 
   return (
     <aside
+      data-sidebar-overlay={isMobileOverlay ? "true" : "false"}
       style={{
-        width: "22%",
-        minWidth: "200px",
+        width: isMobileOverlay ? "280px" : "22%",
+        minWidth: isMobileOverlay ? "280px" : "200px",
         maxWidth: "280px",
         background: "var(--sidebar-bg)",
         borderRight: "1px solid var(--sidebar-border-color)",
@@ -748,8 +751,26 @@ export default function Sidebar({
         flexDirection: "column",
         height: "100vh",
         userSelect: "none",
+        ...(isMobileOverlay
+          ? {
+              position: "fixed" as const,
+              top: 0,
+              left: 0,
+              zIndex: 1100,
+              boxShadow: "8px 0 24px rgba(0,0,0,0.18)",
+              animation: "sidebar-slide-in 0.18s ease-out",
+            }
+          : {}),
       }}
     >
+      {isMobileOverlay && (
+        <style>{`
+          @keyframes sidebar-slide-in {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+          }
+        `}</style>
+      )}
       {/* Header */}
       <div
         style={{

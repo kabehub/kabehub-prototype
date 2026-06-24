@@ -81,6 +81,7 @@ interface ChatPanelProps {
   imageRefUpload?: { base64: string; mimeType: string; previewUrl: string } | null;
   onImageRefUpload?: (data: { base64: string; mimeType: string; previewUrl: string }) => void;
   onImageRefUploadClear?: () => void;
+  hasMobileSidebarButton?: boolean;
 }
 
 export default function ChatPanel({
@@ -128,6 +129,7 @@ export default function ChatPanel({
   imageRefUpload,
   onImageRefUpload,
   onImageRefUploadClear,
+  hasMobileSidebarButton = false,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -1077,7 +1079,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       `}</style>
       {/* Header */}
       {!(isInitialInputMode && !thread) && (
-      <div style={{ padding: "12px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)" }}>
+      <div style={{ padding: hasMobileSidebarButton ? "12px 16px 12px 64px" : "12px 28px", borderBottom: "1px solid var(--border)", background: "var(--chat-bg)" }}>
         {thread ? (
           <>
             {/* 1行目: タイトル + ボタン群 */}

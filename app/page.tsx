@@ -35,6 +35,8 @@ export default function Home() {
   const [isNovelPaneOpen, setIsNovelPaneOpen] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [novelSettingsData, setNovelSettingsData] = useState<NovelSettingsData | null>(null);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // 一時モード関連
   const [isTemporary, setIsTemporary] = useState(false);
@@ -53,6 +55,23 @@ export default function Home() {
   const [thinkingContents, setThinkingContents] = useState<Record<string, string>>({});
   // AbortControllerをrefで管理（stateにするとre-renderが多すぎる）
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const updateViewport = () => {
+      const isMobile = mediaQuery.matches;
+      setIsMobileViewport(isMobile);
+      if (!isMobile) setIsMobileSidebarOpen(false);
+    };
+
+    updateViewport();
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", updateViewport);
+      return () => mediaQuery.removeEventListener("change", updateViewport);
+    }
+    mediaQuery.addListener(updateViewport);
+    return () => mediaQuery.removeListener(updateViewport);
+  }, []);
 
   // ── ユーザー情報の取得 ───────────────────────────────────
   useEffect(() => {
@@ -1210,6 +1229,13 @@ export default function Home() {
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      <style>{`
+        @media (max-width: 767px) {
+          aside[data-sidebar-overlay="false"] {
+            display: none !important;
+          }
+        }
+      `}</style>
       {isSaving && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
@@ -1219,22 +1245,69 @@ export default function Home() {
           <span>⏳</span> 一時メッセージを保存中...
         </div>
       )}
-      <Sidebar
-        threads={displayThreads}
-        activeThreadId={activeThreadId}
-        onSelectThread={(id: string) => {
-          const thread = displayThreads.find((t) => t.id === id) as (typeof displayThreads[0] & { matchedMessageIds?: string[] }) | undefined;
-          selectThread(id, thread?.matchedMessageIds);
-        }}
-        onNewThread={handleNewThread}
-        onDeleteThread={handleDeleteThread}
-        onSearch={handleSearch}
-        isSearching={isSearching}
-        user={user}
-        onLogout={handleLogout}
-        onUpdateFolder={handleUpdateFolder}
-        onNewThreadInFolder={handleNewThreadInFolder}
-      />
+      {isMobileViewport && !isMobileSidebarOpen && (
+        <button
+          type="button"
+          aria-label="サイドバーを開く"
+          onClick={() => setIsMobileSidebarOpen(true)}
+          style={{
+            position: "fixed",
+            top: "10px",
+            left: "10px",
+            zIndex: 900,
+            width: "42px",
+            height: "42px",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            background: "var(--chat-bg)",
+            color: "var(--ink)",
+            fontSize: "22px",
+            lineHeight: 1,
+            cursor: "pointer",
+            boxShadow: "0 2px 10px rgba(0,0,0,0.10)",
+          }}
+        >
+          ☰
+        </button>
+      )}
+      {isMobileViewport && isMobileSidebarOpen && (
+        <div
+          aria-hidden="true"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(0,0,0,0.35)",
+          }}
+        />
+      )}
+      {(!isMobileViewport || isMobileSidebarOpen) && (
+        <Sidebar
+          threads={displayThreads}
+          activeThreadId={activeThreadId}
+          onSelectThread={(id: string) => {
+            const thread = displayThreads.find((t) => t.id === id) as (typeof displayThreads[0] & { matchedMessageIds?: string[] }) | undefined;
+            selectThread(id, thread?.matchedMessageIds);
+            if (isMobileViewport) setIsMobileSidebarOpen(false);
+          }}
+          onNewThread={() => {
+            handleNewThread();
+            if (isMobileViewport) setIsMobileSidebarOpen(false);
+          }}
+          onDeleteThread={handleDeleteThread}
+          onSearch={handleSearch}
+          isSearching={isSearching}
+          user={user}
+          onLogout={handleLogout}
+          onUpdateFolder={handleUpdateFolder}
+          onNewThreadInFolder={(folderName: string) => {
+            handleNewThreadInFolder(folderName);
+            if (isMobileViewport) setIsMobileSidebarOpen(false);
+          }}
+          isMobileOverlay={isMobileViewport}
+        />
+      )}
       <ChatPanel
         thread={activeThread}
         messages={messages}
@@ -1284,6 +1357,7 @@ export default function Home() {
           if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
           return null
         })}
+        hasMobileSidebarButton={isMobileViewport}
       />
       <OutlinePane
         messages={messages}
