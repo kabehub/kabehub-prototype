@@ -1248,12 +1248,10 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                           { label: isTemporary ? "⚡ 一時モード中 ✓" : "⚡ 一時モード", action: () => onSwitchTemporary(), active: isTemporary },
                           { label: `📋 下書き${drafts.length > 0 ? ` (${drafts.length})` : ""}`, action: () => handleOpenDrafts() },
                           { label: `🎭 なりきりモード${roleplayMode ? " ✓" : ""}`, action: () => handleOpenRoleplay(), active: roleplayMode },
-                          ...(isDesktop ? [
-                            {
-                              label: navExpanded ? " 履歴ON ✓" : " 履歴OFF",
-                              action: () => setNavExpanded((v: boolean) => !v),
-                            },
-                          ] : []),
+                          {
+                            label: navExpanded ? " 履歴ON ✓" : " 履歴OFF",
+                            action: () => setNavExpanded((v: boolean) => !v),
+                          },
                         ].map((item) => (
                           <button
                             key={item.label}

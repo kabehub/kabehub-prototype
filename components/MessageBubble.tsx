@@ -508,7 +508,7 @@ function MessageBubble({
                   : "1px solid var(--border)",
                 paddingLeft: isUser ? "14px" : "16px",
 
-                fontSize: "14px",
+                fontSize: "calc(14px * var(--font-scale, 1))",
                 lineHeight: 1.6,
                 boxShadow: "none",
                 fontFamily: "'DM Sans', sans-serif",
