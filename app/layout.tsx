@@ -26,6 +26,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+  (function() {
+    try {
+      var raw = localStorage.getItem('kabehub_font_scale');
+      var n = parseFloat(raw || '1');
+      if (!isFinite(n)) n = 1;
+      n = Math.min(1.5, Math.max(0.8, n));
+      document.documentElement.style.setProperty('--font-scale', String(n));
+    } catch (e) {}
+  })();
+`}} />
+      </head>
       <body>{children}</body>
     </html>
   );

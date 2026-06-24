@@ -99,6 +99,7 @@ function SettingsContent() {
   // UI設定 state
   const [navAlwaysOn, setNavAlwaysOn] = useState(false)
   const [enterMode, setEnterMode] = useState<'send' | 'newline'>('send')
+  const [fontScale, setFontScale] = useState<number>(1)
 
   // ① LocalStorageからAPIキーとモデルを読み込む
   useEffect(() => {
@@ -115,6 +116,23 @@ function SettingsContent() {
       localStorage.getItem('kabehub_enter_mode') === 'newline' ? 'newline' : 'send'
     )
   }, [])
+
+  useEffect(() => {
+    try {
+      var raw = localStorage.getItem('kabehub_font_scale');
+      var n = parseFloat(raw || '1');
+      if (!isFinite(n)) n = 1;
+      n = Math.min(1.5, Math.max(0.8, n));
+      setFontScale(n);
+    } catch (e) {}
+  }, []);
+
+  const updateFontScale = (value: number) => {
+    const next = Math.min(1.5, Math.max(0.8, value))
+    setFontScale(next)
+    localStorage.setItem('kabehub_font_scale', String(next))
+    document.documentElement.style.setProperty('--font-scale', String(next))
+  }
 
   const fetchMcpTokens = useCallback(async () => {
     const res = await fetch('/api/mcp-tokens')
@@ -974,6 +992,35 @@ function SettingsContent() {
                     display: 'block',
                   }}
                 />
+              </button>
+            </div>
+
+            <div className="space-y-3 border-t border-gray-800 pt-4">
+              <div>
+                <p className="text-sm font-medium text-gray-200">フォントサイズ</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  チャット本文・Markdown本文・入力欄の文字サイズを調整します。
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0.8}
+                  max={1.5}
+                  step={0.05}
+                  value={fontScale}
+                  onChange={e => updateFontScale(parseFloat(e.target.value))}
+                  className="flex-1 accent-blue-500"
+                />
+                <span className="w-12 text-right text-xs text-gray-500">
+                  {Math.round(fontScale * 100)}%
+                </span>
+              </div>
+              <button
+                onClick={() => updateFontScale(1)}
+                className="px-3 py-2 rounded-lg text-xs border border-gray-700 text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                標準に戻す
               </button>
             </div>
 

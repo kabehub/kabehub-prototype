@@ -23,6 +23,7 @@
   --bubble-user: #1c1c14;
   --bubble-ai: #ffffff;
   --border: #e8e8e8;
+  --font-scale: 1;
 }
 
 * {
@@ -45,6 +46,16 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--ink-faint); border-radius: 2px; }
 
 /* Markdown prose */
+.prose-custom,
+.prose,
+.animate-message {
+  font-size: calc(1rem * var(--font-scale));
+}
+
+textarea {
+  font-size: calc(1rem * var(--font-scale)) !important;
+}
+
 .prose-custom h1, .prose-custom h2, .prose-custom h3 {
   font-family: 'Lora', serif;
   color: var(--ink);
