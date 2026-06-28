@@ -72,6 +72,7 @@ export default function ChatInputCentered({
   displayName,
 }: ChatInputCenteredProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const modelMenuRootRef = useRef<HTMLDivElement | null>(null);
   const activeProvider: TextProvider = useMemo(
@@ -144,6 +145,14 @@ export default function ChatInputCentered({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [openModelProvider]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+    el.style.overflowY = el.scrollHeight > 320 ? "auto" : "hidden";
+  }, [value]);
 
   const handleProviderChange = (nextProvider: TextProvider) => {
     onProviderChange(nextProvider);
@@ -750,18 +759,20 @@ export default function ChatInputCentered({
             )}
 
             <textarea
+              ref={textareaRef}
               value={value}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={placeholder}
-              rows={6}
+              rows={1}
               disabled={isLoading}
               style={{
                 width: "100%",
-                resize: "vertical",
-                minHeight: "150px",
+                resize: "none",
+                minHeight: "calc(1rem * var(--font-scale, 1) * 1.7 + 28px)",
                 maxHeight: "320px",
+                overflowY: "hidden",
                 border: isDragging ? "1px solid var(--accent)" : "1px solid var(--border)",
                 borderRadius: "8px",
                 padding: "14px",

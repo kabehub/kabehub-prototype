@@ -1184,7 +1184,7 @@ export default function ChatInput({
           onPaste={handlePaste}
           disabled={disabled || isLoading}
           placeholder={placeholder}
-          rows={3}
+          rows={1}
           style={{
             width: "100%",
             resize: "none",
@@ -1196,7 +1196,7 @@ export default function ChatInput({
             fontFamily: "'DM Sans', sans-serif",
             color: "var(--ink)",
             lineHeight: 1.6,
-            minHeight: "80px",
+            minHeight: "calc(1rem * var(--font-scale, 1) * 1.6 + 28px)",
             maxHeight: "240px",
             overflowY: "auto",
           }}

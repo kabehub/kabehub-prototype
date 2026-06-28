@@ -37,6 +37,10 @@ export default function Home() {
   const [novelSettingsData, setNovelSettingsData] = useState<NovelSettingsData | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("kabehub_sidebar_collapsed") === "true";
+  });
 
   // 一時モード関連
   const [isTemporary, setIsTemporary] = useState(false);
@@ -62,6 +66,7 @@ export default function Home() {
       const isMobile = mediaQuery.matches;
       setIsMobileViewport(isMobile);
       if (!isMobile) setIsMobileSidebarOpen(false);
+      if (isMobile) setIsSidebarCollapsed(false);
     };
 
     updateViewport();
@@ -1281,6 +1286,14 @@ export default function Home() {
             if (isMobileViewport) setIsMobileSidebarOpen(false);
           }}
           isMobileOverlay={isMobileViewport}
+          isCollapsed={!isMobileViewport && isSidebarCollapsed}
+          onToggleCollapse={() => {
+            setIsSidebarCollapsed((v) => {
+              const next = !v;
+              localStorage.setItem("kabehub_sidebar_collapsed", String(next));
+              return next;
+            });
+          }}
         />
       )}
       <ChatPanel

@@ -17,6 +17,8 @@ interface SidebarProps {
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
   onNewThreadInFolder: (folderName: string) => void;
   isMobileOverlay?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -595,7 +597,10 @@ export default function Sidebar({
   onUpdateFolder,
   onNewThreadInFolder,
   isMobileOverlay = false,
+  isCollapsed = false,
+  onToggleCollapse,
 }: SidebarProps) {
+  const collapsed = !isMobileOverlay && isCollapsed;
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<"title" | "message" | "both">("both");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -742,14 +747,16 @@ export default function Sidebar({
     <aside
       data-sidebar-overlay={isMobileOverlay ? "true" : "false"}
       style={{
-        width: isMobileOverlay ? "280px" : "22%",
-        minWidth: isMobileOverlay ? "280px" : "200px",
-        maxWidth: "280px",
+        width: collapsed ? "48px" : isMobileOverlay ? "280px" : "22%",
+        minWidth: collapsed ? "48px" : isMobileOverlay ? "280px" : "200px",
+        maxWidth: collapsed ? "48px" : "280px",
         background: "var(--sidebar-bg)",
         borderRight: "1px solid var(--sidebar-border-color)",
         display: "flex",
         flexDirection: "column",
         height: "100vh",
+        overflow: "hidden",
+        transition: "width 0.18s ease, min-width 0.18s ease, max-width 0.18s ease",
         userSelect: "none",
         ...(isMobileOverlay
           ? {
@@ -778,43 +785,96 @@ export default function Sidebar({
           borderBottom: "1px solid var(--border)",
         }}
       >
-        <div style={{ fontFamily: "'Lora', serif", fontWeight: 600, fontSize: "16px", color: "var(--ink)", letterSpacing: "-0.02em", marginBottom: "10px" }}>
-          KabeHub
-        </div>
-        <button
-          onClick={onNewThread}
-          title="新規スレッド"
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "7px 10px",
-            borderRadius: "6px",
-            border: "1px solid var(--border)",
-            background: "white",
-            color: "var(--ink-muted)",
-            fontSize: "12px",
-            fontFamily: "'DM Sans', sans-serif",
-            cursor: "pointer",
-            transition: "all 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)";
-            (e.currentTarget as HTMLButtonElement).style.color = "white";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "white";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-          }}
-        >
-          <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
-          <span>新しい壁打ち</span>
-        </button>
+        {collapsed ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+            <button
+              onClick={onToggleCollapse}
+              title="サイドバーを展開"
+              aria-label="サイドバーを展開"
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", color: "var(--ink-muted)" }}
+            >
+              →
+            </button>
+            <button
+              onClick={onNewThread}
+              title="新しい壁打ち"
+              aria-label="新しい壁打ち"
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: "18px", color: "var(--ink-muted)" }}
+            >
+              ＋
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+              <div style={{ fontFamily: "'Lora', serif", fontWeight: 600, fontSize: "16px", color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                KabeHub
+              </div>
+              <button
+                onClick={onToggleCollapse}
+                title="サイドバーを折り畳む"
+                aria-label="サイドバーを折り畳む"
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: "14px", color: "var(--ink-muted)", lineHeight: 1, padding: "2px 4px" }}
+              >
+                ←
+              </button>
+            </div>
+            <button
+              onClick={onNewThread}
+              title="新規スレッド"
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 10px",
+                borderRadius: "6px",
+                border: "1px solid var(--border)",
+                background: "white",
+                color: "var(--ink-muted)",
+                fontSize: "12px",
+                fontFamily: "'DM Sans', sans-serif",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "var(--accent)";
+                (e.currentTarget as HTMLButtonElement).style.color = "white";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "white";
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+              }}
+            >
+              <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
+              <span>新しい壁打ち</span>
+            </button>
+          </div>
+        )}
       </div>
 
+      {collapsed ? (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "12px 0", gap: "4px", overflowY: "auto" }}>
+          <a href="/arena" title="AI闘技場" aria-label="AI闘技場" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>⚔️</a>
+          <a href="/image" title="画像生成" aria-label="画像生成" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>🎨</a>
+          <a href="/album" title="アルバム" aria-label="アルバム" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>🖼️</a>
+          <a href="/explore" title="みんなの壁打ち" aria-label="みんなの壁打ち" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>🌍</a>
+          <a href="/calendar" title="カレンダー" aria-label="カレンダー" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>📅</a>
+          <a href="/novel-check" title="整合性チェック" aria-label="整合性チェック" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>📖</a>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => window.location.href = "/settings"}
+            title="設定"
+            aria-label="設定"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", padding: "8px 0", color: "var(--ink-muted)" }}
+          >
+            ⚙️
+          </button>
+        </div>
+      ) : (
+        <>
       {/* Thread list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
         {/* 最近セクション（検索中は非表示） */}
@@ -1160,6 +1220,8 @@ export default function Sidebar({
           )}
         </div>
       </div>
+        </>
+      )}
       {/* フォルダ設定ドロワー */}
       {folderSettingsModal && (
         <div
