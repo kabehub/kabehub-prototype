@@ -2008,7 +2008,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
       {/* Messages */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <div ref={scrollRef} style={{ flex: 1, height: "100%", overflowY: "auto", padding: "28px 52px 28px 48px", position: "relative" }}>
+        <div ref={scrollRef} style={{ flex: 1, height: "100%", overflowY: "auto", padding: "28px 0", position: "relative" }}>
         {isInitialInputMode && (
           <ChatInputCentered
             value={inputValue}
@@ -2021,6 +2021,15 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             displayName={displayName}
           />
         )}
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "840px",
+            margin: "0 auto",
+            padding: hasMobileSidebarButton ? "0 12px" : "0 24px",
+            boxSizing: "border-box",
+          }}
+        >
         {visibleMessages.map((msg) => {
   const activeIdx = visibleMessages.indexOf(msg);
   return (
@@ -2155,6 +2164,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 )}
 
 
+        </div>
         </div>
         {/* 最小化インジケーター */}
         {isDesktop && !navExpanded && (
