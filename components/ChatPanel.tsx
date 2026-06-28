@@ -2414,7 +2414,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         <div
           style={{
             borderTop: "0.5px solid var(--border)",
-            background: "var(--chat-bg)",
+            background: "transparent",
           }}
         >
           <div style={footerInnerStyle}>
