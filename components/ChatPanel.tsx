@@ -1087,7 +1087,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     shouldShowBottomInput ||
     (isLoading && githubProgressMessages.length > 0) ||
     !!(isLoading && onAbort) ||
-    (!isInitialInputMode && !!thread && !!inputValue.trim());
+    (!isInitialInputMode && !!thread);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", background: isTemporary ? "#f1f1f0" : "var(--chat-bg)", overflow: "hidden" }}>
