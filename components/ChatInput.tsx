@@ -675,7 +675,7 @@ export default function ChatInput({
 
   return (
     <div
-      style={{ padding: "16px 24px 20px", borderTop: "1px solid var(--border)", background: "var(--chat-bg)", position: "relative" }}
+      style={{ padding: "16px 0 20px", position: "relative" }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
