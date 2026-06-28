@@ -2025,7 +2025,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
       {/* Messages */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <div ref={scrollRef} style={{ flex: 1, height: "100%", overflowY: "auto", padding: "28px 0", position: "relative" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "28px 0", position: "relative" }}>
         {isInitialInputMode && (
           <ChatInputCentered
             value={inputValue}
@@ -2182,6 +2183,120 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
 
         </div>
+        </div>
+
+        {shouldShowFooter && (
+          <div
+            style={{
+              borderTop: "0.5px solid var(--border)",
+              background: "transparent",
+            }}
+          >
+            <div style={footerInnerStyle}>
+
+              {/* GitHub探索中インジケーター */}
+              {isLoading && githubProgressMessages.length > 0 && (
+                <div style={{
+                  padding: "8px 16px",
+                  margin: "4px 0",
+                  borderRadius: "8px",
+                  background: "var(--surface, #f5f5f5)",
+                  border: "1px solid var(--border)",
+                  fontSize: "11px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: "var(--ink-muted)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                }}>
+                  <div style={{ color: "var(--ink-faint)", marginBottom: "2px", fontSize: "10px" }}>
+                    GitHub を探索中...
+                  </div>
+                  {githubProgressMessages.map((msg, i) => (
+                    <div key={i}> {msg}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* 生成を中断ボタン */}
+              {isLoading && onAbort && (
+                <div style={{ padding: "0 0 8px", display: "flex", justifyContent: "center" }}>
+                  <button
+                    onClick={onAbort}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 20px",
+                      borderRadius: "8px",
+                      border: "1.5px solid #e53e3e",
+                      background: "white",
+                      color: "#e53e3e",
+                      fontSize: "12px",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background = "white";
+                    }}
+                  >
+                    <span style={{
+                      display: "inline-block",
+                      width: "10px", height: "10px",
+                      background: "#e53e3e",
+                      borderRadius: "2px",
+                      flexShrink: 0,
+                    }} />
+                    生成を中断 <span style={{ opacity: 0.5, fontSize: "10px" }}>(Esc)</span>
+                  </button>
+                </div>
+              )}
+
+              {/* 下書き保存ボタン */}
+              {!isInitialInputMode && thread && inputValue.trim() && (
+                <div style={{ padding: "0 0 8px", display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={handleSaveDraft}
+                    style={{ padding: "4px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.15s" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
+                  >
+                     下書き保存
+                  </button>
+                </div>
+              )}
+
+              {/* 入力欄 */}
+              {shouldShowBottomInput && (
+                <ChatInput
+                  value={inputValue}
+                  onChange={onInputChange}
+                  onSubmit={onSubmit}
+                  onMemoSubmit={onMemoSubmit}
+                  isLoading={isLoading}
+                  disabled={!thread}
+                  provider={provider}
+                  onProviderChange={onProviderChange}
+                  onImageGenerate={onImageGenerate}
+                  imageContextId={imageContextId}
+                  isImagePinned={isImagePinned}
+                  onImagePinToggle={onImagePinToggle}
+                  onImageContextClear={onImageContextClear}
+                  imageRefId={imageRefId}
+                  onImageRefClear={onImageRefClear}
+                  imageRefUpload={imageRefUpload}
+                  onImageRefUpload={onImageRefUpload}
+                  onImageRefUploadClear={onImageRefUploadClear}
+                />
+              )}
+
+            </div>
+          </div>
+        )}
         </div>
         {/* 最小化インジケーター */}
         {isDesktop && !navExpanded && (
@@ -2409,119 +2524,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           </div>
         )}
       </div>
-
-      {shouldShowFooter && (
-        <div
-          style={{
-            borderTop: "0.5px solid var(--border)",
-            background: "transparent",
-          }}
-        >
-          <div style={footerInnerStyle}>
-
-            {/* GitHub探索中インジケーター */}
-            {isLoading && githubProgressMessages.length > 0 && (
-              <div style={{
-                padding: "8px 16px",
-                margin: "4px 0",
-                borderRadius: "8px",
-                background: "var(--surface, #f5f5f5)",
-                border: "1px solid var(--border)",
-                fontSize: "11px",
-                fontFamily: "'JetBrains Mono', monospace",
-                color: "var(--ink-muted)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "2px",
-              }}>
-                <div style={{ color: "var(--ink-faint)", marginBottom: "2px", fontSize: "10px" }}>
-                  GitHub を探索中...
-                </div>
-                {githubProgressMessages.map((msg, i) => (
-                  <div key={i}> {msg}</div>
-                ))}
-              </div>
-            )}
-
-            {/* 生成を中断ボタン */}
-            {isLoading && onAbort && (
-              <div style={{ padding: "0 0 8px", display: "flex", justifyContent: "center" }}>
-                <button
-                  onClick={onAbort}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "6px 20px",
-                    borderRadius: "8px",
-                    border: "1.5px solid #e53e3e",
-                    background: "white",
-                    color: "#e53e3e",
-                    fontSize: "12px",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = "#fff5f5";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = "white";
-                  }}
-                >
-                  <span style={{
-                    display: "inline-block",
-                    width: "10px", height: "10px",
-                    background: "#e53e3e",
-                    borderRadius: "2px",
-                    flexShrink: 0,
-                  }} />
-                  生成を中断 <span style={{ opacity: 0.5, fontSize: "10px" }}>(Esc)</span>
-                </button>
-              </div>
-            )}
-
-            {/* 下書き保存ボタン */}
-            {!isInitialInputMode && thread && inputValue.trim() && (
-              <div style={{ padding: "0 0 8px", display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  onClick={handleSaveDraft}
-                  style={{ padding: "4px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.15s" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-muted)"; }}
-                >
-                   下書き保存
-                </button>
-              </div>
-            )}
-
-            {/* 入力欄 */}
-            {shouldShowBottomInput && (
-              <ChatInput
-                value={inputValue}
-                onChange={onInputChange}
-                onSubmit={onSubmit}
-                onMemoSubmit={onMemoSubmit}
-                isLoading={isLoading}
-                disabled={!thread}
-                provider={provider}
-                onProviderChange={onProviderChange}
-                onImageGenerate={onImageGenerate}
-                imageContextId={imageContextId}
-                isImagePinned={isImagePinned}
-                onImagePinToggle={onImagePinToggle}
-                onImageContextClear={onImageContextClear}
-                imageRefId={imageRefId}
-                onImageRefClear={onImageRefClear}
-                imageRefUpload={imageRefUpload}
-                onImageRefUpload={onImageRefUpload}
-                onImageRefUploadClear={onImageRefUploadClear}
-              />
-            )}
-
-          </div>
-        </div>
-      )}
 
       {/* エクスポートモーダル */}
       <ExportModal
