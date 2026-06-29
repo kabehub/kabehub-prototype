@@ -408,11 +408,9 @@ export default function ChatInputCentered({
   return (
     <div
       style={{
-        minHeight: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "32px 16px",
+        width: "100%",
+        padding: "0 clamp(12px, 3vw, 24px)",
+        boxSizing: "border-box",
         position: "relative",
       }}
       onDragOver={handleDragOver}
@@ -441,7 +439,7 @@ export default function ChatInputCentered({
         </div>
       )}
 
-      <div style={{ width: "min(720px, 100%)" }}>
+      <div style={{ width: "min(720px, 100%)", margin: "0 auto" }}>
         <h2
           style={{
             margin: "0 0 18px",

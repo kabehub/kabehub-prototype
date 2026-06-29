@@ -2025,20 +2025,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
       {/* Messages */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "28px 0", position: "relative" }}>
-        {isInitialInputMode && (
-          <ChatInputCentered
-            value={inputValue}
-            onChange={onInputChange}
-            onSubmit={onSubmit}
-            onMemoSubmit={onMemoSubmit}
-            isLoading={isLoading}
-            provider={provider}
-            onProviderChange={onProviderChange}
-            displayName={displayName}
-          />
-        )}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+        <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: isInitialInputMode ? "28px 0 220px" : "28px 0", position: "relative" }}>
         <div
           style={{
             width: "100%",
@@ -2184,6 +2172,29 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
         </div>
         </div>
+
+        {isInitialInputMode && (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: `calc(${hasMobileSidebarButton ? "16px" : "24px"} + env(safe-area-inset-bottom))`,
+              zIndex: 30,
+            }}
+          >
+            <ChatInputCentered
+              value={inputValue}
+              onChange={onInputChange}
+              onSubmit={onSubmit}
+              onMemoSubmit={onMemoSubmit}
+              isLoading={isLoading}
+              provider={provider}
+              onProviderChange={onProviderChange}
+              displayName={displayName}
+            />
+          </div>
+        )}
 
         {shouldShowFooter && (
           <div
