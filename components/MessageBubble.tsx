@@ -2,7 +2,7 @@
 
 import MarkdownRenderer from "./MarkdownRenderer";
 import { Message, MessageNote } from "@/types";
-import { MODEL_CONFIG } from "./ChatInput";
+import { MODEL_CONFIG, loadModel } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -108,11 +108,13 @@ function MessageBubble({
   const [editRegenMode, setEditRegenMode] = useState<"branch" | "light">("branch");
   const [editRegenProvider, setEditRegenProvider] = useState<"claude" | "gemini" | "openai">("claude");
   const [editRegenModelId, setEditRegenModelId] = useState<string | undefined>(undefined);
+  const [editRegenOpenModelProvider, setEditRegenOpenModelProvider] = useState<"claude" | "gemini" | "openai" | null>(null);
   const USER_COLLAPSE_THRESHOLD = 128;
   const shouldCollapseUserMessage = isUser && !isMemo && !isImageGen;
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [needsCollapse, setNeedsCollapse] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const editRegenModelMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
@@ -131,6 +133,27 @@ function MessageBubble({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!editRegenOpenModelProvider) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        editRegenModelMenuRef.current &&
+        !editRegenModelMenuRef.current.contains(event.target as Node)
+      ) {
+        setEditRegenOpenModelProvider(null);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setEditRegenOpenModelProvider(null);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [editRegenOpenModelProvider]);
 
   const showContextTrigger = isTouchDevice || isContainerHovered;
 
@@ -1228,33 +1251,112 @@ function MessageBubble({
               <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
                 送信先
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {(Object.keys(MODEL_CONFIG) as Array<keyof typeof MODEL_CONFIG>)
-                  .filter(k => k !== "image_gen")
-                  .map((providerKey) => {
-                    const config = MODEL_CONFIG[providerKey];
-                    return config.models.map((model) => {
-                      const isSelected = editRegenProvider === providerKey && editRegenModelId === model.id;
+              <div ref={editRegenModelMenuRef} style={{ position: "relative" }}>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {(["claude", "gemini", "openai"] as const).map((p) => {
+                    const config = MODEL_CONFIG[p];
+                    const selectedLabel = editRegenProvider === p
+                      ? config.models.find((m) => m.id === editRegenModelId)?.label ?? null
+                      : null;
+                    const isActive = editRegenProvider === p;
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => {
+                          setEditRegenProvider(p);
+                          setEditRegenModelId(loadModel(p));
+                          setEditRegenOpenModelProvider((current) => (current === p ? null : p));
+                        }}
+                        style={{
+                          padding: "4px 12px",
+                          borderRadius: "20px",
+                          border: "1px solid",
+                          borderColor: isActive ? "var(--accent)" : "var(--border)",
+                          background: isActive ? "var(--accent)" : "white",
+                          color: isActive ? "white" : "var(--ink-muted)",
+                          fontSize: "11px",
+                          fontFamily: "'JetBrains Mono', monospace",
+                          cursor: "pointer",
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        {config.label}
+                        {selectedLabel ? ` · ${selectedLabel}` : ""}
+                        {" ▾"}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {editRegenOpenModelProvider && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      bottom: "calc(100% + 6px)",
+                      zIndex: 50,
+                      background: "white",
+                      border: "1px solid var(--border)",
+                      borderRadius: "10px",
+                      padding: "8px",
+                      minWidth: "200px",
+                      maxHeight: "240px",
+                      overflowY: "auto",
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <div style={{ fontSize: "10px", color: "var(--ink-faint)", padding: "0 4px 6px", fontFamily: "'JetBrains Mono', monospace" }}>
+                      {MODEL_CONFIG[editRegenOpenModelProvider].label} のモデルを選択
+                    </div>
+                    {MODEL_CONFIG[editRegenOpenModelProvider].models.map((m) => {
+                      const isSelected = editRegenProvider === editRegenOpenModelProvider && editRegenModelId === m.id;
                       return (
                         <button
-                          key={model.id}
+                          key={m.id}
+                          type="button"
                           onClick={() => {
-                            setEditRegenProvider(providerKey as "claude" | "gemini" | "openai");
-                            setEditRegenModelId(model.id);
+                            setEditRegenProvider(editRegenOpenModelProvider);
+                            setEditRegenModelId(m.id);
+                            setEditRegenOpenModelProvider(null);
                           }}
                           style={{
-                            padding: "4px 10px", borderRadius: "6px", fontSize: "11px",
-                            fontFamily: "'JetBrains Mono', monospace", cursor: "pointer",
-                            border: isSelected ? "1px solid var(--accent)" : "1px solid var(--border)",
-                            background: isSelected ? "var(--accent)" : "white",
-                            color: isSelected ? "white" : "var(--ink-muted)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            width: "100%",
+                            padding: "6px 10px",
+                            borderRadius: "6px",
+                            border: "none",
+                            background: isSelected ? "rgba(196,98,45,0.1)" : "transparent",
+                            color: isSelected ? "var(--accent)" : "var(--ink)",
+                            fontSize: "12px",
+                            fontFamily: "'JetBrains Mono', monospace",
+                            textAlign: "left",
+                            cursor: "pointer",
                           }}
                         >
-                          {model.label}
+                          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ display: "inline-block", width: "1.2em" }}>
+                              {isSelected ? "●" : ""}
+                            </span>
+                            {m.label}
+                          </span>
+                          <span style={{
+                            fontSize: "10px",
+                            color: isSelected ? "var(--accent)" : "var(--ink-muted)",
+                            background: isSelected ? "rgba(196,98,45,0.08)" : "#f3f4f6",
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            border: `0.5px solid ${isSelected ? "rgba(196,98,45,0.2)" : "var(--border)"}`,
+                          }}>
+                            {m.badge}
+                          </span>
                         </button>
                       );
-                    });
-                  })}
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
