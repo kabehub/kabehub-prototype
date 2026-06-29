@@ -412,6 +412,8 @@ export default function ChatInputCentered({
         padding: "0 clamp(12px, 3vw, 24px)",
         boxSizing: "border-box",
         position: "relative",
+        background: "linear-gradient(to bottom, transparent 0%, var(--chat-bg) 28%)",
+        paddingTop: "32px",
       }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
