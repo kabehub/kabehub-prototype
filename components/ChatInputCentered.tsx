@@ -159,9 +159,10 @@ export default function ChatInputCentered({
     setSelectedModel(loadModel(nextProvider));
   };
 
-  const handleModelChange = (modelId: ModelId) => {
+  const handleModelChange = (targetProvider: Provider, modelId: ModelId) => {
     setSelectedModel(modelId);
-    saveModel(activeProvider, modelId);
+    saveModel(targetProvider, modelId);
+    setOpenModelProvider(null);
   };
 
   const processFiles = async (files: FileList | File[]) => {
@@ -491,7 +492,7 @@ export default function ChatInputCentered({
                         handleProviderChange(p);
                         setIsToolMenuOpen(false);
 
-                        if (!isMobile || !hasModels) {
+                        if (!hasModels) {
                           setOpenModelProvider(null);
                           return;
                         }
@@ -510,13 +511,24 @@ export default function ChatInputCentered({
                         flex: "0 0 auto",
                       }}
                     >
-                      {MODEL_CONFIG[p].label}{isMobile && hasModels ? " ▾" : ""}
+                      {(() => {
+                        const selectedLabel = activeProvider === p
+                          ? MODEL_CONFIG[p].models.find((m) => m.id === selectedModel)?.label ?? null
+                          : null;
+                        return (
+                          <>
+                            {MODEL_CONFIG[p].label}
+                            {!isMobile && selectedLabel ? ` · ${selectedLabel}` : ""}
+                            {hasModels ? " ▾" : ""}
+                          </>
+                        );
+                      })()}
                     </button>
                   );
                 })}
               </div>
 
-              {isMobile && openModelProvider && (
+              {openModelProvider && (
                 <div
                   style={{
                     position: "absolute",
@@ -544,8 +556,7 @@ export default function ChatInputCentered({
                       key={model.id}
                       type="button"
                       onClick={() => {
-                        handleModelChange(model.id);
-                        setOpenModelProvider(null);
+                        handleModelChange(openModelProvider, model.id);
                       }}
                       style={{
                         display: "block",
@@ -569,32 +580,6 @@ export default function ChatInputCentered({
                 </div>
               )}
             </div>
-
-            {!isMobile && (
-              <div className="mobile-scroll-row" style={{ display: "flex", gap: "6px" }}>
-                {MODEL_CONFIG[activeProvider].models.map((model) => (
-                  <button
-                    key={model.id}
-                    type="button"
-                    onClick={() => handleModelChange(model.id)}
-                    title={model.badge}
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: "6px",
-                      border: `1px solid ${selectedModel === model.id ? "var(--accent)" : "var(--border)"}`,
-                      background: selectedModel === model.id ? "rgba(196,98,45,0.12)" : "transparent",
-                      color: selectedModel === model.id ? "var(--accent)" : "var(--ink-muted)",
-                      fontSize: "11px",
-                      fontFamily: "'JetBrains Mono', monospace",
-                      cursor: "pointer",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    {model.label}
-                  </button>
-                ))}
-              </div>
-            )}
 
             {githubPanelOpen && (
               <div style={{ marginBottom: "8px" }}>

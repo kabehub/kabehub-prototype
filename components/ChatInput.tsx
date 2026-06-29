@@ -309,9 +309,10 @@ export default function ChatInput({
     };
   }, [openModelProvider]);
 
-  const handleModelChange = (modelId: ModelId) => {
+  const handleModelChange = (targetProvider: Provider, modelId: ModelId) => {
     setSelectedModel(modelId);
-    saveModel(provider, modelId);
+    saveModel(targetProvider, modelId);
+    setOpenModelProvider(null);
   };
 
   useEffect(() => {
@@ -716,7 +717,7 @@ export default function ChatInput({
           {/* プロバイダー選択 */}
           {(["claude", "gemini", "openai", "image_gen"] as const).map((p) => {
             const models = MODEL_CONFIG[p]?.models ?? [];
-            const hasModels = p !== "image_gen" && models.length > 0;
+            const hasModels = models.length > 0;
 
             return (
               <button
@@ -726,7 +727,7 @@ export default function ChatInput({
                   onProviderChange(p);
                   setIsToolMenuOpen(false);
 
-                  if (!isMobile || !hasModels) {
+                  if (!hasModels) {
                     setOpenModelProvider(null);
                     return;
                   }
@@ -748,13 +749,24 @@ export default function ChatInput({
                   flex: "0 0 auto",
                 }}
               >
-                {PROVIDER_LABELS[p]}{isMobile && hasModels ? " ▾" : ""}
+                {(() => {
+                  const selectedLabel = provider === p
+                    ? MODEL_CONFIG[p].models.find((m) => m.id === selectedModel)?.label ?? null
+                    : null;
+                  return (
+                    <>
+                      {PROVIDER_LABELS[p]}
+                      {!isMobile && selectedLabel ? ` · ${selectedLabel}` : ""}
+                      {hasModels ? " ▾" : ""}
+                    </>
+                  );
+                })()}
               </button>
             );
           })}
         </div>
 
-        {isMobile && openModelProvider && (
+        {openModelProvider && (
           <div
             style={{
               position: "absolute",
@@ -786,8 +798,7 @@ export default function ChatInput({
                   type="button"
                   onClick={() => {
                     if (isImg2imgDisabled) return;
-                    handleModelChange(m.id);
-                    setOpenModelProvider(null);
+                    handleModelChange(openModelProvider, m.id);
                   }}
                   disabled={isImg2imgDisabled}
                   style={{
@@ -814,44 +825,6 @@ export default function ChatInput({
           </div>
         )}
       </div>
-
-      {!isMobile && (
-        <div className="mobile-scroll-row" style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
-          {/* モデル選択（現在のプロバイダーのモデルのみ表示） */}
-          {MODEL_CONFIG[provider].models.map((m) => {
-            const isImg2imgDisabled = (!!imageRefId || !!imageRefUpload) && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro")
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => !isImg2imgDisabled && handleModelChange(m.id)}
-                title={isImg2imgDisabled ? "このモデルはimg2imgに非対応です" : m.badge}
-                disabled={isImg2imgDisabled}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "20px",
-                  border: "1px solid",
-                  borderColor: isImg2imgDisabled ? "var(--border)" : selectedModel === m.id ? "var(--accent)" : "var(--border)",
-                  background: isImg2imgDisabled ? "transparent" : selectedModel === m.id ? "rgba(196,98,45,0.12)" : "transparent",
-                  color: isImg2imgDisabled ? "var(--ink-faint)" : selectedModel === m.id ? "var(--accent)" : "var(--ink-muted)",
-                  fontSize: "10px",
-                  fontFamily: "'JetBrains Mono', monospace",
-                  cursor: isImg2imgDisabled ? "not-allowed" : "pointer",
-                  transition: "all 0.15s",
-                  letterSpacing: "0.03em",
-                  opacity: isImg2imgDisabled ? 0.4 : 1,
-                  flex: "0 0 auto",
-                }}
-              >
-                {m.label}
-                {m.badge === "高性能" && !isImg2imgDisabled && (
-                  <span style={{ marginLeft: "3px", fontSize: "8px", opacity: 0.7 }}>↑</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
 
       {/* 画像コンテキストピル */}
       {imageContextId && (
