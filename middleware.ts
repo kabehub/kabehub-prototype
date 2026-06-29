@@ -27,16 +27,25 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
+  // リダイレクト時も res に書き込まれた最新の認証Cookieを引き継ぐ
+  const redirectWithCookies = (url: URL) => {
+    const redirect = NextResponse.redirect(url);
+    res.cookies.getAll().forEach((cookie) => {
+      redirect.cookies.set(cookie);
+    });
+    return redirect;
+  };
+
   // 未ログインかつ保護ページへのアクセス → /login へリダイレクト
   if (!user && pathname !== "/login" && pathname !== "/auth/callback") {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return redirectWithCookies(loginUrl);
   }
 
   // ログイン済みで /login にアクセスしたら / へリダイレクト
   if (user && pathname === "/login") {
-    return NextResponse.redirect(new URL("/", req.url));
+    return redirectWithCookies(new URL("/", req.url));
   }
 
   return res;
