@@ -412,8 +412,6 @@ export default function ChatInputCentered({
         padding: "0 clamp(12px, 3vw, 24px)",
         boxSizing: "border-box",
         position: "relative",
-        background: "linear-gradient(to bottom, transparent 0%, var(--chat-bg) 28%)",
-        paddingTop: "32px",
       }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -441,20 +439,33 @@ export default function ChatInputCentered({
         </div>
       )}
 
-      <div style={{ width: "min(720px, 100%)", margin: "0 auto" }}>
-        <h2
+      <div style={{ position: "relative" }}>
+        {/* グラデーションを内側カードの幅に合わせて適用 */}
+        <div
           style={{
-            margin: "0 0 18px",
-            fontFamily: "'Lora', serif",
-            fontSize: "clamp(24px, 3vw, 36px)",
-            fontWeight: 500,
-            color: "var(--ink)",
-            textAlign: "center",
-            lineHeight: 1.35,
+            position: "absolute",
+            top: "-32px",
+            left: 0,
+            right: 0,
+            height: "32px",
+            background: "linear-gradient(to bottom, transparent 0%, var(--chat-bg) 100%)",
+            pointerEvents: "none",
           }}
-        >
-          {displayName?.trim() || "ユーザー"}さん、壁打ちを始めましょう
-        </h2>
+        />
+        <div style={{ width: "min(720px, 100%)", margin: "0 auto" }}>
+          <h2
+            style={{
+              margin: "0 0 18px",
+              fontFamily: "'Lora', serif",
+              fontSize: "clamp(24px, 3vw, 36px)",
+              fontWeight: 500,
+              color: "var(--ink)",
+              textAlign: "center",
+              lineHeight: 1.35,
+            }}
+          >
+            {displayName?.trim() || "ユーザー"}さん、壁打ちを始めましょう
+          </h2>
 
         <div
           style={{
@@ -1040,6 +1051,7 @@ export default function ChatInputCentered({
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }
