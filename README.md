@@ -57,9 +57,13 @@ KabeHubの裏コンセプトは「おまえのものはおまえのもの」で�
 |⚔️ **AI闘技場**|複数のAIを対戦させてバトル。三つ巴・人間乱入・観戦URL・タイムトラベルに対応|
 |🌐 **explore**|他のユーザーの公開壁打ちを検索・閲覧・引継ぎできます|
 |🎭 **なりきりモード**|AIにキャラ名とアイコンを設定。LINEライクなUIで会話できます（非公開専用）|
-|📁 **プロジェクト機能**|フォルダ単位でデフォルトのシステムプロンプトを設定できます|
-|🖼️ **画像アップロード**|PNG / JPEG / GIF / WebP を添付して送信できます（Claude・Gemini・ChatGPT対応）|
+|📁 **プロジェクト機能**|フォルダ単位でデフォルトのシステムプロンプトを設定できます。小説執筆用のLore Book（設定集）自動注入にも対応|
+|🖼️ **画像アップロード・生成**|PNG / JPEG / GIF / WebP を添付して送信できます（Claude・Gemini・ChatGPT対応）。Gemini / OpenAI / Ideogram / Flux による画像生成、img2imgにも対応|
+|🌳 **分岐（Branching）**|会話の任意の地点から別の展開に分岐して試せます。分岐履歴レール・分岐ツリー可視化つき|
+|🧠 **AI記憶（RAG / Memory）**|過去の会話から重要な情報を自動抽出・保存し、必要な場面で自動的に参照します。手動編集・固定・類似記憶の統合機能つき|
+|🐙 **GitHub連携**|会話中にGitHubの公開ファイルを一時添付。プロジェクト単位でファイルをピン留めしてAIに常時参照させることも可能|
 |⚡ **ストリーミング**|AIの回答をリアルタイムで逐次表示。Escキーでいつでも中断できます|
+|📱 **スマホ対応**|サイドバードロワー・入力欄ドロップアップなどスマホ向けUIに対応（iPhone実機検証は継続中）|
 |🔒 **セルフホスト**|自分のAPIキーで動かします。データはあなた自身のSupabaseに入ります|
 
 ---
@@ -79,9 +83,11 @@ KabeHubの裏コンセプトは「おまえのものはおまえのもの」で�
 |フロントエンド|Next.js 14 (App Router) + React + Tailwind CSS|
 |データベース|Supabase (PostgreSQL) + RLS|
 |認証|Supabase Auth（Google OAuth）|
-|AI (メイン)|Anthropic Claude API（claude-sonnet-4-5 / claude-sonnet-4-6）|
-|AI (サブ1)|Google Gemini API（gemini-2.5-flash / gemini-2.5-pro）|
-|AI (サブ2)|OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5）|
+|AI (メイン)|Anthropic Claude API（claude-fable-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-5 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5）|
+|AI (サブ1)|Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite）|
+|AI (サブ2)|OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro）|
+|画像生成|Gemini（gemini-2.5-flash-image）/ OpenAI（gpt-image-2）/ Ideogram（ideogram-v3）/ OpenRouter経由Flux（flux.2-pro）|
+|Embedding|OpenAI text-embedding-3-small（AI記憶・RAG機能で使用）|
 |デプロイ|Vercel|
 
 ---
@@ -125,6 +131,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ### Supabaseのセットアップ
 
 詳細なSQLは [`docs/schema.sql`](docs/schema.sql) を参照してください。
+※現時点でこのファイルは開発初期のスキーマスナップショットのままとなっており、最新のテーブル構成（AI記憶・分岐機能・GitHub連携等）を完全には反映していません。最新化対応中です。
 
 ---
 
@@ -141,11 +148,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 * [x] ストリーミング対応・Escキャンセル
 * [x] なりきりモード（LINEライクUI・非公開専用）
 * [x] プロジェクト機能（フォルダ単位システムプロンプト）
-* [x] 画像アップロード（PNG / JPEG / GIF / WebP・Claude / Gemini / ChatGPT対応）
+* [x] 画像アップロード・画像生成（PNG / JPEG / GIF / WebP・Gemini / OpenAI / Ideogram / Flux）
 * [x] Prompt Caching対応（Claude）
-* [x] GPT-5系モデル対応（gpt-5.4-mini / gpt-5.4 / gpt-5.5）
-* [ ] Branching Mode
+* [x] Branching Mode（分岐履歴レール・分岐ツリー可視化）
+* [x] AI記憶機能（RAG・自動抽出・類似記憶統合・Dreamingバッチ）
+* [x] GitHub連携（一時添付・プロジェクト単位ピン留め・AI動的探索）
+* [x] スマホ向けUI対応（サイドバードロワー・入力欄改善。iPhone実機検証は継続中）
+* [ ] PWA対応・スマホアプリ化
 * [ ] マネタイズ（おまかせプラン・クレジット制）
+* [ ] 検索の `pg_bigm` を使った Full-Text Search 化
 
 ---
 
@@ -161,7 +172,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 特に以下の領域について、つよつよエンジニアさんのお知恵を求めています！
 
 * 検索の `pg_bigm` を使った Full-Text Search 化
-* 会話ログのツリー構造化（Branching Mode）のUI設計
+* スマホアプリ化（Capacitor想定）の設計・実装
 * その他もろもろセキュリティ面や機能追加など
 
 完成形には程遠いので、皆様の知恵とお力をいただけると大変ありがたいです。
