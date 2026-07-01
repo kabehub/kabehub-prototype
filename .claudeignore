@@ -9,6 +9,10 @@ npm-debug.log*
 
 # 過去のマイグレーション（参照は docs/schema.sql だけで十分）
 docs/v63_migration.sql
+docs/v89_migration.sql
+docs/migration_v119_github_oauth.sql
+docs/migration_v120_github_phase4.sql
+docs/v78_mcp_tokens_migration.sql
 
 # OS・エディタ
 .DS_Store
