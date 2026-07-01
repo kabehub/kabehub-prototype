@@ -17,6 +17,9 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // ── Claude ──────────────────────────────────────────────
   "claude-fable-5":         { inputPerMTok: 10.00, outputPerMTok: 50.00 },
   "claude-opus-4":          { inputPerMTok: 5.00,  outputPerMTok: 25.00 },
+  // ⚠️ claude-sonnet-5 導入価格(〜2026/8/31): $2/$10。2026/9/1以降は $3/$15 に変更すること。
+  // getPricing()で日付チェックによる自動切り替えを実装済み。
+  "claude-sonnet-5":        { inputPerMTok: 2.00,  outputPerMTok: 10.00 },
   "claude-sonnet-4":        { inputPerMTok: 3.00,  outputPerMTok: 15.00 },
   "claude-haiku-4":         { inputPerMTok: 1.00,  outputPerMTok:  5.00 },
   "claude-haiku-3.5":       { inputPerMTok: 0.80,  outputPerMTok:  4.00 },
@@ -57,6 +60,13 @@ function normalizeModelId(modelId: string): string {
  */
 export function getPricing(modelId: string): ModelPricing | null {
   const normalized = normalizeModelId(modelId);
+
+  // claude-sonnet-5 は2026-08-31まで導入価格、以降は通常価格
+  if (normalized.startsWith("claude-sonnet-5")) {
+    return new Date() < new Date("2026-09-01")
+      ? { inputPerMTok: 2.00, outputPerMTok: 10.00 }
+      : { inputPerMTok: 3.00, outputPerMTok: 15.00 };
+  }
 
   if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];
 

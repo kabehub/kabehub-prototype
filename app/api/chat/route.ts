@@ -49,10 +49,18 @@ const CLAUDE_MODEL_IDS = [
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
+  "claude-sonnet-5",
   "claude-sonnet-4-5",
   "claude-sonnet-4-6",
   "claude-haiku-4-5-20251001",
 ] as const satisfies readonly ClaudeModel[];
+
+// Extended Thinking非対応モデル（Adaptive Thinkingが常時適用されるため別扱い）
+const THINKING_UNSUPPORTED_MODELS: readonly string[] = [
+  "claude-haiku-4-5-20251001",
+  "claude-fable-5",
+  "claude-sonnet-5",
+];
 const GEMINI_MODEL_IDS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite"] as const satisfies readonly GeminiModel[];
 const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"] as const satisfies readonly OpenAIModel[];
 
@@ -1110,7 +1118,8 @@ export async function POST(req: NextRequest) {
         });
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, isDeepThinking ?? false, trimResult.cacheAnchorIndex);
+      const effectiveDeepThinking = (isDeepThinking ?? false) && !THINKING_UNSUPPORTED_MODELS.includes(resolvedModelId);
+      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, effectiveDeepThinking, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {
         return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
