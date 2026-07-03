@@ -1273,6 +1273,47 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (isTemporary) {
+    let content = "";
+    const reader = aiStream.getReader();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (isDeepThinking) {
+          try {
+            const inner = JSON.parse(value.trimEnd());
+            if (inner.kind === "text") {
+              content += inner.text;
+            }
+          } catch { /* 分割チャンクは無視 */ }
+        } else {
+          content += value;
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "不明なエラー";
+      content = `\n\n（エラー: ${msg}）`;
+    } finally {
+      reader.releaseLock();
+    }
+
+    const assistantMessage = {
+      id: assistantMessageId,
+      thread_id: threadId,
+      role: "assistant" as const,
+      content,
+      provider: usedProvider,
+      created_at: new Date().toISOString(),
+    };
+
+    return new Response(JSON.stringify({ userMessage, assistantMessage }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // ─── ストリーミングレスポンス構築 ───────────────────────────────────────
   const now = new Date().toISOString();
 
