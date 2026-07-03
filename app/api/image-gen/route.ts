@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
 import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
+import { isOwnedStoragePath } from '@/lib/storage-path-guard'
 
 const ALLOWED_GEMINI_IMAGE_MODELS = [
   'gemini-2.5-flash-image',
@@ -194,33 +195,52 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'imageRefIdを使用する場合はthreadIdが必要です' }, { status: 400 })
   }
 
+  // 認証を処理の先頭に移動：threadIdの有無にかかわらず、外部AI APIを呼ぶ前に本人確認を済ませる
+  const supabaseRes = NextResponse.next()
+  const supabase = createRouteHandlerSupabaseClient(req, supabaseRes)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+  }
+  const userId = user.id
+
+  // thread所有確認も先頭に移動：外部AI APIを呼ぶ前にthreadIdが本人所有か確認する
+  if (threadId) {
+    const { data: thread, error: threadError } = await supabase
+      .from('threads')
+      .select('id')
+      .eq('id', threadId)
+      .eq('user_id', userId)
+      .single()
+
+    if (threadError || !thread) {
+      return NextResponse.json({ error: 'スレッドが見つかりません' }, { status: 404 })
+    }
+  }
+
   let imageInput: ImageInput | undefined
 
-  // Supabaseクライアントは imageRefId または threadId があれば必要
-  const supabaseRes = NextResponse.next()
-  const supabase = (imageRefId || threadId)
-    ? createRouteHandlerSupabaseClient(req, supabaseRes)
-    : null
-
   if (imageRefId) {
-    const { data: refMessage, error: refError } = await supabase!
+    const { data: refMessage, error: refError } = await supabase
       .from('messages')
       .select('metadata')
       .eq('id', imageRefId)
+      .eq('user_id', userId)
       .single()
 
-    if (refError || !refMessage?.metadata?.storagePath) {
+    const refStoragePath = refMessage?.metadata?.storagePath
+    if (refError || !isOwnedStoragePath(refStoragePath, userId)) {
       return NextResponse.json({ error: '参照画像が見つかりません' }, { status: 404 })
     }
 
-    const downloaded = await downloadImageAsBase64(supabase!, refMessage.metadata.storagePath)
+    const downloaded = await downloadImageAsBase64(supabase, refStoragePath)
     if (!downloaded) {
       return NextResponse.json({ error: '参照画像のダウンロードに失敗しました' }, { status: 500 })
     }
 
     imageInput = {
       base64: downloaded.base64,
-      mimeType: (refMessage.metadata.mimeType as string) || downloaded.mimeType,
+      mimeType: (refMessage?.metadata?.mimeType as string) || downloaded.mimeType,
     }
   } else if (imageRefUpload) {
     imageInput = {
@@ -244,22 +264,16 @@ export async function POST(req: NextRequest) {
 
   const { imageData, mimeType } = handlerResult.result
 
-  // threadId なし → 従来通り imageData/mimeType のみ返す
+  // threadId なし → 従来通り imageData/mimeType のみ返す（認証は先頭で確認済み）
   if (!threadId) {
     return NextResponse.json({ imageData, mimeType })
   }
 
-  // threadId あり → 認証チェック → Storage アップロード → DB保存
-  const { data: { user } } = await supabase!.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
-  }
-
-  const userId = user.id
+  // threadId は先頭で本人所有を確認済み。Storage アップロード → DB保存へ進む
   const storagePath = `${userId}/${threadId}/${crypto.randomUUID()}.png`
 
   const buffer = Buffer.from(imageData, 'base64')
-  const { error: uploadError, data: uploadData } = await supabase!.storage
+  const { error: uploadError, data: uploadData } = await supabase.storage
     .from('generated-images')
     .upload(storagePath, buffer, { contentType: mimeType })
 
@@ -270,7 +284,7 @@ export async function POST(req: NextRequest) {
   // TODO: sharp による WebP 圧縮対応（現在は未圧縮のままアップロード）
 
   const actualPath = uploadData?.path ?? storagePath
-  const { data: message, error: dbError } = await supabase!
+  const { data: message, error: dbError } = await supabase
     .from('messages')
     .insert({
       thread_id: threadId,
