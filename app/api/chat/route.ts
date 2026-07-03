@@ -99,6 +99,17 @@ function isOpenAIModel(modelId: string): modelId is OpenAIModel {
   return (OPENAI_MODEL_IDS as readonly string[]).includes(modelId);
 }
 
+// TODO: T-03/T-09で lib/storage-path-guard.ts に移管する
+function isOwnedStoragePath(path: unknown, userId: string): path is string {
+  return (
+    typeof path === "string" &&
+    path.startsWith(`${userId}/`) &&
+    !path.startsWith("/") &&
+    !path.includes("..") &&
+    !path.includes("\\")
+  );
+}
+
 // ─── ストリーミング版 callClaude ─────────────────────────────────────────────
 // ReadableStream<string> を返す。各chunkは生テキスト断片。
 // onDone(fullText, cacheStats) は完了時コールバック。
@@ -517,11 +528,71 @@ export async function POST(req: NextRequest) {
   if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   const userId = user.id;
 
+  let requestBody: {
+    threadId?: unknown;
+    messages?: ChatMessage[];
+    userContent?: unknown;
+    provider?: unknown;
+    modelId?: ModelId;
+    isRegenerate?: boolean;
+    isMemo?: boolean;
+    systemPrompt?: string;
+    isTemporary?: boolean;
+    attachedImages?: { base64: string; mediaType: string }[];
+    isDeepThinking?: boolean;
+    imageContextId?: unknown;
+    branchEdit?: { baseUserMessageId?: string };
+    regenerateMode?: string;
+    targetMessageId?: string;
+    targetUserMessageId?: string;
+  };
+
+  try {
+    requestBody = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "リクエストの形式が不正です" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const {
     threadId, messages, userContent, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
     imageContextId, branchEdit, regenerateMode, targetMessageId, targetUserMessageId,
-  } = await req.json();
+  } = requestBody;
+
+  const hasText = typeof userContent === "string" && userContent.trim().length > 0;
+  const hasAttachedImage = Array.isArray(attachedImages) && attachedImages.length > 0;
+  const hasImageContext = typeof imageContextId === "string" && imageContextId.length > 0;
+
+  if (typeof userContent !== "string") {
+    return new Response(JSON.stringify({ error: "メッセージ内容が不正です" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (!hasText && !hasAttachedImage && !hasImageContext) {
+    return new Response(JSON.stringify({ error: "メッセージ内容が空です" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (!isTemporary && (typeof threadId !== "string" || threadId.length === 0)) {
+    return new Response(JSON.stringify({ error: "threadIdが不正です" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (provider !== "claude" && provider !== "gemini" && provider !== "openai") {
+    return new Response(JSON.stringify({ error: "未対応のプロバイダーです" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   // ── Rate limiting ───────────────────────────────────────────────────────────
   if (!isTemporary && !isMemo) {
@@ -563,8 +634,44 @@ export async function POST(req: NextRequest) {
   let githubAccessToken: string | null = null;
 
   if (!isTemporary) {
-    const { data: thread } = await supabase
-      .from('threads').select('folder_name, user_id').eq('id', threadId).single();
+    let { data: thread } = await supabase
+      .from('threads')
+      .select('folder_name, user_id')
+      .eq('id', threadId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!thread) {
+      const title = userContent.slice(0, 20) + (userContent.length > 20 ? "…" : "");
+      const { error: threadUpsertError } = await supabase.from("threads").upsert(
+        { id: threadId, title, user_id: userId },
+        { onConflict: "id", ignoreDuplicates: true }
+      );
+
+      if (threadUpsertError) {
+        return new Response(JSON.stringify({ error: threadUpsertError.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: confirmedThread } = await supabase
+        .from('threads')
+        .select('folder_name, user_id')
+        .eq('id', threadId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!confirmedThread) {
+        return new Response(JSON.stringify({ error: "スレッドが見つかりません" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      thread = confirmedThread;
+    }
+
     currentFolderName = thread?.folder_name ?? null;
     if (thread?.folder_name) {
       const { data: folderSetting } = await supabase
@@ -583,15 +690,6 @@ export async function POST(req: NextRequest) {
         loreEnabled = true;
       }
     }
-  }
-
-  // スレッド作成
-  if (!isTemporary) {
-    const title = userContent.slice(0, 20) + (userContent.length > 20 ? "…" : "");
-    await supabase.from("threads").upsert(
-      { id: threadId, title, user_id: userId },
-      { onConflict: "id", ignoreDuplicates: true }
-    );
   }
 
   const isLightRegenerate = regenerateMode === "light" && !!targetMessageId;
@@ -674,6 +772,7 @@ export async function POST(req: NextRequest) {
         .from("messages")
         .select("id, message_number, branch_root_id, branch_index, is_active")
         .eq("id", branchEdit.baseUserMessageId)
+        .eq("thread_id", threadId)
         .eq("user_id", userId)
         .single();
 
@@ -758,10 +857,17 @@ export async function POST(req: NextRequest) {
           is_active: true,
         };
 
-        await supabase
+        const { error: insertError } = await supabase
           .from("messages")
           .insert(insertMessage)
           .select();
+
+        if (insertError) {
+          return new Response(JSON.stringify({ error: insertError.message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
         branchEditMeta = {
           branch_root_id: branchRootId,
@@ -806,7 +912,7 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      await supabase.from("messages").insert({
+      const { error: insertError } = await supabase.from("messages").insert({
         id: userMessage.id,
         thread_id: threadId,
         role: "user",
@@ -818,6 +924,13 @@ export async function POST(req: NextRequest) {
           branch_index: branchEditMeta.branch_index,
         } : {}),
       });
+
+      if (insertError) {
+        return new Response(JSON.stringify({ error: insertError.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
   }
 
@@ -947,6 +1060,7 @@ export async function POST(req: NextRequest) {
         .from('messages')
         .select('content, metadata')
         .eq('id', imageContextId)
+        .eq('user_id', userId)
         .single()
 
       const storagePath = imgMsg?.metadata?.storagePath
@@ -954,25 +1068,29 @@ export async function POST(req: NextRequest) {
       const originalPrompt = imgMsg?.content ?? ''
 
       if (storagePath && !imgMsg?.metadata?.image_deleted) {
-        const { data: blob } = await supabase.storage
-          .from('generated-images')
-          .download(storagePath)
+        if (!isOwnedStoragePath(storagePath, userId)) {
+          console.warn('[imageContextId] storagePathの所有権検証に失敗したため画像コンテキストをスキップします')
+        } else {
+          const { data: blob } = await supabase.storage
+            .from('generated-images')
+            .download(storagePath)
 
-        if (blob) {
-          const arrayBuffer = await blob.arrayBuffer()
-          const base64 = Buffer.from(arrayBuffer).toString('base64')
+          if (blob) {
+            const arrayBuffer = await blob.arrayBuffer()
+            const base64 = Buffer.from(arrayBuffer).toString('base64')
 
-          const contextBlock: ImageBlock = {
-            type: 'image',
-            source: { type: 'base64', media_type: mimeType, data: base64 },
-          }
-          // 既存の「最後のuserメッセージにimageBlocksを結合する」ロジックに乗せる
-          imageBlocksForApi.unshift(contextBlock)
+            const contextBlock: ImageBlock = {
+              type: 'image',
+              source: { type: 'base64', media_type: mimeType, data: base64 },
+            }
+            // 既存の「最後のuserメッセージにimageBlocksを結合する」ロジックに乗せる
+            imageBlocksForApi.unshift(contextBlock)
 
-          // 最後のuserメッセージに生成プロンプト文脈を付与
-          const lastMsg = messagesForApi[messagesForApi.length - 1]
-          if (lastMsg && lastMsg.role === 'user') {
-            lastMsg.content = `Review this image generated from prompt: "${originalPrompt}"\n\n${lastMsg.content}`
+            // 最後のuserメッセージに生成プロンプト文脈を付与
+            const lastMsg = messagesForApi[messagesForApi.length - 1]
+            if (lastMsg && lastMsg.role === 'user') {
+              lastMsg.content = `Review this image generated from prompt: "${originalPrompt}"\n\n${lastMsg.content}`
+            }
           }
         }
       }
@@ -1148,7 +1266,7 @@ export async function POST(req: NextRequest) {
       created_at: new Date().toISOString(),
     };
     if (!isTemporary) {
-      await saveAssistantMessage(supabase, threadId, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
+      await saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
     }
     return new Response(JSON.stringify({ userMessage, assistantMessage }), {
       headers: { "Content-Type": "application/json" },
@@ -1211,7 +1329,7 @@ export async function POST(req: NextRequest) {
     if (isTemporary) return true;
     const contentToSave = accumulatedText.replace(/^(\[.*?\]\n)+/, "");
     return await saveAssistantMessage(
-      supabaseClient, threadId, userId, contentToSave, usedProvider,
+      supabaseClient, threadId as string, userId, contentToSave, usedProvider,
       assistantMessageId, resolvedModelId,
       usageRef.input_tokens, usageRef.output_tokens,
       branchEditMeta,
