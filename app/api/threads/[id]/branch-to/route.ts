@@ -26,10 +26,12 @@ export async function POST(
 
   const sourceThreadId = params.id
 
+  // このAPIは本人所有スレッド専用。公開スレッドの複製は /api/share/[token]/fork を使うこと
   const { data: sourceThread, error: threadError } = await supabase
     .from('threads')
     .select('*')
     .eq('id', sourceThreadId)
+    .eq('user_id', user.id)
     .single()
 
   if (threadError || !sourceThread) {
@@ -40,6 +42,7 @@ export async function POST(
     .from('messages')
     .select('*')
     .eq('thread_id', sourceThreadId)
+    .eq('user_id', user.id)
     .order('created_at', { ascending: true })
 
   if (messagesError) {
@@ -117,10 +120,10 @@ export async function POST(
         message_number: index + 1,
         skip_learning: true,
         metadata: {
-          ...((message.metadata && typeof message.metadata === 'object') ? message.metadata : {}),
           copied_from_message_id: message.id,
           copied_from_thread_id: sourceThread.id,
           copied_by: 'branch_to',
+          ...(message.provider === 'image_gen' ? { image_deleted: true } : {}),
         },
       }
     })
