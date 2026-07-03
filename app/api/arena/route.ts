@@ -24,7 +24,7 @@ const CLAUDE_MODEL_IDS = [
   "claude-haiku-4-5-20251001",
 ] as const satisfies readonly ClaudeModel[];
 const GEMINI_MODEL_IDS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite"] as const satisfies readonly GeminiModel[];
-const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5"] as const satisfies readonly OpenAIModel[];
+const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"] as const satisfies readonly OpenAIModel[];
 
 function isClaudeModel(modelId: string): modelId is ClaudeModel {
   return (CLAUDE_MODEL_IDS as readonly string[]).includes(modelId);
