@@ -7,6 +7,14 @@ export async function GET(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";
   const target = searchParams.get("target") ?? "both"; // "title" | "message" | "both"
@@ -15,6 +23,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("threads")
       .select("*")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
     if (error) return NextResponse.json({ error }, { status: 500 });
     return NextResponse.json(data ?? []);
@@ -26,8 +35,8 @@ export async function GET(req: NextRequest) {
 
   if (target === "both") {
     const [titleRes, msgRes] = await Promise.all([
-      supabase.from("threads").select("id").ilike("title", pattern),
-      supabase.from("messages").select("id, thread_id").ilike("content", pattern),
+      supabase.from("threads").select("id").ilike("title", pattern).eq("user_id", user.id),
+      supabase.from("messages").select("id, thread_id").ilike("content", pattern).eq("user_id", user.id),
     ]);
     (titleRes.data ?? []).forEach((t) => threadIds.add(t.id));
     (msgRes.data ?? []).forEach((m) => {
@@ -36,10 +45,10 @@ export async function GET(req: NextRequest) {
       matchedMsgMap.set(m.thread_id, [...existing, m.id]);
     });
   } else if (target === "title") {
-    const { data } = await supabase.from("threads").select("id").ilike("title", pattern);
+    const { data } = await supabase.from("threads").select("id").ilike("title", pattern).eq("user_id", user.id);
     (data ?? []).forEach((t) => threadIds.add(t.id));
   } else if (target === "message") {
-    const { data } = await supabase.from("messages").select("id, thread_id").ilike("content", pattern);
+    const { data } = await supabase.from("messages").select("id, thread_id").ilike("content", pattern).eq("user_id", user.id);
     (data ?? []).forEach((m) => {
       threadIds.add(m.thread_id);
       const existing = matchedMsgMap.get(m.thread_id) ?? [];
@@ -55,6 +64,7 @@ export async function GET(req: NextRequest) {
     .from("threads")
     .select("*")
     .in("id", Array.from(threadIds))
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error }, { status: 500 });
