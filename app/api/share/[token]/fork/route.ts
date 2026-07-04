@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { maskSecretNotation } from "@/lib/stringUtils";
 
 export async function POST(
   req: NextRequest,
@@ -19,7 +20,7 @@ export async function POST(
   const adminSupabase = serviceRoleClient();
   const { data: sourceThread, error: threadError } = await adminSupabase
     .from("threads")
-    .select("id, title, is_public, allow_prompt_fork, system_prompt")
+    .select("id, title, is_public, allow_prompt_fork, system_prompt, hide_memos, shared_at")
     .eq("share_token", params.token)
     .single();
 
@@ -27,13 +28,38 @@ export async function POST(
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
   }
 
-  const { data: sourceMessages, error: messagesError } = await authSupabase
+  let sourceMessagesQuery = authSupabase
     .from("messages")
     .select("role, content, provider, created_at, is_hidden")
     .eq("thread_id", sourceThread.id)
+    .eq("is_hidden", false)
+    .neq("provider", "memo");
+
+  if (sourceThread.shared_at) {
+    sourceMessagesQuery = sourceMessagesQuery.lte("created_at", sourceThread.shared_at);
+  }
+
+  const { data: sourceMessages, error: messagesError } = await sourceMessagesQuery
     .order("created_at", { ascending: true });
 
   if (messagesError) {
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+
+  let hiddenCountQuery = authSupabase
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("thread_id", sourceThread.id)
+    .eq("is_hidden", true)
+    .neq("provider", "memo");
+
+  if (sourceThread.shared_at) {
+    hiddenCountQuery = hiddenCountQuery.lte("created_at", sourceThread.shared_at);
+  }
+
+  const { count: hiddenCount, error: hiddenCountError } = await hiddenCountQuery;
+
+  if (hiddenCountError) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 
@@ -56,20 +82,11 @@ export async function POST(
     return NextResponse.json({ error: "Failed to create thread" }, { status: 500 });
   }
 
-  let hiddenCount = 0;
-
   if ((sourceMessages ?? []).length > 0) {
     const newMessages = (sourceMessages ?? []).map((message) => {
-      let content = message.content.replace(/\[\[(.*?)\]\]/gs, "[redacted]");
-
-      if (message.is_hidden) {
-        content = "[This message was hidden in the shared thread]";
-        hiddenCount++;
-      }
-
       return {
         role: message.role,
-        content,
+        content: maskSecretNotation(message.content),
         provider: message.provider,
         thread_id: newThread.id,
         user_id: user.id,
@@ -94,6 +111,6 @@ export async function POST(
   return NextResponse.json({
     thread: newThread,
     prompt_forked: sourceThread.allow_prompt_fork,
-    hidden_count: hiddenCount,
+    hidden_count: hiddenCount ?? 0,
   });
 }

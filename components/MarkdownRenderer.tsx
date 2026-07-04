@@ -10,11 +10,6 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
-// [[テキスト]] → ████ に変換（share variant のみ）
-function applyMask(content: string): string {
-  return content.replace(/\[\[(.+?)\]\]/g, "████");
-}
-
 async function copyTextToClipboard(text: string): Promise<boolean> {
   if (navigator.clipboard && window.isSecureContext) {
     await navigator.clipboard.writeText(text);
@@ -196,9 +191,6 @@ export default function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const isShare = variant === "share";
 
-  // share variant のみマスク記法を適用
-  const processedContent = isShare ? applyMask(content) : content;
-
   const wrapperClass = [
     "prose prose-sm max-w-none",
     className,
@@ -322,7 +314,7 @@ export default function MarkdownRenderer({
           },
         }}
       >
-        {processedContent}
+        {content}
       </ReactMarkdown>
     </div>
   );

@@ -27,7 +27,6 @@ function ProviderLabel({ provider }: { provider: string }) {
 
 function ReadOnlyBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
-  const isMemo = message.provider === "memo";
 
   // is_hidden = true のメッセージはプレースホルダー表示
   if (message.is_hidden) {
@@ -55,17 +54,6 @@ function ReadOnlyBubble({ message }: { message: Message }) {
     );
   }
 
-  if (isMemo) {
-    return (
-      <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", marginBottom: "16px", width: "100%" }}>
-        <div style={{ width: "100%", maxWidth: "720px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: "8px", padding: "10px 16px", boxShadow: "none" }}>
-          <div style={{ fontSize: "11px", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#92400e", marginBottom: "6px", letterSpacing: "0.05em" }}>📝 MEMO</div>
-          <div style={{ fontSize: "14px", color: "#78350f", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{message.content}</div>
-        </div>
-      </div>
-    );
-  }
-
   if (isUser) {
     return (
       <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", marginBottom: "16px", width: "100%" }}>
@@ -81,7 +69,7 @@ function ReadOnlyBubble({ message }: { message: Message }) {
         }}>
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#888888", marginBottom: "6px", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>YOU</div>
           <div style={{ fontSize: "14px", color: "#111827", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
-          {message.content.replace(/\[\[(.+?)\]\]/g, "████")}
+          {message.content}
           </div>
         </div>
       </div>
@@ -94,7 +82,6 @@ function ReadOnlyBubble({ message }: { message: Message }) {
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
           <ProviderLabel provider={message.provider ?? "unknown"} />
         </div>
-        {/* variant="share" でマスク記法([[text]] → ████)が適用される */}
         <MarkdownRenderer content={message.content} variant="share" />
       </div>
     </div>
@@ -192,11 +179,11 @@ export default function SharePage({ params }: { params: { token: string } }) {
   try {
     const res = await fetch(`/api/share/${params.token}/fork`, { method: "POST" });
     if (!res.ok) throw new Error("フォーク失敗");
-    const { thread: newThread, hidden_count } = await res.json(); // ← hidden_count を追加
+    const { thread: newThread, hidden_count } = await res.json();
 
     // 非公開メッセージがあった場合はToast表示してから遷移
     if (hidden_count > 0) {
-      alert(`📋 会話を引き継ぎました\n🔒 ${hidden_count}件の非公開メッセージはプレースホルダーに置き換えられました`);
+      alert(`📋 会話を引き継ぎました\n🔒 ${hidden_count}件の非公開メッセージは含められませんでした`);
     }
 
     window.location.href = `/?fork=${newThread.id}`;
