@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 
 export async function DELETE(
   req: NextRequest,
@@ -55,12 +56,19 @@ export async function PATCH(
 
     const storagePath = existing?.metadata?.storagePath;
     if (storagePath) {
-      const { error: storageError } = await supabase.storage
-        .from("generated-images")
-        .remove([storagePath]);
-      if (storageError) {
-        console.error("Storage削除エラー:", JSON.stringify(storageError));
-        return NextResponse.json({ error: storageError.message }, { status: 500 });
+      if (isOwnedStoragePath(storagePath, user.id)) {
+        const { error: storageError } = await supabase.storage
+          .from("generated-images")
+          .remove([storagePath]);
+        if (storageError) {
+          console.error("Storage削除エラー:", JSON.stringify(storageError));
+          return NextResponse.json({ error: storageError.message }, { status: 500 });
+        }
+      } else {
+        console.warn("[delete_image] storagePath is outside user namespace; skipped storage.remove", {
+          messageId: params.id,
+          userId: user.id,
+        });
       }
     }
 

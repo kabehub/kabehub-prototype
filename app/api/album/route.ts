@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,30 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error }, { status: 500 });
 
-  const storagePaths = (messages ?? [])
-    .map((m: Record<string, unknown>) => (m.metadata as Record<string, unknown> | null)?.storagePath as string | null)
-    .filter((p): p is string => !!p);
+  const rawStoragePaths = (messages ?? []).map(
+    (m: Record<string, unknown>) =>
+      (m.metadata as Record<string, unknown> | null)?.storagePath
+  );
+
+  const checkedStoragePaths = rawStoragePaths.map((path) => ({
+    path,
+    isOwned: isOwnedStoragePath(path, user.id),
+  }));
+
+  const storagePaths = checkedStoragePaths
+    .filter((item): item is { path: string; isOwned: true } => item.isOwned)
+    .map((item) => item.path);
+
+  const skippedCount = checkedStoragePaths.filter(
+    (item) => Boolean(item.path) && !item.isOwned
+  ).length;
+
+  if (skippedCount > 0) {
+    console.warn("[album] skipped storagePaths outside user namespace", {
+      userId: user.id,
+      skippedCount,
+    });
+  }
 
   const signedUrls: Record<string, string> = {};
   if (storagePaths.length > 0) {
