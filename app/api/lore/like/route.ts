@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { serviceRoleClient } from "@/lib/mcp-auth";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(embedding))
     return NextResponse.json({ error: "Missing embedding" }, { status: 500 });
 
-  const { data: thread } = await supabase
+  const { data: thread } = await serviceRoleClient()
     .from("threads")
     .select("folder_name")
     .eq("id", message.thread_id)
