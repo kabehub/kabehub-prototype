@@ -4,6 +4,7 @@ out
 build
 .env.local
 .env.vercel-production.local
+.env.local.*.bak
 .vercel/
 .claude/
 tsconfig.tsbuildinfo
