@@ -8,3 +8,4 @@ build
 .vercel/
 .claude/
 tsconfig.tsbuildinfo
+production_schema_backup_before_p0.sql 
