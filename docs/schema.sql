@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/07/01
+-- 最終更新: 2026/07/06（S6: RLS棚卸し／S7: カウンターRPC強化を反映）
 --
 -- 【このファイルについて】
 -- 2026/07/01 に Supabase 本番DB（information_schema / pg_catalog）を
@@ -9,6 +9,17 @@
 -- 旧 v78 時点の schema.sql + v89 / v119 / v120 / v141c 等の個別
 -- マイグレーションファイルは、この統合版に取り込んだうえで参照不要に
 -- なりました（.claudeignore 参照）。
+--
+-- 2026/07/06、以下4本のマイグレーションを本番適用し、本ファイルに反映：
+--   - migration_rls_cleanup_p0.sql（messages / thread_notes /
+--     message_notes / thread_tags / drafts のRLS整理。英日重複ポリシー
+--     を廃止し、コマンド別4本＋テーブルごとの公開SELECTに統一）
+--   - migration_v121_expose_share_token.sql（public_threads_view に
+--     share_token 列を追加）
+--   - migration_v122_create_likes.sql（likes テーブル新設）
+--   - migration_v123_rpc_hardening.sql（likes/fork_countのカウント方式を
+--     ±1方式から実テーブル再集計方式 recalc_likes_count /
+--     recalc_fork_count に移行）
 --
 -- 【新規セットアップ時の注意】
 -- このファイルは「現状を記録するための正確なスナップショット」であり、
@@ -25,27 +36,22 @@
 --     関数自体は存在を確認済み）
 --
 -- 【既知の不整合・要調査事項（今回は修正せず記録のみ）】
---   1. schema.sql（旧版）に likes テーブル定義があるが、実DBには
---      存在しない。threads.likes_count はあるため、いいね機能は
---      別の実装（アプリ側から直接 UPDATE 等）に切り替わっている
---      可能性が高い。
---   2. schema.sql（旧版）に increment_likes_count /
---      decrement_likes_count / increment_fork_count のRPC定義が
---      あるが、実DBには存在しない（1と同様の理由と思われる）。
---   3. consolidate_dreaming_batch（2オーバーロードとも）と
+--   1. consolidate_dreaming_batch（2オーバーロードとも）と
 --      find_similar_lore_pairs_v2 には extraction_version の保護対象に
 --      'liked_ai' / 'liked_ai_cleaned' が含まれているが、
 --      consolidate_dreaming_batch_multi にはこの保護が入っていない
 --      （'user_edited', 'user_created' のみ）。保護漏れの可能性。
---   4. find_similar_lore_pairs（v2ではない無印版）も liked_ai 系の
+--   2. find_similar_lore_pairs（v2ではない無印版）も liked_ai 系の
 --      保護が入っていない旧仕様のまま。find_similar_lore_pairs_v2 に
 --      置き換わっており、無印版が現在も呼ばれているか要確認。
---   5. messages / thread_notes / thread_tags / message_notes / drafts
---      の5テーブルでRLSポリシーが英語名・日本語名で重複定義されている
---      （内容は同一）。
---   6. updated_at カラムを持つが自動更新トリガーが無いテーブル：
+--   3. updated_at カラムを持つが自動更新トリガーが無いテーブル：
 --      threads, thread_notes, message_notes（アプリ側で明示的に
 --      updated_at をセットしている想定）。
+--   4. increment_likes_count / decrement_likes_count（±1方式・旧関数）は
+--      本番で数日〜1週間の安定稼働確認後、別マイグレーション
+--      （v124_drop_legacy_counter_rpcs.sql）で削除予定。本ファイルには
+--      現時点でまだ本番に存在しているため残しているが、v124適用後は
+--      本ファイルからも削除すること。
 -- ============================================================
 
 create extension if not exists "uuid-ossp";  -- 現状 gen_random_uuid() 主体のため実質未使用の可能性あり（要確認）
@@ -171,14 +177,21 @@ create index if not exists idx_messages_learning_flags on messages(user_id, is_l
 
 alter table messages enable row level security;
 
-create policy "Users can manage own messages"
-  on messages for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+-- 2026/07/06 p0整理（STEP5）：英日重複のALLポリシー2本＋緩い公開SELECT1本を廃止し、
+-- コマンド別4本＋厳格な公開SELECT1本に統一
+create policy "自分のメッセージのみ閲覧可"
+  on messages for select
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = messages.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
-create policy "自分のメッセージのみ操作可"
-  on messages for all
-  using (auth.uid() = user_id)
+create policy "自分のメッセージのみ追加可"
+  on messages for insert
   with check (
     auth.uid() = user_id
     and exists (
@@ -188,13 +201,33 @@ create policy "自分のメッセージのみ操作可"
     )
   );
 
-create policy "Messages of public threads are readable by anyone"
-  on messages for select
+create policy "自分のメッセージのみ更新可"
+  on messages for update
   using (
-    exists (
+    auth.uid() = user_id
+    and exists (
       select 1 from threads
       where threads.id = messages.thread_id
-        and threads.is_public = true
+        and threads.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = messages.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+create policy "自分のメッセージのみ削除可"
+  on messages for delete
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = messages.thread_id
+        and threads.user_id = auth.uid()
     )
   );
 
@@ -250,15 +283,51 @@ create index if not exists idx_thread_notes_thread_id on thread_notes(thread_id)
 
 alter table thread_notes enable row level security;
 
-create policy "Users can manage own thread_notes"
-  on thread_notes for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+-- 2026/07/06 p0整理（STEP2）：英日重複のALLポリシー2本を廃止し、コマンド別4本に統一
+create policy "自分のスレッドメモのみ閲覧可"
+  on thread_notes for select
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
-create policy "自分のスレッドメモのみ操作可"
-  on thread_notes for all
-  using (auth.uid() = user_id)
+create policy "自分のスレッドメモのみ追加可"
+  on thread_notes for insert
   with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+create policy "自分のスレッドメモのみ更新可"
+  on thread_notes for update
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+create policy "自分のスレッドメモのみ削除可"
+  on thread_notes for delete
+  using (
     auth.uid() = user_id
     and exists (
       select 1 from threads
@@ -284,15 +353,51 @@ create index if not exists idx_message_notes_message_id on message_notes(message
 
 alter table message_notes enable row level security;
 
-create policy "Users can manage own message_notes"
-  on message_notes for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+-- 2026/07/06 p0整理（STEP3）：英日重複のALLポリシー2本を廃止し、コマンド別4本に統一
+create policy "自分のメッセージメモのみ閲覧可"
+  on message_notes for select
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = message_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
-create policy "自分のメッセージメモのみ操作可"
-  on message_notes for all
-  using (auth.uid() = user_id)
+create policy "自分のメッセージメモのみ追加可"
+  on message_notes for insert
   with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = message_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+create policy "自分のメッセージメモのみ更新可"
+  on message_notes for update
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = message_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = message_notes.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+create policy "自分のメッセージメモのみ削除可"
+  on message_notes for delete
+  using (
     auth.uid() = user_id
     and exists (
       select 1 from threads
@@ -317,14 +422,22 @@ create index if not exists idx_thread_tags_thread_id on thread_tags(thread_id);
 
 alter table thread_tags enable row level security;
 
-create policy "Users can manage own thread_tags"
-  on thread_tags for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+-- 2026/07/06 p0整理（STEP4）：英日重複のALLポリシー2本＋所有者一致条件なしの
+-- 公開SELECTを廃止し、コマンド別4本＋public_threads_viewの思想
+-- （tt.user_id = t.user_id）に合わせた公開SELECT1本に統一
+create policy "自分のタグのみ閲覧可"
+  on thread_tags for select
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_tags.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
-create policy "自分のタグのみ操作可"
-  on thread_tags for all
-  using (auth.uid() = user_id)
+create policy "自分のタグのみ追加可"
+  on thread_tags for insert
   with check (
     auth.uid() = user_id
     and exists (
@@ -334,13 +447,33 @@ create policy "自分のタグのみ操作可"
     )
   );
 
-create policy "Tags of public threads are readable by anyone"
-  on thread_tags for select
+create policy "自分のタグのみ更新可"
+  on thread_tags for update
   using (
-    exists (
+    auth.uid() = user_id
+    and exists (
       select 1 from threads
       where threads.id = thread_tags.thread_id
-        and threads.is_public = true
+        and threads.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_tags.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+create policy "自分のタグのみ削除可"
+  on thread_tags for delete
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = thread_tags.thread_id
+        and threads.user_id = auth.uid()
     )
   );
 
@@ -351,12 +484,15 @@ create policy "公開スレッドのタグは全員閲覧可"
       select 1 from threads
       where threads.id = thread_tags.thread_id
         and threads.is_public = true
+        and threads.user_id = thread_tags.user_id
     )
   );
 
 -- ============================================================
 -- public_threads_view（公開スレッド閲覧用ビュー）
 -- ============================================================
+-- 2026/07/06 v121：share_token列を追加。/api/explore がexploreの引継ぎ
+-- （fork）ボタン用に参照する。旧版はshare_tokenを含まずnullを返していた
 create or replace view public_threads_view as
 select
   t.id,
@@ -369,14 +505,15 @@ select
   coalesce(
     array_agg(tt.name order by tt.created_at) filter (where tt.name is not null),
     '{}'::text[]
-  ) as tags
+  ) as tags,
+  t.share_token
 from threads t
 left join thread_tags tt
   on tt.thread_id = t.id
  and tt.user_id = t.user_id
 where t.is_public = true
 group by
-  t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre;
+  t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre, t.share_token;
 
 grant select on public_threads_view to anon, authenticated;
 
@@ -395,14 +532,20 @@ create index if not exists idx_drafts_thread_id on drafts(thread_id);
 
 alter table drafts enable row level security;
 
-create policy "Users can manage own drafts"
-  on drafts for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+-- 2026/07/06 p0整理（STEP1）：英日重複のALLポリシー2本を廃止し、コマンド別4本に統一
+create policy "自分の下書きのみ閲覧可"
+  on drafts for select
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = drafts.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
 
-create policy "自分の下書きのみ操作可"
-  on drafts for all
-  using (auth.uid() = user_id)
+create policy "自分の下書きのみ追加可"
+  on drafts for insert
   with check (
     auth.uid() = user_id
     and exists (
@@ -411,6 +554,186 @@ create policy "自分の下書きのみ操作可"
         and threads.user_id = auth.uid()
     )
   );
+
+create policy "自分の下書きのみ更新可"
+  on drafts for update
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = drafts.thread_id
+        and threads.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = drafts.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+create policy "自分の下書きのみ削除可"
+  on drafts for delete
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from threads
+      where threads.id = drafts.thread_id
+        and threads.user_id = auth.uid()
+    )
+  );
+
+-- ============================================================
+-- likes テーブル（v122・2026/07/06本番適用）
+-- ============================================================
+create table if not exists likes (
+  id         uuid primary key default gen_random_uuid(),
+  thread_id  uuid not null references threads(id) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (thread_id, user_id)
+);
+
+create index if not exists likes_thread_id_idx on likes(thread_id);
+create index if not exists likes_user_id_idx   on likes(user_id);
+
+alter table likes enable row level security;
+
+create policy "いいねは認証ユーザーのみ操作可"
+  on likes for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "いいねは全員閲覧可"
+  on likes for select
+  using (true);
+
+-- 【旧関数・v124で削除予定】±1方式（本番で数日〜1週間の安定稼働確認後、
+-- migration_v124_drop_legacy_counter_rpcs.sql で削除する。それまでは
+-- app/api/threads/[id]/likes/route.ts からは呼ばれておらず未使用（呼び出し側は
+-- recalc_likes_count に統合済み）。DB上の後方互換のためだけに残存
+create or replace function increment_likes_count(p_thread_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update threads
+  set likes_count = likes_count + 1
+  where id = p_thread_id
+    and exists (
+      select 1 from likes
+      where likes.thread_id = p_thread_id
+        and likes.user_id = auth.uid()
+    );
+end;
+$$;
+
+create or replace function decrement_likes_count(p_thread_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update threads
+  set likes_count = greatest(likes_count - 1, 0)
+  where id = p_thread_id
+    and exists (
+      select 1 from likes
+      where likes.thread_id = p_thread_id
+        and likes.user_id = auth.uid()
+    );
+end;
+$$;
+
+revoke execute on function increment_likes_count(uuid) from public, anon;
+grant execute on function increment_likes_count(uuid) to authenticated;
+revoke execute on function decrement_likes_count(uuid) from public, anon;
+grant execute on function decrement_likes_count(uuid) to authenticated;
+
+-- ============================================================
+-- カウンター系RPC（v123・T-08・2026/07/06本番適用）
+-- likes/fork_countとも「±1」方式から、実テーブル再集計方式に統合。
+-- 呼び出し側は app/api/threads/[id]/likes/route.ts（likes）、
+-- app/api/share/[token]/fork/route.ts・app/api/threads/[id]/route.ts
+-- （fork_count）。3関数ともSECURITY DEFINER・search_path固定・
+-- EXECUTE権限はauthenticatedのみに限定。
+-- ============================================================
+create or replace function public.recalc_likes_count(p_thread_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+begin
+  if auth.uid() is null then
+    raise exception 'Unauthorized';
+  end if;
+
+  update threads
+  set likes_count = (
+    select count(*)::integer
+    from likes
+    where likes.thread_id = p_thread_id
+  )
+  where id = p_thread_id
+    and is_public = true;
+end;
+$function$;
+
+revoke execute on function public.recalc_likes_count(uuid) from public, anon;
+grant execute on function public.recalc_likes_count(uuid) to authenticated;
+
+-- fork_countはforked_from_idで実子スレッド数を再集計する方式。
+-- self-fork（child.user_id = parent.user_id）は集計対象から除外
+-- （フォーク操作自体は成功するが、カウントには含まれない＝自作自演での
+-- 水増し防止）。fork先スレッド削除時にも自動的に減る
+create or replace function public.recalc_fork_count(p_thread_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+begin
+  if auth.uid() is null then
+    raise exception 'Unauthorized';
+  end if;
+
+  update threads parent
+  set fork_count = (
+    select count(*)::integer
+    from threads child
+    where child.forked_from_id = p_thread_id
+      and child.user_id <> parent.user_id
+  )
+  where parent.id = p_thread_id
+    and parent.is_public = true;
+end;
+$function$;
+
+revoke execute on function public.recalc_fork_count(uuid) from public, anon;
+grant execute on function public.recalc_fork_count(uuid) to authenticated;
+
+-- increment_fork_countは互換ラッパー。関数名・シグネチャを維持し、
+-- 呼び出し側（fork route）を無改修で済ませるため recalc_fork_count に委譲する
+create or replace function public.increment_fork_count(p_thread_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+begin
+  perform public.recalc_fork_count(p_thread_id);
+end;
+$function$;
+
+revoke execute on function public.increment_fork_count(uuid) from public, anon;
+grant execute on function public.increment_fork_count(uuid) to authenticated;
 
 -- ============================================================
 -- reports テーブル
