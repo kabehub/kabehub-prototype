@@ -2,6 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
+  // ⚠️ このファイルはSupabase Auth（Googleログイン）専用のコールバックです。
+  // GitHub連携のコールバックは app/api/auth/github/callback/route.ts です。
+  // 過去にこの2ファイルの処理が混同されていた経緯があるため、絶対に混同しないこと。
+
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get("code");

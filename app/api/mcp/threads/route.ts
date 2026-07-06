@@ -3,7 +3,10 @@ import { authenticateMcpToken, serviceRoleClient } from '@/lib/mcp-auth'
 
 export async function GET(req: NextRequest) {
   const userId = await authenticateMcpToken(req)
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!userId) return NextResponse.json(
+    { error: 'Unauthorized', hint: 'Use https://www.kabehub.com as the base URL for API requests.' },
+    { status: 401 }
+  )
 
   const supabase = serviceRoleClient()
   const { data, error } = await supabase
@@ -19,7 +22,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const userId = await authenticateMcpToken(req)
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!userId) return NextResponse.json(
+    { error: 'Unauthorized', hint: 'Use https://www.kabehub.com as the base URL for API requests.' },
+    { status: 401 }
+  )
 
   const body = await req.json().catch(() => ({}))
   const title: string = body.title ?? '無題'

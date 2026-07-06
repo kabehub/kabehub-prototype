@@ -9,7 +9,7 @@ AIとの壁打ちログを永続保存し、公開・引継ぎできるオープ
 [![Vercel](https://img.shields.io/badge/Deployed-Vercel-black?logo=vercel)](https://kabehub.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-🌐 **本番URL**: https://kabehub.com
+🌐 **本番URL**: https://www.kabehub.com
 
 ---
 
@@ -89,6 +89,16 @@ KabeHubの裏コンセプトは「おまえのものはおまえのもの」で�
 |画像生成|Gemini（gemini-2.5-flash-image）/ OpenAI（gpt-image-2）/ Ideogram（ideogram-v3）/ OpenRouter経由Flux（flux.2-pro）|
 |Embedding|OpenAI text-embedding-3-small（AI記憶・RAG機能で使用）|
 |デプロイ|Vercel|
+
+---
+
+## MCPで接続する
+
+MCPクライアントからKabeHubに接続する場合、ベースURLは必ず
+**https://www.kabehub.com** を使用してください。非wwwのURLは
+ブラウザ向けの308リダイレクト先が用意されているのみで、
+リダイレクトを挟むとAuthorizationヘッダーが引き継がれないため、
+APIクライアントとしては使用できません。
 
 ---
 

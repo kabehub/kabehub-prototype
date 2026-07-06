@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { consumeOAuthState, saveGithubToken } from "@/lib/github-token-store";
 
+  // ⚠️ このファイルはGitHub連携専用のコールバックです。
+  // Googleログインのコールバックは app/auth/callback/route.ts です。
+  // 混同するとGitHubトークン交換とGoogleログインの処理が入れ替わるバグになるため注意。
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
