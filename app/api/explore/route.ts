@@ -12,6 +12,7 @@ type PublicThreadRow = {
   updated_at: string | null;
   user_id: string | null;
   genre: string | null;
+  share_token: string | null;
   tags: string[] | null;
   likes_count?: number | null;
   fork_count?: number | null;
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
 
     let dbQuery = adminSupabase
       .from("threads")
-      .select(`id, title, is_public, created_at, updated_at, user_id, genre, likes_count, fork_count${tagJoin}`)
+      .select(`id, title, is_public, created_at, updated_at, user_id, genre, share_token, likes_count, fork_count${tagJoin}`)
       .eq("is_public", true)
       .order("likes_count", { ascending: false, nullsFirst: false })
       .order(timestampColumn, { ascending: false, nullsFirst: false })
@@ -113,7 +114,7 @@ export async function GET(req: NextRequest) {
   } else {
     let dbQuery = supabase
       .from("public_threads_view")
-      .select("id, title, is_public, created_at, updated_at, user_id, genre, tags")
+      .select("id, title, is_public, created_at, updated_at, user_id, genre, share_token, tags")
       .order("created_at", { ascending: false })
       .limit(limit + 1);
 
@@ -199,7 +200,7 @@ export async function GET(req: NextRequest) {
     id: thread.id,
     title: thread.title,
     genre: thread.genre,
-    share_token: null,
+    share_token: thread.share_token,
     created_at: thread.created_at,
     updated_at: thread.updated_at,
     allow_prompt_fork: true,
