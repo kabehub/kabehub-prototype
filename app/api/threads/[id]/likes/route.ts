@@ -37,17 +37,31 @@ export async function POST(
     .insert({ thread_id: threadId, user_id: user.id });
 
   // POST: いいね追加 --- likes insert の後に追加
-    if (error) {
-      if (error.code === "23505") {
-        return NextResponse.json({ ok: true });
+  if (error) {
+    if (error.code === "23505") {
+      const { error: recalcError } = await supabase.rpc("recalc_likes_count", {
+        p_thread_id: threadId,
+      });
+
+      if (recalcError) {
+        console.warn("[threads] recalc_likes_count failed:", recalcError);
       }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ ok: true });
     }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-    // ↓ 追加
-    await supabase.rpc("increment_likes_count", { p_thread_id: threadId });
+  const { error: recalcError } = await supabase.rpc("recalc_likes_count", {
+    p_thread_id: threadId,
+  });
 
-    return NextResponse.json({ ok: true });
+  if (recalcError) {
+    console.error("[threads] recalc_likes_count failed:", recalcError);
+    return NextResponse.json({ error: "Failed to sync likes count" }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 // DELETE: いいね解除
@@ -74,8 +88,14 @@ export async function DELETE(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // ↓ 追加
-  await supabase.rpc("decrement_likes_count", { p_thread_id: params.id });
+  const { error: recalcError } = await supabase.rpc("recalc_likes_count", {
+    p_thread_id: params.id,
+  });
+
+  if (recalcError) {
+    console.error("[threads] recalc_likes_count failed:", recalcError);
+    return NextResponse.json({ error: "Failed to sync likes count" }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }

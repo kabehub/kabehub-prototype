@@ -13,12 +13,13 @@ export async function DELETE(
 
   const { data: thread } = await supabase
     .from("threads")
-    .select("id")
+    .select("id, forked_from_id")
     .eq("id", params.id)
     .eq("user_id", user.id)
     .single();
 
   if (!thread) return NextResponse.json({ error: "Not Found" }, { status: 404 });
+  const forkedFromId = thread.forked_from_id;
 
   const { error: archiveError } = await supabase
     .from("lore_embeddings")
@@ -31,7 +32,22 @@ export async function DELETE(
     console.warn("Failed to archive lore_embeddings for deleted thread:", archiveError.message);
   }
 
-  await supabase.from("threads").delete().eq("id", params.id).eq("user_id", user.id);
+  const { error: deleteError } = await supabase
+    .from("threads")
+    .delete()
+    .eq("id", params.id)
+    .eq("user_id", user.id);
+
+  if (!deleteError && forkedFromId) {
+    const { error: recalcForkError } = await supabase.rpc("recalc_fork_count", {
+      p_thread_id: forkedFromId,
+    });
+
+    if (recalcForkError) {
+      console.warn("[threads] recalc_fork_count failed:", recalcForkError);
+    }
+  }
+
   return NextResponse.json({ success: true });
 }
 
