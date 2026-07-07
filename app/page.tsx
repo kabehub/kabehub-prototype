@@ -8,7 +8,7 @@ import ChatPanel from "@/components/ChatPanel";
 import OutlinePane from "@/components/OutlinePane";
 import NovelSettingsPane from "@/components/NovelSettingsPane";
 import { supabase } from "@/lib/supabase/client";
-import { loadModel, type ModelId, type AttachedImageFile, type Provider } from "@/components/ChatInput";
+import { loadModel, type ModelId, type Provider, type SubmittedAttachedImageFile } from "@/components/ChatInput";
 import type { User } from "@supabase/supabase-js";
 
 type NovelSettingsData = {
@@ -360,6 +360,11 @@ export default function Home() {
     setDisplayThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
   }, []);
 
+  const handleThreadUpdate = useCallback((id: string, partial: Partial<Thread>) => {
+    setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, ...partial } : t)));
+    setDisplayThreads((prev) => prev.map((t) => (t.id === id ? { ...t, ...partial } : t)));
+  }, []);
+
   const activeThread =
     threads.find((t) => t.id === activeThreadId) ??
     (activeThreadId
@@ -550,7 +555,7 @@ export default function Home() {
   }, []);
 
   // ── 通常送信 ──────────────────────────────────────────────
-  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => {
+  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean) => {
     if (!userContent.trim() || isLoading) return;
     if (provider === "image_gen") return;
     const resolvedThreadId = activeThreadId ?? uuidv4();
@@ -1308,6 +1313,7 @@ export default function Home() {
         provider={provider}
         onProviderChange={setProvider}
         onTitleUpdate={handleTitleUpdate}
+        onThreadUpdate={handleThreadUpdate}
         onRegenerate={handleRegenerate}
         onEditAndRegenerate={handleEditAndRegenerate}
         onTrimFrom={handleTrimFrom}
@@ -1325,7 +1331,7 @@ export default function Home() {
         onUpdateMessage={handleUpdateMessage}
         // ✅ v62追加
         streamingContent={streamingContent}
-        {...({ githubProgressMessages } as any)}
+        githubProgressMessages={githubProgressMessages}
         onAbort={handleAbort}
         onSendMemoToAI={handleSendMemoToAI}
         thinkingContents={thinkingContents}

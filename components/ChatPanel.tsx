@@ -38,6 +38,7 @@ interface ChatPanelProps {
   provider: Provider;
   onProviderChange: (p: Provider) => void;
   onTitleUpdate: (id: string, title: string) => void;  // ← ここに追加
+  onThreadUpdate: (id: string, partial: Partial<Thread>) => void;
   onRegenerate: (
     targetProvider: "claude" | "gemini" | "openai",
     assistantMsg?: Message,
@@ -97,6 +98,7 @@ export default function ChatPanel({
   provider,
   onProviderChange,
   onTitleUpdate,
+  onThreadUpdate,
   onRegenerate,
   onEditAndRegenerate,
   onTrimFrom,
@@ -190,6 +192,10 @@ export default function ChatPanel({
   const [showTagInput, setShowTagInput] = useState(false);
   const [tagInputValue, setTagInputValue] = useState("");
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const tagSubmittingRef = useRef(false);
+  const shareCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pushSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const apiKeySavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ★ エクスポートモーダル関連
   const [exportFormat, setExportFormat] = useState<"txt" | "md" | "md2" | "csv" | null>(null);
@@ -233,6 +239,7 @@ export default function ChatPanel({
     const laneKey = `${msg.branch_root_id}:${msg.branch_index}`;
     return laneKey === currentLaneKey;
   });
+  const threadId = thread?.id;
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1280);
@@ -320,11 +327,20 @@ export default function ChatPanel({
         localStorage.removeItem("kabehub_openai_key");
       }
       setApiKeySaved(true);
-      setTimeout(() => setApiKeySaved(false), 2000);
+      if (apiKeySavedTimerRef.current) clearTimeout(apiKeySavedTimerRef.current);
+      apiKeySavedTimerRef.current = setTimeout(() => setApiKeySaved(false), 2000);
     } catch (err) {
       console.error("APIキー保存失敗:", err);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (shareCopiedTimerRef.current) clearTimeout(shareCopiedTimerRef.current);
+      if (pushSavedTimerRef.current) clearTimeout(pushSavedTimerRef.current);
+      if (apiKeySavedTimerRef.current) clearTimeout(apiKeySavedTimerRef.current);
+    };
+  }, []);
 
   const handleOpenApiKeys = () => {
     setShowApiKeys(true);
@@ -353,21 +369,11 @@ export default function ChatPanel({
     setShowSystemPrompt(false);
     setShowShare(false);
     setShowApiKeys(false);
-    setSharePublic(thread?.is_public ?? false);
-    setShareHideMemos(thread?.hide_memos ?? false);
-    setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
-    setShareToken(thread?.share_token ?? null);
-    setSharedAt(thread?.shared_at ?? null);
     setNotes([]);
     setDrafts([]);
     setMessageNotes([]);
     setNewNoteContent("");
     setEditingNoteId(null);
-    setSystemPromptDraft(thread?.system_prompt ?? "");
-    setRoleplayMode(thread?.roleplay_mode ?? false);
-    setRpCharName(thread?.rp_char_name ?? "");
-    setRpCharNameDraft(thread?.rp_char_name ?? "");
-    setRpCharIconUrl(thread?.rp_char_icon_url ?? null);
     setShowRoleplay(false);
     // タグリセット
     setTags([]);
@@ -375,16 +381,27 @@ export default function ChatPanel({
     setTagInputValue("");
     // navExpandedを常時設定の初期値に戻す
     setNavExpanded(localStorage.getItem('kabehub_nav_expanded_always') === 'true');
-  }, [thread?.id]);
+  }, [threadId]);
+
+  useEffect(() => setSharePublic(thread?.is_public ?? false), [threadId, thread?.is_public]);
+  useEffect(() => setShareHideMemos(thread?.hide_memos ?? false), [threadId, thread?.hide_memos]);
+  useEffect(() => setShareAllowPromptFork(thread?.allow_prompt_fork ?? true), [threadId, thread?.allow_prompt_fork]);
+  useEffect(() => setShareToken(thread?.share_token ?? null), [threadId, thread?.share_token]);
+  useEffect(() => setSharedAt(thread?.shared_at ?? null), [threadId, thread?.shared_at]);
+  useEffect(() => setShareGenre((thread?.genre as string | null) ?? null), [threadId, thread?.genre]);
+  useEffect(() => setSystemPromptDraft(thread?.system_prompt ?? ""), [threadId, thread?.system_prompt]);
+  useEffect(() => setRoleplayMode(thread?.roleplay_mode ?? false), [threadId, thread?.roleplay_mode]);
+  useEffect(() => { setRpCharName(thread?.rp_char_name ?? ""); setRpCharNameDraft(thread?.rp_char_name ?? ""); }, [threadId, thread?.rp_char_name]);
+  useEffect(() => setRpCharIconUrl(thread?.rp_char_icon_url ?? null), [threadId, thread?.rp_char_icon_url]);
 
   // スレッド選択時にタグを取得
   useEffect(() => {
-    if (!thread) return;
-    fetch(`/api/threads/${thread.id}/tags`, { cache: "no-store" })
+    if (!threadId) return;
+    fetch(`/api/threads/${threadId}/tags`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: ThreadTag[]) => { if (Array.isArray(data)) setTags(data); })
       .catch(() => {});
-  }, [thread?.id]);
+  }, [threadId]);
 
   // タグ入力欄表示時にフォーカス
   useEffect(() => {
@@ -392,10 +409,10 @@ export default function ChatPanel({
   }, [showTagInput]);
 
   const fetchNotes = useCallback(async () => {
-    if (!thread) return;
+    if (!threadId) return;
     setNotesLoading(true);
     try {
-      const res = await fetch(`/api/threads/${thread.id}/notes`, { cache: "no-store" });
+      const res = await fetch(`/api/threads/${threadId}/notes`, { cache: "no-store" });
       const data: ThreadNote[] = await res.json();
       setNotes(data);
     } catch (err) {
@@ -403,24 +420,24 @@ export default function ChatPanel({
     } finally {
       setNotesLoading(false);
     }
-  }, [thread?.id]);
+  }, [threadId]);
 
   const fetchMessageNotes = useCallback(async () => {
-    if (!thread) return;
+    if (!threadId) return;
     try {
-      const res = await fetch(`/api/threads/${thread.id}/message-notes`, { cache: "no-store" });
+      const res = await fetch(`/api/threads/${threadId}/message-notes`, { cache: "no-store" });
       const data: MessageNote[] = await res.json();
       setMessageNotes(data);
     } catch (err) {
       console.error("メッセージノート取得失敗:", err);
     }
-  }, [thread?.id]);
+  }, [threadId]);
 
   const fetchDrafts = useCallback(async () => {
-    if (!thread) return;
+    if (!threadId) return;
     setDraftsLoading(true);
     try {
-      const res = await fetch(`/api/threads/${thread.id}/drafts`, { cache: "no-store" });
+      const res = await fetch(`/api/threads/${threadId}/drafts`, { cache: "no-store" });
       const data: Draft[] = await res.json();
       setDrafts(data);
     } catch (err) {
@@ -428,12 +445,12 @@ export default function ChatPanel({
     } finally {
       setDraftsLoading(false);
     }
-  }, [thread?.id]);
+  }, [threadId]);
 
   // スレッド選択時にメッセージノートを取得
   useEffect(() => {
-    if (thread) fetchMessageNotes();
-  }, [thread?.id, fetchMessageNotes]);
+    if (threadId) fetchMessageNotes();
+  }, [threadId, fetchMessageNotes]);
 
   const handleOpenNotes = () => {
     setShowNotes(true);
@@ -467,7 +484,7 @@ export default function ChatPanel({
     setShareHideMemos(thread?.hide_memos ?? false);
     setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
     setShareToken(thread?.share_token ?? null);
-    setSharedAt((thread as any)?.shared_at ?? null);  // ✅ v76
+    setSharedAt(thread?.shared_at ?? null);  // ✅ v76
     setShareGenre((thread?.genre as string | null) ?? null); // 👈 追加
     setSelectedParentGenreId(null); // 👈 追加
   };
@@ -493,18 +510,16 @@ export default function ChatPanel({
           ...(newGenre !== undefined && { genre: newGenre }), // 👈 追加（undefinedの時は送らない）
         }),
       });
+      if (!res.ok) throw new Error("公開設定保存失敗");
       const updated = await res.json();
-      setSharePublic(updated.is_public ?? false);
-      setShareAllowPromptFork(updated.allow_prompt_fork ?? true);
-      setShareHideMemos(updated.hide_memos ?? false);
-      setShareToken(updated.share_token ?? null);
-      setSharedAt(updated.shared_at ?? null);  // ✅ v76
-      setShareGenre(updated.genre ?? null); // 👈 追加
-      thread.is_public = updated.is_public;
-      thread.hide_memos = updated.hide_memos;
-      thread.allow_prompt_fork = updated.allow_prompt_fork;
-      thread.share_token = updated.share_token;
-      thread.genre = updated.genre ?? null; // 👈 追加（型定義も後で更新）
+      onThreadUpdate(thread.id, {
+        is_public: updated.is_public,
+        hide_memos: updated.hide_memos,
+        allow_prompt_fork: updated.allow_prompt_fork,
+        share_token: updated.share_token,
+        shared_at: updated.shared_at ?? null,
+        genre: updated.genre ?? null,
+      });
     } catch (err) {
       console.error("公開設定保存失敗:", err);
     } finally {
@@ -518,7 +533,8 @@ export default function ChatPanel({
     const url = `${window.location.origin}/share/${shareToken}`;
     navigator.clipboard.writeText(url).then(() => {
       setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
+      if (shareCopiedTimerRef.current) clearTimeout(shareCopiedTimerRef.current);
+      shareCopiedTimerRef.current = setTimeout(() => setShareCopied(false), 2000);
     });
   };
 
@@ -533,10 +549,12 @@ const handlePushLatest = async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shared_at: now }),
     });
+    if (!res.ok) throw new Error("Push失敗");
     const updated = await res.json();
-    setSharedAt(updated.shared_at ?? null);
+    onThreadUpdate(thread.id, { shared_at: updated.shared_at ?? null });
     setPushSaved(true);
-    setTimeout(() => setPushSaved(false), 2000);
+    if (pushSavedTimerRef.current) clearTimeout(pushSavedTimerRef.current);
+    pushSavedTimerRef.current = setTimeout(() => setPushSaved(false), 2000);
   } catch (err) {
     console.error("Push失敗:", err);
   } finally {
@@ -557,8 +575,9 @@ const handlePushLatest = async () => {
         title: thread.title || "無題", // Gemini指摘: INSERT時のフォールバック
       }),
     });
+    if (!res.ok) throw new Error("システムプロンプト保存失敗");
     const updated = await res.json();
-    thread.system_prompt = updated.system_prompt ?? "";
+    onThreadUpdate(thread.id, { system_prompt: updated.system_prompt ?? "" });
   } catch (err) {
     console.error("システムプロンプト保存失敗:", err);
   } finally {
@@ -585,7 +604,7 @@ const handleSaveRoleplay = async (
   if (!thread) return;
   setRpSaving(true);
   try {
-    await fetch(`/api/threads/${thread.id}`, {
+    const res = await fetch(`/api/threads/${thread.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -595,12 +614,12 @@ const handleSaveRoleplay = async (
         title: thread.title || "無題",
       }),
     });
-    setRoleplayMode(newMode);
-    setRpCharName(newCharName);
-    setRpCharIconUrl(newIconUrl);
-    thread.roleplay_mode = newMode;
-    thread.rp_char_name = newCharName;
-    thread.rp_char_icon_url = newIconUrl;
+    if (!res.ok) throw new Error("なりきりモード保存失敗");
+    onThreadUpdate(thread.id, {
+      roleplay_mode: newMode,
+      rp_char_name: newCharName,
+      rp_char_icon_url: newIconUrl,
+    });
   } catch (err) {
     console.error("なりきりモード保存失敗:", err);
   } finally {
@@ -665,23 +684,28 @@ const handleToggleRoleplayMode = (next: boolean) => {
 
   // ★ タグ追加
   const handleAddTag = async () => {
-    if (!thread) return;
+    if (!thread || tagSubmittingRef.current) return;
     const raw = tagInputValue;
     const clean = raw.replace(/^#+/, "").replace(/[\s\u3000]/g, "").slice(0, 20);
     if (!clean) { setTagInputValue(""); setShowTagInput(false); return; }
 
+    tagSubmittingRef.current = true;
     setTagInputValue("");
     setShowTagInput(false);
 
-    const res = await fetch(`/api/threads/${thread.id}/tags`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: clean }),
-    });
-    const data = await res.json();
-    // 重複(duplicate: true)でなければstateに追加
-    if (data && !data.duplicate && !data.error && data.id) {
-      setTags((prev) => [...prev, data]);
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: clean }),
+      });
+      const data = await res.json();
+      // 重複(duplicate: true)でなければstateに追加
+      if (data && !data.duplicate && !data.error && data.id) {
+        setTags((prev) => [...prev, data]);
+      }
+    } finally {
+      tagSubmittingRef.current = false;
     }
   };
 
