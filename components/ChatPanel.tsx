@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble, BranchBubble } from "./MessageBubble";
-import ChatInput, { type ModelId, type AttachedImageFile, type Provider } from "./ChatInput";
+import ChatInput, { type ModelId, type Provider, type SubmittedAttachedImageFile } from "./ChatInput";
 import ChatInputCentered from "./ChatInputCentered";
 import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
@@ -31,7 +31,7 @@ interface ChatPanelProps {
   displayName?: string | null;
   inputValue: string;
   onInputChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean) => void;
   thinkingContents?: Record<string, string>;
   onMemoSubmit: () => void;
   isLoading: boolean;

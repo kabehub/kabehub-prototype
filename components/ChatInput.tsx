@@ -21,6 +21,8 @@ export type AttachedImageFile = {
   sizeKB: number;       // 圧縮後サイズ
 };
 
+export type SubmittedAttachedImageFile = Omit<AttachedImageFile, "previewUrl">;
+
 export type AttachedFile = AttachedTextFile | AttachedImageFile;
 
 // ── Canvas APIによる画像圧縮（ゼロ依存・Gemini指摘3点対応済み）────────────
@@ -131,6 +133,20 @@ export function saveModel(provider: Provider, modelId: ModelId) {
 }
 // ─────────────────────────────────────────────────────────────────────────
 
+export const THINKING_UNSUPPORTED_MODELS = new Set<ModelId>([
+  "claude-haiku-4-5-20251001",
+  "claude-fable-5",
+  "claude-sonnet-5",
+]);
+
+export function isThinkingUnsupported(modelId: ModelId): boolean {
+  return THINKING_UNSUPPORTED_MODELS.has(modelId);
+}
+
+export function canUseDeepThinking(provider: Provider, modelId: ModelId): boolean {
+  return provider === "claude" && !isThinkingUnsupported(modelId);
+}
+
 const LS_ENTER_MODE = "kabehub_enter_mode" as const;
 type EnterMode = "send" | "newline";
 
@@ -147,7 +163,7 @@ function isMobileViewport(): boolean {
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId, attachedImages?: AttachedImageFile[], isDeepThinking?: boolean) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
@@ -248,9 +264,31 @@ export default function ChatInput({
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const [openModelProvider, setOpenModelProvider] = useState<Provider | null>(null);
 
-  // モデル選択 state（LocalStorageから初期値を読み込む）
-  const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(provider));
+  // モデル選択 state（初回描画はSSR/CSRで固定し、マウント後にLocalStorageへ同期）
+  const [selectedModel, setSelectedModel] = useState<ModelId>(() => MODEL_CONFIG[provider].defaultModel);
   const [isDeepThinking, setIsDeepThinking] = useState(false);
+  const [enterMode, setEnterMode] = useState<EnterMode>("send");
+  const [isMobile, setIsMobile] = useState(false);
+  const attachedFilesRef = useRef(attachedFiles);
+  attachedFilesRef.current = attachedFiles;
+
+  useEffect(() => {
+    setEnterMode(loadEnterMode());
+    const updateIsMobile = () => setIsMobile(isMobileViewport());
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+    return () => {
+      window.removeEventListener("resize", updateIsMobile);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      attachedFilesRef.current.forEach((f) => {
+        if (f.kind === "image") URL.revokeObjectURL(f.previewUrl);
+      });
+    };
+  }, []);
 
   // imageRefUpload の ObjectURL をコンポーネントアンマウント時に解放
   useEffect(() => {
@@ -313,6 +351,7 @@ export default function ChatInput({
   const handleModelChange = (targetProvider: Provider, modelId: ModelId) => {
     setSelectedModel(modelId);
     saveModel(targetProvider, modelId);
+    if (isThinkingUnsupported(modelId)) setIsDeepThinking(false);
     setOpenModelProvider(null);
   };
 
@@ -404,7 +443,15 @@ export default function ChatInput({
         try {
           const { base64, mediaType, sizeKB } = await compressImage(file);
           const imageFile: AttachedImageFile = { kind: "image", name: file.name, base64, mediaType, previewUrl, sizeKB };
-          setAttachedFiles((prev) => [...prev, imageFile]);
+          setAttachedFiles((prev) => {
+            const imageCount = prev.filter((f) => f.kind === "image").length;
+            if (imageCount >= MAX_IMAGES) {
+              URL.revokeObjectURL(previewUrl);
+              setFileError(`画像は最大${MAX_IMAGES}枚まで添付できます`);
+              return prev;
+            }
+            return [...prev, imageFile];
+          });
           currentImages++;
         } catch {
           URL.revokeObjectURL(previewUrl);
@@ -427,7 +474,14 @@ export default function ChatInput({
             file,
             (content) => {
               const textFile: AttachedTextFile = { kind: "text", name: file.name, content, sizeKB };
-              setAttachedFiles((prev) => [...prev, textFile]);
+              setAttachedFiles((prev) => {
+                const textCount = prev.filter((f) => f.kind === "text").length;
+                if (textCount >= MAX_TEXT_FILES) {
+                  setFileError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+                  return prev;
+                }
+                return [...prev, textFile];
+              });
               currentTexts++;
               resolve();
             },
@@ -573,11 +627,22 @@ export default function ChatInput({
         sizeKB,
       };
 
-      setAttachedFiles((prev) => [...prev, githubFile]);
-      setGithubUrl("");
-      setGithubPanelOpen(false);
-      setIsToolMenuOpen(false);
-      setGithubError(null);
+      let didAttach = false;
+      setAttachedFiles((prev) => {
+        const textCount = prev.filter((f) => f.kind === "text").length;
+        if (textCount >= MAX_TEXT_FILES) {
+          setGithubError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+          return prev;
+        }
+        didAttach = true;
+        return [...prev, githubFile];
+      });
+      if (didAttach) {
+        setGithubUrl("");
+        setGithubPanelOpen(false);
+        setIsToolMenuOpen(false);
+        setGithubError(null);
+      }
     } catch {
       setGithubError("ネットワークエラーが発生しました");
     } finally {
@@ -642,8 +707,11 @@ export default function ChatInput({
         : fileBlocks.join("\n\n");
     }
 
+    const submittedImages: SubmittedAttachedImageFile[] = imageFiles.map(({ previewUrl, ...rest }) => rest);
+    const effectiveDeepThinking = isDeepThinking && canUseDeepThinking(provider, selectedModel);
+
     onChange("");
-    onSubmit(finalContent, selectedModel, imageFiles.length > 0 ? imageFiles : undefined, isDeepThinking);
+    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking);
     // ObjectURLを解放してからstateをクリア
     attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
       URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
@@ -658,8 +726,6 @@ export default function ChatInput({
   const totalLines = firstTextFile?.content.split("\n").length ?? 0;
   const hasMoreLines = totalLines > PREVIEW_LINES;
   const hasAnyFile = attachedFiles.length > 0;
-  const enterMode = loadEnterMode();
-  const isMobile = isMobileViewport();
   const placeholder =
     provider === "image_gen"
       ? "画像生成のプロンプトを入力…"
@@ -1356,7 +1422,7 @@ export default function ChatInput({
           {provider === "claude" && (
             <button
               onClick={() => setIsDeepThinking((v) => !v)}
-              disabled={selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || selectedModel === "claude-sonnet-5" || isLoading || !!disabled}
+              disabled={isThinkingUnsupported(selectedModel) || isLoading || !!disabled}
               title={
                 selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" :
                 selectedModel === "claude-fable-5" ? "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
@@ -1372,10 +1438,10 @@ export default function ChatInput({
                 border: "1px solid",
                 borderColor: isDeepThinking ? "var(--accent)" : "var(--border)",
                 background: isDeepThinking ? "rgba(196,98,45,0.12)" : "transparent",
-                color: isDeepThinking ? "var(--accent)" : selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || selectedModel === "claude-sonnet-5" || isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
+                color: isDeepThinking ? "var(--accent)" : isThinkingUnsupported(selectedModel) || isLoading ? "var(--ink-faint)" : "var(--ink-muted)",
                 fontSize: "11px",
                 fontFamily: "'JetBrains Mono', monospace",
-                cursor: selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || selectedModel === "claude-sonnet-5" || isLoading || disabled ? "not-allowed" : "pointer",
+                cursor: isThinkingUnsupported(selectedModel) || isLoading || disabled ? "not-allowed" : "pointer",
                 transition: "all 0.15s",
                 letterSpacing: "0.03em",
               }}
@@ -1488,7 +1554,7 @@ export default function ChatInput({
         </div>
 
         <div style={{ fontSize: "10px", color: "var(--ink-faint)", letterSpacing: "0.03em" }}>
-          {loadEnterMode() === "send"
+          {enterMode === "send"
             ? "Enter で送信 · Shift+Enter で改行"
             : "Enter で改行 · Ctrl・⌘+Enter で送信"}
         </div>

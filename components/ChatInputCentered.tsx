@@ -17,7 +17,9 @@ import {
   MAX_TEXT_FILES,
   MODEL_CONFIG,
   PREVIEW_LINES,
+  canUseDeepThinking,
   compressImage,
+  isThinkingUnsupported,
   loadModel,
   readFileWithFallback,
   saveModel,
@@ -26,6 +28,7 @@ import {
   type AttachedTextFile,
   type ModelId,
   type Provider,
+  type SubmittedAttachedImageFile,
 } from "./ChatInput";
 
 interface ChatInputCenteredProps {
@@ -34,7 +37,7 @@ interface ChatInputCenteredProps {
   onSubmit: (
     content: string,
     modelId: ModelId,
-    attachedImages?: AttachedImageFile[],
+    attachedImages?: SubmittedAttachedImageFile[],
     isDeepThinking?: boolean
   ) => void;
   onMemoSubmit: () => void;
@@ -91,13 +94,34 @@ export default function ChatInputCentered({
   const [githubError, setGithubError] = useState<string | null>(null);
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const [openModelProvider, setOpenModelProvider] = useState<Provider | null>(null);
-  const [selectedModel, setSelectedModel] = useState<ModelId>(() => loadModel(activeProvider));
+  const [selectedModel, setSelectedModel] = useState<ModelId>(() => MODEL_CONFIG[activeProvider].defaultModel);
   const [isDeepThinking, setIsDeepThinking] = useState(false);
+  const [enterMode, setEnterMode] = useState<EnterMode>("send");
+  const [isMobile, setIsMobile] = useState(false);
+  const attachedFilesRef = useRef(attachedFiles);
+  attachedFilesRef.current = attachedFiles;
 
   const hasAnyFile = attachedFiles.length > 0;
   const canSubmit = (value.trim().length > 0 || hasAnyFile) && !isLoading && !isCompressing;
-  const isDeepThinkingDisabled =
-    selectedModel === "claude-haiku-4-5-20251001" || selectedModel === "claude-fable-5" || isLoading;
+  const isDeepThinkingDisabled = isThinkingUnsupported(selectedModel) || isLoading;
+
+  useEffect(() => {
+    setEnterMode(loadEnterMode());
+    const updateIsMobile = () => setIsMobile(isMobileViewport());
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+    return () => {
+      window.removeEventListener("resize", updateIsMobile);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      attachedFilesRef.current.forEach((f) => {
+        if (f.kind === "image") URL.revokeObjectURL(f.previewUrl);
+      });
+    };
+  }, []);
 
   useEffect(() => {
     setSelectedModel(loadModel(activeProvider));
@@ -162,6 +186,7 @@ export default function ChatInputCentered({
   const handleModelChange = (targetProvider: Provider, modelId: ModelId) => {
     setSelectedModel(modelId);
     saveModel(targetProvider, modelId);
+    if (isThinkingUnsupported(modelId)) setIsDeepThinking(false);
     setOpenModelProvider(null);
   };
 
@@ -192,7 +217,15 @@ export default function ChatInputCentered({
         try {
           const { base64, mediaType, sizeKB } = await compressImage(file);
           const imageFile: AttachedImageFile = { kind: "image", name: file.name, base64, mediaType, previewUrl, sizeKB };
-          setAttachedFiles((prev) => [...prev, imageFile]);
+          setAttachedFiles((prev) => {
+            const imageCount = prev.filter((f) => f.kind === "image").length;
+            if (imageCount >= MAX_IMAGES) {
+              URL.revokeObjectURL(previewUrl);
+              setFileError(`画像は最大${MAX_IMAGES}枚まで添付できます`);
+              return prev;
+            }
+            return [...prev, imageFile];
+          });
           currentImages++;
         } catch {
           URL.revokeObjectURL(previewUrl);
@@ -215,7 +248,14 @@ export default function ChatInputCentered({
             file,
             (content) => {
               const textFile: AttachedTextFile = { kind: "text", name: file.name, content, sizeKB };
-              setAttachedFiles((prev) => [...prev, textFile]);
+              setAttachedFiles((prev) => {
+                const textCount = prev.filter((f) => f.kind === "text").length;
+                if (textCount >= MAX_TEXT_FILES) {
+                  setFileError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+                  return prev;
+                }
+                return [...prev, textFile];
+              });
               currentTexts++;
               resolve();
             },
@@ -324,11 +364,22 @@ export default function ChatInputCentered({
         sizeKB,
       };
 
-      setAttachedFiles((prev) => [...prev, githubFile]);
-      setGithubUrl("");
-      setGithubPanelOpen(false);
-      setIsToolMenuOpen(false);
-      setGithubError(null);
+      let didAttach = false;
+      setAttachedFiles((prev) => {
+        const textCount = prev.filter((f) => f.kind === "text").length;
+        if (textCount >= MAX_TEXT_FILES) {
+          setGithubError(`テキストファイルは最大${MAX_TEXT_FILES}件まで添付できます`);
+          return prev;
+        }
+        didAttach = true;
+        return [...prev, githubFile];
+      });
+      if (didAttach) {
+        setGithubUrl("");
+        setGithubPanelOpen(false);
+        setIsToolMenuOpen(false);
+        setGithubError(null);
+      }
     } catch {
       setGithubError("ネットワークエラーが発生しました");
     } finally {
@@ -353,8 +404,11 @@ export default function ChatInputCentered({
         : fileBlocks.join("\n\n");
     }
 
+    const submittedImages: SubmittedAttachedImageFile[] = imageFiles.map(({ previewUrl, ...rest }) => rest);
+    const effectiveDeepThinking = isDeepThinking && canUseDeepThinking(activeProvider, selectedModel);
+
     onChange("");
-    onSubmit(finalContent, selectedModel, imageFiles.length > 0 ? imageFiles : undefined, isDeepThinking);
+    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking);
     attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
       URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
     });
@@ -389,8 +443,6 @@ export default function ChatInputCentered({
   const previewLines = firstTextFile?.content.split("\n").slice(0, PREVIEW_LINES) ?? [];
   const totalLines = firstTextFile?.content.split("\n").length ?? 0;
   const hasMoreLines = totalLines > PREVIEW_LINES;
-  const enterMode = loadEnterMode();
-  const isMobile = isMobileViewport();
   const placeholder =
     provider === "image_gen"
       ? "画像生成のプロンプトを入力…"
@@ -927,6 +979,7 @@ export default function ChatInputCentered({
                     title={
                       selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" :
                       selectedModel === "claude-fable-5" ? "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
+                      selectedModel === "claude-sonnet-5" ? "Sonnet 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
                       "Extended Thinking: AIが回答前に深く考えます"
                     }
                     style={{
