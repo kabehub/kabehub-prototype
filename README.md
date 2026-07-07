@@ -137,6 +137,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 > AIのAPIキーはブラウザのUI（設定画面）から入力します。サーバーには保存されません。
+> OpenAIキー未設定時は、OpenAIモデルでの会話に加えて、OpenAI Embeddingに依存するLore/RAG検索・記憶注入機能が利用できません。
+
+BYOKは当面、A案としてLocalStorage保存を継続します。将来的な強化方針として、C案（サーバー側暗号化保存）からD案（完全プロキシ）への段階的移行を検討しますが、C/D案は今回の実装スコープには含めません。
 
 ### Supabaseのセットアップ
 

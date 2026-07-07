@@ -941,7 +941,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // API キー
+  // BYOKキーはヘッダーからのみ受け取る。クエリ文字列・bodyからは受け取らない。
+  // ログに出力しない。
   const anthropicKey = req.headers.get("x-anthropic-api-key");
   const geminiKey    = req.headers.get("x-gemini-api-key");
   const openaiKey    = req.headers.get("x-openai-api-key");

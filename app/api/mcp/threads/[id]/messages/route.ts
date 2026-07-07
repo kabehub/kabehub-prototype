@@ -1,5 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateMcpToken, serviceRoleClient } from '@/lib/mcp-auth'
+import { checkMcpRateLimit } from '@/lib/rate-limit'
+
+async function checkMcpLimitResponse(userId: string): Promise<NextResponse | null> {
+  const rl = await checkMcpRateLimit(userId)
+  if (rl.allowed) return null
+
+  const retryAfter = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000))
+  return NextResponse.json(
+    {
+      error: 'リクエストが多すぎます。少し待ってから再度お試しください。',
+      retryAfter,
+    },
+    {
+      status: 429,
+      headers: {
+        'X-RateLimit-Limit': String(rl.limit),
+        'X-RateLimit-Remaining': String(rl.remaining),
+        'Retry-After': String(retryAfter),
+      },
+    }
+  )
+}
 
 export async function GET(
   req: NextRequest,
@@ -10,6 +32,9 @@ export async function GET(
     { error: 'Unauthorized', hint: 'Use https://www.kabehub.com as the base URL for API requests.' },
     { status: 401 }
   )
+  // Future MCP methods such as DELETE should apply this after authentication and before DB access.
+  const rateLimitResponse = await checkMcpLimitResponse(userId)
+  if (rateLimitResponse) return rateLimitResponse
 
   const supabase = serviceRoleClient()
 
@@ -41,6 +66,9 @@ export async function POST(
     { error: 'Unauthorized', hint: 'Use https://www.kabehub.com as the base URL for API requests.' },
     { status: 401 }
   )
+  // Future MCP methods such as DELETE should apply this after authentication and before DB access.
+  const rateLimitResponse = await checkMcpLimitResponse(userId)
+  if (rateLimitResponse) return rateLimitResponse
 
   const supabase = serviceRoleClient()
 

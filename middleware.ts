@@ -58,6 +58,8 @@ export const config = {
     "/",
     "/settings/:path*",
     "/login",
+    // mcpはBearer認証のためmiddleware対象外。
+    // この除外（"(?!mcp|...)"）を消すとMCPが全滅する。
     "/api/((?!mcp|share|auth/github/callback).*)",
   ],
 };
