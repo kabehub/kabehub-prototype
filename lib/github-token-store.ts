@@ -64,6 +64,17 @@ export async function deleteGithubToken(userId: string): Promise<void> {
 
 export async function createOAuthState(userId: string): Promise<string> {
   const supabase = serviceRoleClient();
+  const cleanupBefore = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Future cleanup can move to a daily Supabase pg_cron job if this grows.
+  const { error: cleanupError } = await supabase
+    .from("github_oauth_states")
+    .delete()
+    .lt("expires_at", cleanupBefore);
+
+  if (cleanupError) {
+    console.warn("[github-oauth] cleanup expired states failed:", cleanupError.message);
+  }
+
   const state = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   const { error } = await supabase.from("github_oauth_states").insert({
@@ -79,20 +90,20 @@ export async function createOAuthState(userId: string): Promise<string> {
 
 export async function consumeOAuthState(state: string): Promise<string | null> {
   const supabase = serviceRoleClient();
-  const { data } = await supabase
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabase
     .from("github_oauth_states")
-    .select("user_id, expires_at, used_at")
+    .update({ used_at: nowIso })
     .eq("state", state)
+    .is("used_at", null)
+    .gt("expires_at", nowIso)
+    .select("user_id")
     .maybeSingle();
 
-  if (!data) return null;
-  if (data.used_at) return null;
-  if (new Date(data.expires_at) < new Date()) return null;
+  if (error) {
+    console.warn("[github-oauth] consume state failed:", error.message);
+    return null;
+  }
 
-  await supabase
-    .from("github_oauth_states")
-    .update({ used_at: new Date().toISOString() })
-    .eq("state", state);
-
-  return data.user_id;
+  return data?.user_id ?? null;
 }
