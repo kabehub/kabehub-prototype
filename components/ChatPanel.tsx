@@ -222,25 +222,40 @@ export default function ChatPanel({
     () => [...messages].sort(compareMessagesForDisplay),
     [messages]
   );
-  const messageById = buildMessageById(orderedMessages);
-  const dbActiveMessages = orderedMessages.filter(msg => msg.is_active !== false);
-
-  const chainBlocksByRootAnchor = buildChainBlocksByRootAnchor(orderedMessages, messageById);
-
-  const currentLaneKeyByBranchRootId = buildCurrentLaneKeyByBranchRootId(
-    chainBlocksByRootAnchor,
-    orderedMessages
+  const messageById = useMemo(
+    () => buildMessageById(orderedMessages),
+    [orderedMessages]
+  );
+  const dbActiveMessages = useMemo(
+    () => orderedMessages.filter(msg => msg.is_active !== false),
+    [orderedMessages]
   );
 
-  const visibleMessages = dbActiveMessages.filter((msg) => {
-    if (!msg.branch_root_id || msg.branch_index == null) return true;
+  const chainBlocksByRootAnchor = useMemo(
+    () => buildChainBlocksByRootAnchor(orderedMessages, messageById),
+    [orderedMessages]
+  );
 
-    const currentLaneKey = currentLaneKeyByBranchRootId[msg.branch_root_id];
-    if (!currentLaneKey) return true;
+  const currentLaneKeyByBranchRootId = useMemo(
+    () => buildCurrentLaneKeyByBranchRootId(
+      chainBlocksByRootAnchor,
+      orderedMessages
+    ),
+    [orderedMessages]
+  );
 
-    const laneKey = `${msg.branch_root_id}:${msg.branch_index}`;
-    return laneKey === currentLaneKey;
-  });
+  const visibleMessages = useMemo(
+    () => dbActiveMessages.filter((msg) => {
+      if (!msg.branch_root_id || msg.branch_index == null) return true;
+
+      const currentLaneKey = currentLaneKeyByBranchRootId[msg.branch_root_id];
+      if (!currentLaneKey) return true;
+
+      const laneKey = `${msg.branch_root_id}:${msg.branch_index}`;
+      return laneKey === currentLaneKey;
+    }),
+    [orderedMessages]
+  );
   const threadId = thread?.id;
 
   useEffect(() => {
@@ -587,7 +602,7 @@ const handlePushLatest = async () => {
   }
 };
 
-  const handleOpenRoleplay = () => {
+  const handleOpenRoleplay = useCallback(() => {
   setShowRoleplay(true);
   setShowNotes(false);
   setShowDrafts(false);
@@ -595,7 +610,7 @@ const handlePushLatest = async () => {
   setShowShare(false);
   setShowApiKeys(false);
   setRpCharNameDraft(rpCharName);
-};
+}, [rpCharName]);
 
 // なりきりモード設定を保存
 const handleSaveRoleplay = async (
@@ -868,12 +883,17 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     setShowDialog(false);
   };
 
-  const lastAssistantIndex = visibleMessages.reduce(
-    (last, msg, i) => (msg.role === "assistant" ? i : last),
-    -1
+  const lastAssistantIndex = useMemo(
+    () => visibleMessages.reduce(
+      (last, msg, i) => (msg.role === "assistant" ? i : last),
+      -1
+    ),
+    [visibleMessages]
   );
-  const lastAssistantMsg =
-    lastAssistantIndex >= 0 ? visibleMessages[lastAssistantIndex] : null;
+  const lastAssistantMsg = useMemo(
+    () => lastAssistantIndex >= 0 ? visibleMessages[lastAssistantIndex] : null,
+    [visibleMessages]
+  );
 
   const handleEditAndRegenerateFromBubble = useCallback((
     assistantOrUserMsg: Message,
@@ -895,155 +915,25 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     }
   }, [visibleMessages, onEditAndRegenerate]);
 
-  const handleRestoreBranchFromBubble = (message: Message) => {
+  const handleRestoreBranchFromBubble = useCallback((message: Message) => {
     if (!message.branch_root_id || message.branch_index == null) return;
     onRestoreBranch?.(message.branch_root_id, message.branch_index);
-  };
+  }, [onRestoreBranch]);
 
   const hasSystemPrompt = !!(thread?.system_prompt && thread.system_prompt.trim());
 
-  let msgCounter = 0;
-  const messageNumbers = visibleMessages.reduce<Record<string, number>>((acc, msg) => {
-    if (msg.provider !== 'memo') {
-      msgCounter++;
-      acc[msg.id] = msgCounter;
-    }
-    return acc;
-  }, {});
-
-  const activeAnchorByInactiveRootKeyDirect = dbActiveMessages.reduce<Record<string, string>>((acc, msg) => {
-    if (msg.role !== "user" || !msg.branch_root_id) return acc;
-    const rootMessage = messageById[msg.branch_root_id];
-    if (!rootMessage || rootMessage.is_active !== false) return acc;
-    const rootKey = getAnchorKey(rootMessage);
-    if (!acc[rootKey]) {
-      acc[rootKey] = getAnchorKey(msg);
-    }
-    return acc;
-  }, {});
-
-  const childGroupKeysByParentRootId = orderedMessages.reduce<Record<string, string[]>>((acc, msg) => {
-    if (
-      msg.is_active !== false ||
-      msg.role !== "user" ||
-      !msg.parent_id ||
-      !msg.branch_root_id ||
-      msg.branch_root_id !== msg.id ||
-      msg.branch_index !== 0
-    ) {
-      return acc;
-    }
-
-    const parent = messageById[msg.parent_id];
-    if (!parent || parent.is_active !== false || parent.branch_root_id !== parent.id) return acc;
-
-    const parentRootKey = getAnchorKey(parent);
-    const childRootKey = getAnchorKey(msg);
-    if (!acc[parentRootKey]) acc[parentRootKey] = [];
-    if (!acc[parentRootKey].includes(childRootKey)) {
-      acc[parentRootKey].push(childRootKey);
-    }
-    return acc;
-  }, {});
-
-  // inactiveなrootメッセージ自身のparent_idがactiveを指す場合の直接マッピング。
-  const parentAnchorByInactiveRootKeyDirect = orderedMessages.reduce<Record<string, string>>((acc, msg) => {
-    if (
-      msg.is_active !== false ||
-      msg.role !== "user" ||
-      !msg.parent_id ||
-      !msg.branch_root_id ||
-      msg.branch_root_id !== msg.id
-    ) {
-      return acc;
-    }
-
-    const parent = messageById[msg.parent_id];
-    if (!parent || parent.is_active === false) return acc;
-
-    const rootKey = getAnchorKey(msg);
-    acc[rootKey] = getAnchorKey(parent);
-    return acc;
-  }, {});
-
-  const resolveActiveAnchorForInactiveRoot = (
-    rootKey: string,
-    visited: Set<string> = new Set()
-  ): string | undefined => {
-    if (visited.has(rootKey)) return undefined;
-    visited.add(rootKey);
-
-    const directAnchor = activeAnchorByInactiveRootKeyDirect[rootKey];
-    if (directAnchor) return directAnchor;
-
-    const parentAnchor = parentAnchorByInactiveRootKeyDirect[rootKey];
-    if (parentAnchor) return parentAnchor;
-
-    const childRootKeys = childGroupKeysByParentRootId[rootKey] ?? [];
-    for (const childRootKey of childRootKeys) {
-      const resolvedAnchor = resolveActiveAnchorForInactiveRoot(childRootKey, new Set(visited));
-      if (resolvedAnchor) return resolvedAnchor;
-    }
-
-    return undefined;
-  };
-
-  const activeAnchorByInactiveRootKey = orderedMessages.reduce<Record<string, string>>(
-    (acc, msg) => {
-      if (
-        msg.is_active !== false ||
-        msg.role !== "user" ||
-        !msg.branch_root_id ||
-        msg.branch_root_id !== msg.id
-      ) {
+  const messageNumbers = useMemo(
+    () => {
+      let msgCounter = 0;
+      return visibleMessages.reduce<Record<string, number>>((acc, msg) => {
+        if (msg.provider !== 'memo') {
+          msgCounter++;
+          acc[msg.id] = msgCounter;
+        }
         return acc;
-      }
-
-      const rootKey = getAnchorKey(msg);
-      const resolvedAnchor = resolveActiveAnchorForInactiveRoot(rootKey);
-      if (resolvedAnchor) {
-        acc[rootKey] = resolvedAnchor;
-      }
-      return acc;
+      }, {});
     },
-    { ...activeAnchorByInactiveRootKeyDirect }
-  );
-
-  const branchGroupsByAnchor = orderedMessages.reduce<{
-    groups: Record<string, Message[]>;
-    anchors: Record<string, string>;
-    previousActiveUser: Message | null;
-  }>((acc, msg) => {
-    if (msg.is_active !== false) {
-      if (msg.role === "user" && msg.provider !== "memo") {
-        acc.previousActiveUser = msg;
-      }
-      return acc;
-    }
-
-    const groupKey = `${msg.branch_root_id ?? msg.id}:${msg.branch_index ?? "legacy"}`;
-    if (!acc.groups[groupKey]) {
-      acc.groups[groupKey] = [];
-      const rootMessage = msg.branch_root_id ? messageById[msg.branch_root_id] : null;
-      const anchorMessage = rootMessage ?? acc.previousActiveUser;
-      if (anchorMessage) {
-        const anchorKey = getAnchorKey(anchorMessage);
-        acc.anchors[groupKey] = activeAnchorByInactiveRootKey[anchorKey] ?? anchorKey;
-      }
-    }
-    acc.groups[groupKey].push(msg);
-    return acc;
-  }, { groups: {}, anchors: {}, previousActiveUser: null });
-
-  const inactiveBranchGroupsByAnchor = Object.entries(branchGroupsByAnchor.groups).reduce<Record<string, Message[][]>>(
-    (acc, [groupKey, group]) => {
-      const anchorKey = branchGroupsByAnchor.anchors[groupKey];
-      if (!anchorKey) return acc;
-      if (!acc[anchorKey]) acc[anchorKey] = [];
-      acc[anchorKey].push(group);
-      return acc;
-    },
-    {}
+    [visibleMessages]
   );
 
   type BranchBlock = {
@@ -1053,41 +943,196 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     lanes: BranchLane[];
   };
 
-  Object.values(inactiveBranchGroupsByAnchor).forEach((groups) => {
-    groups.sort((a, b) => {
-      const aIndex = typeof a[0]?.branch_index === "number" ? a[0].branch_index : Number.MAX_SAFE_INTEGER;
-      const bIndex = typeof b[0]?.branch_index === "number" ? b[0].branch_index : Number.MAX_SAFE_INTEGER;
-      if (aIndex !== bIndex) return aIndex - bIndex;
-      return new Date(a[0]?.created_at ?? 0).getTime() - new Date(b[0]?.created_at ?? 0).getTime();
-    });
-  });
-
-  const branchBlocksByAnchor = Object.values(chainBlocksByRootAnchor).reduce<Record<string, BranchBlock>>(
-    (acc, chain) => {
-      const currentLaneKey = resolveCurrentLaneKey(chain, orderedMessages);
-      if (!currentLaneKey) return acc;
-      const anchorMsg = resolveBranchBlockAnchor(currentLaneKey, visibleMessages);
-      if (!anchorMsg) return acc;
-      const anchorKey = getAnchorKey(anchorMsg);
-      const lanes = buildBranchLanes(
-        chain.branchRootIds,
-        currentLaneKey,
-        orderedMessages,
-        messageById
-      );
-
-      if (lanes.length < 2 || !lanes.some((lane) => lane.isCurrent)) return acc;
-
-      acc[anchorKey] = {
-        anchorKey,
-        anchorMessageId: anchorMsg.id,
-        branchPointNumber: messageNumbers[anchorMsg.id] ?? null,
-        lanes,
-      };
+  const {
+    activeAnchorByInactiveRootKeyDirect,
+    childGroupKeysByParentRootId,
+    parentAnchorByInactiveRootKeyDirect,
+    activeAnchorByInactiveRootKey,
+    branchGroupsByAnchor,
+    inactiveBranchGroupsByAnchor,
+    branchBlocksByAnchor,
+  } = useMemo(() => {
+    const activeAnchorByInactiveRootKeyDirect = dbActiveMessages.reduce<Record<string, string>>((acc, msg) => {
+      if (msg.role !== "user" || !msg.branch_root_id) return acc;
+      const rootMessage = messageById[msg.branch_root_id];
+      if (!rootMessage || rootMessage.is_active !== false) return acc;
+      const rootKey = getAnchorKey(rootMessage);
+      if (!acc[rootKey]) {
+        acc[rootKey] = getAnchorKey(msg);
+      }
       return acc;
-    },
-    {}
-  );
+    }, {});
+
+    const childGroupKeysByParentRootId = orderedMessages.reduce<Record<string, string[]>>((acc, msg) => {
+      if (
+        msg.is_active !== false ||
+        msg.role !== "user" ||
+        !msg.parent_id ||
+        !msg.branch_root_id ||
+        msg.branch_root_id !== msg.id ||
+        msg.branch_index !== 0
+      ) {
+        return acc;
+      }
+
+      const parent = messageById[msg.parent_id];
+      if (!parent || parent.is_active !== false || parent.branch_root_id !== parent.id) return acc;
+
+      const parentRootKey = getAnchorKey(parent);
+      const childRootKey = getAnchorKey(msg);
+      if (!acc[parentRootKey]) acc[parentRootKey] = [];
+      if (!acc[parentRootKey].includes(childRootKey)) {
+        acc[parentRootKey].push(childRootKey);
+      }
+      return acc;
+    }, {});
+
+    // inactiveなrootメッセージ自身のparent_idがactiveを指す場合の直接マッピング。
+    const parentAnchorByInactiveRootKeyDirect = orderedMessages.reduce<Record<string, string>>((acc, msg) => {
+      if (
+        msg.is_active !== false ||
+        msg.role !== "user" ||
+        !msg.parent_id ||
+        !msg.branch_root_id ||
+        msg.branch_root_id !== msg.id
+      ) {
+        return acc;
+      }
+
+      const parent = messageById[msg.parent_id];
+      if (!parent || parent.is_active === false) return acc;
+
+      const rootKey = getAnchorKey(msg);
+      acc[rootKey] = getAnchorKey(parent);
+      return acc;
+    }, {});
+
+    const resolveActiveAnchorForInactiveRoot = (
+      rootKey: string,
+      visited: Set<string> = new Set()
+    ): string | undefined => {
+      if (visited.has(rootKey)) return undefined;
+      visited.add(rootKey);
+
+      const directAnchor = activeAnchorByInactiveRootKeyDirect[rootKey];
+      if (directAnchor) return directAnchor;
+
+      const parentAnchor = parentAnchorByInactiveRootKeyDirect[rootKey];
+      if (parentAnchor) return parentAnchor;
+
+      const childRootKeys = childGroupKeysByParentRootId[rootKey] ?? [];
+      for (const childRootKey of childRootKeys) {
+        const resolvedAnchor = resolveActiveAnchorForInactiveRoot(childRootKey, new Set(visited));
+        if (resolvedAnchor) return resolvedAnchor;
+      }
+
+      return undefined;
+    };
+
+    const activeAnchorByInactiveRootKey = orderedMessages.reduce<Record<string, string>>(
+      (acc, msg) => {
+        if (
+          msg.is_active !== false ||
+          msg.role !== "user" ||
+          !msg.branch_root_id ||
+          msg.branch_root_id !== msg.id
+        ) {
+          return acc;
+        }
+
+        const rootKey = getAnchorKey(msg);
+        const resolvedAnchor = resolveActiveAnchorForInactiveRoot(rootKey);
+        if (resolvedAnchor) {
+          acc[rootKey] = resolvedAnchor;
+        }
+        return acc;
+      },
+      { ...activeAnchorByInactiveRootKeyDirect }
+    );
+
+    const branchGroupsByAnchor = orderedMessages.reduce<{
+      groups: Record<string, Message[]>;
+      anchors: Record<string, string>;
+      previousActiveUser: Message | null;
+    }>((acc, msg) => {
+      if (msg.is_active !== false) {
+        if (msg.role === "user" && msg.provider !== "memo") {
+          acc.previousActiveUser = msg;
+        }
+        return acc;
+      }
+
+      const groupKey = `${msg.branch_root_id ?? msg.id}:${msg.branch_index ?? "legacy"}`;
+      if (!acc.groups[groupKey]) {
+        acc.groups[groupKey] = [];
+        const rootMessage = msg.branch_root_id ? messageById[msg.branch_root_id] : null;
+        const anchorMessage = rootMessage ?? acc.previousActiveUser;
+        if (anchorMessage) {
+          const anchorKey = getAnchorKey(anchorMessage);
+          acc.anchors[groupKey] = activeAnchorByInactiveRootKey[anchorKey] ?? anchorKey;
+        }
+      }
+      acc.groups[groupKey].push(msg);
+      return acc;
+    }, { groups: {}, anchors: {}, previousActiveUser: null });
+
+    const inactiveBranchGroupsByAnchor = Object.entries(branchGroupsByAnchor.groups).reduce<Record<string, Message[][]>>(
+      (acc, [groupKey, group]) => {
+        const anchorKey = branchGroupsByAnchor.anchors[groupKey];
+        if (!anchorKey) return acc;
+        if (!acc[anchorKey]) acc[anchorKey] = [];
+        acc[anchorKey].push(group);
+        return acc;
+      },
+      {}
+    );
+
+    Object.values(inactiveBranchGroupsByAnchor).forEach((groups) => {
+      groups.sort((a, b) => {
+        const aIndex = typeof a[0]?.branch_index === "number" ? a[0].branch_index : Number.MAX_SAFE_INTEGER;
+        const bIndex = typeof b[0]?.branch_index === "number" ? b[0].branch_index : Number.MAX_SAFE_INTEGER;
+        if (aIndex !== bIndex) return aIndex - bIndex;
+        return new Date(a[0]?.created_at ?? 0).getTime() - new Date(b[0]?.created_at ?? 0).getTime();
+      });
+    });
+
+    const branchBlocksByAnchor = Object.values(chainBlocksByRootAnchor).reduce<Record<string, BranchBlock>>(
+      (acc, chain) => {
+        const currentLaneKey = resolveCurrentLaneKey(chain, orderedMessages);
+        if (!currentLaneKey) return acc;
+        const anchorMsg = resolveBranchBlockAnchor(currentLaneKey, visibleMessages);
+        if (!anchorMsg) return acc;
+        const anchorKey = getAnchorKey(anchorMsg);
+        const lanes = buildBranchLanes(
+          chain.branchRootIds,
+          currentLaneKey,
+          orderedMessages,
+          messageById
+        );
+
+        if (lanes.length < 2 || !lanes.some((lane) => lane.isCurrent)) return acc;
+
+        acc[anchorKey] = {
+          anchorKey,
+          anchorMessageId: anchorMsg.id,
+          branchPointNumber: messageNumbers[anchorMsg.id] ?? null,
+          lanes,
+        };
+        return acc;
+      },
+      {}
+    );
+
+    return {
+      activeAnchorByInactiveRootKeyDirect,
+      childGroupKeysByParentRootId,
+      parentAnchorByInactiveRootKeyDirect,
+      activeAnchorByInactiveRootKey,
+      branchGroupsByAnchor,
+      inactiveBranchGroupsByAnchor,
+      branchBlocksByAnchor,
+    };
+  }, [orderedMessages, messageById, chainBlocksByRootAnchor, visibleMessages, messageNumbers]);
 
   const handleBranchLaneClick = async (lane: BranchLane) => {
     if (isLoading || lane.isCurrent) return;

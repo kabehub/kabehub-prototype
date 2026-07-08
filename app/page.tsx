@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
@@ -365,11 +365,12 @@ export default function Home() {
     setDisplayThreads((prev) => prev.map((t) => (t.id === id ? { ...t, ...partial } : t)));
   }, []);
 
-  const activeThread =
-    threads.find((t) => t.id === activeThreadId) ??
-    (activeThreadId
-      ? { id: activeThreadId, title: "新しい壁打ち", created_at: new Date().toISOString() }
-      : null);
+  const activeThread = useMemo(() => {
+    const found = threads.find((t) => t.id === activeThreadId);
+    if (found) return found;
+    if (!activeThreadId) return null;
+    return { id: activeThreadId, title: "新しい壁打ち", created_at: new Date().toISOString() };
+  }, [threads, activeThreadId]);
 
   // ── 一時モード切り替え ────────────────────────────────────
   const handleSwitchTemporary = useCallback(async () => {
