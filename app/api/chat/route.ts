@@ -104,7 +104,8 @@ function isOwnedStoragePath(path: unknown, userId: string): path is string {
 function streamClaude(
   apiKey: string,
   messages: ChatMessage[],
-  systemPrompt?: string,
+  stableSystemPrompt?: string,
+  dynamicSystemPrompt?: string,
   modelId: ClaudeModel = "claude-sonnet-4-5",
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
@@ -112,9 +113,21 @@ function streamClaude(
   isDeepThinking?: boolean,
   cacheAnchorIndex: number = -1,
 ): ReadableStream<string> {
-  const systemBlock = systemPrompt?.trim()
-    ? [{ type: "text" as const, text: systemPrompt.trim(), cache_control: { type: "ephemeral" as const } }]
-    : undefined;
+  const systemBlocks: { type: "text"; text: string; cache_control?: { type: "ephemeral" } }[] = [];
+  if (stableSystemPrompt?.trim()) {
+    systemBlocks.push({
+      type: "text",
+      text: stableSystemPrompt.trim(),
+      cache_control: { type: "ephemeral" },
+    });
+  }
+  if (dynamicSystemPrompt?.trim()) {
+    systemBlocks.push({
+      type: "text",
+      text: dynamicSystemPrompt.trim(),
+    });
+  }
+  const systemBlock = systemBlocks.length > 0 ? systemBlocks : undefined;
 
   const resolvedAnchorIndex = cacheAnchorIndex >= 0
     ? cacheAnchorIndex
@@ -946,6 +959,7 @@ export async function POST(req: NextRequest) {
     referencePreambleInserted = true;
     return (current ?? "") + "\n\n" + prefix + block;
   }
+  let dynamicSystemText: string | undefined = undefined;
 
   // Lore Book 自動注入（novel フォルダ + openaiKey がある場合のみ）
   if (loreEnabled && openaiKey && loreTargetFolder) {
@@ -959,8 +973,8 @@ export async function POST(req: NextRequest) {
     });
     if (chunks.length > 0) {
       const loreBody = "【関連設定（Lore Book より自動注入）】\n" + chunks.join("\n\n---\n\n");
-      resolvedSystemPrompt = appendReferenceBlock(
-        resolvedSystemPrompt,
+      dynamicSystemText = appendReferenceBlock(
+        dynamicSystemText,
         buildReferenceBlock("lore_book", loreBody)
       );
     }
@@ -1006,8 +1020,8 @@ export async function POST(req: NextRequest) {
         ...memoryLines,
       ].join("\n");
 
-      resolvedSystemPrompt = appendReferenceBlock(
-        resolvedSystemPrompt,
+      dynamicSystemText = appendReferenceBlock(
+        dynamicSystemText,
         buildReferenceBlock("memory", memoryNote)
       );
     }
@@ -1116,9 +1130,15 @@ export async function POST(req: NextRequest) {
   const handleUsage = (u: UsageData) => { usageRef.input_tokens = u.input_tokens; usageRef.output_tokens = u.output_tokens; };
 
   const labelNote = "\n\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。";
-  let systemPromptWithLabel = resolvedSystemPrompt
-    ? resolvedSystemPrompt + participantNote + labelNote
-    : (participantNote + labelNote).trim();
+  const stableSystemPrompt = resolvedSystemPrompt
+    ? resolvedSystemPrompt + labelNote
+    : labelNote.trim();
+
+  if (participantNote.trim()) {
+    dynamicSystemText = dynamicSystemText
+      ? dynamicSystemText + "\n\n" + participantNote.trim()
+      : participantNote.trim();
+  }
 
   if (pinnedGithubFiles.length > 0 || githubRepo) {
     githubAccessToken = await getGithubToken(userId);
@@ -1132,8 +1152,8 @@ export async function POST(req: NextRequest) {
       console.warn("[Pinned GitHub Files] warnings:", pinnedWarnings);
     }
     if (pinnedContext) {
-      systemPromptWithLabel = systemPromptWithLabel
-        ? systemPromptWithLabel + "\n\n" + pinnedContext
+      dynamicSystemText = dynamicSystemText
+        ? dynamicSystemText + "\n\n" + pinnedContext
         : pinnedContext;
     }
   }
@@ -1148,6 +1168,9 @@ export async function POST(req: NextRequest) {
   ) {
     try {
       const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : "claude-sonnet-4-5";
+      const systemPromptForGithubLoop = dynamicSystemText
+        ? stableSystemPrompt + "\n\n" + dynamicSystemText
+        : stableSystemPrompt;
       const discovery = await runGithubToolLoop({
         anthropicKey,
         modelId: resolvedModelIdForLoop,
@@ -1166,7 +1189,7 @@ export async function POST(req: NextRequest) {
             content: textContent,
           };
         }),
-        systemPrompt: systemPromptWithLabel,
+        systemPrompt: systemPromptForGithubLoop,
         repo: githubRepo,
         ref: githubRef,
         accessToken: githubAccessToken ?? undefined,
@@ -1175,8 +1198,8 @@ export async function POST(req: NextRequest) {
         onProgress: (msg) => { progressMessages.push(msg); },
       });
       if (discovery.contextBlock) {
-        systemPromptWithLabel = systemPromptWithLabel
-          ? systemPromptWithLabel + "\n\n" + discovery.contextBlock
+        dynamicSystemText = dynamicSystemText
+          ? dynamicSystemText + "\n\n" + discovery.contextBlock
           : discovery.contextBlock;
       }
       if (discovery.warnings.length > 0) {
@@ -1203,8 +1226,8 @@ export async function POST(req: NextRequest) {
       if (ragResults.length > 0) {
         const ragBody = ragResults.map(r => `[Memory Kind: ${r.memoryKind}]
 Content: ${r.chunkText}`.trim()).join("\n\n");
-        systemPromptWithLabel = appendReferenceBlock(
-          systemPromptWithLabel,
+        dynamicSystemText = appendReferenceBlock(
+          dynamicSystemText,
           buildReferenceBlock("rag_memory", ragBody)
         );
       }
@@ -1214,9 +1237,12 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
   }
 
   // ── Context window trimming (applied after lore injection) ─────────────────
+  const combinedSystemPrompt = dynamicSystemText
+    ? stableSystemPrompt + "\n\n" + dynamicSystemText
+    : stableSystemPrompt;
   const trimResult = trimContextToWindow(
     messagesForApi,
-    systemPromptWithLabel ?? resolvedSystemPrompt,
+    combinedSystemPrompt,
     { maxInputTokens: 80_000, anchorTurns: 6, responseReserveTokens: 2_000 }
   );
   messagesForApi.length = 0;
@@ -1236,7 +1262,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         });
       }
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
-      aiStream = streamGemini(geminiKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamGemini(geminiKey, messagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
       if (!isClaudeModel(resolvedModelId)) {
         return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
@@ -1246,7 +1272,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
       const effectiveDeepThinking = (isDeepThinking ?? false) && !THINKING_UNSUPPORTED_MODELS.includes(resolvedModelId);
-      aiStream = streamClaude(anthropicKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, effectiveDeepThinking, trimResult.cacheAnchorIndex);
+      aiStream = streamClaude(anthropicKey, messagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, effectiveDeepThinking, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {
         return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
@@ -1255,7 +1281,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         });
       }
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
-      aiStream = streamOpenAI(openaiKey, messagesForApi, systemPromptWithLabel, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamOpenAI(openaiKey, messagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
     }
