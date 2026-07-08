@@ -201,23 +201,20 @@ function streamClaude(
                 const parsed = JSON.parse(raw);
 
                 // ✅ v62: キャッシュ統計ログ（Gemini指摘③: message_start + message_delta 両方拾う）
+                // 確認用に一時的にNODE_ENVガードを外す（確認後に必ず戻す）
                 if (parsed.type === "message_start") {
                   const u = parsed.message?.usage ?? {};
                   inputTokens = u.input_tokens ?? null;
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("[Cache input]", {
-                      input_tokens:                u.input_tokens                   ?? 0,
-                      cache_creation_input_tokens: u.cache_creation_input_tokens    ?? 0,
-                      cache_read_input_tokens:     u.cache_read_input_tokens        ?? 0,
-                    });
-                  }
+                  console.log("[Cache input]", {
+                    input_tokens: u.input_tokens ?? 0,
+                    cache_creation_input_tokens: u.cache_creation_input_tokens ?? 0,
+                    cache_read_input_tokens: u.cache_read_input_tokens ?? 0,
+                  });
                 }
                 if (parsed.type === "message_delta") {
                   const u = parsed.usage ?? {};
                   outputTokens = u.output_tokens ?? null;
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("[Cache output]", { output_tokens: u.output_tokens ?? 0 });
-                  }
+                  console.log("[Cache output]", { output_tokens: u.output_tokens ?? 0 });
                 }
 
                 // テキスト・思考チャンクをenqueue
