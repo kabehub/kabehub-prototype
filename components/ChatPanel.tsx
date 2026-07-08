@@ -24,6 +24,8 @@ import {
   type BranchLane,
 } from "@/lib/branching";
 
+const EMPTY_STRING_ARRAY: string[] = [];
+
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
   thread: Thread | null;
@@ -109,14 +111,14 @@ export default function ChatPanel({
   isTemporary,
   onSwitchTemporary,
   onCopyThread,
-  searchMatchIds = [],
+  searchMatchIds = EMPTY_STRING_ARRAY,
   searchMatchIndex = 0,
   onMatchNavigate,
   onClearSearch,
   onUpdateMessage,
   streamingContent = "",  // ✅ v62追加
   onAbort,               // ✅ v62追加
-  githubProgressMessages = [],
+  githubProgressMessages = EMPTY_STRING_ARRAY,
   onSendMemoToAI,
   thinkingContents,
   onRestoreBranch,
