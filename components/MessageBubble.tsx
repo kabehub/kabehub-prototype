@@ -145,7 +145,7 @@ function MessageBubble({
       }
     };
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setEditRegenOpenModelProvider(null);
+      if (event.key === "Escape") { event.stopPropagation(); setEditRegenOpenModelProvider(null); }
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -927,7 +927,7 @@ function MessageBubble({
               autoFocus
               value={noteContent}
               onChange={(e) => setNoteContent(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSaveNote(); if (e.key === "Escape") setShowNoteInput(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSaveNote(); if (e.key === "Escape") { e.stopPropagation(); setShowNoteInput(false); } }}
               placeholder="このメッセージへのメモ… (Cmd/Ctrl+Enter で保存)"
               style={{
                 width: "100%",

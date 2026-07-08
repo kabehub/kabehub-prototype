@@ -1394,7 +1394,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                   onChange={(e) => setTagInputValue(e.target.value.slice(0, 20))}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") { e.preventDefault(); handleAddTag(); }
-                    if (e.key === "Escape") { setShowTagInput(false); setTagInputValue(""); }
+                    if (e.key === "Escape") { e.stopPropagation(); setShowTagInput(false); setTagInputValue(""); }
                   }}
                   onBlur={handleAddTag}
                   placeholder="#タグ名"
@@ -2772,7 +2772,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
               autoFocus
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSaveTitle(); if (e.key === "Escape") setShowDialog(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveTitle(); if (e.key === "Escape") { e.stopPropagation(); setShowDialog(false); } }}
               style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "14px", fontFamily: "'DM Sans', sans-serif", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
             />
             <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>

@@ -489,7 +489,7 @@ async function saveAssistantMessage(
   content: string,
   provider: string,
   messageId: string,
-  modelId?: string,
+  modelId?: string | null,
   inputTokens?: number | null,
   outputTokens?: number | null,
   branchMeta?: BranchMeta | null,
@@ -503,7 +503,7 @@ async function saveAssistantMessage(
     content,
     provider,
     user_id: userId,
-    ...(modelId ? { model_id: modelId } : {}),
+    ...(modelId !== undefined ? { model_id: modelId } : {}),
     ...(inputTokens != null ? { input_tokens: inputTokens } : {}),
     ...(outputTokens != null ? { output_tokens: outputTokens } : {}),
     ...(branchMeta ? {
@@ -694,11 +694,12 @@ export async function POST(req: NextRequest) {
 
   const isLightRegenerate = regenerateMode === "light" && !!targetMessageId;
   let targetUserMessage: { id: string; content: string } | null = null;
+  let originalLightAssistant: { content: string; model_id: string | null } | null = null;
 
   if (isLightRegenerate) {
     const { data: targetAssistant } = await supabase
       .from("messages")
-      .select("id")
+      .select("id, content, model_id")
       .eq("id", targetMessageId)
       .eq("thread_id", threadId)
       .eq("user_id", userId)
@@ -711,6 +712,10 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     }
+    originalLightAssistant = {
+      content: targetAssistant.content,
+      model_id: targetAssistant.model_id,
+    };
 
     if (targetUserMessageId) {
       const { data: targetUser } = await supabase
@@ -1369,10 +1374,16 @@ export async function POST(req: NextRequest) {
   // dbSavedは保存「成功」時のみtrueにする（失敗を隠蔽しない）
   const saveToDb = async (aborted: boolean, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
     if (isTemporary) return true;
-    const contentToSave = accumulatedText.replace(/^(\[.*?\]\n)+/, "");
+    const restoredLightAssistant = isLightRegenerate && aborted ? originalLightAssistant : null;
+    const contentToSave = restoredLightAssistant
+      ? restoredLightAssistant.content
+      : accumulatedText.replace(/^(\[.*?\]\n)+/, "");
+    const modelIdToSave = restoredLightAssistant
+      ? restoredLightAssistant.model_id
+      : resolvedModelId;
     return await saveAssistantMessage(
       supabaseClient, threadId as string, userId, contentToSave, usedProvider,
-      assistantMessageId, resolvedModelId,
+      assistantMessageId, modelIdToSave,
       usageRef.input_tokens, usageRef.output_tokens,
       branchEditMeta,
     );
@@ -1456,7 +1467,9 @@ export async function POST(req: NextRequest) {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceKey) {
-        const contentToSave = accumulatedText;
+        const restoredLightAssistant = isLightRegenerate && isAborted ? originalLightAssistant : null;
+        const contentToSave = restoredLightAssistant ? restoredLightAssistant.content : accumulatedText;
+        const modelIdToSave = restoredLightAssistant ? restoredLightAssistant.model_id : resolvedModelId;
         const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
           method: "POST",
           headers: {
@@ -1472,7 +1485,7 @@ export async function POST(req: NextRequest) {
             content: contentToSave,
             provider: usedProvider,
             user_id: userId,
-            model_id: resolvedModelId,
+            ...(modelIdToSave !== undefined ? { model_id: modelIdToSave } : {}),
             ...(usageRef.input_tokens != null ? { input_tokens: usageRef.input_tokens } : {}),
             ...(usageRef.output_tokens != null ? { output_tokens: usageRef.output_tokens } : {}),
             ...(branchEditMeta ? {

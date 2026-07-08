@@ -337,7 +337,7 @@ export default function ChatInput({
       }
     };
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setOpenModelProvider(null);
+      if (event.key === "Escape") { event.stopPropagation(); setOpenModelProvider(null); }
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -1029,7 +1029,7 @@ export default function ChatInput({
               onChange={(e) => { setGithubUrl(e.target.value); setGithubError(null); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") { e.preventDefault(); handleGithubFetch(); }
-                if (e.key === "Escape") { setGithubPanelOpen(false); setGithubUrl(""); setGithubError(null); }
+                if (e.key === "Escape") { e.stopPropagation(); setGithubPanelOpen(false); setGithubUrl(""); setGithubError(null); }
               }}
               placeholder="https://github.com/.../blob/main/..."
               disabled={githubLoading}

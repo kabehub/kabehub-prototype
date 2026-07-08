@@ -416,7 +416,7 @@ function RoleplayBubble({
               autoFocus
               value={noteContent}
               onChange={(e) => setNoteContent(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSaveNote(); if (e.key === "Escape") setShowNoteInput(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSaveNote(); if (e.key === "Escape") { e.stopPropagation(); setShowNoteInput(false); } }}
               placeholder="このメッセージへのメモ… (Cmd/Ctrl+Enter で保存)"
               style={{
                 width: "100%",

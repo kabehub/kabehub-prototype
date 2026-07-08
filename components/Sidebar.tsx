@@ -133,7 +133,7 @@ function FolderPopover({ thread, existingFolders, onAssign, onClose }: FolderPop
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleAssign();
-    if (e.key === "Escape") onClose();
+    if (e.key === "Escape") { e.stopPropagation(); onClose(); }
   };
 
   return (

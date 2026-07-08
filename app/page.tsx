@@ -130,6 +130,21 @@ export default function Home() {
   // ✅ v62追加: Escキーで生成中断
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        const tagName = target.tagName;
+        if (
+          tagName === "INPUT" ||
+          tagName === "TEXTAREA" ||
+          tagName === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+
       if (e.key === "Escape" && isLoading) {
         abortControllerRef.current?.abort();
       }
@@ -941,6 +956,8 @@ export default function Home() {
       const branchId = mode === "branch" ? crypto.randomUUID() : undefined;
       const userContentToSend = editedUserContent ?? lastUser.content;
       const userContentChanged = editedUserContent != null && editedUserContent !== lastUser.content;
+      const originalAssistantContent = lastAssistant.content;
+      const originalAssistantModelId = lastAssistant.model_id;
 
       if (mode === "branch") {
         // DBで is_active: false に更新（削除しない）
@@ -960,7 +977,7 @@ export default function Home() {
         );
       }
 
-      const { assistantMessage } = await fetchWithStreaming(
+      const { assistantMessage, aborted } = await fetchWithStreaming(
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
@@ -985,6 +1002,9 @@ export default function Home() {
       if (mode === "light") {
         setMessages(prev => prev.map(m => {
           if (m.id === lastAssistant.id) {
+            if (aborted) {
+              return { ...m, content: originalAssistantContent, model_id: originalAssistantModelId };
+            }
             return { ...m, content: assistantMessage.content, model_id: assistantMessage.model_id };
           }
           if (userContentChanged && m.id === lastUser.id) {
@@ -992,6 +1012,22 @@ export default function Home() {
           }
           return m;
         }));
+      } else if (aborted) {
+        const assistantMemo = {
+          ...assistantMessage,
+          provider: "memo" as const,
+          branch_id: branchId,
+          is_active: true,
+        };
+        setMessages((prev) => [...prev, assistantMemo]);
+
+        if (assistantMessage.id) {
+          fetch(`/api/threads/${activeThreadId}/messages/${assistantMessage.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: "memo" }),
+          }).catch((err) => console.error("分岐再生成中断メモ化失敗:", err));
+        }
       } else {
         setMessages((prev) => [...prev, { ...assistantMessage, branch_id: branchId, is_active: true }]);
       }
@@ -1014,7 +1050,7 @@ export default function Home() {
     setIsLoading(true);
     setStreamingContent("");
     try {
-      const { assistantMessage, thinkingContent } = await fetchWithStreaming(
+      const { assistantMessage, aborted, thinkingContent } = await fetchWithStreaming(
         "/api/chat",
         getApiKeyHeaders(),
         JSON.stringify({
@@ -1032,6 +1068,14 @@ export default function Home() {
 
       if (thinkingContent && assistantMessage.id) {
         setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
+      }
+
+      if (aborted && assistantMessage.id) {
+        await fetch(`/api/threads/${activeThreadId}/messages/${assistantMessage.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider: "memo" }),
+        });
       }
 
       const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
