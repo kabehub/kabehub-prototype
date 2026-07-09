@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/07/06（S6: RLS棚卸し／S7: カウンターRPC強化を反映）
+-- 最終更新: 2026/07/09（S20-B: reports FK修正／find_similar_lore_pairs保護追加を反映）
 --
 -- 【このファイルについて】
 -- 2026/07/01 に Supabase 本番DB（information_schema / pg_catalog）を
@@ -21,33 +21,29 @@
 --     ±1方式から実テーブル再集計方式 recalc_likes_count /
 --     recalc_fork_count に移行）
 --
+-- 2026/07/09、以下2本のマイグレーションを本番適用し、本ファイルに反映：
+--   - migration_v125_reports_thread_fk_set_null.sql（reports.thread_id の
+--     ON DELETE を CASCADE から SET NULL に修正）
+--   - migration_v126_find_similar_lore_pairs_liked_ai_protection.sql
+--     （find_similar_lore_pairs に liked_ai / liked_ai_cleaned 保護を追加）
+--
 -- 【新規セットアップ時の注意】
 -- このファイルは「現状を記録するための正確なスナップショット」であり、
 -- 上から順に流すだけでは動かない可能性があります（実行順序に依存する
--- 箇所、Supabase側で自動生成される部分などを含むため）。特に以下は
--- 未検証・要確認です。
---   - 各FKの ON DELETE 挙動（本ファイルはアプリの設計思想から推測して
---     記載。information_schema.referential_constraints による裏取りは
---     未実施）
---   - profiles.bio の CHECK 制約（旧スキーマに存在した
---     char_length(bio) <= 300 が現在も生きているか未確認）
---   - handle_new_user() を auth.users に紐付けるトリガー（public
---     スキーマのみ調査したため、auth スキーマ側のトリガー定義は未取得。
---     関数自体は存在を確認済み）
+-- 箇所、Supabase側で自動生成される部分などを含むため）。
+--
+-- 2026/07/09確認済み:
+--   - 各FKの ON DELETE 挙動は information_schema で確認済み。
+--     reports.thread_id のみ v125 で CASCADE から SET NULL に修正済み。
+--   - profiles.bio の CHECK (char_length(bio) <= 300) は実在確認済み。
+--   - on_auth_user_created トリガーが auth.users に存在し、
+--     tgenabled = 'O' で有効化済み。
 --
 -- 【既知の不整合・要調査事項（今回は修正せず記録のみ）】
---   1. consolidate_dreaming_batch（2オーバーロードとも）と
---      find_similar_lore_pairs_v2 には extraction_version の保護対象に
---      'liked_ai' / 'liked_ai_cleaned' が含まれているが、
---      consolidate_dreaming_batch_multi にはこの保護が入っていない
---      （'user_edited', 'user_created' のみ）。保護漏れの可能性。
---   2. find_similar_lore_pairs（v2ではない無印版）も liked_ai 系の
---      保護が入っていない旧仕様のまま。find_similar_lore_pairs_v2 に
---      置き換わっており、無印版が現在も呼ばれているか要確認。
---   3. updated_at カラムを持つが自動更新トリガーが無いテーブル：
+--   1. updated_at カラムを持つが自動更新トリガーが無いテーブル：
 --      threads, thread_notes, message_notes（アプリ側で明示的に
 --      updated_at をセットしている想定）。
---   4. increment_likes_count / decrement_likes_count（±1方式・旧関数）は
+--   2. increment_likes_count / decrement_likes_count（±1方式・旧関数）は
 --      本番で数日〜1週間の安定稼働確認後、別マイグレーション
 --      （v124_drop_legacy_counter_rpcs.sql）で削除予定。本ファイルには
 --      現時点でまだ本番に存在しているため残しているが、v124適用後は
@@ -66,7 +62,8 @@ create table if not exists profiles (
   display_name  text,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
-  bio           text  -- 旧スキーマの check (char_length(bio) <= 300) が現存するか要確認
+  bio           text check (char_length(bio) <= 300),
+  constraint handle_lowercase check (handle = lower(handle))
 );
 
 alter table profiles enable row level security;
@@ -83,7 +80,6 @@ create policy "Public profiles are readable by anyone"
 create index if not exists profiles_handle_key on profiles(handle);
 
 -- auth.users 作成時に profiles を自動作成するトリガー用関数
--- （auth.users 側のトリガー定義自体は未取得。関数の存在のみ確認済み）
 create or replace function handle_new_user()
 returns trigger
 language plpgsql
@@ -96,6 +92,10 @@ begin
   return new;
 end;
 $$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
 -- ============================================================
 -- threads テーブル
@@ -871,7 +871,7 @@ create table if not exists lore_embeddings (
   importance_score       double precision default 0.5,
   confidence_score       double precision default 0.8,
   decay_rate             double precision default 0.01,
-  superseded_by          uuid references lore_embeddings(id),
+  superseded_by          uuid references lore_embeddings(id) on delete set null,
   source_message_number  integer,
   is_pinned              boolean default false,
   is_archived            boolean default false,
@@ -1151,7 +1151,7 @@ begin
 end;
 $$;
 
--- 類似記憶ペア検出（旧版。要: 現在も呼ばれているか確認）
+-- 類似記憶ペア検出
 create or replace function find_similar_lore_pairs(
   p_user_id uuid,
   p_folder_name text default null::text,
@@ -1186,15 +1186,15 @@ as $$
     and b.is_pinned = false
     and a.embedding is not null
     and b.embedding is not null
-    and coalesce(a.extraction_version, '') not in ('user_edited', 'user_created')
-    and coalesce(b.extraction_version, '') not in ('user_edited', 'user_created')
-    and a.memory_kind = b.memory_kind  -- MVPはkind一致のみ
+    and coalesce(a.extraction_version, '') not in ('user_edited', 'user_created', 'liked_ai', 'liked_ai_cleaned')
+    and coalesce(b.extraction_version, '') not in ('user_edited', 'user_created', 'liked_ai', 'liked_ai_cleaned')
+    and a.memory_kind = b.memory_kind
     and 1 - (a.embedding <=> b.embedding) >= p_threshold
     and not exists (
       select 1 from lore_consolidation_dismissals d
       where d.user_id = p_user_id
-        and d.lore_id_a = a.id
-        and d.lore_id_b = b.id
+        and d.lore_id_a = least(a.id, b.id)
+        and d.lore_id_b = greatest(a.id, b.id)
     )
   order by similarity desc
   limit p_limit;
@@ -1385,8 +1385,7 @@ end;
 $$;
 
 -- Dreaming（記憶統合）: 3件以上のマルチ統合版
--- 【要確認】extraction_version の保護対象が ('user_edited','user_created') のみで
--- 'liked_ai' / 'liked_ai_cleaned' が含まれていない（上記2関数との不整合。今回は記録のみ）
+-- extraction_version の保護対象に liked_ai / liked_ai_cleaned を含む
 create or replace function consolidate_dreaming_batch_multi(
   p_user_id uuid, p_source_ids uuid[], p_merged_text text, p_embedding vector,
   p_memory_kind text, p_temporal_status text, p_folder_name text,
