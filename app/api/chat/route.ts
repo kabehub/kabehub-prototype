@@ -112,6 +112,43 @@ async function safeParseApiError(response: Response, fallbackMessage: string): P
   }
 }
 
+// ✅ S19 #18: 3プロバイダ共通のSSE読み取りループ。
+// buffer分割・"data: "行パース・JSON.parseを一元化し、イベントごとの意味づけはonEventに委譲する。
+async function pumpSSE(
+  response: Response,
+  onEvent: (parsed: any) => void,
+): Promise<void> {
+  if (!response.body) {
+    throw new Error("SSE response body is empty");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const raw = line.slice(6).trim();
+      if (!raw || raw === "[DONE]") continue;
+
+      try {
+        const parsed = JSON.parse(raw);
+        onEvent(parsed);
+      } catch {
+        // 既存挙動維持: 壊れたSSE行・イベント処理中例外は握りつぶす
+      }
+    }
+  }
+}
+
 // ─── ストリーミング版 callClaude ─────────────────────────────────────────────
 // ReadableStream<string> を返す。各chunkは生テキスト断片。
 // onDone(fullText, cacheStats) は完了時コールバック。
@@ -190,66 +227,42 @@ function streamClaude(
           throw new Error(await safeParseApiError(response, "Claude API error"));
         }
 
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-
-        // SSEパース: message_start でキャッシュ統計取得
-        let buffer = "";
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim();
-              if (raw === "[DONE]") continue;
-              try {
-                const parsed = JSON.parse(raw);
-
-                // ✅ v62: キャッシュ統計ログ（Gemini指摘③: message_start + message_delta 両方拾う）
-                if (parsed.type === "message_start") {
-                  const u = parsed.message?.usage ?? {};
-                  inputTokens = u.input_tokens ?? null;
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("[Cache input]", {
-                      input_tokens:                u.input_tokens                   ?? 0,
-                      cache_creation_input_tokens: u.cache_creation_input_tokens    ?? 0,
-                      cache_read_input_tokens:     u.cache_read_input_tokens        ?? 0,
-                    });
-                  }
-                }
-                if (parsed.type === "message_delta") {
-                  const u = parsed.usage ?? {};
-                  outputTokens = u.output_tokens ?? null;
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("[Cache output]", { output_tokens: u.output_tokens ?? 0 });
-                  }
-                }
-
-                // テキスト・思考チャンクをenqueue
-                if (parsed.type === "content_block_delta") {
-                  if (isDeepThinking) {
-                    if (parsed.delta?.type === "text_delta") {
-                      controller.enqueue(JSON.stringify({ kind: "text", text: parsed.delta.text }) + "\n");
-                    } else if (parsed.delta?.type === "thinking_delta") {
-                      controller.enqueue(JSON.stringify({ kind: "thinking", text: parsed.delta.thinking }) + "\n");
-                    }
-                  } else if (parsed.delta?.type === "text_delta") {
-                    controller.enqueue(parsed.delta.text);
-                  }
-                }
-              } catch {
-                // JSON parseエラーは無視
+          await pumpSSE(response, (parsed) => {
+            // ✅ v62: キャッシュ統計ログ（message_start + message_delta 両方拾う）
+            if (parsed.type === "message_start") {
+              const u = parsed.message?.usage ?? {};
+              inputTokens = u.input_tokens ?? null;
+              if (process.env.NODE_ENV === "development") {
+                console.log("[Cache input]", {
+                  input_tokens:                u.input_tokens                   ?? 0,
+                  cache_creation_input_tokens: u.cache_creation_input_tokens    ?? 0,
+                  cache_read_input_tokens:     u.cache_read_input_tokens        ?? 0,
+                });
               }
             }
-          }
+            if (parsed.type === "message_delta") {
+              const u = parsed.usage ?? {};
+              outputTokens = u.output_tokens ?? null;
+              if (process.env.NODE_ENV === "development") {
+                console.log("[Cache output]", { output_tokens: u.output_tokens ?? 0 });
+              }
+            }
+
+            if (parsed.type === "content_block_delta") {
+              if (isDeepThinking) {
+                if (parsed.delta?.type === "text_delta") {
+                  controller.enqueue(JSON.stringify({ kind: "text", text: parsed.delta.text }) + "\n");
+                } else if (parsed.delta?.type === "thinking_delta") {
+                  controller.enqueue(JSON.stringify({ kind: "thinking", text: parsed.delta.thinking }) + "\n");
+                }
+              } else if (parsed.delta?.type === "text_delta") {
+                controller.enqueue(parsed.delta.text);
+              }
+            }
+          });
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
           controller.close();
         } catch (err) {
@@ -311,38 +324,21 @@ function streamGemini(
           throw new Error(await safeParseApiError(response, "Gemini API error"));
         }
 
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim();
-              if (!raw) continue;
-              try {
-                const parsed = JSON.parse(raw);
-                const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) controller.enqueue(text);
-                // 最終チャンクにusageMetadataが含まれる
-                if (parsed.usageMetadata) {
-                  inputTokens = parsed.usageMetadata.promptTokenCount ?? null;
-                  outputTokens = parsed.usageMetadata.candidatesTokenCount ?? null;
-                }
-              } catch {
-                // 無視
-              }
+          await pumpSSE(response, (parsed) => {
+            // ✅ S19 #15: 複数partsに対応（従来はparts[0]のみでテキスト欠落の恐れがあった）
+            const parts = parsed.candidates?.[0]?.content?.parts;
+            const text = Array.isArray(parts)
+              ? parts.map((p: { text?: string }) => p.text ?? "").join("")
+              : "";
+            if (text) controller.enqueue(text);
+            if (parsed.usageMetadata) {
+              inputTokens = parsed.usageMetadata.promptTokenCount ?? null;
+              outputTokens = parsed.usageMetadata.candidatesTokenCount ?? null;
             }
-          }
+          });
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
           controller.close();
         } catch (err) {
@@ -434,42 +430,21 @@ function streamOpenAI(
           throw new Error(await safeParseApiError(response, "OpenAI API error"));
         }
 
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim();
-              if (raw === "[DONE]") continue;
-              try {
-                const parsed = JSON.parse(raw);
-                const text = parsed.choices?.[0]?.delta?.content;
-                if (text) controller.enqueue(text);
-                // 最終チャンクにusageが含まれる（stream_options.include_usage=true が必須）
-                if (parsed.usage) {
-                  const usage = parsed.usage;
-                  inputTokens = usage.prompt_tokens ?? null;
-                  outputTokens = usage.completion_tokens ?? null;
-                  const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
-                  const normalTokens = (usage?.prompt_tokens ?? 0) - cachedTokens;
-                  console.log("[OpenAI Cache]", { cached: cachedTokens, normal: normalTokens, total: usage?.prompt_tokens });
-                }
-              } catch {
-                // 無視
-              }
+          await pumpSSE(response, (parsed) => {
+            const text = parsed.choices?.[0]?.delta?.content;
+            if (text) controller.enqueue(text);
+            if (parsed.usage) {
+              const usage = parsed.usage;
+              inputTokens = usage.prompt_tokens ?? null;
+              outputTokens = usage.completion_tokens ?? null;
+              const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+              const normalTokens = (usage?.prompt_tokens ?? 0) - cachedTokens;
+              console.log("[OpenAI Cache]", { cached: cachedTokens, normal: normalTokens, total: usage?.prompt_tokens });
             }
-          }
+          });
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
           controller.close();
         } catch (err) {
