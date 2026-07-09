@@ -1255,8 +1255,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       imageCount: imageBlocksForApi.length,
     }
   );
-  messagesForApi.length = 0;
-  for (const m of trimResult.messages) messagesForApi.push(m);
+  const finalMessagesForApi = trimResult.messages;
   if (process.env.NODE_ENV === "development" && trimResult.wasTrimmed) {
     console.warn(
       `[context-trim] Trimmed. estimatedInputTokens=${trimResult.estimatedInputTokens}, messages=${trimResult.messages.length}`
@@ -1272,7 +1271,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         });
       }
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
-      aiStream = streamGemini(geminiKey, messagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamGemini(geminiKey, finalMessagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
       if (!isClaudeModel(resolvedModelId)) {
         return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
@@ -1282,7 +1281,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
       const effectiveDeepThinking = (isDeepThinking ?? false) && !THINKING_UNSUPPORTED_MODELS.includes(resolvedModelId);
-      aiStream = streamClaude(anthropicKey, messagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, effectiveDeepThinking, trimResult.cacheAnchorIndex);
+      aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, effectiveDeepThinking, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {
         return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
@@ -1291,7 +1290,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         });
       }
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
-      aiStream = streamOpenAI(openaiKey, messagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = streamOpenAI(openaiKey, finalMessagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
     }
@@ -1311,7 +1310,10 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       created_at: new Date().toISOString(),
     };
     if (!isTemporary) {
-      await saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
+      const saved = await saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
+      if (!saved) {
+        console.error("[chat] エラーパスでのassistantメッセージ保存に失敗しました", { threadId, assistantMessageId });
+      }
     }
     return new Response(JSON.stringify({ userMessage, assistantMessage }), {
       headers: { "Content-Type": "application/json" },
