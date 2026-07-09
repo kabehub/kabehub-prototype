@@ -1282,7 +1282,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
   );
   messagesForApi.length = 0;
   for (const m of trimResult.messages) messagesForApi.push(m);
-  if (process.env.NODE_ENV === "development" && trimResult.wasTrimmed) {
+  if (trimResult.wasTrimmed) {
     console.warn(
       `[context-trim] Trimmed. estimatedInputTokens=${trimResult.estimatedInputTokens}, messages=${trimResult.messages.length}`
     );
