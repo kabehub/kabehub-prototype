@@ -4,6 +4,8 @@
 
 const CHARS_PER_TOKEN = 3.5;
 const MESSAGE_OVERHEAD_TOKENS = 10;
+const IMAGE_TOKEN_ESTIMATE = 1500;
+const STUB_TEXT = "[System note: Earlier conversation history was omitted to fit the context window. The most recent messages are included below. Please continue naturally.]";
 
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
@@ -27,6 +29,33 @@ function computeAnchorIndex(msgs: ContextMessage[]): number {
   return candidate.role === "assistant" ? msgs.length - 2 : -1;
 }
 
+function calcTotalTokens(
+  msgs: ContextMessage[],
+  systemTokens: number,
+  imageTokens: number
+): number {
+  const msgTokens = msgs.reduce(
+    (sum, m) => sum + estimateTokens(m.content) + MESSAGE_OVERHEAD_TOKENS,
+    0
+  );
+  return msgTokens + systemTokens + imageTokens;
+}
+
+function mergeStubIntoMessages(
+  stubText: string,
+  history: ContextMessage[],
+  anchor: ContextMessage[]
+): ContextMessage[] {
+  const firstAfter = history[0] ?? anchor[0];
+  if (firstAfter?.role === "user") {
+    const merged = { ...firstAfter, content: stubText + "\n\n" + firstAfter.content };
+    return history.length > 0
+      ? [merged, ...history.slice(1), ...anchor]
+      : [merged, ...anchor.slice(1)];
+  }
+  return [{ role: "user", content: stubText }, ...history, ...anchor];
+}
+
 export function trimContextToWindow(
   messages: ContextMessage[],
   systemPrompt: string | undefined,
@@ -34,36 +63,56 @@ export function trimContextToWindow(
     maxInputTokens?: number;
     anchorTurns?: number;
     responseReserveTokens?: number;
+    imageCount?: number;
   } = {}
 ): TrimResult {
   const {
     maxInputTokens = 80_000,
     anchorTurns = 6,
     responseReserveTokens = 2_000,
+    imageCount = 0,
   } = options;
 
   const systemTokens = estimateTokens(systemPrompt ?? "");
-  const budget = maxInputTokens - systemTokens - responseReserveTokens;
+  const imageTokens = imageCount * IMAGE_TOKEN_ESTIMATE;
+  const budget = maxInputTokens - systemTokens - responseReserveTokens - imageTokens;
 
-  if (budget <= 0 || messages.length === 0) {
-    return { messages, wasTrimmed: false, estimatedInputTokens: systemTokens, cacheAnchorIndex: computeAnchorIndex(messages) };
+  if (messages.length === 0) {
+    return {
+      messages,
+      wasTrimmed: false,
+      estimatedInputTokens: calcTotalTokens(messages, systemTokens, imageTokens),
+      cacheAnchorIndex: computeAnchorIndex(messages),
+    };
+  }
+
+  if (budget <= 0) {
+    const finalMessages = messages.slice(-2);
+    return {
+      messages: finalMessages,
+      wasTrimmed: finalMessages.length < messages.length,
+      estimatedInputTokens: calcTotalTokens(finalMessages, systemTokens, imageTokens),
+      cacheAnchorIndex: computeAnchorIndex(finalMessages),
+    };
   }
 
   const anchorCount = Math.min(anchorTurns * 2, messages.length);
   const anchorMessages = messages.slice(-anchorCount);
   const historyMessages = messages.slice(0, -anchorCount);
 
-  const anchorTokens = anchorMessages.reduce(
-    (sum, m) => sum + estimateTokens(m.content) + MESSAGE_OVERHEAD_TOKENS,
-    0
-  );
+  let anchorTokens = calcTotalTokens(anchorMessages, 0, 0);
 
   if (anchorTokens >= budget) {
+    const trimmedAnchor = [...anchorMessages];
+    while (anchorTokens >= budget && trimmedAnchor.length > 1) {
+      const [removed] = trimmedAnchor.splice(0, 1);
+      anchorTokens -= estimateTokens(removed.content) + MESSAGE_OVERHEAD_TOKENS;
+    }
     return {
-      messages: anchorMessages,
-      wasTrimmed: historyMessages.length > 0,
-      estimatedInputTokens: anchorTokens + systemTokens,
-      cacheAnchorIndex: computeAnchorIndex(anchorMessages),
+      messages: trimmedAnchor,
+      wasTrimmed: historyMessages.length > 0 || trimmedAnchor.length < anchorMessages.length,
+      estimatedInputTokens: calcTotalTokens(trimmedAnchor, systemTokens, imageTokens),
+      cacheAnchorIndex: computeAnchorIndex(trimmedAnchor),
     };
   }
 
@@ -80,16 +129,14 @@ export function trimContextToWindow(
 
   const wasTrimmed = keptHistory.length < historyMessages.length;
 
-  const truncationStub: ContextMessage[] = wasTrimmed
-    ? [{ role: "user", content: "[System note: Earlier conversation history was omitted to fit the context window. The most recent messages are included below. Please continue naturally.]" }]
-    : [];
-
-  const finalMessages = [...truncationStub, ...keptHistory, ...anchorMessages];
+  const finalMessages = wasTrimmed
+    ? mergeStubIntoMessages(STUB_TEXT, keptHistory, anchorMessages)
+    : [...keptHistory, ...anchorMessages];
 
   return {
     messages: finalMessages,
     wasTrimmed,
-    estimatedInputTokens: budget - remainingBudget + systemTokens,
+    estimatedInputTokens: calcTotalTokens(finalMessages, systemTokens, imageTokens),
     cacheAnchorIndex: computeAnchorIndex(finalMessages),
   };
 }
