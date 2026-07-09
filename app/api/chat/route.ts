@@ -98,6 +98,20 @@ function isOwnedStoragePath(path: unknown, userId: string): path is string {
   );
 }
 
+function stripLegacyAssistantLabelPrefix(content: string): string {
+  return content.replace(/^(\s*\[.*?\]\s*)+/, "");
+}
+
+async function safeParseApiError(response: Response, fallbackMessage: string): Promise<string> {
+  const text = await response.text();
+  try {
+    const parsed = JSON.parse(text);
+    return parsed.error?.message ?? fallbackMessage;
+  } catch {
+    return `${fallbackMessage} (status ${response.status} ${response.statusText})`;
+  }
+}
+
 // ─── ストリーミング版 callClaude ─────────────────────────────────────────────
 // ReadableStream<string> を返す。各chunkは生テキスト断片。
 // onDone(fullText, cacheStats) は完了時コールバック。
@@ -173,8 +187,7 @@ function streamClaude(
         });
 
         if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error?.message ?? "Claude API error");
+          throw new Error(await safeParseApiError(response, "Claude API error"));
         }
 
         const reader = response.body!.getReader();
@@ -290,13 +303,12 @@ function streamGemini(
     async start(controller) {
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse&key=${apiKey}`,
-          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal },
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
+          { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey }, body: JSON.stringify(body), signal },
         );
 
         if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error?.message ?? "Gemini API error");
+          throw new Error(await safeParseApiError(response, "Gemini API error"));
         }
 
         const reader = response.body!.getReader();
@@ -394,8 +406,7 @@ function streamOpenAI(
             signal,
           });
           if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error?.message ?? "OpenAI Responses API error");
+            throw new Error(await safeParseApiError(res, "OpenAI Responses API error"));
           }
           const data = await res.json();
           const text = data.output
@@ -420,8 +431,7 @@ function streamOpenAI(
         });
 
         if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error?.message ?? "OpenAI API error");
+          throw new Error(await safeParseApiError(response, "OpenAI API error"));
         }
 
         const reader = response.body!.getReader();
@@ -522,7 +532,12 @@ async function saveAssistantMessage(
 
 // ─── POST ───────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const res = new Response(); // createRouteHandlerSupabaseClient用のダミー
+  // このダミーresは createRouteHandlerSupabaseClient の型要件を満たすためのもの。
+  // middleware.ts の matcher（"/api/((?!mcp|share|auth/github/callback).*)"）上、
+  // /api/chat はmiddleware対象に含まれており、セッション更新Cookie（Set-Cookie）は
+  // middleware側のres.cookies.set()経由で最終レスポンスに反映される。
+  // そのため、ここでのダミーresへのCookie書き込みが破棄されても実害はない。
+  const res = new Response();
   const supabase = createRouteHandlerSupabaseClient(req, res as never);
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -1073,7 +1088,7 @@ export async function POST(req: NextRequest) {
         .filter((m: ChatMessage) => m.provider !== "memo")
         .map((m: ChatMessage) => {
           if (m.role !== "assistant") return { role: m.role as string, content: m.content };
-          const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
+          const cleanContent = stripLegacyAssistantLabelPrefix(m.content);
           return { role: "assistant" as string, content: cleanContent };
         })
     : [
@@ -1081,7 +1096,7 @@ export async function POST(req: NextRequest) {
           if (m.role !== "assistant") return { role: m.role as string, content: m.content };
           // 改行あり・なし・スペース区切りすべてのラベルパターンを除去
           // 既存DBの汚染データ（[claude][claude]...）も一網打尽にする
-          const cleanContent = m.content.replace(/^(\s*\[.*?\]\s*)+/, "");
+          const cleanContent = stripLegacyAssistantLabelPrefix(m.content);
           // ⚠️ [${label}]\n の付与をやめる
           // AIへの発言者情報の伝達は participantNote（systemPrompt末尾の参加者リスト）で担う
           return { role: "assistant" as string, content: cleanContent };
@@ -1258,7 +1273,12 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
   const trimResult = trimContextToWindow(
     messagesForApi,
     combinedSystemPrompt,
-    { maxInputTokens: 80_000, anchorTurns: 6, responseReserveTokens: 2_000 }
+    {
+      maxInputTokens: 80_000,
+      anchorTurns: 6,
+      responseReserveTokens: 2_000,
+      imageCount: imageBlocksForApi.length,
+    }
   );
   messagesForApi.length = 0;
   for (const m of trimResult.messages) messagesForApi.push(m);
@@ -1380,10 +1400,22 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
     isDeepThinking: isDeepThinking ?? false,
   }) + "\n";
 
-  const MAX_ACCUMULATED_BYTES = 200_000;
+  // UTF-16文字数での判定。日本語で実質約600KB相当。
+  const MAX_ACCUMULATED_CHARS = 200_000;
+  const TRUNCATION_NOTICE = "\n\n[…以降は長さ上限により省略されました]";
   let accumulatedTruncated = false;
   let accumulatedText = "";
   let isAborted = false;
+
+  const appendToAccumulated = (text: string) => {
+    if (accumulatedTruncated) return;
+    accumulatedText += text;
+    if (accumulatedText.length > MAX_ACCUMULATED_CHARS) {
+      accumulatedTruncated = true;
+      accumulatedText = accumulatedText.slice(0, MAX_ACCUMULATED_CHARS) + TRUNCATION_NOTICE;
+      console.warn(`[chat] accumulated text truncated at ${MAX_ACCUMULATED_CHARS} chars`);
+    }
+  };
 
   const outputStream = new TransformStream<string, string>({
     transform(chunk, controller) {
@@ -1392,17 +1424,11 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         try {
           const inner = JSON.parse(chunk.trimEnd());
           if (inner.kind === "text") {
-            if (!accumulatedTruncated) {
-              accumulatedText += inner.text;
-              if (accumulatedText.length > MAX_ACCUMULATED_BYTES) accumulatedTruncated = true;
-            }
+            appendToAccumulated(inner.text);
           }
         } catch { /* 分割チャンクは無視 */ }
       } else {
-        if (!accumulatedTruncated) {
-          accumulatedText += chunk;
-          if (accumulatedText.length > MAX_ACCUMULATED_BYTES) accumulatedTruncated = true;
-        }
+        appendToAccumulated(chunk);
       }
       controller.enqueue(JSON.stringify({ type: "chunk", text: chunk }) + "\n");
     },
@@ -1421,7 +1447,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
     const restoredLightAssistant = isLightRegenerate && aborted ? originalLightAssistant : null;
     const contentToSave = restoredLightAssistant
       ? restoredLightAssistant.content
-      : accumulatedText.replace(/^(\[.*?\]\n)+/, "");
+      : stripLegacyAssistantLabelPrefix(accumulatedText);
     const modelIdToSave = restoredLightAssistant
       ? restoredLightAssistant.model_id
       : resolvedModelId;
@@ -1512,7 +1538,9 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceKey) {
         const restoredLightAssistant = isLightRegenerate && isAborted ? originalLightAssistant : null;
-        const contentToSave = restoredLightAssistant ? restoredLightAssistant.content : accumulatedText;
+        const contentToSave = restoredLightAssistant
+          ? restoredLightAssistant.content
+          : stripLegacyAssistantLabelPrefix(accumulatedText);
         const modelIdToSave = restoredLightAssistant ? restoredLightAssistant.model_id : resolvedModelId;
         const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
           method: "POST",
