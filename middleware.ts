@@ -37,12 +37,7 @@ export async function middleware(req: NextRequest) {
   };
 
   // 未ログインかつ保護ページへのアクセス → /login へリダイレクト
-  if (
-    !user &&
-    pathname !== "/login" &&
-    pathname !== "/test-login" &&
-    pathname !== "/auth/callback"
-  ) {
+  if (!user && pathname !== "/login" && pathname !== "/auth/callback") {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
     return redirectWithCookies(loginUrl);
@@ -63,7 +58,6 @@ export const config = {
     "/",
     "/settings/:path*",
     "/login",
-    "/test-login",
     // mcpはBearer認証のためmiddleware対象外。
     // この除外（"(?!mcp|...)"）を消すとMCPが全滅する。
     "/api/((?!mcp|share|reports(?:/|$)|auth/github/callback).*)",
