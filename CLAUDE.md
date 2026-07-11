@@ -247,7 +247,7 @@ Acceptance criteria: # 完了と判断する条件（箇条書き）
 - **INSERT は使わず upsert を使う**。スレッド・メッセージともに競合リスクがある
 - `app/api/threads/[id]/route.ts` の PATCH は `.upsert()` 方式（新規スレッドはDB行がない状態でPATCHが来ることがある）
 - `saveAssistantMessage` も upsert（`onConflict: "id"`）。再生成やタイミング競合で同じIDのINSERTが2回走る
-- `messages` テーブルのカラム: `id / thread_id / role / content / provider / user_id / created_at / parent_id / is_hidden / model_id / is_active / branch_id / branch_root_id / branch_index / is_learned / skip_learning / message_number / input_tokens / output_tokens`
+- `messages` テーブルのカラム: `id / thread_id / role / content / provider / user_id / created_at / parent_id / is_hidden / model_id / is_active / branch_id / branch_root_id / branch_index / is_learned / skip_learning / message_number / input_tokens / output_tokens / metadata`
 
 ### マイグレーションの再実行安全性
 
