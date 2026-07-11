@@ -9,6 +9,7 @@ import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
 import { buildReferenceBlock, buildReferencePreamble } from "@/lib/ai-context-blocks";
+import { isAllowedModel, getDefaultModel, supportsExtendedThinking } from "@/lib/modelRegistry";
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
@@ -40,30 +41,10 @@ const dropTrailingUserUnconditional = (source: ChatMessage[]): ChatMessage[] => 
 };
 
 const DEFAULT_MODELS: Record<string, ModelId> = {
-  claude: "claude-sonnet-4-5",
-  gemini: "gemini-2.5-flash",
-  openai: "gpt-4o",
+  claude: getDefaultModel("claude", "chat") as ModelId,
+  gemini: getDefaultModel("gemini", "chat") as ModelId,
+  openai: getDefaultModel("openai", "chat") as ModelId,
 };
-
-const CLAUDE_MODEL_IDS = [
-  "claude-fable-5",
-  "claude-opus-4-8",
-  "claude-opus-4-7",
-  "claude-opus-4-6",
-  "claude-sonnet-5",
-  "claude-sonnet-4-5",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5-20251001",
-] as const satisfies readonly ClaudeModel[];
-
-// Extended Thinking非対応モデル（Adaptive Thinkingが常時適用されるため別扱い）
-const THINKING_UNSUPPORTED_MODELS: readonly string[] = [
-  "claude-haiku-4-5-20251001",
-  "claude-fable-5",
-  "claude-sonnet-5",
-];
-const GEMINI_MODEL_IDS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite"] as const satisfies readonly GeminiModel[];
-const OPENAI_MODEL_IDS = ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"] as const satisfies readonly OpenAIModel[];
 
 const RAG_TRIGGER_KEYWORDS = [
   "前に", "以前", "覚えて", "覚えてる", "方針", "このプロジェクト",
@@ -76,15 +57,15 @@ function shouldSearchRagMemory(content: string): boolean {
 }
 
 function isClaudeModel(modelId: string): modelId is ClaudeModel {
-  return (CLAUDE_MODEL_IDS as readonly string[]).includes(modelId);
+  return isAllowedModel("claude", modelId, "chat");
 }
 
 function isGeminiModel(modelId: string): modelId is GeminiModel {
-  return (GEMINI_MODEL_IDS as readonly string[]).includes(modelId);
+  return isAllowedModel("gemini", modelId, "chat");
 }
 
 function isOpenAIModel(modelId: string): modelId is OpenAIModel {
-  return (OPENAI_MODEL_IDS as readonly string[]).includes(modelId);
+  return isAllowedModel("openai", modelId, "chat");
 }
 
 // TODO: T-03/T-09で lib/storage-path-guard.ts に移管する
@@ -1172,7 +1153,7 @@ export async function POST(req: NextRequest) {
     anthropicKey
   ) {
     try {
-      const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : "claude-sonnet-4-5";
+      const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : getDefaultModel("claude", "chat");
       const systemPromptForGithubLoop = dynamicSystemText
         ? stableSystemPrompt + "\n\n" + dynamicSystemText
         : stableSystemPrompt;
@@ -1280,7 +1261,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         });
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      const effectiveDeepThinking = (isDeepThinking ?? false) && !THINKING_UNSUPPORTED_MODELS.includes(resolvedModelId);
+      const effectiveDeepThinking = (isDeepThinking ?? false) && supportsExtendedThinking(resolvedModelId);
       aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, effectiveDeepThinking, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {

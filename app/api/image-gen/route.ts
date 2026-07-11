@@ -4,14 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
 import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 import { isOwnedStoragePath } from '@/lib/storage-path-guard'
-
-const ALLOWED_GEMINI_IMAGE_MODELS = [
-  'gemini-2.5-flash-image',
-  'gemini-3.1-flash-image',
-  'gemini-3-pro-image',
-]
-const ALLOWED_IDEOGRAM_MODELS = ['ideogram-v3']
-const ALLOWED_OPENROUTER_MODELS = ['black-forest-labs/flux.2-pro']
+import { getDefaultImageModel, isAllowedImageModel } from '@/lib/modelRegistry'
 
 type ImageResult = { imageData: string; mimeType: string }
 type HandlerResult = { result: ImageResult; error: null } | { result: null; error: string }
@@ -23,8 +16,8 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
     return { result: null, error: 'APIキーが設定されていません' }
   }
 
-  const geminiModel = modelId ?? 'gemini-2.5-flash-image'
-  if (!ALLOWED_GEMINI_IMAGE_MODELS.includes(geminiModel)) {
+  const geminiModel = modelId ?? getDefaultImageModel('gemini') ?? 'gemini-2.5-flash-image'
+  if (!isAllowedImageModel('gemini', geminiModel)) {
     return { result: null, error: '不正なモデルIDです' }
   }
 
@@ -82,7 +75,7 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-image-2',
+      model: getDefaultImageModel('openai') ?? 'gpt-image-2',
       prompt,
       n: 1,
       size: '1024x1024',
@@ -114,13 +107,14 @@ async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: Ima
   formData.append('rendering_speed', 'TURBO')
   formData.append('style_type', 'AUTO')
 
-  let endpoint = 'https://api.ideogram.ai/v1/ideogram-v3/generate'
+  const ideogramModel = getDefaultImageModel('ideogram') ?? 'ideogram-v3'
+  let endpoint = `https://api.ideogram.ai/v1/${ideogramModel}/generate`
   if (imageInput) {
     const buffer = Buffer.from(imageInput.base64, 'base64')
     const blob = new Blob([buffer], { type: imageInput.mimeType })
     formData.append('image', blob, 'base_image.png')
     formData.append('image_weight', '90')
-    endpoint = 'https://api.ideogram.ai/v1/ideogram-v3/remix'
+    endpoint = `https://api.ideogram.ai/v1/${ideogramModel}/remix`
   }
 
   const res = await fetch(endpoint, {
@@ -165,7 +159,7 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'black-forest-labs/flux.2-pro',
+      model: getDefaultImageModel('openrouter') ?? 'black-forest-labs/flux.2-pro',
       messages: [{ role: 'user', content: prompt }],
       modalities: ['image'],
     }),
