@@ -484,29 +484,22 @@ create policy "公開スレッドのタグは全員閲覧可"
 -- ============================================================
 -- public_threads_view（公開スレッド閲覧用ビュー）
 -- ============================================================
--- 2026/07/06 v121：share_token列を追加。/api/explore がexploreの引継ぎ
--- （fork）ボタン用に参照する。旧版はshare_tokenを含まずnullを返していた
-create or replace view public_threads_view as
+-- 2026/07/11 S22.5：Supabase Security Advisorのsecurity_definer_view
+-- （ERROR）指摘を解消するため、security_invoker=trueを明示。
+-- threads/thread_tagsの既存RLS（is_public=true、tt.user_id=t.user_id）が
+-- view側のJOIN条件と一致しているため、invoker切り替えによる行の可視性の
+-- 変化はなし（本番・テスト両環境で動作確認済み）
+create or replace view public_threads_view
+with (security_invoker = true)
+as
 select
-  t.id,
-  t.title,
-  t.is_public,
-  t.created_at,
-  t.updated_at,
-  t.user_id,
-  t.genre,
-  coalesce(
-    array_agg(tt.name order by tt.created_at) filter (where tt.name is not null),
-    '{}'::text[]
-  ) as tags,
+  t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre,
+  coalesce(array_agg(tt.name order by tt.created_at) filter (where tt.name is not null), '{}'::text[]) as tags,
   t.share_token
 from threads t
-left join thread_tags tt
-  on tt.thread_id = t.id
- and tt.user_id = t.user_id
+left join thread_tags tt on tt.thread_id = t.id and tt.user_id = t.user_id
 where t.is_public = true
-group by
-  t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre, t.share_token;
+group by t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre, t.share_token;
 
 grant select on public_threads_view to anon, authenticated;
 
