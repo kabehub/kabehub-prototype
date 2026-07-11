@@ -219,12 +219,12 @@ git pull origin main
 
 ### Docs
 
-| ファイル | 役割 |
+| ファイル・フォルダ | 役割 |
 |-|-|
-| `docs/schema.sql` | テーブル定義スナップショット。**⚠️ v78時点のまま古い。v89〜v141c等の個別マイグレーションは別ファイルとして存在するが、統合スナップショットへの反映は未実施と思われる（SQL更新作業は別会話で対応予定）** |
-| `docs/v89_migration.sql` / `migration_v119_github_oauth.sql` / `migration_v120_github_phase4.sql` / `v141c_migration.sql` / `v78_mcp_tokens_migration.sql` | 個別マイグレーションファイル |
+| `docs/schema.sql` | 本番Supabaseと突き合わせたcanonicalスキーマ |
+| `docs/applied/` | 本番適用済み・schema.sqlへ反映済みのマイグレーション履歴。再実行しない（内容は`docs/applied/README.md`参照） |
 
-新しいマイグレーションは `docs/v{バージョン番号}_migration.sql` として追加し、Supabase Dashboard > SQL Editor で手動実行する。
+新しいマイグレーションは `docs/migration_v{n}_{内容}.sql` として追加し、Supabase Dashboard > SQL Editor で手動実行する。適用・schema.sql反映後は `docs/applied/` へ移動する。
 
 ---
 
@@ -248,6 +248,24 @@ Acceptance criteria: # 完了と判断する条件（箇条書き）
 - `app/api/threads/[id]/route.ts` の PATCH は `.upsert()` 方式（新規スレッドはDB行がない状態でPATCHが来ることがある）
 - `saveAssistantMessage` も upsert（`onConflict: "id"`）。再生成やタイミング競合で同じIDのINSERTが2回走る
 - `messages` テーブルのカラム: `id / thread_id / role / content / provider / user_id / created_at / parent_id / is_hidden / model_id / is_active / branch_id / branch_root_id / branch_index / is_learned / skip_learning / message_number / input_tokens / output_tokens`
+
+### マイグレーションの再実行安全性
+
+- 新規マイグレーションは、可能な限り再実行しても同じ最終状態になる形で書く
+- `CREATE TABLE` / `ADD COLUMN` / `CREATE INDEX` では `IF NOT EXISTS` を使う。
+  ただし存在するだけで定義が正しいとは限らないため、重要な型・制約・権限は
+  適用後に目視確認する
+- 関数本体だけを変更する場合は `CREATE OR REPLACE FUNCTION` を使う
+  - 引数型や戻り値を変更する場合は、旧シグネチャを `DROP FUNCTION IF EXISTS`
+    してから再作成する（別オーバーロードとして残ってしまうため）
+- トリガーは `DROP TRIGGER IF EXISTS` → `CREATE TRIGGER`
+- RLSポリシーは `DROP POLICY IF EXISTS` → `CREATE POLICY`（`CREATE POLICY`自体は
+  IF NOT EXISTSに対応していないため）
+- 制約変更は `DROP CONSTRAINT IF EXISTS` → `ADD CONSTRAINT`
+- データ移行など完全な冪等化が難しい場合は、事前確認・適用済み判定・
+  適用後確認・ロールバック方針をファイル内コメントに明記する
+- 本番適用済みかつ `docs/schema.sql` に反映済みのファイルは `docs/applied/` へ
+  移動し、再実行しない
 
 ### ストリーミング（chat/route.ts）
 
@@ -457,7 +475,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 ## 既知の課題（未解決）
 
 - **iPhone実機確認未了**: モデルドロップダウン・サイドバードロワー・ヘッダー・＋ドロップアップ・会話履歴ドロワー・サイドバー折り畳みボタンの動作確認
-- `docs/schema.sql` が v78のまま古い（個別マイグレーションファイルは存在するが統合スナップショット未反映）
 - `ProfilePage.tsx` の日本語テキストが英語になっている（v112でCodex文字化け対処のため・手動修正要）
 - 画像生成 Tech Debt（sharp圧縮・pg_cron自動削除・⭐Saveボタン・設定ページのデフォルトプロバイダー選択UI）
 - Opus 4.8 の Extended Thinking 対応（将来対応）
@@ -498,7 +515,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - ⚠️ 上記「既知の課題」参照。ルートファイルが既に存在するため、この項目自体の現状把握が最優先
 
 **技術負債**
-- `docs/schema.sql` の統合スナップショット更新（別会話で対応予定）
 - `app/api/arena/route.ts` のモデルID同期・gpt-5.5-pro対応
 
 ---

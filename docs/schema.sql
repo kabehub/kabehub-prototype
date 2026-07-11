@@ -775,6 +775,13 @@ create policy "自分のフォルダ設定のみ操作可"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+comment on column folder_settings.pinned_github_files
+  is 'Pinned GitHub file URLs. Array of strings. Max 5 items.';
+comment on column folder_settings.github_repo
+  is 'GitHub連携フェーズ4: "owner/repo" 形式。設定時にAIが自律探索する';
+comment on column folder_settings.github_ref
+  is 'GitHub連携フェーズ4: ブランチ/タグ/SHA。未指定時はデフォルトブランチ';
+
 create or replace function update_updated_at_column()
 returns trigger
 language plpgsql
@@ -840,6 +847,9 @@ create table if not exists github_oauth_states (
 
 alter table github_oauth_states enable row level security;
 -- ポリシーなし（serviceRole経由のみ許可）
+
+create index if not exists idx_github_oauth_states_expires_at
+  on github_oauth_states(expires_at);
 
 -- ============================================================
 -- lore_embeddings テーブル（AI記憶・RAG本体）

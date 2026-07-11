@@ -144,7 +144,7 @@ BYOKは当面、A案としてLocalStorage保存を継続します。将来的な
 ### Supabaseのセットアップ
 
 詳細なSQLは [`docs/schema.sql`](docs/schema.sql) を参照してください。
-※現時点でこのファイルは開発初期のスキーマスナップショットのままとなっており、最新のテーブル構成（AI記憶・分岐機能・GitHub連携等）を完全には反映していません。最新化対応中です。
+`docs/schema.sql` は、本番Supabaseの定義と突き合わせたcanonicalスキーマです。適用済みの個別マイグレーションは `docs/applied/` に履歴として保管しており、新規環境で個別に再実行する必要はありません。新規環境のセットアップは `docs/schema.sql` を正として行ってください。
 
 ---
 
