@@ -1,14 +1,11 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/07/09（S20-B: reports FK修正／find_similar_lore_pairs保護追加を反映）
+-- 最終更新: 2026/07/10（本番DBと全項目突き合わせ完了。緊急対応1件を含む）
 --
 -- 【このファイルについて】
--- 2026/07/01 に Supabase 本番DB（information_schema / pg_catalog）を
--- 直接調査し、実際に稼働しているテーブル・カラム・制約・インデックス・
--- RLSポリシー・関数・トリガーを正確に反映して作り直したものです。
--- 旧 v78 時点の schema.sql + v89 / v119 / v120 / v141c 等の個別
--- マイグレーションファイルは、この統合版に取り込んだうえで参照不要に
--- なりました（.claudeignore 参照）。
+-- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
+-- information_schema.triggers / pg_attribute / pg_extension / pg_constraint を
+-- 直接照会し、本ファイルとの完全突き合わせを実施。差分はすべて反映済み。
 --
 -- 2026/07/06、以下4本のマイグレーションを本番適用し、本ファイルに反映：
 --   - migration_rls_cleanup_p0.sql（messages / thread_notes /
@@ -27,27 +24,23 @@
 --   - migration_v126_find_similar_lore_pairs_liked_ai_protection.sql
 --     （find_similar_lore_pairs に liked_ai / liked_ai_cleaned 保護を追加）
 --
--- 【新規セットアップ時の注意】
--- このファイルは「現状を記録するための正確なスナップショット」であり、
--- 上から順に流すだけでは動かない可能性があります（実行順序に依存する
--- 箇所、Supabase側で自動生成される部分などを含むため）。
+-- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
+-- 詳細はCLAUDE.md地雷表参照）：
+--   - messages テーブルに残存していた STEP5適用前の旧英語名ポリシー2本
+--     （"Users can manage own messages" ALL / "Messages of public threads
+--     are readable by anyone" SELECT）を drop policy if exists で削除。
+--     この2本はSTEP5移行後も生き残っており、is_hidden・memo・shared_at
+--     以降メッセージがREST API直叩きで閲覧可能な状態になっていた
+--     （OR結合されるRLS SELECTポリシーの性質上、緩い方が有効になっていたため）。
+--     混入経路は未特定（v121〜v126のいずれにも当該ポリシー名は含まれず、
+--     バックアップ/復元系操作の副作用の可能性が高い）。
 --
--- 2026/07/09確認済み:
---   - 各FKの ON DELETE 挙動は information_schema で確認済み。
---     reports.thread_id のみ v125 で CASCADE から SET NULL に修正済み。
---   - profiles.bio の CHECK (char_length(bio) <= 300) は実在確認済み。
---   - on_auth_user_created トリガーが auth.users に存在し、
---     tgenabled = 'O' で有効化済み。
---
--- 【既知の不整合・要調査事項（今回は修正せず記録のみ）】
---   1. updated_at カラムを持つが自動更新トリガーが無いテーブル：
---      threads, thread_notes, message_notes（アプリ側で明示的に
---      updated_at をセットしている想定）。
---   2. increment_likes_count / decrement_likes_count（±1方式・旧関数）は
---      本番で数日〜1週間の安定稼働確認後、別マイグレーション
---      （v124_drop_legacy_counter_rpcs.sql）で削除予定。本ファイルには
---      現時点でまだ本番に存在しているため残しているが、v124適用後は
---      本ファイルからも削除すること。
+-- 【2026/07/10 突き合わせ確認済み事項】
+--   - lore_embeddings.embedding は vector(1536) で確定（pgvector 0.8.0稼働）
+--   - lore_consolidation_dismissals に CHECK (lore_id_a < lore_id_b) が
+--     DB制約として存在することを確認（本ファイルに追記済み）
+--   - 全15テーブル・全アプリケーション関数・全トリガーが本ファイルと一致
+--     （pgvector純正関数を除く）
 -- ============================================================
 
 create extension if not exists "uuid-ossp";  -- 現状 gen_random_uuid() 主体のため実質未使用の可能性あり（要確認）
@@ -856,7 +849,7 @@ create table if not exists lore_embeddings (
   user_id                uuid references auth.users(id) on delete cascade,
   folder_name            text,
   chunk_text             text,
-  embedding              vector,                          -- pgvector（次元数はテーブル作成時の実設定に依存・要確認）
+  embedding              vector(1536),                    -- pgvector 0.8.0・2026/07/10本番確認済み
   created_at             timestamptz default now(),
   source_message_id      uuid references messages(id) on delete set null,
   source_thread_id       uuid references threads(id) on delete set null,
@@ -915,7 +908,8 @@ create table if not exists lore_consolidation_dismissals (
   lore_id_a  uuid not null references lore_embeddings(id) on delete cascade,
   lore_id_b  uuid not null references lore_embeddings(id) on delete cascade,
   created_at timestamptz default now(),
-  unique (user_id, lore_id_a, lore_id_b)
+  unique (user_id, lore_id_a, lore_id_b),
+  constraint lore_consolidation_dismissals_check check (lore_id_a < lore_id_b)
 );
 
 create index if not exists idx_lore_dismissals_user on lore_consolidation_dismissals(user_id, lore_id_a, lore_id_b);
