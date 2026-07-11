@@ -1,6 +1,5 @@
 // scripts/pricing.test.cjs
-// T0: lib/pricing.ts の現状挙動を焼き付ける特性化テスト。
-// プロダクションコード（lib/pricing.ts）は一切変更しない。
+// T6完了後の lib/pricing.ts（registry re-export後）の挙動を検証する。
 //
 // 実行方法: node scripts/pricing.test.cjs
 //
@@ -43,37 +42,6 @@ require.extensions[".ts"] = function compileTypescript(module, filename) {
 };
 
 const { getPricing, calcCost, formatUSD } = require("../lib/pricing.ts");
-
-// ────────────────────────────────────────────────────────────
-// 日付モックヘルパー（claude-sonnet-5 の日付分岐を両側とも固定するため）
-// getPricing() 内部は new Date() / new Date("2026-09-01") を直接呼んでいるだけなので、
-// global.Date を一時的に差し替えて実行日に依存しない検証を行う。
-// プロダクションコード（lib/pricing.ts）は変更しない。
-// ────────────────────────────────────────────────────────────
-function withMockedNow(nowIso, callback) {
-  const RealDate = global.Date;
-
-  class MockDate extends RealDate {
-    constructor(...args) {
-      if (args.length === 0) {
-        super(nowIso);
-      } else {
-        super(...args);
-      }
-    }
-
-    static now() {
-      return new RealDate(nowIso).getTime();
-    }
-  }
-
-  global.Date = MockDate;
-  try {
-    callback();
-  } finally {
-    global.Date = RealDate;
-  }
-}
 
 // ────────────────────────────────────────────────────────────
 // 完全一致
@@ -120,18 +88,23 @@ assert.equal(getPricing("OpenAI/gpt-4o-mini"), null);
 // ────────────────────────────────────────────────────────────
 assert.equal(getPricing("unknown-model-xyz"), null);
 
-// ────────────────────────────────────────────────────────────
-// claude-sonnet-5 の日付分岐（8/31側・9/1側の両方を固定。global.Dateモックのみで実現）
-// ────────────────────────────────────────────────────────────
-withMockedNow("2026-08-31T23:59:59.999Z", () => {
-  assert.deepEqual(getPricing("claude-sonnet-5"), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
-  assert.deepEqual(getPricing("claude-sonnet-5-20260615"), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
-});
+// registry化に伴う意図的な挙動変更（S24 T6・案B採用）:
+// gemini-2.5-flash-image は画像生成モデルのためトークン課金のpricingを持たない。
+// 旧実装ではMODEL_PRICINGに専用エントリが無く、前方一致でgemini-2.5-flashの
+// 単価($0.30/$2.50)に誤ってヒットしていた。T1のregistryでpricing:[]として
+// 完全一致→終端させることで、この誤ヒットを解消した。
+assert.equal(getPricing("gemini-2.5-flash-image"), null);
+assert.equal(getPricing("gemini/gemini-2.5-flash-image"), null);
 
-withMockedNow("2026-09-01T00:00:00.000Z", () => {
-  assert.deepEqual(getPricing("claude-sonnet-5"), { inputPerMTok: 3.0, outputPerMTok: 15.0 });
-  assert.deepEqual(getPricing("claude-sonnet-5-20260615"), { inputPerMTok: 3.0, outputPerMTok: 15.0 });
-});
+// ────────────────────────────────────────────────────────────
+// claude-sonnet-5 の日付分岐（now引数を明示して実行日に依存させない）
+// ────────────────────────────────────────────────────────────
+const introPriceEnd = new Date("2026-08-31T23:59:59.999Z");
+const regularPriceStart = new Date("2026-09-01T00:00:00.000Z");
+assert.deepEqual(getPricing("claude-sonnet-5", introPriceEnd), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
+assert.deepEqual(getPricing("claude-sonnet-5-20260615", introPriceEnd), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
+assert.deepEqual(getPricing("claude-sonnet-5", regularPriceStart), { inputPerMTok: 3.0, outputPerMTok: 15.0 });
+assert.deepEqual(getPricing("claude-sonnet-5-20260615", regularPriceStart), { inputPerMTok: 3.0, outputPerMTok: 15.0 });
 
 // ────────────────────────────────────────────────────────────
 // calcCost

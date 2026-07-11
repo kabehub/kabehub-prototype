@@ -115,6 +115,7 @@ export const LEGACY_PRICING: Record<string, ModelPricing> = {
   "claude-haiku-4":         { inputPerMTok: 1.00,  outputPerMTok:  5.00 },
   "claude-haiku-3.5":       { inputPerMTok: 0.80,  outputPerMTok:  4.00 },
   "gemini-2.5-flash-lite":  { inputPerMTok: 0.10,  outputPerMTok:  0.60 },
+  "gpt-5.4-nano":           { inputPerMTok: 0.20,  outputPerMTok:  1.25 },
   "gpt-5-mini":             { inputPerMTok: 0.25,  outputPerMTok:  2.00 },
   "gpt-5":                  { inputPerMTok: 1.25,  outputPerMTok: 10.00 },
   "gpt-4o-mini":            { inputPerMTok: 0.15,  outputPerMTok:  0.60 },

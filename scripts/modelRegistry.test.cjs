@@ -31,11 +31,15 @@ const representativeIds = [
   "gpt-5.4-mini-preview", "gpt-5-mini-2026", "claude-haiku-3.5-turbo",
   "gemini/gemini-2.5-flash", "openai/GPT-4O-MINI", "OpenAI/gpt-4o-mini", "unknown-model-xyz",
 ];
+// T6以降は lib/pricing.ts がregistryをre-exportするため、この突き合わせは
+// 公開窓口と実体が同じ結果を返すことだけを確認するトートロジーとなる。
 for (const id of representativeIds) {
   assert.deepEqual(registry.getPricing(id), legacyPricing.getPricing(id), id);
 }
-// 意図的差分: 画像モデルID単体の潜在的な前方一致衝突を pricing:[] の完全一致で終端する。
-assert.deepEqual(legacyPricing.getPricing("gemini-2.5-flash-image"), { inputPerMTok: 0.3, outputPerMTok: 2.5 });
+// 意図的差分（S24 T6で確定・案B採用）:
+// 旧 lib/pricing.ts（T1時点までの独自実装）は専用エントリがなく、前方一致で
+// gemini-2.5-flash の単価($0.30/$2.50)に誤ってヒットしていた。
+// T6以降は本registryのre-exportなので、pricing:[] の完全一致でnullに終端する。
 assert.equal(registry.getPricing("gemini-2.5-flash-image"), null);
 
 for (const model of registry.MODEL_REGISTRY) {
