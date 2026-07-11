@@ -19,6 +19,7 @@ import {
   PREVIEW_LINES,
   canUseDeepThinking,
   compressImage,
+  getThinkingSupport,
   isThinkingUnsupported,
   loadModel,
   readFileWithFallback,
@@ -976,12 +977,7 @@ export default function ChatInputCentered({
                   <button
                     onClick={() => setIsDeepThinking((v) => !v)}
                     disabled={isDeepThinkingDisabled}
-                    title={
-                      selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" :
-                      selectedModel === "claude-fable-5" ? "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
-                      selectedModel === "claude-sonnet-5" ? "Sonnet 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
-                      "Extended Thinking: AIが回答前に深く考えます"
-                    }
+                    title={getThinkingSupport(selectedModel).note ?? "Extended Thinking: AIが回答前に深く考えます"}
                     style={{
                       display: "flex",
                       alignItems: "center",

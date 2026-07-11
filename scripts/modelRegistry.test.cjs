@@ -22,9 +22,60 @@ require.extensions[".tsx"] = compile;
 
 const registry = require("../lib/modelRegistry.ts");
 const legacyPricing = require("../lib/pricing.ts");
-const { MODEL_CONFIG } = require("../components/ChatInput.tsx");
 
-assert.deepEqual(registry.buildLegacyModelConfig(), MODEL_CONFIG);
+const expectedLegacyModelConfig = {
+  claude: {
+    label: "Claude",
+    models: [
+      { id: "claude-fable-5", label: "Fable 5", badge: "最高精度" },
+      { id: "claude-sonnet-5", label: "Sonnet 5", badge: "新標準" },
+      { id: "claude-opus-4-8", label: "Opus 4.8", badge: "最高精度" },
+      { id: "claude-opus-4-7", label: "Opus 4.7", badge: "高精度" },
+      { id: "claude-opus-4-6", label: "Opus 4.6", badge: "高精度" },
+      { id: "claude-sonnet-4-5", label: "Sonnet 4.5", badge: "標準" },
+      { id: "claude-sonnet-4-6", label: "Sonnet 4.6", badge: "高性能" },
+      { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", badge: "軽量・爆速" },
+    ],
+    defaultModel: "claude-sonnet-4-5",
+    lsKey: "kabehub_claude_model",
+  },
+  gemini: {
+    label: "Gemini",
+    models: [
+      { id: "gemini-2.5-flash", label: "2.5 Flash", badge: "標準" },
+      { id: "gemini-2.5-pro", label: "2.5 Pro", badge: "高性能" },
+      { id: "gemini-3.5-flash", label: "3.5 Flash", badge: "高性能" },
+      { id: "gemini-3.1-flash-lite", label: "3.1 Flash Lite", badge: "軽量・爆速" },
+    ],
+    defaultModel: "gemini-2.5-flash",
+    lsKey: "kabehub_gemini_model",
+  },
+  openai: {
+    label: "ChatGPT",
+    models: [
+      { id: "gpt-4o", label: "GPT-4o", badge: "旧世代" },
+      { id: "gpt-5.4-mini", label: "GPT-5.4 mini", badge: "標準" },
+      { id: "gpt-5.4", label: "GPT-5.4", badge: "高性能" },
+      { id: "gpt-5.5", label: "GPT-5.5", badge: "最高精度" },
+      { id: "gpt-5.5-pro", label: "GPT-5.5 Pro", badge: "最上位" },
+    ],
+    defaultModel: "gpt-5.4-mini",
+    lsKey: "kabehub_openai_model",
+  },
+  image_gen: {
+    label: "画像生成",
+    models: [
+      { id: "gpt-image-2", label: "GPT Image 2", badge: "OpenAI" },
+      { id: "gemini-2.5-flash-image", label: "Gemini Image", badge: "Google" },
+      { id: "ideogram-v3", label: "Ideogram V3", badge: "Ideogram" },
+      { id: "black-forest-labs/flux.2-pro", label: "Flux 2 Pro", badge: "OpenRouter" },
+    ],
+    defaultModel: "gpt-image-2",
+    lsKey: "kabehub_image_provider",
+  },
+};
+
+assert.deepEqual(registry.buildLegacyModelConfig(), expectedLegacyModelConfig);
 
 const representativeIds = [
   "gpt-4o", "gemini-2.5-pro", "ideogram-v3", "black-forest-labs/flux.2-pro",

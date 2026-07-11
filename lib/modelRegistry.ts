@@ -52,7 +52,7 @@ const price = (inputPerMTok: number, outputPerMTok: number): PricingRule[] => [
   { inputPerMTok, outputPerMTok },
 ];
 
-export const MODEL_REGISTRY: readonly ModelDef[] = [
+export const MODEL_REGISTRY = [
   { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "adaptive", note: "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" }, pricing: price(10.00, 50.00) },
   { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "adaptive", note: "Sonnet 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" }, pricing: [
     { inputPerMTok: 2.00, outputPerMTok: 10.00, note: "導入価格" },
@@ -82,7 +82,7 @@ export const MODEL_REGISTRY: readonly ModelDef[] = [
   { kind: "image", id: "black-forest-labs/flux.2-pro", provider: "image_gen", apiProvider: "openrouter", label: "Flux 2 Pro", badge: "OpenRouter", status: "active", img2img: false, pricing: price(0, 0.055) },
   { kind: "image", id: "gemini-3.1-flash-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(0.50, 60.00) },
   { kind: "image", id: "gemini-3-pro-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(2.00, 120.00) },
-] as const;
+] as const satisfies readonly ModelDef[];
 
 export type ProviderConfig = {
   label: string;
@@ -101,11 +101,7 @@ export type ImageProviderConfig = {
 export const PROVIDER_CONFIG: Record<TextProvider | "image_gen", ProviderConfig | ImageProviderConfig> = {
   claude: { label: "Claude", uiDefaultModelId: "claude-sonnet-4-5", chatFallbackModelId: "claude-sonnet-4-5", arenaFallbackModelId: "claude-sonnet-4-5", lsKey: "kabehub_claude_model" },
   gemini: { label: "Gemini", uiDefaultModelId: "gemini-2.5-flash", chatFallbackModelId: "gemini-2.5-flash", arenaFallbackModelId: "gemini-2.5-flash", lsKey: "kabehub_gemini_model" },
-  openai: { label: "ChatGPT", uiDefaultModelId: "gpt-5.4-mini", chatFallbackModelId: "gpt-4o", arenaFallbackModelId: "gpt-4o", lsKey: "kabehub_openai_model" },
-  // TODO(T4/T5): S23で「gpt-5.4-miniに統一する」と決定済み。
-  // chat/route.ts・arena/route.ts の DEFAULT_MODELS を getDefaultModel() に
-  // 置き換えるタイミングで、openai の chatFallbackModelId / arenaFallbackModelId を
-  // "gpt-5.4-mini" に変更すること。T1では現状再現のみ行い、ここでは変更しない。
+  openai: { label: "ChatGPT", uiDefaultModelId: "gpt-5.4-mini", chatFallbackModelId: "gpt-5.4-mini", arenaFallbackModelId: "gpt-5.4-mini", lsKey: "kabehub_openai_model" },
   image_gen: { label: "画像生成", defaultModelId: "gpt-image-2", lsKey: "kabehub_image_provider" },
 } as const;
 
@@ -160,7 +156,7 @@ export function buildLegacyModelConfig() {
     const cfg = PROVIDER_CONFIG[provider] as ProviderConfig;
     return {
       label: cfg.label,
-      models: MODEL_REGISTRY.filter((model): model is TextModelDef => model.kind === "text" && model.provider === provider && model.status === "active")
+      models: MODEL_REGISTRY.filter((model): model is Extract<(typeof MODEL_REGISTRY)[number], { kind: "text" }> => model.kind === "text" && model.provider === provider && model.status === "active")
         .map(({ id, label, badge }) => ({ id, label, badge })),
       defaultModel: cfg.uiDefaultModelId,
       lsKey: cfg.lsKey,
@@ -173,7 +169,7 @@ export function buildLegacyModelConfig() {
     openai: textConfig("openai"),
     image_gen: {
       label: imageCfg.label,
-      models: MODEL_REGISTRY.filter((model): model is ImageModelDef => model.kind === "image" && model.status === "active")
+      models: MODEL_REGISTRY.filter((model): model is Extract<(typeof MODEL_REGISTRY)[number], { kind: "image" }> => model.kind === "image" && model.status === "active")
         .map(({ id, label, badge }) => ({ id, label, badge })),
       defaultModel: imageCfg.defaultModelId,
       lsKey: imageCfg.lsKey,
@@ -185,7 +181,7 @@ export function loadModel(provider: UIProvider): ModelId {
   const config = buildLegacyModelConfig()[provider];
   const saved = typeof window !== "undefined" ? localStorage.getItem(config.lsKey) : null;
   const validIds = config.models.map((model) => model.id);
-  return saved && validIds.includes(saved) ? saved : config.defaultModel;
+  return saved && validIds.some((id) => id === saved) ? saved : config.defaultModel;
 }
 
 export function saveModel(provider: UIProvider, modelId: ModelId): void {
@@ -204,7 +200,7 @@ export function isAllowedModel(provider: TextProvider, modelId: string, surface:
 }
 
 export function getThinkingSupport(modelId: string): ThinkingConfig {
-  const model = MODEL_REGISTRY.find((candidate): candidate is TextModelDef => candidate.kind === "text" && candidate.id === modelId);
+  const model = MODEL_REGISTRY.find((candidate): candidate is Extract<(typeof MODEL_REGISTRY)[number], { kind: "text" }> => candidate.kind === "text" && candidate.id === modelId);
   return model?.thinking ?? { mode: "none" };
 }
 
@@ -213,10 +209,26 @@ export function supportsExtendedThinking(modelId: string): boolean {
 }
 
 export function resolveImageModel(modelId: string): ImageModelDef | null {
-  return MODEL_REGISTRY.find((model): model is ImageModelDef => model.kind === "image" && model.id === modelId) ?? null;
+  return MODEL_REGISTRY.find((model): model is Extract<(typeof MODEL_REGISTRY)[number], { kind: "image" }> => model.kind === "image" && model.id === modelId) ?? null;
 }
 
 export function isAllowedImageModel(apiProvider: ImageApiProvider, modelId: string): boolean {
   const model = resolveImageModel(modelId);
   return Boolean(model && model.apiProvider === apiProvider && model.status !== "retired");
 }
+
+export function getDefaultImageModel(apiProvider: ImageApiProvider): ModelId | null {
+  return MODEL_REGISTRY.find((model) => model.kind === "image" && model.apiProvider === apiProvider && model.status === "active")?.id ?? null;
+}
+
+export type RegistryClaudeModel =
+  Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; provider: "claude"; status: "active" }>["id"];
+
+export type RegistryGeminiModel =
+  Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; provider: "gemini"; status: "active" }>["id"];
+
+export type RegistryOpenAIModel =
+  Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; provider: "openai"; status: "active" }>["id"];
+
+export type RegistryImageGenModel =
+  Extract<(typeof MODEL_REGISTRY)[number], { kind: "image"; status: "active" }>["id"];

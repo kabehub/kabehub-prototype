@@ -1,3 +1,27 @@
+import type {
+  RegistryClaudeModel,
+  RegistryGeminiModel,
+  RegistryOpenAIModel,
+  RegistryImageGenModel,
+} from "@/lib/modelRegistry";
+
+// ⚠️ このブロックが型エラーになったら、types/index.ts のUnion型と
+// lib/modelRegistry.ts の MODEL_REGISTRY がズレている。
+// モデル追加・削除時は両方を同時に更新すること。
+type AssertNever<T extends never> = T;
+
+type _ClaudeMissingFromTypes = AssertNever<Exclude<RegistryClaudeModel, ClaudeModel>>;
+type _ClaudeExtraInTypes     = AssertNever<Exclude<ClaudeModel, RegistryClaudeModel>>;
+
+type _GeminiMissingFromTypes = AssertNever<Exclude<RegistryGeminiModel, GeminiModel>>;
+type _GeminiExtraInTypes     = AssertNever<Exclude<GeminiModel, RegistryGeminiModel>>;
+
+type _OpenAIMissingFromTypes = AssertNever<Exclude<RegistryOpenAIModel, OpenAIModel>>;
+type _OpenAIExtraInTypes     = AssertNever<Exclude<OpenAIModel, RegistryOpenAIModel>>;
+
+type _ImageGenMissingFromTypes = AssertNever<Exclude<RegistryImageGenModel, ImageGenModel>>;
+type _ImageGenExtraInTypes     = AssertNever<Exclude<ImageGenModel, RegistryImageGenModel>>;
+
 export type Provider = "claude" | "gemini" | "openai" | "image_gen";
 
 export type ClaudeModel =

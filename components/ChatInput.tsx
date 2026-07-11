@@ -2,7 +2,16 @@
 
 import { useRef, useEffect, KeyboardEvent, useState } from "react";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ImageGenModel, ModelId, Provider } from "@/types";
+import {
+  buildLegacyModelConfig,
+  loadModel as registryLoadModel,
+  saveModel as registrySaveModel,
+  getThinkingSupport,
+  supportsExtendedThinking,
+  resolveImageModel,
+} from "@/lib/modelRegistry";
 export type { ClaudeModel, GeminiModel, OpenAIModel, ImageGenModel, ModelId, Provider } from "@/types";
+export { getThinkingSupport } from "@/lib/modelRegistry";
 
 // ── 添付ファイル型（Discriminated Union）──────────────────────────────────
 export type AttachedTextFile = {
@@ -61,90 +70,40 @@ export async function compressImage(file: File): Promise<{ base64: string; media
   });
 }
 
-// ── モデル定数（将来の拡張はここに1行追加するだけ）──────────────────
-export const MODEL_CONFIG = {
-  claude: {
-    label: "Claude",
-    models: [
-      { id: "claude-fable-5" as ClaudeModel,             label: "Fable 5",    badge: "最高精度" },
-      { id: "claude-sonnet-5" as ClaudeModel,            label: "Sonnet 5",   badge: "新標準" },
-      { id: "claude-opus-4-8" as ClaudeModel,           label: "Opus 4.8",   badge: "最高精度" },
-      { id: "claude-opus-4-7" as ClaudeModel,           label: "Opus 4.7",   badge: "高精度" },
-      { id: "claude-opus-4-6" as ClaudeModel,           label: "Opus 4.6",   badge: "高精度" },
-      { id: "claude-sonnet-4-5" as ClaudeModel,         label: "Sonnet 4.5", badge: "標準" },
-      { id: "claude-sonnet-4-6" as ClaudeModel,         label: "Sonnet 4.6", badge: "高性能" },
-      { id: "claude-haiku-4-5-20251001" as ClaudeModel, label: "Haiku 4.5",  badge: "軽量・爆速" },
-    ],
-    defaultModel: "claude-sonnet-4-5" as ClaudeModel,
-    lsKey: "kabehub_claude_model",
-  },
-  gemini: {
-    label: "Gemini",
-    models: [
-      { id: "gemini-2.5-flash" as GeminiModel, label: "2.5 Flash", badge: "標準" },
-      { id: "gemini-2.5-pro" as GeminiModel, label: "2.5 Pro", badge: "高性能" },
-      { id: "gemini-3.5-flash" as GeminiModel, label: "3.5 Flash", badge: "高性能" },
-      { id: "gemini-3.1-flash-lite" as GeminiModel, label: "3.1 Flash Lite", badge: "軽量・爆速" },
-    ],
-    defaultModel: "gemini-2.5-flash" as GeminiModel,
-    lsKey: "kabehub_gemini_model",
-  },
-  openai: {
-    label: "ChatGPT",
-    models: [
-      { id: "gpt-4o" as OpenAIModel, label: "GPT-4o", badge: "旧世代" },
-      { id: "gpt-5.4-mini" as OpenAIModel, label: "GPT-5.4 mini", badge: "標準" },
-      { id: "gpt-5.4" as OpenAIModel, label: "GPT-5.4", badge: "高性能" },
-      { id: "gpt-5.5" as OpenAIModel, label: "GPT-5.5", badge: "最高精度" },
-      { id: "gpt-5.5-pro" as OpenAIModel, label: "GPT-5.5 Pro", badge: "最上位" },
-    ],
-    defaultModel: "gpt-5.4-mini" as OpenAIModel,
-    lsKey: "kabehub_openai_model",
-  },
-  image_gen: {
-    label: "画像生成",
-    models: [
-      { id: "gpt-image-2" as ImageGenModel, label: "GPT Image 2", badge: "OpenAI" },
-      { id: "gemini-2.5-flash-image" as ImageGenModel, label: "Gemini Image", badge: "Google" },
-      { id: "ideogram-v3" as ImageGenModel, label: "Ideogram V3", badge: "Ideogram" },
-      { id: "black-forest-labs/flux.2-pro" as ImageGenModel, label: "Flux 2 Pro", badge: "OpenRouter" },
-    ],
-    defaultModel: "gpt-image-2" as ImageGenModel,
-    lsKey: "kabehub_image_provider",
-  },
-} as const satisfies Record<Provider, {
-  label: string;
-  models: readonly { id: ModelId; label: string; badge: string }[];
-  defaultModel: ModelId;
-  lsKey: string;
-}>;
+type ChatModelOption<M extends string> = { id: M; label: string; badge: string };
+
+export type LegacyModelConfig = {
+  claude: { label: string; models: readonly ChatModelOption<ClaudeModel>[]; defaultModel: ClaudeModel; lsKey: string };
+  gemini: { label: string; models: readonly ChatModelOption<GeminiModel>[]; defaultModel: GeminiModel; lsKey: string };
+  openai: { label: string; models: readonly ChatModelOption<OpenAIModel>[]; defaultModel: OpenAIModel; lsKey: string };
+  image_gen: { label: string; models: readonly ChatModelOption<ImageGenModel>[]; defaultModel: ImageGenModel; lsKey: string };
+};
+
+export const MODEL_CONFIG = buildLegacyModelConfig() as LegacyModelConfig;
 
 /** LocalStorageからモデルを読み込む（なければデフォルト値） */
 export function loadModel(provider: Provider): ModelId {
-  const config = MODEL_CONFIG[provider];
-  const saved = typeof window !== "undefined" ? localStorage.getItem(config.lsKey) : null;
-  const validIds = config.models.map((m) => m.id as string);
-  return (saved && validIds.includes(saved) ? saved : config.defaultModel) as ModelId;
+  return registryLoadModel(provider) as ModelId;
 }
 
 /** LocalStorageにモデルを保存 */
-export function saveModel(provider: Provider, modelId: ModelId) {
-  localStorage.setItem(MODEL_CONFIG[provider].lsKey, modelId);
+export function saveModel(provider: Provider, modelId: ModelId): void {
+  registrySaveModel(provider, modelId);
 }
 // ─────────────────────────────────────────────────────────────────────────
 
-export const THINKING_UNSUPPORTED_MODELS = new Set<ModelId>([
-  "claude-haiku-4-5-20251001",
-  "claude-fable-5",
-  "claude-sonnet-5",
-]);
+export const THINKING_UNSUPPORTED_MODELS = new Set<ModelId>(
+  MODEL_CONFIG.claude.models
+    .filter((model) => !supportsExtendedThinking(model.id))
+    .map((model) => model.id)
+);
 
 export function isThinkingUnsupported(modelId: ModelId): boolean {
-  return THINKING_UNSUPPORTED_MODELS.has(modelId);
+  return !supportsExtendedThinking(modelId);
 }
 
 export function canUseDeepThinking(provider: Provider, modelId: ModelId): boolean {
-  return provider === "claude" && !isThinkingUnsupported(modelId);
+  return provider === "claude" && supportsExtendedThinking(modelId);
 }
 
 const LS_ENTER_MODE = "kabehub_enter_mode" as const;
@@ -677,13 +636,7 @@ export default function ChatInput({
     // 画像生成モード
     if (provider === "image_gen") {
       if (value.trim() && onImageGenerate) {
-        const MODEL_TO_PROVIDER: Record<string, string> = {
-          "gpt-image-2": "openai",
-          "gemini-2.5-flash-image": "gemini",
-          "ideogram-v3": "ideogram",
-          "black-forest-labs/flux.2-pro": "openrouter",
-        }
-        const imageProvider = MODEL_TO_PROVIDER[selectedModel as string] ?? "openai"
+        const imageProvider = resolveImageModel(selectedModel)?.apiProvider ?? "openai"
         onChange('')
         onImageGenerate(value.trim(), imageProvider, imageRefId ?? undefined, imageRefUpload ?? undefined)
       }
@@ -857,7 +810,7 @@ export default function ChatInput({
               {PROVIDER_LABELS[openModelProvider]} のモデルを選択
             </div>
             {MODEL_CONFIG[openModelProvider].models.map((m) => {
-              const isImg2imgDisabled = (!!imageRefId || !!imageRefUpload) && (m.id === "gpt-image-2" || m.id === "black-forest-labs/flux.2-pro");
+              const isImg2imgDisabled = (!!imageRefId || !!imageRefUpload) && resolveImageModel(m.id)?.img2img === false;
 
               return (
                 <button
@@ -1423,12 +1376,7 @@ export default function ChatInput({
             <button
               onClick={() => setIsDeepThinking((v) => !v)}
               disabled={isThinkingUnsupported(selectedModel) || isLoading || !!disabled}
-              title={
-                selectedModel === "claude-haiku-4-5-20251001" ? "Haiku 4.5は非対応です" :
-                selectedModel === "claude-fable-5" ? "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
-                selectedModel === "claude-sonnet-5" ? "Sonnet 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" :
-                "Extended Thinking: AIが回答前に深く考えます"
-              }
+              title={getThinkingSupport(selectedModel).note ?? "Extended Thinking: AIが回答前に深く考えます"}
               style={{
                 display: "flex",
                 alignItems: "center",
