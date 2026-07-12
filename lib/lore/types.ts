@@ -19,3 +19,9 @@ export type LoreMemoryRow = {
   event_time: string | null;
   created_at: string;
 };
+
+export const DREAMING_DEFAULTS = { limit: 5, threshold: 0.92 } as const;
+// サーバー側(app/api/lore/batch-train/route.ts)の省略時デフォルトは20。
+// この値はUI側が常に明示送信する固定値であり、サーバーのデフォルトとは別概念
+// （たまたまサーバー側のclamp上限=100と一致している）。
+export const BATCH_TRAIN_UI_REQUEST_LIMIT = 100;

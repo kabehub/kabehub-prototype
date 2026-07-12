@@ -1,5 +1,8 @@
 // Client componentからも参照されるため、server-only依存を追加しないこと。
 
+import type { LoreMemoryCard } from "@/types";
+import type { LoreMemoryRow } from "./types";
+
 export type ConsolidationCandidate = {
   idA: string;
   idB: string;
@@ -81,4 +84,45 @@ export function normalizeRpcNewId(data: unknown) {
     }
   }
   return null;
+}
+
+export function toMemoryCard(row: LoreMemoryRow): LoreMemoryCard {
+  return {
+    id: row.id,
+    chunkText: row.chunk_text,
+    tags: row.tags ?? [],
+    memoryKind: row.memory_kind ?? "fact",
+    temporalStatus: row.temporal_status ?? "current",
+    importanceScore: row.importance_score ?? 0,
+    confidenceScore: row.confidence_score ?? 0,
+    sourceThreadId: row.source_thread_id,
+    sourceMessageId: row.source_message_id,
+    sourceMessageNumber: row.source_message_number,
+    isPinned: row.is_pinned ?? false,
+    isArchived: row.is_archived ?? false,
+    extractionVersion: row.extraction_version,
+    lastConfirmedAt: row.last_confirmed_at,
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    eventTime: row.event_time,
+    createdAt: row.created_at,
+  };
+}
+
+// 関数名は呼び出し側のローカル変数名(isNeedsReview/needsReview)との衝突を避けるため
+// 意図的に別名(memoryNeedsReview)にしている。この名前を変更しないこと。
+export function memoryNeedsReview(card: LoreMemoryCard, now: number): boolean {
+  const isValidUntilPast = (() => {
+    if (!card.validUntil) return false;
+    const d = new Date(card.validUntil);
+    if (Number.isNaN(d.getTime())) return false;
+    return d.getTime() < now;
+  })();
+
+  return (
+    card.temporalStatus === "uncertain" ||
+    card.temporalStatus === "expired" ||
+    (card.confidenceScore !== null && card.confidenceScore < 0.5) ||
+    (card.temporalStatus === "current" && isValidUntilPast)
+  );
 }

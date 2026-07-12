@@ -16,7 +16,7 @@ Module._resolveFilename = function resolveFilename(request, parent, isMain, opti
 
 const testExportsByFile = new Map([
   ["app/api/lore/consolidate/candidates/route.ts", ["clamp"]],
-  ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId"]],
+  ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId", "toMemoryCard", "memoryNeedsReview"]],
   ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "validateApprovedPair", "validateDreamingSources"]],
   ["app/api/lore/dreaming-batch/route.ts", ["clamp"]],
   ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind", "buildUserPrompt", "isJsonStringLike", "validateMergedText"]],
@@ -26,7 +26,6 @@ const testExportsByFile = new Map([
   ["app/api/lore/batch-train/route.ts", ["clamp"]],
   ["lib/lore/batchTrain.ts", ["clamp", "normalizeMemory", "buildMemoryExtractionPrompt", "fetchTargetMessages"]],
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
-  ["app/memory/page.tsx", ["consolidationPairKey"]],
 ]);
 
 function compile(module, filename) {
@@ -98,17 +97,6 @@ const batchTrainRoute = loadTestExports("app/api/lore/batch-train/route.ts", tes
 const batchTrain = loadTestExports("lib/lore/batchTrain.ts", testExportsByFile.get("lib/lore/batchTrain.ts"));
 const temporal = loadTestExports("app/api/lore/update-temporal-status/route.ts", testExportsByFile.get("app/api/lore/update-temporal-status/route.ts"));
 const { LORE_MEMORY_SELECT: sharedSelect } = require("../lib/loreMemorySelect.ts");
-
-let memoryPage = null;
-try {
-  memoryPage = loadTestExports("app/memory/page.tsx", testExportsByFile.get("app/memory/page.tsx"));
-} catch (error) {
-  if (error && error.code === "MODULE_NOT_FOUND") {
-    console.log(`# app/memory/page.tsx skipped: ${error.message}`);
-  } else {
-    throw error;
-  }
-}
 
 test("LORE_MEMORY_SELECT contains exactly the 19 unified columns without embedding", () => {
   const shared = sharedSelect.split(", ");
@@ -297,7 +285,6 @@ test("all pair normalizers use idA < idB ordering", () => {
     assert.deepEqual(Array.from(api.normalizePair("a", "z")), ["a", "z"]);
   }
   assert.equal(consolidationModule.pairKey("z", "a"), "a:z");
-  if (memoryPage) assert.equal(memoryPage.consolidationPairKey({ idA: "z", idB: "a" }), "a:z");
 });
 
 test("four clamp copies preserve bounds and NaN behavior", () => {
@@ -326,6 +313,82 @@ test("normalizeRpcNewId accepts shapes and prioritizes newId/new_id/id", () => {
   assert.equal(mappersModule.normalizeRpcNewId([]), null);
 });
 
+test("toMemoryCard converts every DB field and preserves current defaults", () => {
+  const row = {
+    id: "memory-1",
+    chunk_text: "記憶本文",
+    tags: ["tag-a"],
+    memory_kind: "project",
+    temporal_status: "future",
+    importance_score: 0.7,
+    confidence_score: 0.8,
+    source_thread_id: "thread-1",
+    source_message_id: "message-1",
+    source_message_number: 12,
+    is_pinned: true,
+    is_archived: false,
+    extraction_version: "ai",
+    is_manually_corrected: true,
+    last_confirmed_at: "2026-01-02T00:00:00Z",
+    valid_from: "2026-01-03T00:00:00Z",
+    valid_until: "2026-12-31T00:00:00Z",
+    event_time: "2026-01-04T00:00:00Z",
+    created_at: "2026-01-01T00:00:00Z",
+  };
+
+  assert.deepEqual(mappersModule.toMemoryCard(row), {
+    id: "memory-1",
+    chunkText: "記憶本文",
+    tags: ["tag-a"],
+    memoryKind: "project",
+    temporalStatus: "future",
+    importanceScore: 0.7,
+    confidenceScore: 0.8,
+    sourceThreadId: "thread-1",
+    sourceMessageId: "message-1",
+    sourceMessageNumber: 12,
+    isPinned: true,
+    isArchived: false,
+    extractionVersion: "ai",
+    lastConfirmedAt: "2026-01-02T00:00:00Z",
+    validFrom: "2026-01-03T00:00:00Z",
+    validUntil: "2026-12-31T00:00:00Z",
+    eventTime: "2026-01-04T00:00:00Z",
+    createdAt: "2026-01-01T00:00:00Z",
+  });
+
+  const nullRow = {
+    id: "1", chunk_text: "t", tags: null, memory_kind: null, temporal_status: null,
+    importance_score: null, confidence_score: null, source_thread_id: null,
+    source_message_id: null, source_message_number: null, is_pinned: null,
+    is_archived: null, extraction_version: null, is_manually_corrected: false,
+    last_confirmed_at: null, valid_from: null, valid_until: null,
+    event_time: null, created_at: "2026-01-01",
+  };
+  const card = mappersModule.toMemoryCard(nullRow);
+  assert.deepEqual(card.tags, []);
+  assert.equal(card.memoryKind, "fact");
+  assert.equal(card.temporalStatus, "current");
+  assert.equal(card.importanceScore, 0);
+  assert.equal(card.confidenceScore, 0);
+  assert.equal(card.isPinned, false);
+  assert.equal(card.isArchived, false);
+});
+
+test("memoryNeedsReview preserves current review boundaries", () => {
+  const now = Date.parse("2026-01-10T00:00:00Z");
+  const base = { temporalStatus: "current", confidenceScore: 0.9, validUntil: null };
+
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, temporalStatus: "uncertain" }, now), true);
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, temporalStatus: "expired" }, now), true);
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, confidenceScore: 0.49 }, now), true);
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, confidenceScore: 0.5 }, now), false);
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, temporalStatus: "past", validUntil: "2020-01-01T00:00:00Z" }, now), false);
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, validUntil: "2026-01-09T23:59:59Z" }, now), true);
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, validUntil: "2026-01-10T00:00:00Z" }, now), false);
+  assert.equal(mappersModule.memoryNeedsReview({ ...base, validUntil: "not-a-date" }, now), false);
+});
+
 test("additional exposed helpers preserve current behavior", () => {
   assert.equal(mappersModule.stringValue({ a: 1, b: "x" }, ["a", "b"]), "x");
   assert.equal(mappersModule.numberValue({ a: "2.5" }, ["a"]), 2.5);
@@ -340,7 +403,6 @@ test("additional exposed helpers preserve current behavior", () => {
 Promise.all(pendingTests).then(() => {
   console.log(`1..${passed}`);
   console.log(`# ${passed} lore characterization tests passed`);
-  console.log(`# app/memory/page.tsx require: ${memoryPage ? "success" : "skipped"}`);
 }).catch((error) => {
   console.error(error);
   process.exitCode = 1;

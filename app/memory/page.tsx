@@ -4,27 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LoreMemoryCard } from "@/types";
 import { pairKey } from "@/lib/lore/consolidation";
-
-type LoreMemoryRow = {
-  id: string;
-  chunk_text: string;
-  tags: string[] | null;
-  memory_kind: string | null;
-  temporal_status: string | null;
-  importance_score: number | null;
-  confidence_score: number | null;
-  source_thread_id: string | null;
-  source_message_id: string | null;
-  source_message_number: number | null;
-  is_pinned: boolean | null;
-  is_archived: boolean | null;
-  extraction_version: string | null;
-  last_confirmed_at: string | null;
-  valid_from: string | null;
-  valid_until: string | null;
-  event_time: string | null;
-  created_at: string;
-};
+import { toMemoryCard, memoryNeedsReview } from "@/lib/lore/mappers";
+import type { ConsolidationCandidate } from "@/lib/lore/mappers";
+import type { LoreMemoryRow } from "@/lib/lore/types";
+import { DREAMING_DEFAULTS, BATCH_TRAIN_UI_REQUEST_LIMIT } from "@/lib/lore/types";
 
 type TemporalStatusUpdateResult = {
   pastCount: number;
@@ -40,20 +23,6 @@ type DreamingBatchResult = {
     | { sourceIds: string[]; newId: string | null; status: "merged"; mergedText: string }
     | { sourceIds: string[]; status: "failed"; reason: string }
   >;
-};
-
-type ConsolidationCandidate = {
-  idA: string;
-  idB: string;
-  chunkTextA: string;
-  chunkTextB: string;
-  memoryKindA: string | null;
-  memoryKindB: string | null;
-  temporalStatusA: string | null;
-  temporalStatusB: string | null;
-  createdAtA: string | null;
-  createdAtB: string | null;
-  similarity: number;
 };
 
 type HistoryItem = {
@@ -89,29 +58,6 @@ const TEMPORAL_STATUS_OPTIONS = [
   { value: "expired", label: "期限切れ" },
   { value: "uncertain", label: "要確認" },
 ];
-
-function toMemoryCard(row: LoreMemoryRow): LoreMemoryCard {
-  return {
-    id: row.id,
-    chunkText: row.chunk_text,
-    tags: row.tags ?? [],
-    memoryKind: row.memory_kind ?? "fact",
-    temporalStatus: row.temporal_status ?? "current",
-    importanceScore: row.importance_score ?? 0,
-    confidenceScore: row.confidence_score ?? 0,
-    sourceThreadId: row.source_thread_id,
-    sourceMessageId: row.source_message_id,
-    sourceMessageNumber: row.source_message_number,
-    isPinned: row.is_pinned ?? false,
-    isArchived: row.is_archived ?? false,
-    extractionVersion: row.extraction_version,
-    lastConfirmedAt: row.last_confirmed_at,
-    validFrom: row.valid_from,
-    validUntil: row.valid_until,
-    eventTime: row.event_time,
-    createdAt: row.created_at,
-  };
-}
 
 interface MemoryCardProps {
   card: LoreMemoryCard;
@@ -152,18 +98,8 @@ function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCar
   const [saving, setSaving] = useState(false);
 
   const isTextChanged = draftText.trim() !== card.chunkText.trim();
-  const isValidUntilPast = (() => {
-    if (!card.validUntil) return false;
-    const d = new Date(card.validUntil);
-    if (Number.isNaN(d.getTime())) return false;
-    return d.getTime() < Date.now();
-  })();
-  const isNeedsReview =
-    card.temporalStatus === "uncertain" ||
-    card.temporalStatus === "expired" ||
-    (card.confidenceScore !== null && card.confidenceScore < 0.5) ||
-    (card.temporalStatus === "current" && isValidUntilPast);
-  const leftBorderClass = isNeedsReview
+  const needsReview = memoryNeedsReview(card, Date.now());
+  const leftBorderClass = needsReview
     ? "border-l-orange-500"
     : card.isPinned
       ? "border-l-blue-500"
@@ -265,7 +201,7 @@ function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCar
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className={badgeClass("blue")}>{card.memoryKind}</span>
-            <span className={badgeClass(isNeedsReview ? "orange" : "gray")}>{card.temporalStatus}</span>
+            <span className={badgeClass(needsReview ? "orange" : "gray")}>{card.temporalStatus}</span>
             {card.sourceMessageId ? (
               <span className={badgeClass("gray")}>#{card.sourceMessageNumber ?? "-"}</span>
             ) : (
@@ -390,10 +326,6 @@ interface ConsolidationCandidatesProps {
   onDismiss: (candidate: ConsolidationCandidate) => void;
 }
 
-function consolidationPairKey(candidate: Pick<ConsolidationCandidate, "idA" | "idB">) {
-  return pairKey(candidate.idA, candidate.idB);
-}
-
 function ConsolidationCandidates({
   candidates,
   expanded,
@@ -421,12 +353,12 @@ function ConsolidationCandidates({
       {expanded && (
         <div className="border-t border-amber-500/20 p-4 space-y-3">
           {candidates.map((candidate) => {
-            const pairKey = consolidationPairKey(candidate);
-            const dismissing = dismissingPairKey === pairKey;
-            const merging = mergingPairKey === pairKey;
+            const candidatePairKey = pairKey(candidate.idA, candidate.idB);
+            const dismissing = dismissingPairKey === candidatePairKey;
+            const merging = mergingPairKey === candidatePairKey;
 
             return (
-              <article key={pairKey} className="rounded-lg border border-gray-800 bg-gray-950 p-4 space-y-4">
+              <article key={candidatePairKey} className="rounded-lg border border-gray-800 bg-gray-950 p-4 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={badgeClass("orange")}>
@@ -849,7 +781,7 @@ export default function MemoryPage() {
           "Content-Type": "application/json",
           "x-openai-api-key": openaiKey,
         },
-        body: JSON.stringify({ limit: 100 }),
+        body: JSON.stringify({ limit: BATCH_TRAIN_UI_REQUEST_LIMIT }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "記憶化に失敗しました");
@@ -906,7 +838,7 @@ export default function MemoryPage() {
           "Content-Type": "application/json",
           "x-openai-api-key": openaiKey,
         },
-        body: JSON.stringify({ limit: 5, threshold: 0.92 }),
+        body: JSON.stringify(DREAMING_DEFAULTS),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "自動整理に失敗しました");
@@ -921,8 +853,8 @@ export default function MemoryPage() {
   };
 
   const handleDismissCandidate = async (candidate: ConsolidationCandidate) => {
-    const pairKey = consolidationPairKey(candidate);
-    setDismissingPairKey(pairKey);
+    const candidatePairKey = pairKey(candidate.idA, candidate.idB);
+    setDismissingPairKey(candidatePairKey);
     setError(null);
 
     try {
@@ -934,7 +866,7 @@ export default function MemoryPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? "統合候補の無視に失敗しました");
 
-      setConsolidationCandidates((prev) => prev.filter((item) => consolidationPairKey(item) !== pairKey));
+      setConsolidationCandidates((prev) => prev.filter((item) => pairKey(item.idA, item.idB) !== candidatePairKey));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -949,8 +881,8 @@ export default function MemoryPage() {
       return;
     }
 
-    const pairKey = consolidationPairKey(candidate);
-    setMergingPairKey(pairKey);
+    const candidatePairKey = pairKey(candidate.idA, candidate.idB);
+    setMergingPairKey(candidatePairKey);
     setError(null);
 
     try {

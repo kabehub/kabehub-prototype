@@ -4,7 +4,7 @@ import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export const dynamic = "force-dynamic";
 
-type LoreMemoryRow = {
+type DreamingHistoryRow = {
   id: string;
   superseded_by?: string | null;
   [key: string]: unknown;
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const { data: newRecords, error: newRecordsError } = await newRecordsQuery;
   if (newRecordsError) return NextResponse.json({ error: newRecordsError.message }, { status: 500 });
 
-  const typedNewRecords = (newRecords ?? []) as unknown as LoreMemoryRow[];
+  const typedNewRecords = (newRecords ?? []) as unknown as DreamingHistoryRow[];
   const newIds = typedNewRecords
     .map((record) => record.id)
     .filter((id): id is string => typeof id === "string");
@@ -63,8 +63,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: sourceRecordsError.message }, { status: 500 });
   }
 
-  const typedSourceRecords = (sourceRecords ?? []) as unknown as LoreMemoryRow[];
-  const sourcesByNewId = new Map<string, LoreMemoryRow[]>();
+  const typedSourceRecords = (sourceRecords ?? []) as unknown as DreamingHistoryRow[];
+  const sourcesByNewId = new Map<string, DreamingHistoryRow[]>();
   for (const source of typedSourceRecords) {
     const supersededBy = source.superseded_by;
     if (typeof supersededBy !== "string") continue;
