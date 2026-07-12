@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { createEmbedding } from "./openai";
 
 export interface LoreSearchOptions {
   query: string;
@@ -42,25 +43,14 @@ export async function embedQuery(
   query: string,
   signal: AbortSignal,
 ): Promise<number[] | null> {
-  const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: query }),
-    signal,
-  });
-
-  if (!embRes.ok) {
-    console.warn("[lore] embedding failed:", embRes.status);
+  try {
+    return await createEmbedding(openaiKey, query, { signal, apiErrorMode: "provider" });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("[lore] embedding failed:", message);
     return null;
   }
-
-  const embData = await embRes.json();
-  const embedding = embData?.data?.[0]?.embedding;
-  if (!Array.isArray(embedding)) {
-    console.warn("[lore] embedding response invalid");
-    return null;
-  }
-  return embedding as number[];
 }
 
 // ─── Lore Book検索（embedding受け取り版）─────────────────────────────────

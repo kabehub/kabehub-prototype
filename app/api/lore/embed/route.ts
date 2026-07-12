@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = 'force-dynamic';
 
@@ -25,22 +26,15 @@ export async function POST(req: NextRequest) {
   for (const chunk of chunks) {
     const chunkText = chunk.text as string;
 
-    const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({ model: "text-embedding-3-small", input: chunkText }),
-    });
-
-    if (!embRes.ok) {
-      const err = await embRes.json();
-      return NextResponse.json({ error: err.error?.message ?? "Embedding API error" }, { status: 500 });
+    let embedding: number[];
+    try {
+      embedding = await createEmbedding(openaiKey, chunkText, { apiErrorMode: "provider" });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Embedding API error" },
+        { status: 500 },
+      );
     }
-
-    const embData = await embRes.json();
-    const embedding = embData.data[0].embedding as number[];
 
     await supabase.from('lore_embeddings').insert({
       user_id: user.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = "force-dynamic";
 
@@ -44,27 +45,15 @@ export async function POST(req: NextRequest) {
 
   if (existing) return NextResponse.json({ alreadyLiked: true });
 
-  const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: message.content }),
-  });
-
-  if (!embRes.ok) {
-    const err = await embRes.json();
+  let embedding: number[];
+  try {
+    embedding = await createEmbedding(openaiKey, message.content, { apiErrorMode: "provider" });
+  } catch (err) {
     return NextResponse.json(
-      { error: err.error?.message ?? "Embedding API error" },
-      { status: 500 }
+      { error: err instanceof Error ? err.message : "Embedding API error" },
+      { status: 500 },
     );
   }
-
-  const embData = await embRes.json();
-  const embedding = embData.data?.[0]?.embedding;
-  if (!Array.isArray(embedding))
-    return NextResponse.json({ error: "Missing embedding" }, { status: 500 });
 
   const { data: thread } = await serviceRoleClient()
     .from("threads")
