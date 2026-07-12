@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { chatCompleteMini, createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = "force-dynamic";
 
@@ -89,33 +90,11 @@ function normalizeMemory(value: unknown): ExtractedMemory | null {
 }
 
 async function extractMemories(openaiKey: string, message: MessageRow, prompt: string) {
-  const llmRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: prompt },
-        {
-          role: "user",
-          content: JSON.stringify({
-            messageId: message.id,
-            createdAt: message.created_at,
-            content: message.content,
-          }),
-        },
-      ],
-    }),
-  });
-
-  if (!llmRes.ok) throw new Error("Chat Completions API error");
-
-  const llmData = await llmRes.json();
-  const content = llmData.choices?.[0]?.message?.content;
+  const content = await chatCompleteMini(openaiKey, prompt, JSON.stringify({
+    messageId: message.id,
+    createdAt: message.created_at,
+    content: message.content,
+  }), { jsonMode: true });
   if (typeof content !== "string") return [];
 
   const parsed = JSON.parse(content);
@@ -151,24 +130,6 @@ async function fetchCorrectionExamples(
       return typeof aiProposedKind === "string" && aiProposedKind !== row.memory_kind;
     })
     .slice(0, 5);
-}
-
-async function createEmbedding(openaiKey: string, content: string): Promise<number[]> {
-  const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: content }),
-  });
-
-  if (!embRes.ok) throw new Error("Embedding API error");
-
-  const embData = await embRes.json();
-  const embedding = embData.data?.[0]?.embedding;
-  if (!Array.isArray(embedding)) throw new Error("Missing embedding");
-  return embedding as number[];
 }
 
 export async function POST(req: NextRequest) {

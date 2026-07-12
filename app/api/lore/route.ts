@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { LORE_MEMORY_SELECT } from "@/lib/lore/selects";
+import { createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = "force-dynamic";
 
@@ -59,24 +60,6 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json(data ?? []);
-}
-
-async function createEmbedding(openaiKey: string, content: string): Promise<number[]> {
-  const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: content }),
-  });
-
-  if (!embRes.ok) throw new Error("Embedding API error");
-
-  const embData = await embRes.json();
-  const embedding = embData.data?.[0]?.embedding;
-  if (!Array.isArray(embedding)) throw new Error("Missing embedding");
-  return embedding as number[];
 }
 
 export async function POST(req: NextRequest) {

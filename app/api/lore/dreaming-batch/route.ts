@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { chatCompleteMini, createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = "force-dynamic";
 
@@ -183,47 +184,15 @@ function buildUserPrompt(sources: ConsolidationSource[]) {
 }
 
 async function generateMergedText(openaiKey: string, sources: ConsolidationSource[]) {
-  const llmRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: CONSOLIDATION_PROMPT },
-        { role: "user", content: buildUserPrompt(sources) },
-      ],
-    }),
-  });
-
-  if (!llmRes.ok) throw new Error("Chat Completions API error");
-
-  const llmData = await llmRes.json();
-  const mergedText = llmData.choices?.[0]?.message?.content;
+  const mergedText = await chatCompleteMini(
+    openaiKey,
+    CONSOLIDATION_PROMPT,
+    buildUserPrompt(sources),
+  );
   if (typeof mergedText !== "string" || mergedText.trim().length === 0) {
     throw new Error("Missing merged text");
   }
   return mergedText.trim();
-}
-
-async function createEmbedding(openaiKey: string, content: string): Promise<number[]> {
-  const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: content }),
-  });
-
-  if (!embRes.ok) throw new Error("Embedding API error");
-
-  const embData = await embRes.json();
-  const embedding = embData.data?.[0]?.embedding;
-  if (!Array.isArray(embedding)) throw new Error("Missing embedding");
-  return embedding as number[];
 }
 
 function isJsonStringLike(value: string) {
@@ -273,25 +242,12 @@ async function cleanLikedAiRecords(
 
   for (const record of records) {
     try {
-      const llmRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openaiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: LIKED_AI_CLEANING_PROMPT },
-            { role: "user", content: record.chunk_text },
-          ],
-        }),
-      });
-
-      if (!llmRes.ok) throw new Error("LLM API error");
-
-      const llmData = await llmRes.json();
-      const cleanedText: string = llmData.choices?.[0]?.message?.content?.trim();
+      const content = await chatCompleteMini(
+        openaiKey,
+        LIKED_AI_CLEANING_PROMPT,
+        record.chunk_text,
+      );
+      const cleanedText = content?.trim();
       if (!cleanedText) throw new Error("Empty cleaned text");
 
       const embedding = await createEmbedding(openaiKey, cleanedText);

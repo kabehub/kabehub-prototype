@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { chatCompleteMini } from "@/lib/lore/openai";
 
 export const dynamic = "force-dynamic";
 
@@ -91,25 +92,11 @@ ${sourceB.chunk_text}`;
 }
 
 async function generateMergedText(openaiKey: string, sourceA: ConsolidationSource, sourceB: ConsolidationSource) {
-  const llmRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: CONSOLIDATION_PROMPT },
-        { role: "user", content: buildUserPrompt(sourceA, sourceB) },
-      ],
-    }),
-  });
-
-  if (!llmRes.ok) throw new Error("Chat Completions API error");
-
-  const llmData = await llmRes.json();
-  const mergedText = llmData.choices?.[0]?.message?.content;
+  const mergedText = await chatCompleteMini(
+    openaiKey,
+    CONSOLIDATION_PROMPT,
+    buildUserPrompt(sourceA, sourceB),
+  );
   if (typeof mergedText !== "string" || mergedText.trim().length === 0) {
     throw new Error("Missing merged text");
   }
