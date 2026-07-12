@@ -17,11 +17,11 @@ Module._resolveFilename = function resolveFilename(request, parent, isMain, opti
 const testExportsByFile = new Map([
   ["app/api/lore/consolidate/candidates/route.ts", ["clamp"]],
   ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate"]],
-  ["lib/lore/consolidation.ts", ["normalizePair", "pairKey"]],
-  ["app/api/lore/dreaming-batch/route.ts", ["clamp", "stringValue", "numberValue", "normalizeCandidate", "buildGreedyChainClusters", "validateSources", "hasSameFolderNameAndMemoryKind", "buildUserPrompt", "isJsonStringLike", "validateMergedText", "normalizeRpcNewId"]],
+  ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "validateApprovedPair", "validateDreamingSources"]],
+  ["app/api/lore/dreaming-batch/route.ts", ["clamp", "buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind", "buildUserPrompt", "isJsonStringLike", "validateMergedText", "normalizeRpcNewId"]],
   ["app/api/lore/dreaming-batch/history/route.ts", ["clamp"]],
-  ["app/api/lore/consolidate/preview/route.ts", ["normalizePair", "validateSources", "newerSource", "suggestedValue"]],
-  ["app/api/lore/consolidate/merge/route.ts", ["normalizePair", "validateSources", "normalizeTags"]],
+  ["app/api/lore/consolidate/preview/route.ts", ["newerSource", "suggestedValue"]],
+  ["app/api/lore/consolidate/merge/route.ts", ["normalizeTags"]],
   ["app/api/lore/batch-train/route.ts", ["clamp", "normalizeMemory", "buildMemoryExtractionPrompt"]],
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
   ["app/memory/page.tsx", ["consolidationPairKey"]],
@@ -154,7 +154,7 @@ test("normalizeCandidate copies intentionally disagree on identical ids", () => 
     memoryKindA: null, memoryKindB: null, temporalStatusA: null, temporalStatusB: null,
     createdAtA: null, createdAtB: null, similarity: 0.9,
   });
-  assert.equal(dreaming.normalizeCandidate(row), null);
+  assert.equal(mappersModule.normalizeDreamingCandidate(row), null);
   assert.equal(mappersModule.normalizeDreamingCandidate(row), null);
 });
 
@@ -168,23 +168,23 @@ function source(id, extractionVersion = "ai", overrides = {}) {
 }
 
 test("preview and merge reject only user-edited extraction variants", () => {
-  for (const api of [preview, merge]) {
+  for (const api of [consolidationModule, consolidationModule]) {
     for (const version of ["liked_ai", "liked_ai_cleaned"]) {
-      assert.ok(api.validateSources([source("a", version), source("b")], "user", "a", "b"));
+      assert.ok(api.validateApprovedPair([source("a", version), source("b")], "user", "a", "b"));
     }
     for (const version of ["user_edited", "user_created"]) {
-      assert.equal(api.validateSources([source("a", version), source("b")], "user", "a", "b"), null);
+      assert.equal(api.validateApprovedPair([source("a", version), source("b")], "user", "a", "b"), null);
     }
   }
 });
 
 test("dreaming rejects four protected variants and mismatched folder/kind", () => {
   for (const version of ["user_edited", "user_created", "liked_ai", "liked_ai_cleaned"]) {
-    assert.equal(dreaming.validateSources([source("a", version), source("b")], "user", ["a", "b"]), null);
+    assert.equal(consolidationModule.validateDreamingSources([source("a", version), source("b")], "user", ["a", "b"]), null);
   }
-  assert.equal(dreaming.validateSources([source("a"), source("b", "ai", { folder_name: "other" })], "user", ["a", "b"]), null);
-  assert.equal(dreaming.validateSources([source("a"), source("b", "ai", { memory_kind: "plan" })], "user", ["a", "b"]), null);
-  assert.ok(dreaming.validateSources([source("a"), source("b")], "user", ["a", "b"]));
+  assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { folder_name: "other" })], "user", ["a", "b"]), null);
+  assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { memory_kind: "plan" })], "user", ["a", "b"]), null);
+  assert.ok(consolidationModule.validateDreamingSources([source("a"), source("b")], "user", ["a", "b"]));
 });
 
 test("buildUserPrompt destructively sorts sources oldest-first", () => {
@@ -241,7 +241,7 @@ test("buildMemoryExtractionPrompt full output snapshot", () => {
 });
 
 test("all pair normalizers use idA < idB ordering", () => {
-  for (const api of [preview, merge, consolidationModule]) {
+  for (const api of [consolidationModule, consolidationModule, consolidationModule]) {
     assert.deepEqual(Array.from(api.normalizePair("z", "a")), ["a", "z"]);
     assert.deepEqual(Array.from(api.normalizePair("a", "z")), ["a", "z"]);
   }

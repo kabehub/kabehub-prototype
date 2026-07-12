@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { chatCompleteMini, createEmbedding } from "@/lib/lore/openai";
+import {
+  CONSOLIDATION_SOURCE_SELECT,
+  ConsolidationSourceRow,
+  validateDreamingSources,
+} from "@/lib/lore/consolidation";
+import { normalizeDreamingCandidate } from "@/lib/lore/mappers";
 
 export const dynamic = "force-dynamic";
 
@@ -15,39 +21,7 @@ const CONSOLIDATION_PROMPT = `複数の記憶を、重複を取り除いて1つ�
 矛盾がある場合は、created_at が新しい記憶を優先し、古い内容は「以前は〜だったが、現在は〜」のように整理してください。
 出力は統合後の記憶本文のみ。説明や前置きは不要です。`;
 
-const CONSOLIDATION_SOURCE_SELECT = [
-  "id",
-  "user_id",
-  "folder_name",
-  "chunk_text",
-  "memory_kind",
-  "temporal_status",
-  "importance_score",
-  "confidence_score",
-  "is_archived",
-  "superseded_by",
-  "is_pinned",
-  "extraction_version",
-  "created_at",
-].join(", ");
-
 type SimilarLorePairRow = Record<string, unknown>;
-
-type ConsolidationSource = {
-  id: string;
-  user_id: string;
-  folder_name: string | null;
-  chunk_text: string;
-  memory_kind: string | null;
-  temporal_status: string | null;
-  importance_score: number | null;
-  confidence_score: number | null;
-  is_archived: boolean | null;
-  superseded_by: string | null;
-  is_pinned: boolean | null;
-  extraction_version: string | null;
-  created_at: string | null;
-};
 
 type Candidate = {
   idA: string;
@@ -65,35 +39,6 @@ type BatchResult =
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
-}
-
-function stringValue(row: SimilarLorePairRow, keys: string[]) {
-  for (const key of keys) {
-    const value = row[key];
-    if (typeof value === "string") return value;
-  }
-  return null;
-}
-
-function numberValue(row: SimilarLorePairRow, keys: string[]) {
-  for (const key of keys) {
-    const value = row[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return null;
-}
-
-function normalizeCandidate(row: SimilarLorePairRow): Candidate | null {
-  const idA = stringValue(row, ["idA", "id_a", "loreIdA", "lore_id_a"]);
-  const idB = stringValue(row, ["idB", "id_b", "loreIdB", "lore_id_b"]);
-  const similarity = numberValue(row, ["similarity", "score"]);
-
-  if (!idA || !idB || idA === idB || similarity === null) return null;
-  return { idA, idB, similarity };
 }
 
 function buildGreedyChainClusters(candidates: Candidate[], limit: number) {
@@ -137,44 +82,14 @@ function buildGreedyChainClusters(candidates: Candidate[], limit: number) {
   return clusters.slice(0, limit);
 }
 
-function validateSources(rows: ConsolidationSource[], userId: string, sourceIds: string[]) {
-  if (rows.length < 2) return null;
-
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const sources = sourceIds.map((id) => byId.get(id));
-  if (sources.some((source) => !source)) return null;
-
-  const isProtectedExtraction = (value: string | null) =>
-    value === "user_edited" ||
-    value === "user_created" ||
-    value === "liked_ai" ||
-    value === "liked_ai_cleaned";
-  const validSources = sources as ConsolidationSource[];
-  const invalid = validSources.some((row) =>
-    row.user_id !== userId ||
-    row.is_archived !== false ||
-    row.superseded_by !== null ||
-    row.is_pinned !== false ||
-    isProtectedExtraction(row.extraction_version)
-  );
-  if (invalid) return null;
-  const first = validSources[0];
-  const mismatched = validSources.some((row) =>
-    row.folder_name !== first.folder_name || row.memory_kind !== first.memory_kind
-  );
-  if (mismatched) return null;
-
-  return validSources;
-}
-
-function hasSameFolderNameAndMemoryKind(sources: ConsolidationSource[]) {
+function hasSameFolderNameAndMemoryKind(sources: ConsolidationSourceRow[]) {
   const first = sources[0];
   return sources.every((source) =>
     source.folder_name === first.folder_name && source.memory_kind === first.memory_kind
   );
 }
 
-function buildUserPrompt(sources: ConsolidationSource[]) {
+function buildUserPrompt(sources: ConsolidationSourceRow[]) {
   return sources
     .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
     .map((source, index) =>
@@ -183,7 +98,7 @@ function buildUserPrompt(sources: ConsolidationSource[]) {
     .join("\n\n---\n\n");
 }
 
-async function generateMergedText(openaiKey: string, sources: ConsolidationSource[]) {
+async function generateMergedText(openaiKey: string, sources: ConsolidationSourceRow[]) {
   const mergedText = await chatCompleteMini(
     openaiKey,
     CONSOLIDATION_PROMPT,
@@ -349,7 +264,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const candidates = ((Array.isArray(data) ? data : []) as SimilarLorePairRow[])
-    .map(normalizeCandidate)
+    .map(normalizeDreamingCandidate)
     .filter((candidate): candidate is Candidate => Boolean(candidate))
     .sort((a, b) => b.similarity - a.similarity);
 
@@ -368,14 +283,14 @@ export async function POST(req: NextRequest) {
 
       if (sourceError) throw new Error(sourceError.message);
 
-      const rows = (sourceRows ?? []) as unknown as ConsolidationSource[];
+      const rows = (sourceRows ?? []) as unknown as ConsolidationSourceRow[];
       const byId = new Map(rows.map((row) => [row.id, row]));
       const clusterSources = sourceIds.map((id) => byId.get(id));
       if (clusterSources.some((source) => !source)) throw new Error("Invalid lore cluster");
-      const orderedSources = clusterSources as ConsolidationSource[];
+      const orderedSources = clusterSources as ConsolidationSourceRow[];
       if (!hasSameFolderNameAndMemoryKind(orderedSources)) continue;
 
-      const validated = validateSources(orderedSources, user.id, sourceIds);
+      const validated = validateDreamingSources(orderedSources, user.id, sourceIds);
       if (!validated) throw new Error("Invalid lore cluster");
 
       const mergedText = await generateMergedText(openaiKey, validated);

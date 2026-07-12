@@ -2,72 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { LORE_MEMORY_SELECT } from "@/lib/loreMemorySelect";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { createEmbedding } from "@/lib/lore/openai";
+import {
+  CONSOLIDATION_SOURCE_SELECT,
+  ConsolidationSourceRow,
+  normalizePair,
+  validateApprovedPair,
+} from "@/lib/lore/consolidation";
 
 export const dynamic = "force-dynamic";
-
-const CONSOLIDATION_SOURCE_SELECT = [
-  "id",
-  "user_id",
-  "folder_name",
-  "chunk_text",
-  "tags",
-  "memory_kind",
-  "temporal_status",
-  "importance_score",
-  "confidence_score",
-  "is_archived",
-  "superseded_by",
-  "is_pinned",
-  "extraction_version",
-  "created_at",
-].join(", ");
-
-type ConsolidationSource = {
-  id: string;
-  user_id: string;
-  folder_name: string | null;
-  chunk_text: string;
-  tags: string[] | null;
-  memory_kind: string | null;
-  temporal_status: string | null;
-  importance_score: number | null;
-  confidence_score: number | null;
-  is_archived: boolean | null;
-  superseded_by: string | null;
-  is_pinned: boolean | null;
-  extraction_version: string | null;
-  created_at: string | null;
-};
-
-function normalizePair(idA: string, idB: string) {
-  return idA < idB ? [idA, idB] as const : [idB, idA] as const;
-}
-
-function validateSources(
-  rows: ConsolidationSource[],
-  userId: string,
-  loreIdA: string,
-  loreIdB: string,
-) {
-  if (rows.length !== 2) return null;
-
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const sourceA = byId.get(loreIdA);
-  const sourceB = byId.get(loreIdB);
-  if (!sourceA || !sourceB) return null;
-
-  const isEditableExtraction = (value: string | null) => value === "user_edited" || value === "user_created";
-  const invalid = [sourceA, sourceB].some((row) =>
-    row.user_id !== userId ||
-    row.is_archived !== false ||
-    row.superseded_by !== null ||
-    row.is_pinned !== false ||
-    isEditableExtraction(row.extraction_version)
-  );
-  if (invalid) return null;
-
-  return { sourceA, sourceB };
-}
 
 function normalizeTags(...tagLists: Array<string[] | null>) {
   return Array.from(new Set(tagLists.flatMap((tags) => tags ?? []).filter((tag) => typeof tag === "string")));
@@ -109,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const validated = validateSources((data ?? []) as unknown as ConsolidationSource[], user.id, loreIdA, loreIdB);
+  const validated = validateApprovedPair((data ?? []) as unknown as ConsolidationSourceRow[], user.id, loreIdA, loreIdB);
   if (!validated) {
     return NextResponse.json({ error: "Invalid lore pair" }, { status: 400 });
   }

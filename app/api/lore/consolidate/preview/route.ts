@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { chatCompleteMini } from "@/lib/lore/openai";
+import {
+  CONSOLIDATION_SOURCE_SELECT,
+  ConsolidationSourceRow,
+  normalizePair,
+  validateApprovedPair,
+} from "@/lib/lore/consolidation";
 
 export const dynamic = "force-dynamic";
 
@@ -9,39 +15,7 @@ const CONSOLIDATION_PROMPT = `2つの記憶を、重複を取り除いて1つに
 矛盾がある場合は、より新しい記憶を優先し、古い内容は「以前は〜だったが、現在は〜」のように整理してください。
 出力は統合後の記憶本文のみ。説明や前置きは不要です。`;
 
-const CONSOLIDATION_SOURCE_SELECT = [
-  "id",
-  "user_id",
-  "folder_name",
-  "chunk_text",
-  "memory_kind",
-  "temporal_status",
-  "is_archived",
-  "superseded_by",
-  "is_pinned",
-  "extraction_version",
-  "created_at",
-].join(", ");
-
-type ConsolidationSource = {
-  id: string;
-  user_id: string;
-  folder_name: string | null;
-  chunk_text: string;
-  memory_kind: string | null;
-  temporal_status: string | null;
-  is_archived: boolean | null;
-  superseded_by: string | null;
-  is_pinned: boolean | null;
-  extraction_version: string | null;
-  created_at: string | null;
-};
-
-function normalizePair(idA: string, idB: string) {
-  return idA < idB ? [idA, idB] as const : [idB, idA] as const;
-}
-
-function newerSource(a: ConsolidationSource, b: ConsolidationSource) {
+function newerSource(a: ConsolidationSourceRow, b: ConsolidationSourceRow) {
   const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
   const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
   return timeB > timeA ? b : a;
@@ -57,33 +31,7 @@ function suggestedValue(
   return newer ?? a ?? b ?? fallback;
 }
 
-function validateSources(
-  rows: ConsolidationSource[],
-  userId: string,
-  loreIdA: string,
-  loreIdB: string,
-) {
-  if (rows.length !== 2) return null;
-
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const sourceA = byId.get(loreIdA);
-  const sourceB = byId.get(loreIdB);
-  if (!sourceA || !sourceB) return null;
-
-  const isEditableExtraction = (value: string | null) => value === "user_edited" || value === "user_created";
-  const invalid = [sourceA, sourceB].some((row) =>
-    row.user_id !== userId ||
-    row.is_archived !== false ||
-    row.superseded_by !== null ||
-    row.is_pinned !== false ||
-    isEditableExtraction(row.extraction_version)
-  );
-  if (invalid) return null;
-
-  return { sourceA, sourceB };
-}
-
-function buildUserPrompt(sourceA: ConsolidationSource, sourceB: ConsolidationSource) {
+function buildUserPrompt(sourceA: ConsolidationSourceRow, sourceB: ConsolidationSourceRow) {
   return `記憶A（created_at: ${sourceA.created_at ?? "unknown"}）:
 ${sourceA.chunk_text}
 
@@ -91,7 +39,7 @@ ${sourceA.chunk_text}
 ${sourceB.chunk_text}`;
 }
 
-async function generateMergedText(openaiKey: string, sourceA: ConsolidationSource, sourceB: ConsolidationSource) {
+async function generateMergedText(openaiKey: string, sourceA: ConsolidationSourceRow, sourceB: ConsolidationSourceRow) {
   const mergedText = await chatCompleteMini(
     openaiKey,
     CONSOLIDATION_PROMPT,
@@ -133,7 +81,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const validated = validateSources((data ?? []) as unknown as ConsolidationSource[], user.id, loreIdA, loreIdB);
+  const validated = validateApprovedPair((data ?? []) as unknown as ConsolidationSourceRow[], user.id, loreIdA, loreIdB);
   if (!validated) {
     return NextResponse.json({ error: "Invalid lore pair" }, { status: 400 });
   }
