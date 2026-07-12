@@ -103,6 +103,7 @@ async function rejectsMessage(promise, message) {
       return response(true, { choices: [{ message: { content: "ok" } }] });
     };
     await chatCompleteMini("key", "system", "user");
+    assert.equal(body.model, "gpt-4o-mini");
     assert.equal(Object.hasOwn(body, "response_format"), false);
   });
 

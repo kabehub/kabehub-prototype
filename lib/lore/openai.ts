@@ -1,3 +1,5 @@
+import { LORE_EMBEDDING_MODEL, LORE_CHAT_MODEL } from "../internalModels";
+
 type ApiErrorMode = "generic" | "provider";
 
 export async function createEmbedding(
@@ -11,7 +13,7 @@ export async function createEmbedding(
       "Content-Type": "application/json",
       Authorization: `Bearer ${openaiKey}`,
     },
-    body: JSON.stringify({ model: "text-embedding-3-small", input }),
+    body: JSON.stringify({ model: LORE_EMBEDDING_MODEL, input }),
     signal: opts?.signal,
   });
 
@@ -51,7 +53,7 @@ export async function chatCompleteMini(
       Authorization: `Bearer ${openaiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: LORE_CHAT_MODEL,
       ...(opts?.jsonMode ? { response_format: { type: "json_object" } } : {}),
       messages: [
         { role: "system", content: systemPrompt },
