@@ -23,7 +23,8 @@ const testExportsByFile = new Map([
   ["app/api/lore/dreaming-batch/history/route.ts", ["clamp"]],
   ["app/api/lore/consolidate/preview/route.ts", ["newerSource", "suggestedValue"]],
   ["app/api/lore/consolidate/merge/route.ts", ["normalizeTags"]],
-  ["app/api/lore/batch-train/route.ts", ["clamp", "normalizeMemory", "buildMemoryExtractionPrompt"]],
+  ["app/api/lore/batch-train/route.ts", ["clamp"]],
+  ["lib/lore/batchTrain.ts", ["clamp", "normalizeMemory", "buildMemoryExtractionPrompt", "fetchTargetMessages"]],
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
   ["app/memory/page.tsx", ["consolidationPairKey"]],
 ]);
@@ -63,9 +64,20 @@ function loadTestExports(relativePath, expectedNames) {
 }
 
 let passed = 0;
+const pendingTests = [];
 function test(name, fn) {
   try {
-    fn();
+    const result = fn();
+    if (result && typeof result.then === "function") {
+      pendingTests.push(result.then(() => {
+        passed++;
+        console.log(`ok - ${name}`);
+      }, (error) => {
+        console.error(`not ok - ${name}`);
+        throw error;
+      }));
+      return;
+    }
     passed++;
     console.log(`ok - ${name}`);
   } catch (error) {
@@ -82,7 +94,8 @@ const dreaming = loadTestExports("lib/lore/dreaming.ts", testExportsByFile.get("
 const history = loadTestExports("app/api/lore/dreaming-batch/history/route.ts", testExportsByFile.get("app/api/lore/dreaming-batch/history/route.ts"));
 const preview = loadTestExports("app/api/lore/consolidate/preview/route.ts", testExportsByFile.get("app/api/lore/consolidate/preview/route.ts"));
 const merge = loadTestExports("app/api/lore/consolidate/merge/route.ts", testExportsByFile.get("app/api/lore/consolidate/merge/route.ts"));
-const batchTrain = loadTestExports("app/api/lore/batch-train/route.ts", testExportsByFile.get("app/api/lore/batch-train/route.ts"));
+const batchTrainRoute = loadTestExports("app/api/lore/batch-train/route.ts", testExportsByFile.get("app/api/lore/batch-train/route.ts"));
+const batchTrain = loadTestExports("lib/lore/batchTrain.ts", testExportsByFile.get("lib/lore/batchTrain.ts"));
 const temporal = loadTestExports("app/api/lore/update-temporal-status/route.ts", testExportsByFile.get("app/api/lore/update-temporal-status/route.ts"));
 const { LORE_MEMORY_SELECT: sharedSelect } = require("../lib/loreMemorySelect.ts");
 
@@ -242,6 +255,42 @@ test("buildMemoryExtractionPrompt full output snapshot", () => {
 2. text: "期限" / ai_proposed_kind: unknown / corrected_memoryKind: fact`);
 });
 
+test("fetchTargetMessages preserves every query condition and ordering", async () => {
+  const calls = [];
+  const builder = {};
+  for (const method of ["select", "eq", "neq", "or", "order"]) {
+    builder[method] = (...args) => {
+      calls.push([method, ...args]);
+      return builder;
+    };
+  }
+  builder.limit = (value) => {
+    calls.push(["limit", value]);
+    return Promise.resolve({ data: [], error: null });
+  };
+  const supabase = {
+    from(table) {
+      calls.push(["from", table]);
+      return builder;
+    },
+  };
+
+  await batchTrain.fetchTargetMessages(supabase, "user-1", 37);
+  assert.deepEqual(calls, [
+    ["from", "messages"],
+    ["select", "id, thread_id, content, created_at"],
+    ["eq", "user_id", "user-1"],
+    ["eq", "is_learned", false],
+    ["eq", "skip_learning", false],
+    ["eq", "role", "user"],
+    ["neq", "provider", "memo"],
+    ["neq", "provider", "image_gen"],
+    ["or", "is_active.is.null,is_active.eq.true"],
+    ["order", "created_at", { ascending: true }],
+    ["limit", 37],
+  ]);
+});
+
 test("all pair normalizers use idA < idB ordering", () => {
   for (const api of [consolidationModule, consolidationModule, consolidationModule]) {
     assert.deepEqual(Array.from(api.normalizePair("z", "a")), ["a", "z"]);
@@ -252,7 +301,7 @@ test("all pair normalizers use idA < idB ordering", () => {
 });
 
 test("four clamp copies preserve bounds and NaN behavior", () => {
-  for (const clamp of [candidates.clamp, dreamingRoute.clamp, history.clamp, batchTrain.clamp]) {
+  for (const clamp of [candidates.clamp, dreamingRoute.clamp, history.clamp, batchTrainRoute.clamp]) {
     assert.equal(clamp(-1, 0, 10), 0);
     assert.equal(clamp(11, 0, 10), 10);
     assert.equal(clamp(4, 0, 10), 4);
@@ -288,6 +337,11 @@ test("additional exposed helpers preserve current behavior", () => {
   assert.equal(preview.newerSource(source("a"), source("b")).id, "a");
 });
 
-console.log(`1..${passed}`);
-console.log(`# ${passed} lore characterization tests passed`);
-console.log(`# app/memory/page.tsx require: ${memoryPage ? "success" : "skipped"}`);
+Promise.all(pendingTests).then(() => {
+  console.log(`1..${passed}`);
+  console.log(`# ${passed} lore characterization tests passed`);
+  console.log(`# app/memory/page.tsx require: ${memoryPage ? "success" : "skipped"}`);
+}).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
