@@ -1,0 +1,21 @@
+export type LoreMemoryRow = {
+  id: string;
+  chunk_text: string;
+  tags: string[] | null;
+  memory_kind: string | null;
+  temporal_status: string | null;
+  importance_score: number | null;
+  confidence_score: number | null;
+  source_thread_id: string | null;
+  source_message_id: string | null;
+  source_message_number: number | null;
+  is_pinned: boolean | null;
+  is_archived: boolean | null;
+  extraction_version: string | null;
+  is_manually_corrected: boolean;
+  last_confirmed_at: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  event_time: string | null;
+  created_at: string;
+};

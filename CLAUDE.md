@@ -359,6 +359,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | extraction_version 保護 | `user_edited` / `user_created` / `liked_ai` のレコードはDreamingバッチで自動変更しない |
 | is_pinned 保護 | `is_pinned = true` のレコードは時間更新バッチの自動expired化から保護する |
 | embedding カラム非公開 | `lore_embeddings.embedding` は絶対にGETレスポンスに含めない |
+| Loreレスポンス列 | `GET /api/lore`・`POST /api/lore`・`POST /api/lore/consolidate/merge`・`GET /api/lore/dreaming-batch/history` は `is_manually_corrected` を含む。`PATCH /api/lore/[id]` は従来から同列を含む |
 | ペア正規化 | `lore_consolidation_dismissals` のペアは必ず `lore_id_a < lore_id_b` に正規化する |
 | dreaming threshold | **本番では 0.92 を使う**（v139で復旧済み） |
 | RPC自己結合性能 | `find_similar_lore_pairs` はO(n²)。大量記憶時は `find_similar_lore_pairs_v2`（LATERAL KNN方式）を使う |

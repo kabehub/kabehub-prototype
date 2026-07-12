@@ -1,30 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { LORE_MEMORY_SELECT } from "@/lib/lore/selects";
 import type { LorePatchRequest } from "@/types";
 
 export const dynamic = "force-dynamic";
-
-const LORE_MEMORY_SELECT = [
-  "id",
-  "chunk_text",
-  "tags",
-  "memory_kind",
-  "temporal_status",
-  "importance_score",
-  "confidence_score",
-  "source_thread_id",
-  "source_message_id",
-  "source_message_number",
-  "is_pinned",
-  "is_archived",
-  "extraction_version",
-  "is_manually_corrected",
-  "last_confirmed_at",
-  "valid_from",
-  "valid_until",
-  "event_time",
-  "created_at",
-].join(", ");
 
 async function createEmbedding(openaiKey: string, content: string): Promise<number[]> {
   const embRes = await fetch("https://api.openai.com/v1/embeddings", {

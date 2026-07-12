@@ -23,8 +23,6 @@ const testExportsByFile = new Map([
   ["app/api/lore/consolidate/dismiss/route.ts", ["normalizePair"]],
   ["app/api/lore/batch-train/route.ts", ["clamp", "normalizeMemory", "buildMemoryExtractionPrompt"]],
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
-  ["app/api/lore/route.ts", ["LORE_MEMORY_SELECT"]],
-  ["app/api/lore/[id]/route.ts", ["LORE_MEMORY_SELECT"]],
   ["app/memory/page.tsx", ["consolidationPairKey"]],
 ]);
 
@@ -82,8 +80,6 @@ const merge = loadTestExports("app/api/lore/consolidate/merge/route.ts", testExp
 const dismiss = loadTestExports("app/api/lore/consolidate/dismiss/route.ts", testExportsByFile.get("app/api/lore/consolidate/dismiss/route.ts"));
 const batchTrain = loadTestExports("app/api/lore/batch-train/route.ts", testExportsByFile.get("app/api/lore/batch-train/route.ts"));
 const temporal = loadTestExports("app/api/lore/update-temporal-status/route.ts", testExportsByFile.get("app/api/lore/update-temporal-status/route.ts"));
-const loreRoute = loadTestExports("app/api/lore/route.ts", testExportsByFile.get("app/api/lore/route.ts"));
-const loreIdRoute = loadTestExports("app/api/lore/[id]/route.ts", testExportsByFile.get("app/api/lore/[id]/route.ts"));
 const { LORE_MEMORY_SELECT: sharedSelect } = require("../lib/loreMemorySelect.ts");
 
 let memoryPage = null;
@@ -97,16 +93,32 @@ try {
   }
 }
 
-test("LORE_MEMORY_SELECT variants preserve 18/18/19 columns without embedding", () => {
-  assert.equal(loreRoute.LORE_MEMORY_SELECT, sharedSelect);
+test("LORE_MEMORY_SELECT contains exactly the 19 unified columns without embedding", () => {
   const shared = sharedSelect.split(", ");
-  const local = loreRoute.LORE_MEMORY_SELECT.split(", ");
-  const byId = loreIdRoute.LORE_MEMORY_SELECT.split(", ");
-  assert.equal(shared.length, 18);
-  assert.deepEqual(local, shared);
-  assert.equal(byId.length, 19);
-  assert.deepEqual(byId.filter((column) => column !== "is_manually_corrected"), shared);
-  for (const columns of [shared, local, byId]) assert.equal(columns.includes("embedding"), false);
+  const expectedColumns = [
+    "id",
+    "chunk_text",
+    "tags",
+    "memory_kind",
+    "temporal_status",
+    "importance_score",
+    "confidence_score",
+    "source_thread_id",
+    "source_message_id",
+    "source_message_number",
+    "is_pinned",
+    "is_archived",
+    "extraction_version",
+    "is_manually_corrected",
+    "last_confirmed_at",
+    "valid_from",
+    "valid_until",
+    "event_time",
+    "created_at",
+  ];
+  assert.deepEqual(shared, expectedColumns);
+  assert.equal(shared.length, 19);
+  assert.equal(shared.includes("embedding"), false);
 });
 
 test("buildGreedyChainClusters chains, isolates, and caps a cluster at five", () => {
