@@ -16,11 +16,10 @@ Module._resolveFilename = function resolveFilename(request, parent, isMain, opti
 
 const testExportsByFile = new Map([
   ["app/api/lore/consolidate/candidates/route.ts", ["clamp"]],
-  ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId", "toMemoryCard", "memoryNeedsReview"]],
+  ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId", "toMemoryCard", "memoryNeedsReview", "clamp"]],
   ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "validateApprovedPair", "validateDreamingSources"]],
   ["app/api/lore/dreaming-batch/route.ts", ["clamp"]],
   ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind", "buildUserPrompt", "isJsonStringLike", "validateMergedText"]],
-  ["app/api/lore/dreaming-batch/history/route.ts", ["clamp"]],
   ["app/api/lore/consolidate/preview/route.ts", ["newerSource", "suggestedValue"]],
   ["app/api/lore/consolidate/merge/route.ts", ["normalizeTags"]],
   ["app/api/lore/batch-train/route.ts", ["clamp"]],
@@ -90,13 +89,13 @@ const mappersModule = loadTestExports("lib/lore/mappers.ts", testExportsByFile.g
 const consolidationModule = loadTestExports("lib/lore/consolidation.ts", testExportsByFile.get("lib/lore/consolidation.ts"));
 const dreamingRoute = loadTestExports("app/api/lore/dreaming-batch/route.ts", testExportsByFile.get("app/api/lore/dreaming-batch/route.ts"));
 const dreaming = loadTestExports("lib/lore/dreaming.ts", testExportsByFile.get("lib/lore/dreaming.ts"));
-const history = loadTestExports("app/api/lore/dreaming-batch/history/route.ts", testExportsByFile.get("app/api/lore/dreaming-batch/history/route.ts"));
 const preview = loadTestExports("app/api/lore/consolidate/preview/route.ts", testExportsByFile.get("app/api/lore/consolidate/preview/route.ts"));
 const merge = loadTestExports("app/api/lore/consolidate/merge/route.ts", testExportsByFile.get("app/api/lore/consolidate/merge/route.ts"));
 const batchTrainRoute = loadTestExports("app/api/lore/batch-train/route.ts", testExportsByFile.get("app/api/lore/batch-train/route.ts"));
 const batchTrain = loadTestExports("lib/lore/batchTrain.ts", testExportsByFile.get("lib/lore/batchTrain.ts"));
 const temporal = loadTestExports("app/api/lore/update-temporal-status/route.ts", testExportsByFile.get("app/api/lore/update-temporal-status/route.ts"));
 const { LORE_MEMORY_SELECT: sharedSelect } = require("../lib/loreMemorySelect.ts");
+const { LIKED_AI_DEFAULTS } = require("../lib/lore/types.ts");
 
 test("LORE_MEMORY_SELECT contains exactly the 19 unified columns without embedding", () => {
   const shared = sharedSelect.split(", ");
@@ -288,7 +287,7 @@ test("all pair normalizers use idA < idB ordering", () => {
 });
 
 test("four clamp copies preserve bounds and NaN behavior", () => {
-  for (const clamp of [candidates.clamp, dreamingRoute.clamp, history.clamp, batchTrainRoute.clamp]) {
+  for (const clamp of [candidates.clamp, dreamingRoute.clamp, batchTrainRoute.clamp, mappersModule.clamp]) {
     assert.equal(clamp(-1, 0, 10), 0);
     assert.equal(clamp(11, 0, 10), 10);
     assert.equal(clamp(4, 0, 10), 4);
@@ -303,6 +302,14 @@ test("toCount and normalizeResult absorb camel/snake forms", () => {
   assert.deepEqual(temporal.normalizeResult([{ past_count: 4, expiredCount: 1, total: 9 }]), { pastCount: 4, expiredCount: 1, total: 9 });
   assert.deepEqual(temporal.normalizeResult({ pastCount: "bad", expiredCount: Infinity, total: "bad" }), { pastCount: 0, expiredCount: 0, total: 0 });
   assert.deepEqual(temporal.normalizeResult(null), { pastCount: 0, expiredCount: 0, total: 0 });
+});
+
+test("LIKED_AI_DEFAULTS preserves liked-ai insert defaults", () => {
+  assert.deepEqual(LIKED_AI_DEFAULTS, {
+    memoryKind: "idea",
+    importanceScore: 0.8,
+    confidenceScore: 0.75,
+  });
 });
 
 test("normalizeRpcNewId accepts shapes and prioritizes newId/new_id/id", () => {

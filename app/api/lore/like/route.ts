@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { createEmbedding } from "@/lib/lore/openai";
+import { LIKED_AI_DEFAULTS } from "@/lib/lore/types";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
     .eq("id", message.thread_id)
     .single();
 
+  const { memoryKind, importanceScore, confidenceScore } = LIKED_AI_DEFAULTS;
   const { error: insertError } = await supabase.from("lore_embeddings").insert({
     user_id: user.id,
     chunk_text: message.content,
@@ -70,11 +72,11 @@ export async function POST(req: NextRequest) {
     source_thread_id: message.thread_id,
     folder_name: thread?.folder_name ?? null,
     extraction_version: "liked_ai",
-    memory_kind: "idea",
-    metadata: { ai_proposed_kind: "idea" },
+    memory_kind: memoryKind,
+    metadata: { ai_proposed_kind: memoryKind },
     temporal_status: "current",
-    importance_score: 0.8,
-    confidence_score: 0.75,
+    importance_score: importanceScore,
+    confidence_score: confidenceScore,
     is_pinned: false,
     is_archived: false,
     tags: [],

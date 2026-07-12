@@ -19,6 +19,10 @@ export type ConsolidationCandidate = {
 
 export type DreamingCandidate = { idA: string; idB: string; similarity: number };
 
+export function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function stringValue(row: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = row[key];

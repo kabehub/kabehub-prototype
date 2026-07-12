@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LORE_MEMORY_SELECT } from "@/lib/loreMemorySelect";
+import { clamp } from "@/lib/lore/mappers";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +10,6 @@ type DreamingHistoryRow = {
   superseded_by?: string | null;
   [key: string]: unknown;
 };
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
 
 export async function GET(req: NextRequest) {
   const res = new NextResponse();

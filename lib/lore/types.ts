@@ -21,6 +21,11 @@ export type LoreMemoryRow = {
 };
 
 export const DREAMING_DEFAULTS = { limit: 5, threshold: 0.92 } as const;
+export const LIKED_AI_DEFAULTS = {
+  memoryKind: "idea",
+  importanceScore: 0.8,
+  confidenceScore: 0.75,
+} as const;
 // サーバー側(app/api/lore/batch-train/route.ts)の省略時デフォルトは20。
 // この値はUI側が常に明示送信する固定値であり、サーバーのデフォルトとは別概念
 // （たまたまサーバー側のclamp上限=100と一致している）。
