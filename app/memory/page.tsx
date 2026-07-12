@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LoreMemoryCard } from "@/types";
+import { pairKey } from "@/lib/lore/consolidation";
 
 type LoreMemoryRow = {
   id: string;
@@ -390,9 +391,7 @@ interface ConsolidationCandidatesProps {
 }
 
 function consolidationPairKey(candidate: Pick<ConsolidationCandidate, "idA" | "idB">) {
-  return candidate.idA < candidate.idB
-    ? `${candidate.idA}:${candidate.idB}`
-    : `${candidate.idB}:${candidate.idA}`;
+  return pairKey(candidate.idA, candidate.idB);
 }
 
 function ConsolidationCandidates({

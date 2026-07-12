@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { normalizePair } from "@/lib/lore/consolidation";
 
 export const dynamic = "force-dynamic";
-
-function normalizePair(idA: string, idB: string) {
-  return idA < idB ? [idA, idB] : [idB, idA];
-}
 
 export async function POST(req: NextRequest) {
   const res = new NextResponse();

@@ -15,12 +15,13 @@ Module._resolveFilename = function resolveFilename(request, parent, isMain, opti
 };
 
 const testExportsByFile = new Map([
-  ["app/api/lore/consolidate/candidates/route.ts", ["clamp", "stringValue", "numberValue", "normalizeCandidate", "pairKey"]],
+  ["app/api/lore/consolidate/candidates/route.ts", ["clamp"]],
+  ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate"]],
+  ["lib/lore/consolidation.ts", ["normalizePair", "pairKey"]],
   ["app/api/lore/dreaming-batch/route.ts", ["clamp", "stringValue", "numberValue", "normalizeCandidate", "buildGreedyChainClusters", "validateSources", "hasSameFolderNameAndMemoryKind", "buildUserPrompt", "isJsonStringLike", "validateMergedText", "normalizeRpcNewId"]],
   ["app/api/lore/dreaming-batch/history/route.ts", ["clamp"]],
   ["app/api/lore/consolidate/preview/route.ts", ["normalizePair", "validateSources", "newerSource", "suggestedValue"]],
   ["app/api/lore/consolidate/merge/route.ts", ["normalizePair", "validateSources", "normalizeTags"]],
-  ["app/api/lore/consolidate/dismiss/route.ts", ["normalizePair"]],
   ["app/api/lore/batch-train/route.ts", ["clamp", "normalizeMemory", "buildMemoryExtractionPrompt"]],
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
   ["app/memory/page.tsx", ["consolidationPairKey"]],
@@ -73,11 +74,12 @@ function test(name, fn) {
 }
 
 const candidates = loadTestExports("app/api/lore/consolidate/candidates/route.ts", testExportsByFile.get("app/api/lore/consolidate/candidates/route.ts"));
+const mappersModule = loadTestExports("lib/lore/mappers.ts", testExportsByFile.get("lib/lore/mappers.ts"));
+const consolidationModule = loadTestExports("lib/lore/consolidation.ts", testExportsByFile.get("lib/lore/consolidation.ts"));
 const dreaming = loadTestExports("app/api/lore/dreaming-batch/route.ts", testExportsByFile.get("app/api/lore/dreaming-batch/route.ts"));
 const history = loadTestExports("app/api/lore/dreaming-batch/history/route.ts", testExportsByFile.get("app/api/lore/dreaming-batch/history/route.ts"));
 const preview = loadTestExports("app/api/lore/consolidate/preview/route.ts", testExportsByFile.get("app/api/lore/consolidate/preview/route.ts"));
 const merge = loadTestExports("app/api/lore/consolidate/merge/route.ts", testExportsByFile.get("app/api/lore/consolidate/merge/route.ts"));
-const dismiss = loadTestExports("app/api/lore/consolidate/dismiss/route.ts", testExportsByFile.get("app/api/lore/consolidate/dismiss/route.ts"));
 const batchTrain = loadTestExports("app/api/lore/batch-train/route.ts", testExportsByFile.get("app/api/lore/batch-train/route.ts"));
 const temporal = loadTestExports("app/api/lore/update-temporal-status/route.ts", testExportsByFile.get("app/api/lore/update-temporal-status/route.ts"));
 const { LORE_MEMORY_SELECT: sharedSelect } = require("../lib/loreMemorySelect.ts");
@@ -147,12 +149,13 @@ test("buildGreedyChainClusters rejects new clusters once limit is reached", () =
 
 test("normalizeCandidate copies intentionally disagree on identical ids", () => {
   const row = { idA: "same", idB: "same", chunkTextA: "A", chunkTextB: "B", similarity: "0.9" };
-  assert.deepEqual(candidates.normalizeCandidate(row), {
+  assert.deepEqual(mappersModule.normalizeConsolidationCandidate(row), {
     idA: "same", idB: "same", chunkTextA: "A", chunkTextB: "B",
     memoryKindA: null, memoryKindB: null, temporalStatusA: null, temporalStatusB: null,
     createdAtA: null, createdAtB: null, similarity: 0.9,
   });
   assert.equal(dreaming.normalizeCandidate(row), null);
+  assert.equal(mappersModule.normalizeDreamingCandidate(row), null);
 });
 
 function source(id, extractionVersion = "ai", overrides = {}) {
@@ -238,11 +241,11 @@ test("buildMemoryExtractionPrompt full output snapshot", () => {
 });
 
 test("all pair normalizers use idA < idB ordering", () => {
-  for (const api of [preview, merge, dismiss]) {
+  for (const api of [preview, merge, consolidationModule]) {
     assert.deepEqual(Array.from(api.normalizePair("z", "a")), ["a", "z"]);
     assert.deepEqual(Array.from(api.normalizePair("a", "z")), ["a", "z"]);
   }
-  assert.equal(candidates.pairKey("z", "a"), "a:z");
+  assert.equal(consolidationModule.pairKey("z", "a"), "a:z");
   if (memoryPage) assert.equal(memoryPage.consolidationPairKey({ idA: "z", idB: "a" }), "a:z");
 });
 
@@ -273,8 +276,8 @@ test("normalizeRpcNewId accepts shapes and prioritizes newId/new_id/id", () => {
 });
 
 test("additional exposed helpers preserve current behavior", () => {
-  assert.equal(candidates.stringValue({ a: 1, b: "x" }, ["a", "b"]), "x");
-  assert.equal(candidates.numberValue({ a: "2.5" }, ["a"]), 2.5);
+  assert.equal(mappersModule.stringValue({ a: 1, b: "x" }, ["a", "b"]), "x");
+  assert.equal(mappersModule.numberValue({ a: "2.5" }, ["a"]), 2.5);
   assert.equal(dreaming.hasSameFolderNameAndMemoryKind([source("a"), source("b")]), true);
   assert.equal(dreaming.hasSameFolderNameAndMemoryKind([source("a"), source("b", "ai", { memory_kind: "plan" })]), false);
   assert.deepEqual(merge.normalizeTags(["a", "b"], null, ["b", "c"]), ["a", "b", "c"]);
