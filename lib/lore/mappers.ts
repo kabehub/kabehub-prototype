@@ -70,3 +70,15 @@ export function normalizeDreamingCandidate(row: Record<string, unknown>): Dreami
   if (!idA || !idB || idA === idB || similarity === null) return null;
   return { idA, idB, similarity };
 }
+
+export function normalizeRpcNewId(data: unknown) {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (typeof row === "string") return row;
+  if (row && typeof row === "object") {
+    const record = row as Record<string, unknown>;
+    for (const key of ["newId", "new_id", "id"]) {
+      if (typeof record[key] === "string") return record[key] as string;
+    }
+  }
+  return null;
+}
