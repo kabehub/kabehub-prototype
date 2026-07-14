@@ -35,7 +35,12 @@ export async function DELETE(req: NextRequest) {
 
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await deleteGithubToken(user.id);
-
-  return NextResponse.json({ ok: true });
+  try {
+    await deleteGithubToken(user.id);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    console.error("[github-disconnect] failed:", message);
+    return NextResponse.json({ error: "GitHub連携の解除に失敗しました" }, { status: 500 });
+  }
 }

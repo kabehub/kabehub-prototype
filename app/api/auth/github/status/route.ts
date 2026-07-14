@@ -13,7 +13,12 @@ export async function GET(req: NextRequest) {
 
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const status = await getGithubStatus(user.id);
-
-  return NextResponse.json(status);
+  try {
+    const status = await getGithubStatus(user.id);
+    return NextResponse.json(status);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    console.error("[github-status] failed:", message);
+    return NextResponse.json({ error: "GitHub連携状況の取得に失敗しました" }, { status: 500 });
+  }
 }

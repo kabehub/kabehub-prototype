@@ -25,11 +25,18 @@ export async function saveGithubToken(
 
 export async function getGithubToken(userId: string): Promise<string | null> {
   const supabase = serviceRoleClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("user_github_tokens")
     .select("access_token")
     .eq("user_id", userId)
     .maybeSingle();
+
+  if (error) {
+    // GitHub文脈注入はチャット本体の補助機能。
+    // token storeの一時障害でチャット全体を失敗させないため、明示的に未接続扱いへフォールバックする。
+    console.warn("[github-token-store] getGithubToken DB error:", error.message);
+    return null;
+  }
 
   if (!data?.access_token) return null;
 
@@ -44,11 +51,13 @@ export async function getGithubStatus(
   userId: string,
 ): Promise<{ connected: boolean; github_login: string | null; scope: string | null }> {
   const supabase = serviceRoleClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("user_github_tokens")
     .select("github_login, scope")
     .eq("user_id", userId)
     .maybeSingle();
+
+  if (error) throw new Error(error.message);
 
   return {
     connected: !!data,
@@ -59,7 +68,8 @@ export async function getGithubStatus(
 
 export async function deleteGithubToken(userId: string): Promise<void> {
   const supabase = serviceRoleClient();
-  await supabase.from("user_github_tokens").delete().eq("user_id", userId);
+  const { error } = await supabase.from("user_github_tokens").delete().eq("user_id", userId);
+  if (error) throw new Error(error.message);
 }
 
 export async function createOAuthState(userId: string): Promise<string> {
