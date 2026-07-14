@@ -271,14 +271,14 @@ function SettingsContent() {
       const exportedAt = new Date().toISOString()
 
       const [
-        { data: threads },
-        { data: messages },
-        { data: tags },
-        { data: notes },
-        { data: messageNotes },
-        { data: drafts },
-        { data: profiles },
-        { data: likes },
+        { data: threads, error: threadsError },
+        { data: messages, error: messagesError },
+        { data: tags, error: tagsError },
+        { data: notes, error: notesError },
+        { data: messageNotes, error: messageNotesError },
+        { data: drafts, error: draftsError },
+        { data: profiles, error: profilesError },
+        { data: likes, error: likesError },
       ] = await Promise.all([
         supabase.from("threads").select("*").eq("user_id", userId),
         supabase.from("messages").select("*").eq("user_id", userId),
@@ -286,9 +286,28 @@ function SettingsContent() {
         supabase.from("thread_notes").select("*").eq("user_id", userId),
         supabase.from("message_notes").select("*").eq("user_id", userId),
         supabase.from("drafts").select("*").eq("user_id", userId),
-        supabase.from("profiles").select("*").eq("user_id", userId),
+        supabase.from("profiles").select("*").eq("id", userId),
         supabase.from("likes").select("*").eq("user_id", userId),
       ])
+
+      const queryErrors = [
+        { name: "threads", error: threadsError },
+        { name: "messages", error: messagesError },
+        { name: "thread_tags", error: tagsError },
+        { name: "thread_notes", error: notesError },
+        { name: "message_notes", error: messageNotesError },
+        { name: "drafts", error: draftsError },
+        { name: "profiles", error: profilesError },
+        { name: "likes", error: likesError },
+      ]
+
+      const failedQuery = queryErrors.find(({ error }) => error)
+
+      if (failedQuery) {
+        console.error(`[bulk-export] ${failedQuery.name} query failed:`, failedQuery.error?.message)
+        alert("エクスポートに失敗しました。もう一度お試しください。")
+        return
+      }
 
       const blob = await generateBulkExportZip({
         threads: threads ?? [],
