@@ -38,7 +38,11 @@ export async function DELETE(
     .eq("id", params.id)
     .eq("user_id", user.id);
 
-  if (!deleteError && forkedFromId) {
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  }
+
+  if (forkedFromId) {
     const { error: recalcForkError } = await supabase.rpc("recalc_fork_count", {
       p_thread_id: forkedFromId,
     });
