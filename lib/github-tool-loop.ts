@@ -332,7 +332,6 @@ export async function runGithubToolLoop(
 
   // フェーズ1のレスポンスからJSONパスリストを抽出
   const responseText = phaseOneResponse.text ?? "";
-  console.log("[DEBUG][Phase1] Claude response:", responseText.slice(0, 200));
 
   let pathsToRead: string[] = [];
   let parsedPathList = false;
@@ -353,7 +352,13 @@ export async function runGithubToolLoop(
     warnings.push("ファイルパスリストのパース失敗");
   }
 
-  console.log("[DEBUG][Phase2] pathsToRead", pathsToRead);
+  if (process.env.NODE_ENV === "development") {
+    console.log("[DEBUG][github-tool-loop] discovery meta", {
+      responseLength: responseText.length,
+      parsedPathList,
+      pathsCount: pathsToRead.length,
+    });
+  }
 
   // フェーズ2: 指定されたファイルを順番に読む
   for (const path of pathsToRead) {

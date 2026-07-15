@@ -202,10 +202,6 @@ export async function buildPinnedGithubContext(
     totalChars += result.value.content.length;
   }
 
-  if (warnings.length > 0) {
-    console.warn("[Pinned GitHub Files]", warnings);
-  }
-
   if (blocks.length === 0) {
     return { context: "", warnings };
   }
@@ -251,7 +247,9 @@ export async function listGithubDirectory(
   const url = `https://api.github.com/repos/${repo}/contents${encodedPath}${refQuery}`;
 
   try {
-    console.log("[DEBUG][github.ts listGithubDirectory] fetching", { repo, path, ref: options?.ref });
+    if (process.env.NODE_ENV === "development") {
+      console.log("[DEBUG][github.ts listGithubDirectory] fetching", { repo, path, ref: options?.ref });
+    }
     const response = await fetchWithTimeout(url, {
       headers: {
         Accept: "application/vnd.github+json",

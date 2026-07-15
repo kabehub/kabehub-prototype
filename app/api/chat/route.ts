@@ -1134,7 +1134,7 @@ export async function POST(req: NextRequest) {
   if (pinnedGithubFiles.length > 0) {
     const { context: pinnedContext, warnings: pinnedWarnings } =
       await buildPinnedGithubContext(pinnedGithubFiles, githubAccessToken ?? undefined);
-    if (pinnedWarnings.length > 0) {
+    if (pinnedWarnings.length > 0 && process.env.NODE_ENV === "development") {
       console.warn("[Pinned GitHub Files] warnings:", pinnedWarnings);
     }
     if (pinnedContext) {
@@ -1188,11 +1188,17 @@ export async function POST(req: NextRequest) {
           ? dynamicSystemText + "\n\n" + discovery.contextBlock
           : discovery.contextBlock;
       }
-      if (discovery.warnings.length > 0) {
+      if (discovery.warnings.length > 0 && process.env.NODE_ENV === "development") {
         console.warn("[github-tool-loop] warnings:", discovery.warnings);
       }
     } catch (err) {
-      console.error("[github-tool-loop] error:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[github-tool-loop] error:", err);
+      } else {
+        console.error("[github-tool-loop] failed", {
+          errorType: err instanceof Error ? err.name : "unknown",
+        });
+      }
     }
   }
 
