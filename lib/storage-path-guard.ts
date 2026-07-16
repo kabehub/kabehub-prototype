@@ -16,5 +16,6 @@ export function isOwnedStoragePath(path: unknown, userId: string): path is strin
   if (typeof path !== 'string' || path.length === 0) return false
   if (path.startsWith('/')) return false
   if (path.includes('..')) return false
+  if (path.includes('\\')) return false
   return path.startsWith(`${userId}/`)
 }

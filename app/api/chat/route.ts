@@ -9,6 +9,7 @@ import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
 import { buildReferenceBlock, buildReferencePreamble } from "@/lib/ai-context-blocks";
+import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 import { isAllowedModel, getDefaultModel, supportsExtendedThinking } from "@/lib/modelRegistry";
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
@@ -66,17 +67,6 @@ function isGeminiModel(modelId: string): modelId is GeminiModel {
 
 function isOpenAIModel(modelId: string): modelId is OpenAIModel {
   return isAllowedModel("openai", modelId, "chat");
-}
-
-// TODO: T-03/T-09で lib/storage-path-guard.ts に移管する
-function isOwnedStoragePath(path: unknown, userId: string): path is string {
-  return (
-    typeof path === "string" &&
-    path.startsWith(`${userId}/`) &&
-    !path.startsWith("/") &&
-    !path.includes("..") &&
-    !path.includes("\\")
-  );
 }
 
 function stripLegacyAssistantLabelPrefix(content: string): string {
