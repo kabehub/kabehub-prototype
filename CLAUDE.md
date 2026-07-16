@@ -198,7 +198,6 @@ git pull origin main
 | `lib/supabase/server.ts` | Server Components用 |
 | `lib/supabase/route-handler.ts` | Route Handler用 |
 | `lib/supabase/download-image.ts` | 画像ダウンロードヘルパー ⚠️内容未確認 |
-| `lib/supabase-db.ts` | DB操作ヘルパー関数群。第一引数は必ずSupabaseClient |
 | `lib/supabase.ts` | Supabase関連の共通処理 ⚠️内容未確認 |
 | `lib/pricing.ts` | モデル別料金定義（`MODEL_PRICING`）。`getPricing()`でSonnet 5の導入価格→通常価格自動切替ロジック実装済み（2026/9/1境界） |
 | `lib/lore.ts` | MemoryKind拡張・LoreSearchResult拡張・`searchLore` / `searchLoreV2` |
@@ -211,7 +210,6 @@ git pull origin main
 | `lib/github-token-store.ts` | `getGithubToken`。GitHubトークンの保存・取得 |
 | `lib/github-tool-loop.ts` | `runGithubToolLoop`。AI動的GitHub探索（Phase 4 AI Tool Loop） |
 | `lib/mcp-auth.ts` | MCP用Bearer認証処理 ⚠️内容未確認 |
-| `lib/mock-db.ts` | 開発用モックDB ⚠️内容未確認 |
 | `lib/rate-limit.ts` | `checkChatRateLimit`。チャットのレート制限 |
 | `lib/stringUtils.ts` | 文字列処理ユーティリティ ⚠️内容未確認 |
 
