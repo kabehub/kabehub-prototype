@@ -943,8 +943,8 @@ export async function POST(req: NextRequest) {
       if (embedding) {
         // 旧Memory注入のfolderNameは、以前は memThread再取得で memThread?.folder_name ?? "" を渡していたが、
         // POST前半で所有権確認済みの currentFolderName を再利用する形に変更（追加DBクエリを削減）。
-        // 併せて "" ではなく null を渡す形に統一した（RAG memory contextの currentFolderName ?? null と揃え、
-        // 未分類スレッドでもフォルダ横断検索されるようにする挙動変更）。
+        // 併せて "" ではなく null を渡す形に統一した（RAG memory contextの currentFolderName ?? null と揃えた）。
+        // 未分類スレッドでは、folder_name が null の記憶のみを検索する（他フォルダの記憶は検索しない）。
         const [loreChunks, memoryResults] = await Promise.all([
           wantsLoreBook
             ? searchLoreByEmbedding(supabase, embedding, {
