@@ -18,34 +18,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "folderName and chunks are required" }, { status: 400 });
   }
 
-  // 同フォルダの既存レコードを全削除（洗い替え方式）
-  await supabase.from('lore_embeddings').delete()
-    .eq('user_id', user.id).eq('folder_name', folderName);
-
-  let count = 0;
+  const embeddedChunks: { chunkText: string; embedding: number[] }[] = [];
   for (const chunk of chunks) {
     const chunkText = chunk.text as string;
-
-    let embedding: number[];
     try {
-      embedding = await createEmbedding(openaiKey, chunkText, { apiErrorMode: "provider" });
+      const embedding = await createEmbedding(openaiKey, chunkText, { apiErrorMode: "provider" });
+      embeddedChunks.push({ chunkText, embedding });
     } catch (err) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Embedding API error" },
         { status: 500 },
       );
     }
-
-    await supabase.from('lore_embeddings').insert({
-      user_id: user.id,
-      folder_name: folderName,
-      chunk_text: chunkText,
-      embedding,
-    });
-
-    count++;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
 
-  return NextResponse.json({ ok: true, count });
+  const { error: delError } = await supabase.from('lore_embeddings').delete()
+    .eq('user_id', user.id).eq('folder_name', folderName);
+  if (delError) {
+    return NextResponse.json({ error: "既存のLoreデータの削除に失敗しました" }, { status: 500 });
+  }
+
+  if (embeddedChunks.length > 0) {
+    const { error: insError } = await supabase.from('lore_embeddings').insert(
+      embeddedChunks.map(({ chunkText, embedding }) => ({
+        user_id: user.id,
+        folder_name: folderName,
+        chunk_text: chunkText,
+        embedding,
+      })),
+    );
+    if (insError) {
+      return NextResponse.json({ error: "Loreデータの保存に失敗しました" }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ ok: true, count: embeddedChunks.length });
 }
