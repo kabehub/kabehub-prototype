@@ -1,7 +1,7 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/07/01（v174基準）
-> このファイルはコード（types/index.ts・lib/pricing.ts・app/api/chat/route.ts・app/api/arena/route.ts・components/ChatInput.tsx）とファイル構成一覧との突き合わせを経て更新。ただし一部ファイルは名称からの推測のみで内容未確認（⚠️マーク箇所）。
+最終更新: 2026/07/18（v174基準）
+> このファイルはコード（types/index.ts・lib/modelRegistry.ts・lib/pricing.ts・app/api/chat/route.ts・app/api/arena/route.ts・components/ChatInput.tsx）とファイル構成一覧との突き合わせを経て更新。ただし一部ファイルは名称からの推測のみで内容未確認（⚠️マーク箇所）。
 
 ## プロダクト概要
 
@@ -63,14 +63,14 @@ git pull origin main
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
 | AI メイン | Anthropic Claude API（claude-fable-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-5 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
 | AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite） |
-| AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro）※arena/route.tsのみgpt-5.5-pro未反映（後述の地雷参照） |
+| AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro）※gpt-5.5-proは`/v1/chat/completions`非対応で`/v1/responses`分岐が必要。`app/api/chat/route.ts`のみ実装済み、`app/api/arena/route.ts`は未実装（C-02として保留中。後述の地雷参照） |
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |
 | ファイルストレージ | Supabase Storage（generated-imagesバケット） |
 | デプロイ | Vercel（kabehub.com） |
 | Markdown | react-markdown + remark-gfm + @tailwindcss/typography |
 
-**モデルID定義は `types/index.ts` が正**（`ClaudeModel` / `GeminiModel` / `OpenAIModel` / `ImageGenModel` / `Provider`型）。`app/api/chat/route.ts` と `app/api/arena/route.ts` に同じ配列が重複定義されているため、新モデル追加時は必ず両方更新すること。
+モデルIDのUnion型は `types/index.ts`、実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金は `lib/modelRegistry.ts` で管理する。両者には双方向の型一致チェック（`AssertNever`）があり、不一致は型エラーになる。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` をimportして使う。モデル追加・削除時は `types/index.ts` と `lib/modelRegistry.ts` の両方を更新すること。
 
 ---
 
@@ -81,7 +81,7 @@ git pull origin main
 | ファイル | 役割 |
 |-|-|
 | `app/api/chat/route.ts` | チャット送受信の中枢。ストリーミング・DB保存（Promise Bridge）・waitUntilフォールバック・RAG注入・GitHub Tool Loop・Extended Thinkingガードをすべて担う。**最も複雑なファイル。後述の地雷を必ず読むこと** |
-| `app/api/arena/route.ts` | AI闘技場（複数AI同士の議論）のターン管理。**chat/route.tsと異なり非ストリーミング実装**（`await res.json()`で一括取得）。Promise Bridge・Extended Thinkingガード・gpt-5.5-pro分岐は未適用 |
+| `app/api/arena/route.ts` | AI闘技場（複数AI同士の議論）のターン管理。**chat/route.tsと異なり非ストリーミング実装**（`await res.json()`で一括取得）。Promise Bridge・Extended Thinkingガードは未適用（非ストリーミング実装のため対象外）。gpt-5.5-pro用の`/v1/responses`分岐は未実装（C-02として保留中） |
 | `app/api/explore/route.ts` | 公開スレッド一覧。sort パラメータ（newest/popular/trending）対応 |
 | `app/api/share/[token]/route.ts` | 共有ページ用データ取得。shared_atフィルター（スナップショット型共有）あり。**後方互換に注意** |
 | `app/api/share/[token]/fork/route.ts` | 共有スレッドのフォーク処理 ⚠️内容未確認 |
@@ -184,7 +184,7 @@ git pull origin main
 | `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
 | `components/ArenaTimeline.tsx` | AI闘技場のタイムライン表示 ⚠️内容未確認 |
 | `components/BranchTree.tsx` | 分岐ツリー可視化コンポーネント（Phase B） |
-| `components/ExportModal.tsx` | TXT/MD/CSVエクスポートUI（旧`lib/exportUtils.ts`の後継の可能性・要確認） |
+| `components/ExportModal.tsx` | TXT/MD/CSVエクスポートのUI。出力生成は`lib/exportUtils.ts`を利用 |
 | `components/LegalLayout.tsx` | 利用規約・プライバシーポリシー等の共通レイアウト |
 | `components/NovelSettingsPane.tsx` | 小説プロジェクト設定ペイン |
 | `components/OutlinePane.tsx` | あらすじ・アウトラインペイン ⚠️内容未確認 |
@@ -199,7 +199,8 @@ git pull origin main
 | `lib/supabase/route-handler.ts` | Route Handler用 |
 | `lib/supabase/download-image.ts` | 画像ダウンロードヘルパー ⚠️内容未確認 |
 | `lib/supabase.ts` | Supabase関連の共通処理 ⚠️内容未確認 |
-| `lib/pricing.ts` | モデル別料金定義（`MODEL_PRICING`）。`getPricing()`でSonnet 5の導入価格→通常価格自動切替ロジック実装済み（2026/9/1境界） |
+| `lib/modelRegistry.ts` | モデル台帳。モデルID・表示情報・利用surface・デフォルト・Thinking対応・料金・許可判定を一元管理 |
+| `lib/pricing.ts` | `getPricing`を`lib/modelRegistry.ts`から再exportする互換ファサード。`calcCost`・`formatUSD`を提供 |
 | `lib/lore.ts` | MemoryKind拡張・LoreSearchResult拡張・`searchLore` / `searchLoreV2` |
 | `lib/loreMemorySelect.ts` | `LORE_MEMORY_SELECT` 定数を共通化 |
 | `lib/branching.ts` | 分岐関連ロジック ⚠️内容未確認 |
@@ -212,8 +213,8 @@ git pull origin main
 | `lib/mcp-auth.ts` | MCP用Bearer認証処理 ⚠️内容未確認 |
 | `lib/rate-limit.ts` | `checkChatRateLimit`。チャットのレート制限 |
 | `lib/stringUtils.ts` | 文字列処理ユーティリティ ⚠️内容未確認 |
-
-⚠️ 旧CLAUDE.mdに記載のあった `lib/genres.ts`（ジャンルマスタ）・`lib/exportUtils.ts`（エクスポートロジック）は最新のファイル構成一覧に見当たらない。リネーム・統合（`components/ExportModal.tsx`等）・削除のいずれかと思われるが未確認。次回コード確認時に要確認。
+| `lib/genres.ts` | ジャンル階層マスタ（`GENRES`）。親ジャンル・表示名・子ジャンルID取得ヘルパー（`getParentGenre` / `getGenreLabel` / `getChildIds`） |
+| `lib/exportUtils.ts` | 会話エクスポート生成（`buildExportContent`等）。`components/ChatPanel.tsx`・`app/settings/page.tsx`から利用 |
 
 ### Docs
 
@@ -300,15 +301,15 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - `roleplay_mode = true` のスレッドは公開不可（`handleSaveShare` と `PublishConfirmModal` 両方にガードあり）
 - フォーク・セルフコピペ時は `roleplay_mode: false / rp_char_name: null / rp_char_icon_url: null` にリセット（`app/api/threads/[id]/copy/route.ts`）
 
-### モデルID・料金の追加手順（v174で確立）
+### モデルID・料金の追加手順（modelRegistry化後）
 
-新しいAIモデルを追加する際は以下を**同時に**更新すること（v174 Sonnet 5対応時の実例）：
+新しいAIモデルを追加する際は以下の手順で対応する：
 
-1. `types/index.ts`: 該当する `ClaudeModel` / `GeminiModel` / `OpenAIModel` / `ImageGenModel` 型に追加
-2. `lib/pricing.ts`: `MODEL_PRICING` にエントリ追加。導入価格→通常価格の自動切替が必要な場合は `getPricing()` に日付分岐を追加
-3. `components/ChatInput.tsx`: `MODEL_CONFIG` に選択肢追加。Extended Thinking非対応モデルなら `THINKING_UNSUPPORTED_MODELS`相当の除外条件（ボタンのdisabled/title/color/cursor）に追加
-4. `app/api/chat/route.ts`: `CLAUDE_MODEL_IDS`等に追加。Extended Thinking非対応なら `THINKING_UNSUPPORTED_MODELS` にも追加（サーバー側二重防御）
-5. **`app/api/arena/route.ts`: 同様のモデルID配列に追加（v174でgpt-5.5-pro漏れが発覚。同期漏れが起きやすい箇所）**
+1. `lib/modelRegistry.ts` の `MODEL_REGISTRY` へエントリを追加する。`provider`・`status`・`surfaces.chat`・`surfaces.arena`・`thinking`・`pricing`を設定する
+2. `types/index.ts` の該当するUnion型へモデルIDを追加する。registryとの双方向型チェック（`AssertNever`）が型エラーにならないことを確認する
+3. `components/ChatInput.tsx`・`app/api/chat/route.ts`・`app/api/arena/route.ts` は通常変更不要。`MODEL_CONFIG`・許可判定・デフォルト・Thinking対応表示はいずれもregistryから自動的に導出される
+4. API形式が既存モデルと異なる場合のみ、対応するrouteへ個別実装を追加する（例：専用エンドポイント、request body形式、streaming方式）。gpt-5.5-proはこの例外に該当し、v174で`app/api/chat/route.ts`のみ`/v1/responses`分岐を実装、`app/api/arena/route.ts`は未実装のまま（C-02として保留中）
+5. `lib/pricing.ts` は通常変更不要（`getPricing`の再exportのみのため）。`calcCost`・`formatUSD`自体の仕様変更がある場合のみ変更する
 
 ---
 
@@ -321,12 +322,11 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | force push 禁止 | `--force` でv133〜v136のコミットが消えた前例あり。絶対に使わない |
 | コンフリクト復元手順 | `git merge --abort` → `git fetch origin` → `git reset --hard origin/main` |
 
-### モデルID同期関連（v174で発覚）
+### gpt-5.5-pro Arena対応関連
 
 | 地雷 | 説明 |
 |-|-|
-| chat/arena間の同期漏れ | モデルID配列（`CLAUDE_MODEL_IDS`/`GEMINI_MODEL_IDS`/`OPENAI_MODEL_IDS`）が`app/api/chat/route.ts`と`app/api/arena/route.ts`に重複定義されている。**v174時点で`app/api/arena/route.ts`の`OPENAI_MODEL_IDS`に`gpt-5.5-pro`が未反映**（要修正・単純な同期漏れと判明）。新モデル追加時は両ファイル同時更新必須 |
-| arena/route.tsはgpt-5.5-pro専用分岐なし | chat/route.tsは`gpt-5.5-pro`利用時に`/v1/responses`エンドポイントへ分岐するが、arena/route.tsの`callOpenAI`は`/v1/chat/completions`のみの単純実装。上記のモデルID追加と合わせて対応が必要な可能性が高い |
+| arena/route.tsはgpt-5.5-pro専用分岐なし | `lib/modelRegistry.ts`はgpt-5.5-proのarena surfaceを有効にしているが、`app/api/arena/route.ts`の`callOpenAI`は`/v1/chat/completions`のみの実装で、`chat/route.ts`にある`/v1/responses`分岐がない。Arenaでgpt-5.5-proを選択すると呼び出しが失敗する。C-02として保留中（ChatGPT5.6系対応時にまとめて対応する方針） |
 
 ### スマホ対応関連
 
@@ -482,9 +482,8 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - `loadEnterMode()` / `isMobileViewport()` が `ChatInput.tsx` と `ChatInputCentered.tsx` に重複定義。`lib/inputUtils.ts` への共通化が望ましい
 - Phase Bその3（③''の④''をさらに編集した④'''がツリーに表示されない・原因未調査・優先度低）
 - サイドバー折り畳みの `ResizeObserver` 未実装（幅変化時のtextarea高さ再計算）
-- **【新規・v174コード確認で発覚】`app/api/arena/route.ts` の `OPENAI_MODEL_IDS` に `gpt-5.5-pro` が未反映**（単純な同期漏れ・要修正）
+- `app/api/arena/route.ts`の`callOpenAI`がgpt-5.5-pro用の`/v1/responses`分岐を実装しておらず、Arenaで選択すると失敗する（C-02として保留中）
 - **【新規・要確認】MCPサーバーの実装状況が資料と食い違っている**（「次に実装予定」に記載があるが、`app/api/mcp-tokens/route.ts` 等が既に存在。詳細未確認）
-- **【新規・要確認】`lib/genres.ts` / `lib/exportUtils.ts` が最新ファイル構成に見当たらない**（リネーム・統合・削除のいずれか不明）
 
 ---
 
@@ -514,7 +513,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - ⚠️ 上記「既知の課題」参照。ルートファイルが既に存在するため、この項目自体の現状把握が最優先
 
 **技術負債**
-- `app/api/arena/route.ts` のモデルID同期・gpt-5.5-pro対応
+- `app/api/arena/route.ts`のgpt-5.5-pro対応（`/v1/responses`分岐の実装。C-02として保留中）
 
 ---
 
