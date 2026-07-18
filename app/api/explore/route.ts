@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import type { ParentGenreId } from "@/lib/genres";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,13 @@ type PublicThreadRow = {
   tags: string[] | null;
   likes_count?: number | null;
   fork_count?: number | null;
+  allow_prompt_fork?: boolean | null;
+};
+
+type ThreadExtraRow = {
+  id: string;
+  allow_prompt_fork: boolean;
+  fork_count: number | null;
 };
 
 type SortCursor = {
@@ -54,7 +62,11 @@ export async function GET(req: NextRequest) {
   const tag = searchParams.get("tag")?.trim() ?? "";
   const genre = searchParams.get("genre")?.trim() ?? "";
   const parentGenre = searchParams.get("parent_genre")?.trim() ?? "";
-  const sort = searchParams.get("sort") ?? "newest";
+  const requestedSort = searchParams.get("sort");
+  const sort: "newest" | "popular" | "trending" =
+    requestedSort === "popular" || requestedSort === "trending"
+      ? requestedSort
+      : "newest";
   const cursor = searchParams.get("cursor") ?? null;
   const limit = 20;
 
@@ -69,7 +81,7 @@ export async function GET(req: NextRequest) {
 
     let dbQuery = adminSupabase
       .from("threads")
-      .select(`id, title, is_public, created_at, updated_at, user_id, genre, share_token, likes_count, fork_count${tagJoin}`)
+      .select(`id, title, is_public, created_at, updated_at, user_id, genre, share_token, likes_count, fork_count, allow_prompt_fork${tagJoin}`)
       .eq("is_public", true)
       .order("likes_count", { ascending: false, nullsFirst: false })
       .order(timestampColumn, { ascending: false, nullsFirst: false })
@@ -91,7 +103,7 @@ export async function GET(req: NextRequest) {
         dbQuery = dbQuery.is("genre", null);
       } else {
         const { getChildIds } = await import("@/lib/genres");
-        const childIds = getChildIds(parentGenre as any);
+        const childIds = getChildIds(parentGenre as ParentGenreId);
         if (childIds.length > 0) {
           dbQuery = dbQuery.in("genre", childIds);
         }
@@ -133,7 +145,7 @@ export async function GET(req: NextRequest) {
         dbQuery = dbQuery.is("genre", null);
       } else {
         const { getChildIds } = await import("@/lib/genres");
-        const childIds = getChildIds(parentGenre as any);
+        const childIds = getChildIds(parentGenre as ParentGenreId);
         if (childIds.length > 0) {
           dbQuery = dbQuery.in("genre", childIds);
         }
@@ -165,14 +177,32 @@ export async function GET(req: NextRequest) {
   const likedByMe: Record<string, boolean> = {};
   const profileMap: Record<string, { handle: string | null; display_name: string | null }> = {};
   const tagMap: Record<string, string[]> = {};
+  const threadExtraMap = new Map<string, { allow_prompt_fork: boolean; fork_count: number }>();
 
   if (threadIds.length > 0) {
-    const [likeRes, messageRes, profileRes, tagRes] = await Promise.all([
+    const [likeRes, messageRes, profileRes, tagRes, threadExtraRes] = await Promise.all([
       supabase.from("likes").select("thread_id, user_id").in("thread_id", threadIds),
       supabase.from("messages").select("thread_id").in("thread_id", threadIds),
       supabase.from("profiles").select("id, handle, display_name").in("id", userIds),
       supabase.from("thread_tags").select("thread_id, name").in("thread_id", threadIds),
+      sort === "newest"
+        ? supabase.from("threads").select("id, allow_prompt_fork, fork_count").in("id", threadIds)
+        : Promise.resolve<{ data: ThreadExtraRow[]; error: null }>({ data: [], error: null }),
     ]);
+
+    if (threadExtraRes.error) {
+      console.error("explore API thread extra fetch failed");
+      if (process.env.NODE_ENV === "development") {
+        console.error(threadExtraRes.error);
+      }
+    }
+
+    for (const row of threadExtraRes.data ?? []) {
+      threadExtraMap.set(row.id, {
+        allow_prompt_fork: row.allow_prompt_fork,
+        fork_count: row.fork_count ?? 0,
+      });
+    }
 
     for (const row of likeRes.data ?? []) {
       likeCounts[row.thread_id] = (likeCounts[row.thread_id] ?? 0) + 1;
@@ -203,12 +233,18 @@ export async function GET(req: NextRequest) {
     share_token: thread.share_token,
     created_at: thread.created_at,
     updated_at: thread.updated_at,
-    allow_prompt_fork: true,
+    allow_prompt_fork:
+      sort === "newest"
+        ? threadExtraMap.get(thread.id)?.allow_prompt_fork ?? false
+        : thread.allow_prompt_fork ?? false,
     handle: thread.user_id ? profileMap[thread.user_id]?.handle ?? null : null,
     display_name: thread.user_id ? profileMap[thread.user_id]?.display_name ?? null : null,
     tags: tagMap[thread.id] ?? thread.tags ?? [],
     message_count: messageCounts[thread.id] ?? 0,
-    fork_count: thread.fork_count ?? 0,
+    fork_count:
+      sort === "newest"
+        ? threadExtraMap.get(thread.id)?.fork_count ?? 0
+        : thread.fork_count ?? 0,
     like_count: likeCounts[thread.id] ?? 0,
     liked_by_me: likedByMe[thread.id] ?? false,
   }));
