@@ -24,6 +24,13 @@
 --   - migration_v126_find_similar_lore_pairs_liked_ai_protection.sql
 --     （find_similar_lore_pairs に liked_ai / liked_ai_cleaned 保護を追加）
 --
+-- 2026/07/19、以下1本のマイグレーションを本番適用し、本ファイルに反映：
+--   - migration_v128_public_threads_projection.sql（B-01対応：threadsの
+--     列制限なし公開SELECT policyを削除し、公開データの読み取りを
+--     SECURITY DEFINER関数（get_public_threads_projection ／
+--     is_visible_public_message ／ is_visible_public_thread_tag）経由に
+--     統一。public_threads_viewにallow_prompt_fork・fork_count列を追加）
+--
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
 --   - messages テーブルに残存していた STEP5適用前の旧英語名ポリシー2本
@@ -128,11 +135,9 @@ create policy "Users can manage own threads"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
-create policy "Public threads are readable by anyone"
-  on threads for select
-  using (is_public = true);
-
--- Public thread reads should use public_threads_view to avoid exposing private columns.
+-- 2026/07/19 B-01対応：列制限なしの公開SELECT policyを削除。
+-- 公開スレッドの読み取りは public_threads_view（get_public_threads_projection()経由）に一本化した。
+-- migration_v128_public_threads_projection.sql 参照。
 
 -- ============================================================
 -- messages テーブル
@@ -224,20 +229,14 @@ create policy "自分のメッセージのみ削除可"
     )
   );
 
+-- 2026/07/19 B-01対応：threads直接参照から is_visible_public_message() 関数経由に変更。
+-- migration_v128_public_threads_projection.sql 参照。
 create policy "公開スレッドのメッセージは全員閲覧可"
   on messages for select
   using (
     coalesce(is_hidden, false) = false
     and provider <> 'memo'
-    and exists (
-      select 1 from threads
-      where threads.id = messages.thread_id
-        and threads.is_public = true
-        and (
-          threads.shared_at is null
-          or messages.created_at <= threads.shared_at
-        )
-    )
+    and is_visible_public_message(thread_id, created_at)
   );
 
 -- スレッド内でのメッセージ連番を自動採番するトリガー
@@ -470,16 +469,87 @@ create policy "自分のタグのみ削除可"
     )
   );
 
+-- 2026/07/19 B-01対応：threads直接参照から is_visible_public_thread_tag() 関数経由に変更。
+-- migration_v128_public_threads_projection.sql 参照。
 create policy "公開スレッドのタグは全員閲覧可"
   on thread_tags for select
   using (
-    exists (
-      select 1 from threads
-      where threads.id = thread_tags.thread_id
-        and threads.is_public = true
-        and threads.user_id = thread_tags.user_id
-    )
+    is_visible_public_thread_tag(thread_id, user_id)
   );
+
+-- ============================================================
+-- 公開データ投影用 SECURITY DEFINER 関数群（B-01対応・2026/07/19）
+-- threadsの列制限なし公開SELECT policyを削除した代わりに、公開行・許可列
+-- だけを安全に返す関数を新設。search_path=''＋schema修飾で権限昇格を防止。
+-- REVOKE/GRANTは作成と同一トランザクションで実施（migration_v128参照）。
+-- ============================================================
+create or replace function public.get_public_threads_projection()
+returns table (
+  id                uuid,
+  title             text,
+  is_public         boolean,
+  created_at        timestamptz,
+  updated_at        timestamptz,
+  user_id           uuid,
+  genre             text,
+  share_token       text,
+  allow_prompt_fork boolean,
+  fork_count        integer
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    t.id, t.title, t.is_public, t.created_at, t.updated_at,
+    t.user_id, t.genre, t.share_token, t.allow_prompt_fork, t.fork_count
+  from public.threads as t
+  where t.is_public = true;
+$$;
+
+revoke all on function public.get_public_threads_projection() from public;
+grant execute on function public.get_public_threads_projection() to anon, authenticated;
+
+create or replace function public.is_visible_public_message(
+  p_thread_id uuid, p_created_at timestamptz
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.threads as t
+    where t.id = p_thread_id
+      and t.is_public = true
+      and (t.shared_at is null or p_created_at <= t.shared_at)
+  );
+$$;
+
+revoke all on function public.is_visible_public_message(uuid, timestamptz) from public;
+grant execute on function public.is_visible_public_message(uuid, timestamptz) to anon, authenticated;
+
+create or replace function public.is_visible_public_thread_tag(
+  p_thread_id uuid, p_tag_user_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.threads as t
+    where t.id = p_thread_id
+      and t.is_public = true
+      and t.user_id = p_tag_user_id
+  );
+$$;
+
+revoke all on function public.is_visible_public_thread_tag(uuid, uuid) from public;
+grant execute on function public.is_visible_public_thread_tag(uuid, uuid) to anon, authenticated;
 
 -- ============================================================
 -- public_threads_view（公開スレッド閲覧用ビュー）
@@ -489,17 +559,20 @@ create policy "公開スレッドのタグは全員閲覧可"
 -- threads/thread_tagsの既存RLS（is_public=true、tt.user_id=t.user_id）が
 -- view側のJOIN条件と一致しているため、invoker切り替えによる行の可視性の
 -- 変化はなし（本番・テスト両環境で動作確認済み）
+-- 2026/07/19 B-01対応：FROM句をthreadsテーブル直接から
+-- get_public_threads_projection()関数経由に変更し、allow_prompt_fork・
+-- fork_count列を追加。migration_v128_public_threads_projection.sql参照。
 create or replace view public_threads_view
 with (security_invoker = true)
 as
 select
   t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre,
   coalesce(array_agg(tt.name order by tt.created_at) filter (where tt.name is not null), '{}'::text[]) as tags,
-  t.share_token
-from threads t
+  t.share_token, t.allow_prompt_fork, t.fork_count
+from get_public_threads_projection() t
 left join thread_tags tt on tt.thread_id = t.id and tt.user_id = t.user_id
-where t.is_public = true
-group by t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre, t.share_token;
+group by t.id, t.title, t.is_public, t.created_at, t.updated_at, t.user_id, t.genre,
+         t.share_token, t.allow_prompt_fork, t.fork_count;
 
 grant select on public_threads_view to anon, authenticated;
 
