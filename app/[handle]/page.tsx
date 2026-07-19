@@ -62,7 +62,7 @@ export default async function Page({ params }: Props) {
   const { data: threads } = await supabase
     .from('public_threads_view')
     .select(`
-      id, title, created_at, updated_at, tags
+      id, title, created_at, updated_at, tags, fork_count
     `)
     .eq('user_id', profile.id)
     .order('updated_at', { ascending: false })
@@ -72,33 +72,22 @@ export default async function Page({ params }: Props) {
   const threadIds = baseThreads.map((thread) => thread.id)
 
   const likeCounts = new Map<string, number>()
-  const forkCountMap = new Map<string, number>()
 
   if (threadIds.length > 0) {
-    const [likesRes, threadExtrasRes] = await Promise.all([
-      supabase.from('likes').select('thread_id').in('thread_id', threadIds),
-      supabase.from('threads').select('id, fork_count').in('id', threadIds),
-    ])
-
-    if (threadExtrasRes.error) {
-      console.error('profile page thread extra fetch failed')
-      if (process.env.NODE_ENV === 'development') {
-        console.error(threadExtrasRes.error)
-      }
-    }
+    const likesRes = await supabase
+      .from('likes')
+      .select('thread_id')
+      .in('thread_id', threadIds)
 
     for (const like of likesRes.data ?? []) {
       likeCounts.set(like.thread_id, (likeCounts.get(like.thread_id) ?? 0) + 1)
-    }
-    for (const row of threadExtrasRes.data ?? []) {
-      forkCountMap.set(row.id, row.fork_count ?? 0)
     }
   }
 
   const threadList = baseThreads.map((thread) => ({
     ...thread,
     likes_count: likeCounts.get(thread.id) ?? 0,
-    fork_count: forkCountMap.get(thread.id) ?? 0,
+    fork_count: thread.fork_count ?? 0,
   }))
 
   const stats = {

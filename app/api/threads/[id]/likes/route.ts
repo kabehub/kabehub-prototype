@@ -19,11 +19,31 @@ export async function POST(
   const threadId = params.id;
 
   // 自分のスレッドへのいいねを弾く
-  const { data: thread } = await supabase
-    .from("threads")
+  const publicThreadRes = await supabase
+    .from("public_threads_view")
     .select("user_id")
     .eq("id", threadId)
-    .single();
+    .maybeSingle();
+
+  if (publicThreadRes.error) {
+    return NextResponse.json({ error: "Failed to verify thread" }, { status: 500 });
+  }
+
+  let thread = publicThreadRes.data;
+
+  if (!thread) {
+    const ownThreadRes = await supabase
+      .from("threads")
+      .select("user_id")
+      .eq("id", threadId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (ownThreadRes.error) {
+      return NextResponse.json({ error: "Failed to verify thread" }, { status: 500 });
+    }
+    thread = ownThreadRes.data;
+  }
 
   if (!thread) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
