@@ -36,8 +36,17 @@ export async function middleware(req: NextRequest) {
     return redirect;
   };
 
+  // 未ログインでも閲覧可能なoptional-auth API（境界付き判定）
+  const isPublicOptionalAuthApi =
+    pathname === "/api/explore" || pathname.startsWith("/api/explore/");
+
   // 未ログインかつ保護ページへのアクセス → /login へリダイレクト
-  if (!user && pathname !== "/login" && pathname !== "/auth/callback") {
+  if (
+    !user &&
+    !isPublicOptionalAuthApi &&
+    pathname !== "/login" &&
+    pathname !== "/auth/callback"
+  ) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
     return redirectWithCookies(loginUrl);
