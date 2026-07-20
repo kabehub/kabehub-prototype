@@ -17,6 +17,7 @@
 | migration_v125b_submit_report_function.sql | submit_report RPC新設 |
 | migration_v125c_submit_report_permission_fix.sql | submit_report のEXECUTE権限をservice_role専用に変更 |
 | migration_v126_find_similar_lore_pairs_liked_ai_protection.sql | liked_ai保護の追加 |
+| migration_v129_dreaming_batch_multi_hardening.sql | consolidate_dreaming_batch_multi / rollback_dreaming_batch_multi の認証検証・search_path固定・EXECUTE権限限定（B-02対応） |
 | v78_mcp_tokens_migration.sql | mcp_tokens テーブル新設 |
 | v89_migration.sql | messages.model_id カラム追加 |
 | v141c_migration.sql | Dreaming保護条件変更の適用手順記録（直接再実行するファイルではない） |

@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/07/10（本番DBと全項目突き合わせ完了。緊急対応1件を含む）
+-- 最終更新: 2026/07/20（migration_v129_dreaming_batch_multi_hardening.sql反映）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -30,6 +30,12 @@
 --     SECURITY DEFINER関数（get_public_threads_projection ／
 --     is_visible_public_message ／ is_visible_public_thread_tag）経由に
 --     統一。public_threads_viewにallow_prompt_fork・fork_count列を追加）
+--
+-- 2026/07/20、以下1本のマイグレーションを本番適用し、本ファイルに反映：
+--   - migration_v129_dreaming_batch_multi_hardening.sql（B-02対応：
+--     consolidate_dreaming_batch_multi / rollback_dreaming_batch_multi に
+--     auth.uid()検証・search_path = ''固定・EXECUTE権限のauthenticated
+--     限定を追加）
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1513,7 +1519,7 @@ $$;
 
 -- Dreaming（記憶統合）: 3件以上のマルチ統合版
 -- extraction_version の保護対象に liked_ai / liked_ai_cleaned を含む
-create or replace function consolidate_dreaming_batch_multi(
+create or replace function public.consolidate_dreaming_batch_multi(
   p_user_id uuid, p_source_ids uuid[], p_merged_text text, p_embedding vector,
   p_memory_kind text, p_temporal_status text, p_folder_name text,
   p_importance double precision, p_confidence double precision
@@ -1521,6 +1527,7 @@ create or replace function consolidate_dreaming_batch_multi(
 returns uuid
 language plpgsql
 security definer
+set search_path = ''
 as $$
 declare
   v_source        record;
@@ -1531,6 +1538,10 @@ declare
   v_source_count  integer;
   v_found_count   integer := 0;
 begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
   v_source_count := array_length(p_source_ids, 1);
   if v_source_count is null or v_source_count < 2 then
     raise exception 'source_ids must contain at least 2 elements'
@@ -1538,7 +1549,7 @@ begin
   end if;
   for v_source in
     select id, is_pinned, extraction_version, is_archived, superseded_by, tags
-    from lore_embeddings
+    from public.lore_embeddings
     where id = any(p_source_ids)
       and user_id = p_user_id
     order by id
@@ -1567,7 +1578,7 @@ begin
   select coalesce(array_agg(distinct tag), '{}')
   into v_tags
   from unnest(v_all_tags) as tag;
-  insert into lore_embeddings (
+  insert into public.lore_embeddings (
     user_id, chunk_text, embedding, memory_kind, temporal_status,
     folder_name, tags, importance_score, confidence_score,
     extraction_version, source_type, is_archived, is_pinned,
@@ -1579,7 +1590,7 @@ begin
     null, null, null
   )
   returning id into v_new_id;
-  update lore_embeddings
+  update public.lore_embeddings
   set superseded_by = v_new_id, is_archived = true
   where id = any(p_source_ids)
     and user_id = p_user_id;
@@ -1591,6 +1602,13 @@ begin
   return v_new_id;
 end;
 $$;
+
+revoke execute on function public.consolidate_dreaming_batch_multi(
+  uuid, uuid[], text, vector, text, text, text, double precision, double precision
+) from public, anon, authenticated;
+grant execute on function public.consolidate_dreaming_batch_multi(
+  uuid, uuid[], text, vector, text, text, text, double precision, double precision
+) to authenticated;
 
 -- Dreaming統合の取り消し（2件統合分）
 create or replace function rollback_dreaming_batch(
@@ -1649,21 +1667,26 @@ end;
 $$;
 
 -- Dreaming統合の取り消し（マルチ統合分）
-create or replace function rollback_dreaming_batch_multi(
+create or replace function public.rollback_dreaming_batch_multi(
   p_user_id uuid, p_consolidated_id uuid
 )
 returns void
 language plpgsql
 security definer
+set search_path = ''
 as $$
 declare
   v_consolidated  record;
   v_source_count  integer;
   v_updated_count integer;
 begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
   select id, extraction_version, source_type, is_archived, is_pinned
   into v_consolidated
-  from lore_embeddings
+  from public.lore_embeddings
   where id = p_consolidated_id
     and user_id = p_user_id
   for update;
@@ -1685,7 +1708,7 @@ begin
   end if;
 
   select count(*) into v_source_count
-  from lore_embeddings
+  from public.lore_embeddings
   where superseded_by = p_consolidated_id
     and user_id = p_user_id;
 
@@ -1694,7 +1717,7 @@ begin
       using errcode = 'P0001';
   end if;
 
-  update lore_embeddings
+  update public.lore_embeddings
   set is_archived = false, superseded_by = null
   where superseded_by = p_consolidated_id
     and user_id = p_user_id;
@@ -1705,9 +1728,14 @@ begin
       using errcode = 'P0001';
   end if;
 
-  update lore_embeddings
+  update public.lore_embeddings
   set is_archived = true
   where id = p_consolidated_id
     and user_id = p_user_id;
 end;
 $$;
+
+revoke execute on function public.rollback_dreaming_batch_multi(uuid, uuid)
+  from public, anon, authenticated;
+grant execute on function public.rollback_dreaming_batch_multi(uuid, uuid)
+  to authenticated;
