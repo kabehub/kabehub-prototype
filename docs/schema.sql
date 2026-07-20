@@ -1112,14 +1112,21 @@ create trigger novel_settings_updated_at
 -- ============================================================
 -- アカウント削除RPC
 -- ============================================================
-create or replace function delete_current_user()
+create or replace function public.delete_current_user()
 returns void
 language plpgsql
 security definer
-set search_path to 'public'
+set search_path = ''
 as $$
+declare
+  v_user_id uuid := auth.uid();
 begin
-  delete from auth.users where id = auth.uid();
+  if v_user_id is null then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  delete from auth.users
+  where id = v_user_id;
 end;
 $$;
 
