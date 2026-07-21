@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/07/20（migration_v129_dreaming_batch_multi_hardening.sql反映）
+-- 最終更新: 2026/07/21（migration_v131_storage_orphan_cleanup.sql反映）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -36,6 +36,11 @@
 --     consolidate_dreaming_batch_multi / rollback_dreaming_batch_multi に
 --     auth.uid()検証・search_path = ''固定・EXECUTE権限のauthenticated
 --     限定を追加）
+--
+-- 2026/07/21、以下1本のマイグレーションを統合：
+--   - migration_v131_storage_orphan_cleanup.sql（B-04b／H-29対応：
+--     孤児Storageオブジェクト候補検出RPC・検索用部分式インデックス・
+--     Cron実行履歴テーブルを新設）
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -556,6 +561,78 @@ $$;
 
 revoke all on function public.is_visible_public_thread_tag(uuid, uuid) from public;
 grant execute on function public.is_visible_public_thread_tag(uuid, uuid) to anon, authenticated;
+
+-- ============================================================
+-- 孤児Storageオブジェクト回収バッチ（B-04b／H-29対応・2026/07/21）
+-- 24時間以上前に作成され、messagesから有効に参照されていない
+-- generated-imagesオブジェクトを候補として返す。削除はアプリ層で行う。
+-- search_path=''＋schema完全修飾、EXECUTE権限はservice_role限定。
+-- ============================================================
+create or replace function public.find_orphan_storage_candidates(
+  p_limit integer default 50
+)
+returns table (storage_path text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select o.name as storage_path
+  from storage.objects as o
+  where o.bucket_id = 'generated-images'
+    and o.created_at < now() - interval '24 hours'
+    and not exists (
+      select 1
+      from public.messages as m
+      where m.metadata ->> 'storagePath' = o.name
+        and coalesce(m.metadata ->> 'image_deleted', 'false') <> 'true'
+    )
+  order by o.created_at asc, o.name asc
+  limit least(greatest(coalesce(p_limit, 50), 1), 200);
+$$;
+
+revoke execute on function public.find_orphan_storage_candidates(integer)
+  from public, anon, authenticated;
+grant execute on function public.find_orphan_storage_candidates(integer)
+  to service_role;
+
+create index if not exists idx_messages_active_storage_path
+  on public.messages ((metadata ->> 'storagePath'))
+  where metadata ->> 'storagePath' is not null
+    and coalesce(metadata ->> 'image_deleted', 'false') <> 'true';
+
+-- storage_cleanup_runs（Cron実行履歴・管理者用状況確認ページの表示元）
+-- 開始時にrunningでINSERTし、終了時にUPDATEする。timeoutやクラッシュ時は
+-- runningの行が実行痕跡として残る。
+create table if not exists storage_cleanup_runs (
+  id               uuid primary key default gen_random_uuid(),
+  started_at       timestamptz not null default now(),
+  finished_at      timestamptz,
+  status           text not null default 'running'
+                     check (status in ('running', 'succeeded', 'partial_failure', 'failed')),
+  mode             text not null check (mode in ('dry_run', 'delete')),
+  candidate_count  integer not null default 0,
+  limit_reached    boolean not null default false,
+  succeeded_count  integer not null default 0,
+  failed_count     integer not null default 0,
+  error_codes      text[] not null default '{}'
+);
+
+create index if not exists idx_storage_cleanup_runs_started_at
+  on storage_cleanup_runs(started_at desc);
+
+alter table storage_cleanup_runs enable row level security;
+
+revoke all on table public.storage_cleanup_runs from public, anon, authenticated;
+grant select on table public.storage_cleanup_runs to authenticated;
+grant select, insert, update on table public.storage_cleanup_runs to service_role;
+
+-- ⚠️ 適用前に必ず <ADMIN_USER_ID> をRui氏の実際のauth.users.idに置き換えること。
+-- プレースホルダーのままテスト環境・本番環境へ適用しないこと。
+create policy "管理者のみ閲覧可"
+  on storage_cleanup_runs for select
+  to authenticated
+  using (auth.uid() = '<ADMIN_USER_ID>'::uuid);
 
 -- ============================================================
 -- public_threads_view（公開スレッド閲覧用ビュー）
