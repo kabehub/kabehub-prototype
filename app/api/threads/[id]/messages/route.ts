@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import {
+  collectOwnedStoragePaths,
+  removeStoragePaths,
+} from "@/lib/supabase/storage-cleanup";
 
 export async function GET(
   req: NextRequest,
@@ -61,12 +65,16 @@ export async function DELETE(
   if (threadError) return NextResponse.json({ error: threadError }, { status: 500 });
   if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
 
-  const { data: targetMessages } = await supabase
+  const { data: targetMessages, error: targetError } = await supabase
     .from("messages")
-    .select("id")
+    .select("id, metadata")
     .eq("thread_id", params.id)
     .eq("user_id", user.id)
     .gte("created_at", fromCreatedAt);
+
+  if (targetError) {
+    return NextResponse.json({ error: targetError.message }, { status: 500 });
+  }
 
   const targetIds = (targetMessages ?? []).map((m) => m.id);
 
@@ -91,5 +99,18 @@ export async function DELETE(
     .gte("created_at", fromCreatedAt);
 
   if (error) return NextResponse.json({ error }, { status: 500 });
+
+  const ownedPaths = collectOwnedStoragePaths(targetMessages ?? [], user.id);
+  if (ownedPaths.length > 0) {
+    const cleanup = await removeStoragePaths(supabase, ownedPaths);
+    if (cleanup.failedCount > 0) {
+      console.warn("[messages-range-delete] storage cleanup incomplete", {
+        scope: "range",
+        attemptedCount: cleanup.attemptedCount,
+        failedCount: cleanup.failedCount,
+      });
+    }
+  }
+
   return NextResponse.json({ success: true });
 }

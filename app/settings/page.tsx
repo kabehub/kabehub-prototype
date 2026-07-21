@@ -60,6 +60,7 @@ function SettingsContent() {
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
   const [isBatchTraining, setIsBatchTraining] = useState(false)
   const [batchTrainResult, setBatchTrainResult] = useState<{
     ok: boolean; processedCount: number; insertedCount: number
@@ -1124,19 +1125,23 @@ function SettingsContent() {
                 )
                 if (!confirmed) return
 
+                setIsDeletingAccount(true)
                 try {
-                  const { error } = await supabase.rpc('delete_current_user')
-                  if (error) throw error
+                  const response = await fetch('/api/account', { method: 'DELETE' })
+                  if (!response.ok) throw new Error('Account deletion request failed')
                   await supabase.auth.signOut()
                   router.push('/login')
                 } catch (err) {
                   console.error('アカウント削除に失敗しました', err)
                   alert('アカウント削除に失敗しました。時間をおいて再度お試しください。')
+                } finally {
+                  setIsDeletingAccount(false)
                 }
               }}
-              className="px-4 py-2 bg-transparent border border-red-500/50 hover:bg-red-500/10 text-red-400 hover:text-red-300 rounded-lg text-sm transition-colors"
+              disabled={isDeletingAccount}
+              className="px-4 py-2 bg-transparent border border-red-500/50 hover:bg-red-500/10 disabled:border-gray-700 disabled:text-gray-500 text-red-400 hover:text-red-300 rounded-lg text-sm transition-colors"
             >
-              アカウントを削除する
+              {isDeletingAccount ? '削除中...' : 'アカウントを削除する'}
             </button>
           </div>
         </section>

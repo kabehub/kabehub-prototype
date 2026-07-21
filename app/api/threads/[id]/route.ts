@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import {
+  collectOwnedStoragePaths,
+  removeStoragePaths,
+} from "@/lib/supabase/storage-cleanup";
 import { v4 as uuidv4 } from "uuid";
 
 export async function DELETE(
@@ -21,6 +25,16 @@ export async function DELETE(
   if (!thread) return NextResponse.json({ error: "Not Found" }, { status: 404 });
   const forkedFromId = thread.forked_from_id;
 
+  const { data: threadMessages, error: msgSelectError } = await supabase
+    .from("messages")
+    .select("id, metadata")
+    .eq("thread_id", params.id)
+    .eq("user_id", user.id);
+
+  if (msgSelectError) {
+    return NextResponse.json({ error: msgSelectError.message }, { status: 500 });
+  }
+
   const { error: archiveError } = await supabase
     .from("lore_embeddings")
     .update({ is_archived: true })
@@ -40,6 +54,18 @@ export async function DELETE(
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  }
+
+  const ownedPaths = collectOwnedStoragePaths(threadMessages ?? [], user.id);
+  if (ownedPaths.length > 0) {
+    const cleanup = await removeStoragePaths(supabase, ownedPaths);
+    if (cleanup.failedCount > 0) {
+      console.warn("[threads-delete] storage cleanup incomplete", {
+        scope: "thread",
+        attemptedCount: cleanup.attemptedCount,
+        failedCount: cleanup.failedCount,
+      });
+    }
   }
 
   if (forkedFromId) {

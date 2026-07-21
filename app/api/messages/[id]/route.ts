@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
+import { removeStoragePaths } from "@/lib/supabase/storage-cleanup";
 
 export async function DELETE(
   req: NextRequest,
@@ -10,6 +11,17 @@ export async function DELETE(
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data: existing, error: selectError } = await supabase
+    .from("messages")
+    .select("metadata")
+    .eq("id", params.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (selectError) {
+    return NextResponse.json({ error: selectError.message }, { status: 500 });
+  }
 
   const { error: archiveError } = await supabase
     .from("lore_embeddings")
@@ -28,6 +40,19 @@ export async function DELETE(
     .eq("id", params.id)
     .eq("user_id", user.id);
   if (error) return NextResponse.json({ error }, { status: 500 });
+
+  const storagePath = existing?.metadata?.storagePath;
+  if (isOwnedStoragePath(storagePath, user.id)) {
+    const cleanup = await removeStoragePaths(supabase, [storagePath]);
+    if (cleanup.failedCount > 0) {
+      console.warn("[messages-delete] storage cleanup incomplete", {
+        scope: "message",
+        attemptedCount: cleanup.attemptedCount,
+        failedCount: cleanup.failedCount,
+      });
+    }
+  }
+
   return NextResponse.json({ success: true });
 }
 
