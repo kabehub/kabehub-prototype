@@ -69,6 +69,10 @@ export const config = {
     "/login",
     // mcpはBearer認証のためmiddleware対象外。
     // この除外（"(?!mcp|...)"）を消すとMCPが全滅する。
-    "/api/((?!mcp|share|reports(?:/|$)|auth/github/callback).*)",
+    // cron/storage-cleanupはCRON_SECRETによるBearer認証のため対象外。
+    // Vercel Cronはリダイレクトをフォローせず、その回の実行が完了扱いに
+    // なってしまうため、ここで除外しないとCronが機能しなくなる。
+    "/api/((?!mcp|share|reports(?:/|$)|auth/github/callback|cron/storage-cleanup(?:/|$)).*)",
+    "/admin/:path*",
   ],
 };
