@@ -627,12 +627,12 @@ revoke all on table public.storage_cleanup_runs from public, anon, authenticated
 grant select on table public.storage_cleanup_runs to authenticated;
 grant select, insert, update on table public.storage_cleanup_runs to service_role;
 
--- ⚠️ 適用前に必ず <ADMIN_USER_ID> をRui氏の実際のauth.users.idに置き換えること。
+-- ⚠️ 適用前に必ず b1c89fd4-cdd0-48ab-837e-5cfbe7d7e4ca をRui氏の実際のauth.users.idに置き換えること。
 -- プレースホルダーのままテスト環境・本番環境へ適用しないこと。
 create policy "管理者のみ閲覧可"
   on storage_cleanup_runs for select
   to authenticated
-  using (auth.uid() = '<ADMIN_USER_ID>'::uuid);
+  using (auth.uid() = 'b1c89fd4-cdd0-48ab-837e-5cfbe7d7e4ca'::uuid);
 
 -- ============================================================
 -- public_threads_view（公開スレッド閲覧用ビュー）
