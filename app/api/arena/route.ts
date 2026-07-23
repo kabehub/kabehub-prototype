@@ -57,13 +57,37 @@ async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?
   );
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message ?? "Gemini API error");
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "（応答の取得に失敗しました）";
+  const parts = data.candidates?.[0]?.content?.parts;
+  const text = Array.isArray(parts)
+    ? parts
+        .filter((part: { thought?: boolean }) => part.thought !== true)
+        .map((part: { text?: string }) => part.text ?? "")
+        .join("")
+    : "";
+  return text || "（応答の取得に失敗しました）";
 }
 
 async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: OpenAIModel = "gpt-4o"): Promise<string> {
   const msgs: { role: string; content: string }[] = [];
   if (systemPrompt?.trim()) msgs.push({ role: "system", content: systemPrompt.trim() });
   msgs.push(...messages.map((m) => ({ role: m.role, content: m.content })));
+
+  if (modelId === "gpt-5.5-pro") {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: modelId, input: msgs, max_output_tokens: 8192, store: false }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message ?? "OpenAI Responses API error");
+    const text = data.output
+      ?.flatMap((output: { content?: { type: string; text: string }[] }) => output.content ?? [])
+      .filter((content: { type: string }) => content.type === "output_text")
+      .map((content: { text: string }) => content.text)
+      .join("") ?? "";
+    return text || "（応答の取得に失敗しました）";
+  }
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

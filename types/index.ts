@@ -33,8 +33,8 @@ export type ClaudeModel =
   | "claude-sonnet-4-5"
   | "claude-sonnet-4-6"
   | "claude-haiku-4-5-20251001";
-export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite";
-export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5" | "gpt-5.5-pro";
+export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite" | "gemini-3.6-flash" | "gemini-3.5-flash-lite";
+export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5" | "gpt-5.5-pro" | "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna";
 export type ImageGenModel = "gpt-image-2" | "gemini-2.5-flash-image" | "ideogram-v3" | "black-forest-labs/flux.2-pro";
 
 export type ModelId = ClaudeModel | GeminiModel | OpenAIModel | ImageGenModel;

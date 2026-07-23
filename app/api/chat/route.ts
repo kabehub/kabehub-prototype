@@ -369,7 +369,7 @@ function streamOpenAI(
           const res = await fetch("https://api.openai.com/v1/responses", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: modelId, input, max_output_tokens: 8192 }),
+            body: JSON.stringify({ model: modelId, input, max_output_tokens: 8192, store: false }),
             signal,
           });
           if (!res.ok) {
