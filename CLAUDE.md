@@ -62,8 +62,8 @@ git pull origin main
 | DB | Supabase (PostgreSQL) — 法人アカウント admin@kabehub.com |
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
 | AI メイン | Anthropic Claude API（claude-fable-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-5 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
-| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite） |
-| AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro）※gpt-5.5-proは`/v1/chat/completions`非対応で`/v1/responses`分岐が必要。`app/api/chat/route.ts`のみ実装済み、`app/api/arena/route.ts`は未実装（C-02として保留中。後述の地雷参照） |
+| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.5-flash-lite） |
+| AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna）※gpt-5.5-proは`/v1/chat/completions`非対応のため、chat・arena両方で`/v1/responses`へ分岐する |
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |
 | ファイルストレージ | Supabase Storage（generated-imagesバケット） |
@@ -81,7 +81,7 @@ git pull origin main
 | ファイル | 役割 |
 |-|-|
 | `app/api/chat/route.ts` | チャット送受信の中枢。ストリーミング・DB保存（Promise Bridge）・waitUntilフォールバック・RAG注入・GitHub Tool Loop・Extended Thinkingガードをすべて担う。**最も複雑なファイル。後述の地雷を必ず読むこと** |
-| `app/api/arena/route.ts` | AI闘技場（複数AI同士の議論）のターン管理。**chat/route.tsと異なり非ストリーミング実装**（`await res.json()`で一括取得）。Promise Bridge・Extended Thinkingガードは未適用（非ストリーミング実装のため対象外）。gpt-5.5-pro用の`/v1/responses`分岐は未実装（C-02として保留中） |
+| `app/api/arena/route.ts` | AI闘技場（複数AI同士の議論）のターン管理。**chat/route.tsと異なり非ストリーミング実装**（`await res.json()`で一括取得）。Promise Bridge・Extended Thinkingガードは未適用（非ストリーミング実装のため対象外）。gpt-5.5-pro用の`/v1/responses`分岐に対応済み |
 | `app/api/explore/route.ts` | 公開スレッド一覧。sort パラメータ（newest/popular/trending）対応 |
 | `app/api/share/[token]/route.ts` | 共有ページ用データ取得。shared_atフィルター（スナップショット型共有）あり。**後方互換に注意** |
 | `app/api/share/[token]/fork/route.ts` | 共有スレッドのフォーク処理 ⚠️内容未確認 |
@@ -308,7 +308,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 1. `lib/modelRegistry.ts` の `MODEL_REGISTRY` へエントリを追加する。`provider`・`status`・`surfaces.chat`・`surfaces.arena`・`thinking`・`pricing`を設定する
 2. `types/index.ts` の該当するUnion型へモデルIDを追加する。registryとの双方向型チェック（`AssertNever`）が型エラーにならないことを確認する
 3. `components/ChatInput.tsx`・`app/api/chat/route.ts`・`app/api/arena/route.ts` は通常変更不要。`MODEL_CONFIG`・許可判定・デフォルト・Thinking対応表示はいずれもregistryから自動的に導出される
-4. API形式が既存モデルと異なる場合のみ、対応するrouteへ個別実装を追加する（例：専用エンドポイント、request body形式、streaming方式）。gpt-5.5-proはこの例外に該当し、v174で`app/api/chat/route.ts`のみ`/v1/responses`分岐を実装、`app/api/arena/route.ts`は未実装のまま（C-02として保留中）
+4. API形式が既存モデルと異なる場合のみ、対応するrouteへ個別実装を追加する（例：専用エンドポイント、request body形式、streaming方式）。gpt-5.5-proはこの例外に該当し、`app/api/chat/route.ts`・`app/api/arena/route.ts`の両方で`/v1/responses`分岐を実装済み
 5. `lib/pricing.ts` は通常変更不要（`getPricing`の再exportのみのため）。`calcCost`・`formatUSD`自体の仕様変更がある場合のみ変更する
 
 ---
@@ -321,12 +321,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 |-|-|
 | force push 禁止 | `--force` でv133〜v136のコミットが消えた前例あり。絶対に使わない |
 | コンフリクト復元手順 | `git merge --abort` → `git fetch origin` → `git reset --hard origin/main` |
-
-### gpt-5.5-pro Arena対応関連
-
-| 地雷 | 説明 |
-|-|-|
-| arena/route.tsはgpt-5.5-pro専用分岐なし | `lib/modelRegistry.ts`はgpt-5.5-proのarena surfaceを有効にしているが、`app/api/arena/route.ts`の`callOpenAI`は`/v1/chat/completions`のみの実装で、`chat/route.ts`にある`/v1/responses`分岐がない。Arenaでgpt-5.5-proを選択すると呼び出しが失敗する。C-02として保留中（ChatGPT5.6系対応時にまとめて対応する方針） |
 
 ### スマホ対応関連
 
@@ -381,7 +375,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |
 | OpenAI の max_tokens | `gpt-4o` は `max_tokens`、`gpt-5.4-mini` 以降は `max_completion_tokens`。`streamOpenAI` 内で分岐済み |
 | OpenAI の stream_options | `stream_options: { include_usage: true }` が必須。外すと `[OpenAI Cache]` ログが出ない |
-| gpt-5.5-pro専用分岐 | `streamOpenAI` 内で `modelId === "gpt-5.5-pro"` の場合のみ `/v1/responses` エンドポイントに分岐（Chat Completions API非対応のため）。ストリーミングではなく一括取得してenqueueする擬似ストリーム |
+| gpt-5.5-pro専用分岐 | `streamOpenAI`・Arenaの`callOpenAI`内で`modelId === "gpt-5.5-pro"`の場合のみ`/v1/responses`へ分岐（Chat Completions API非対応のため）。chat側は一括取得してenqueueする擬似ストリーム、Arena側は非ストリーミングで一括取得する |
 
 ### Branching関連
 
@@ -482,7 +476,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - `loadEnterMode()` / `isMobileViewport()` が `ChatInput.tsx` と `ChatInputCentered.tsx` に重複定義。`lib/inputUtils.ts` への共通化が望ましい
 - Phase Bその3（③''の④''をさらに編集した④'''がツリーに表示されない・原因未調査・優先度低）
 - サイドバー折り畳みの `ResizeObserver` 未実装（幅変化時のtextarea高さ再計算）
-- `app/api/arena/route.ts`の`callOpenAI`がgpt-5.5-pro用の`/v1/responses`分岐を実装しておらず、Arenaで選択すると失敗する（C-02として保留中）
 - **【新規・要確認】MCPサーバーの実装状況が資料と食い違っている**（「次に実装予定」に記載があるが、`app/api/mcp-tokens/route.ts` 等が既に存在。詳細未確認）
 
 ---
@@ -511,9 +504,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 **KabeHub MCPサーバー**（Phase 4完了後、と資料上はなっているが実装状況要再確認）
 - `mcp_tokens` テーブル追加・`/settings` にトークン発行UI・`kabehub-mcp` npm公開
 - ⚠️ 上記「既知の課題」参照。ルートファイルが既に存在するため、この項目自体の現状把握が最優先
-
-**技術負債**
-- `app/api/arena/route.ts`のgpt-5.5-pro対応（`/v1/responses`分岐の実装。C-02として保留中）
 
 ---
 
