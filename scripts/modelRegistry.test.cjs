@@ -46,6 +46,8 @@ const expectedLegacyModelConfig = {
       { id: "gemini-2.5-pro", label: "2.5 Pro", badge: "高性能" },
       { id: "gemini-3.5-flash", label: "3.5 Flash", badge: "高性能" },
       { id: "gemini-3.1-flash-lite", label: "3.1 Flash Lite", badge: "軽量・爆速" },
+      { id: "gemini-3.6-flash", label: "3.6 Flash", badge: "高性能" },
+      { id: "gemini-3.5-flash-lite", label: "3.5 Flash Lite", badge: "軽量・爆速" },
     ],
     defaultModel: "gemini-2.5-flash",
     lsKey: "kabehub_gemini_model",
@@ -58,6 +60,9 @@ const expectedLegacyModelConfig = {
       { id: "gpt-5.4", label: "GPT-5.4", badge: "高性能" },
       { id: "gpt-5.5", label: "GPT-5.5", badge: "最高精度" },
       { id: "gpt-5.5-pro", label: "GPT-5.5 Pro", badge: "最上位" },
+      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", badge: "最高精度" },
+      { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", badge: "高性能" },
+      { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", badge: "軽量・爆速" },
     ],
     defaultModel: "gpt-5.4-mini",
     lsKey: "kabehub_openai_model",
@@ -120,5 +125,18 @@ assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", intro), { input
 assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", regular), { inputPerMTok: 3, outputPerMTok: 15 });
 assert.equal(registry.getPricing("gemini/gemini-2.5-flash-image"), null);
 assert.deepEqual(registry.getPricing("claude-opus-4-8"), { inputPerMTok: 5, outputPerMTok: 25 });
+
+const newModels = [
+  ["openai", "gpt-5.6-sol", { inputPerMTok: 5, outputPerMTok: 30 }],
+  ["openai", "gpt-5.6-terra", { inputPerMTok: 2.5, outputPerMTok: 15 }],
+  ["openai", "gpt-5.6-luna", { inputPerMTok: 1, outputPerMTok: 6 }],
+  ["gemini", "gemini-3.6-flash", { inputPerMTok: 1.5, outputPerMTok: 7.5 }],
+  ["gemini", "gemini-3.5-flash-lite", { inputPerMTok: 0.3, outputPerMTok: 2.5 }],
+];
+for (const [provider, modelId, pricing] of newModels) {
+  assert.equal(registry.isAllowedModel(provider, modelId, "chat"), true, `${modelId}/chat`);
+  assert.equal(registry.isAllowedModel(provider, modelId, "arena"), true, `${modelId}/arena`);
+  assert.deepEqual(registry.getPricing(modelId), pricing, `${modelId}/pricing`);
+}
 
 console.log("modelRegistry tests passed");
