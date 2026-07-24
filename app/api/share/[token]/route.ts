@@ -5,10 +5,8 @@ import { serviceRoleClient } from "@/lib/mcp-auth";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { maskSecretNotation } from "@/lib/stringUtils";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { token: string } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const adminSupabase = serviceRoleClient();

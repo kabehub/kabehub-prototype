@@ -4,16 +4,17 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import ProfilePage from './ProfilePage'
 
 type Props = {
-  params: { handle: string }
+  params: Promise<{ handle: string }>
 }
 
 // ✅v32: 動的OGP
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const rawHandle = params?.handle
   if (!rawHandle) return { title: 'KabeHub' }
 
   const handle = rawHandle.replace(/^@/, '').toLowerCase()
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -41,12 +42,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default async function Page({ params }: Props) {
+export default async function Page(props: Props) {
+  const params = await props.params;
   const rawHandle = params?.handle
   if (!rawHandle) notFound()
 
   const handle = rawHandle.replace(/^@/, '').toLowerCase()
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   // プロフィール取得
   const { data: profile } = await supabase

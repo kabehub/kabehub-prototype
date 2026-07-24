@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, use } from "react";
 import { Message, Thread } from "@/types";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 
@@ -17,7 +17,8 @@ function ProviderLabel({ provider }: { provider: string }) {
   if (provider === "gemini") return (
     <span style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#0369a1", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: "4px", padding: "1px 6px" }}>Gemini</span>
   );
-  if (provider === "openai") return (  // ← 追加
+  if (provider === "openai") return (
+    // ← 追加
     <span style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "#16a34a", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "4px", padding: "1px 6px" }}>ChatGPT</span>
   );
   return (
@@ -88,7 +89,8 @@ function ReadOnlyBubble({ message }: { message: Message }) {
   );
 }
 
-export default function SharePage({ params }: { params: { token: string } }) {
+export default function SharePage(props: { params: Promise<{ token: string }> }) {
+  const params = use(props.params);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<ShareData | null>(null);
   const [error, setError] = useState<"notfound" | "error" | null>(null);

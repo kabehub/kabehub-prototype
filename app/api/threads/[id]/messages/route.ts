@@ -5,10 +5,8 @@ import {
   removeStoragePaths,
 } from "@/lib/supabase/storage-cleanup";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();
@@ -34,10 +32,8 @@ export async function GET(
 }
 
 // 指定メッセージ以降を全部削除
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();

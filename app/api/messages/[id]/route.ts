@@ -3,10 +3,8 @@ import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 import { removeStoragePaths } from "@/lib/supabase/storage-cleanup";
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();
@@ -58,10 +56,8 @@ export async function DELETE(
 
 // ── PATCH /api/messages/[id] ─────────────────────────────────────
 // content の部分更新 と is_hidden フラグの切り替えに使用
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();

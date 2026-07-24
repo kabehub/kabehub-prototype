@@ -6,10 +6,8 @@ import {
 } from "@/lib/supabase/storage-cleanup";
 import { v4 as uuidv4 } from "uuid";
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();
@@ -81,10 +79,8 @@ export async function DELETE(
   return NextResponse.json({ success: true });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();

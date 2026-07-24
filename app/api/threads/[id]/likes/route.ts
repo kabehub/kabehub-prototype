@@ -4,10 +4,8 @@ import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 export const dynamic = "force-dynamic";
 
 // POST: いいね追加
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
 
@@ -85,10 +83,8 @@ export async function POST(
 }
 
 // DELETE: いいね解除
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
 

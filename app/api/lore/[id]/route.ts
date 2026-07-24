@@ -6,10 +6,8 @@ import type { LorePatchRequest } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = new Response();
   const supabase = createRouteHandlerSupabaseClient(req, res as never);
   const {

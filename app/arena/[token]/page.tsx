@@ -19,11 +19,12 @@ async function fetchArenaData(token: string) {
 
 // ── 動的OGP ──────────────────────────────────────────────────────
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { token: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ token: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const data = await fetchArenaData(params.token);
 
   if (!data?.thread) {
@@ -62,11 +63,12 @@ export async function generateMetadata({
 
 // ── ページ ────────────────────────────────────────────────────────
 
-export default async function ArenaTokenPage({
-  params,
-}: {
-  params: { token: string };
-}) {
+export default async function ArenaTokenPage(
+  props: {
+    params: Promise<{ token: string }>;
+  }
+) {
+  const params = await props.params;
   const data = await fetchArenaData(params.token);
 
   if (!data?.thread) {

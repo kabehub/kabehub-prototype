@@ -5,8 +5,9 @@ import { removeStoragePaths } from "@/lib/supabase/storage-cleanup";
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string; messageId: string } }
+  props: { params: Promise<{ id: string; messageId: string }> }
 ) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();
@@ -61,8 +62,9 @@ export async function DELETE(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; messageId: string } }
+  props: { params: Promise<{ id: string; messageId: string }> }
 ) {
+  const params = await props.params;
   const res = NextResponse.next();
   const supabase = createRouteHandlerSupabaseClient(req, res);
   const { data: { user } } = await supabase.auth.getUser();

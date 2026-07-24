@@ -23,10 +23,8 @@ async function checkMcpLimitResponse(userId: string): Promise<NextResponse | nul
   )
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await authenticateMcpToken(req)
   if (!userId) return NextResponse.json(
     { error: 'Unauthorized', hint: 'Use https://www.kabehub.com as the base URL for API requests.' },
@@ -57,10 +55,8 @@ export async function GET(
   return NextResponse.json({ messages: data })
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await authenticateMcpToken(req)
   if (!userId) return NextResponse.json(
     { error: 'Unauthorized', hint: 'Use https://www.kabehub.com as the base URL for API requests.' },

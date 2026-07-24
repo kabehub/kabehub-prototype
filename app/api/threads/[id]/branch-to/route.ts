@@ -9,10 +9,8 @@ import {
 } from '@/lib/branching'
 import { Message } from '@/types'
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = createRouteHandlerSupabaseClient(req, new NextResponse())
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
