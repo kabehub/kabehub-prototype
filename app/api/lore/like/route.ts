@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
-import { createEmbedding } from "@/lib/lore/openai";
+import { AiProviderRequestError, createEmbedding } from "@/lib/lore/openai";
 import { LIKED_AI_DEFAULTS } from "@/lib/lore/types";
 
 export const dynamic = "force-dynamic";
@@ -48,11 +48,18 @@ export async function POST(req: NextRequest) {
 
   let embedding: number[];
   try {
-    embedding = await createEmbedding(openaiKey, message.content, { apiErrorMode: "provider" });
+    embedding = await createEmbedding(openaiKey, message.content);
   } catch (err) {
+    const status = err instanceof AiProviderRequestError ? (err.status ?? 502) : 502;
+    console.error("[lore/like] provider API request failed", {
+      provider: "openai",
+      status: err instanceof AiProviderRequestError ? err.status : null,
+      errorCode: err instanceof AiProviderRequestError ? err.errorCode : "UPSTREAM_RESPONSE_INVALID",
+      errorType: err instanceof Error ? err.name : "unknown",
+    });
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Embedding API error" },
-      { status: 500 },
+      { error: "OpenAI APIへのリクエストに失敗しました", provider: "openai", status },
+      { status },
     );
   }
 

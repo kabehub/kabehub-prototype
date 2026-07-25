@@ -21,6 +21,9 @@ type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string;
 type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
 type BranchMeta = { branch_root_id: string; branch_index: number; parent_id: string };
+type ChatProvider = "claude" | "gemini" | "openai";
+
+class ReportedProviderError extends Error {}
 
 const dropTrailingDuplicateUser = (
   source: ChatMessage[],
@@ -73,14 +76,32 @@ function stripLegacyAssistantLabelPrefix(content: string): string {
   return content.replace(/^(\s*\[.*?\]\s*)+/, "");
 }
 
-async function safeParseApiError(response: Response, fallbackMessage: string): Promise<string> {
-  const text = await response.text();
-  try {
-    const parsed = JSON.parse(text);
-    return parsed.error?.message ?? fallbackMessage;
-  } catch {
-    return `${fallbackMessage} (status ${response.status} ${response.statusText})`;
-  }
+function providerApiError(
+  provider: ChatProvider,
+  providerLabel: string,
+  status: number,
+): ReportedProviderError {
+  console.error("[chat] provider API error", {
+    provider,
+    status,
+    errorCode: "UPSTREAM_API_ERROR",
+  });
+  return new ReportedProviderError(`${providerLabel} APIへのリクエストに失敗しました`);
+}
+
+function normalizeProviderError(
+  provider: ChatProvider,
+  providerLabel: string,
+  error: unknown,
+): Error {
+  if (error instanceof ReportedProviderError) return error;
+  console.error("[chat] provider API request failed", {
+    provider,
+    status: null,
+    errorCode: "UPSTREAM_REQUEST_FAILED",
+    errorType: error instanceof Error ? error.name : "unknown",
+  });
+  return new Error(`${providerLabel} APIへのリクエストに失敗しました`);
 }
 
 // ✅ S19 #18: 3プロバイダ共通のSSE読み取りループ。
@@ -195,7 +216,7 @@ function streamClaude(
         });
 
         if (!response.ok) {
-          throw new Error(await safeParseApiError(response, "Claude API error"));
+          throw providerApiError("claude", "Claude", response.status);
         }
 
         let inputTokens: number | null = null;
@@ -240,7 +261,7 @@ function streamClaude(
           // AbortErrorはキャンセル扱い（エラーとして伝播させない）
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
           if ((err as Error).name !== "AbortError") {
-            controller.error(err);
+            controller.error(normalizeProviderError("claude", "Claude", err));
           } else {
             controller.close();
           }
@@ -248,7 +269,7 @@ function streamClaude(
       } catch (err) {
         // fetch失敗など外側のエラー
         if ((err as Error).name !== "AbortError") {
-          controller.error(err);
+          controller.error(normalizeProviderError("claude", "Claude", err));
         } else {
           controller.close();
         }
@@ -292,7 +313,7 @@ function streamGemini(
         );
 
         if (!response.ok) {
-          throw new Error(await safeParseApiError(response, "Gemini API error"));
+          throw providerApiError("gemini", "Gemini", response.status);
         }
 
         let inputTokens: number | null = null;
@@ -315,14 +336,14 @@ function streamGemini(
         } catch (err) {
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
           if ((err as Error).name !== "AbortError") {
-            controller.error(err);
+            controller.error(normalizeProviderError("gemini", "Gemini", err));
           } else {
             controller.close();
           }
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
-          controller.error(err);
+          controller.error(normalizeProviderError("gemini", "Gemini", err));
         } else {
           controller.close();
         }
@@ -373,7 +394,7 @@ function streamOpenAI(
             signal,
           });
           if (!res.ok) {
-            throw new Error(await safeParseApiError(res, "OpenAI Responses API error"));
+            throw providerApiError("openai", "OpenAI", res.status);
           }
           const data = await res.json();
           const text = data.output
@@ -398,7 +419,7 @@ function streamOpenAI(
         });
 
         if (!response.ok) {
-          throw new Error(await safeParseApiError(response, "OpenAI API error"));
+          throw providerApiError("openai", "OpenAI", response.status);
         }
 
         let inputTokens: number | null = null;
@@ -421,14 +442,14 @@ function streamOpenAI(
         } catch (err) {
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
           if ((err as Error).name !== "AbortError") {
-            controller.error(err);
+            controller.error(normalizeProviderError("openai", "OpenAI", err));
           } else {
             controller.close();
           }
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
-          controller.error(err);
+          controller.error(normalizeProviderError("openai", "OpenAI", err));
         } else {
           controller.close();
         }
@@ -1525,7 +1546,10 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
           dbSaved = true;
           console.log("[waitUntil] フォールバック保存成功");
         } else {
-          console.error("[waitUntil] フォールバック保存失敗:", await res.text());
+          console.error("[waitUntil] フォールバック保存失敗", {
+            status: res.status,
+            errorCode: "DB_FALLBACK_SAVE_FAILED",
+          });
         }
       } else {
         console.error("[waitUntil] SUPABASE_SERVICE_ROLE_KEY 未設定のためフォールバック不可");

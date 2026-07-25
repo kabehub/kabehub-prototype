@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
-import { createEmbedding } from "@/lib/lore/openai";
+import { AiProviderRequestError, createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = 'force-dynamic';
 
@@ -22,12 +22,19 @@ export async function POST(req: NextRequest) {
   for (const chunk of chunks) {
     const chunkText = chunk.text as string;
     try {
-      const embedding = await createEmbedding(openaiKey, chunkText, { apiErrorMode: "provider" });
+      const embedding = await createEmbedding(openaiKey, chunkText);
       embeddedChunks.push({ chunkText, embedding });
     } catch (err) {
+      const status = err instanceof AiProviderRequestError ? (err.status ?? 502) : 502;
+      console.error("[lore/embed] provider API request failed", {
+        provider: "openai",
+        status: err instanceof AiProviderRequestError ? err.status : null,
+        errorCode: err instanceof AiProviderRequestError ? err.errorCode : "UPSTREAM_RESPONSE_INVALID",
+        errorType: err instanceof Error ? err.name : "unknown",
+      });
       return NextResponse.json(
-        { error: err instanceof Error ? err.message : "Embedding API error" },
-        { status: 500 },
+        { error: "OpenAI APIへのリクエストに失敗しました", provider: "openai", status },
+        { status },
       );
     }
     await new Promise(resolve => setTimeout(resolve, 200));

@@ -361,6 +361,15 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | RAG発火条件の二重管理 | `app/api/chat/route.ts` 内に `shouldSearchRagMemory`（キーワードベース・`RAG_TRIGGER_KEYWORDS`）と `MEMORY_TRIGGER_PATTERN`（正規表現）の2種類の発火判定ロジックが存在。片方だけ変更すると挙動が乖離するおそれあり |
 | Supabase スキーマキャッシュ | RPC追加・変更後にAPIから `schema cache` エラーが出たら `NOTIFY pgrst, 'reload schema';` を実行 |
 
+### BYOK APIキー関連（H-21）
+
+- **リスク受容**: APIキーはLocalStorageに平文保存され、同一オリジンでXSSが発生した場合は生キーが読み取られうる。B-05aのCSP強制化（Enforce切替後）により発生確率は下がるが、許可済みスクリプトの侵害等に対する完全な防御ではない。本リスクは受容し、H-21はリスク受容＋H-21Cへの将来移管としてクローズする
+- **CSPの現状**: 現在はReport-Only運用中。Enforce切替はB-05aの別運用タスクであり、APIキー経路修正と混同しない
+- **送受信経路**: `docs/api-key-flow-inventory.md`を正とし、固定件数ではなく横断grep結果に追随して更新する
+- **Gemini外部転送**: KabeHubからGoogle APIへは`x-goog-api-key`を使う。URLクエリ`?key=...`へ戻さない
+- **H-21C（未着手・将来検討）**: BYOK資格情報の任意暗号化同期・複数端末対応。ローカル保存は廃止せずオプトイン同期とし、既存LocalStorageキーは明示操作でのみ移行する。生キーをブラウザへ返すAPIは作らず、登録・置換・削除だけを提供する
+- **H-21C暗号化候補**: ①AWS/GCP KMS＋Vercel OIDC Federation、②AES-256-GCM＋Vercel Sensitive Environment Variable、③Supabase Vaultの順で検討する。生キー窃取とKabeHub経由の不正利用を分けて脅威モデル化し、規約改訂・明示同意を必須とする。Capacitorモバイル化前に再評価する
+
 ### チャット・UI関連
 
 | 地雷 | 説明 |

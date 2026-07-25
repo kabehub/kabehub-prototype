@@ -72,6 +72,7 @@ ${combined}`;
         JSON.stringify({ type: "meta", totalChars, estimatedTokens }) + "\n"
       ));
 
+      let upstreamStatus: number | null = null;
       try {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
@@ -79,8 +80,8 @@ ${combined}`;
         );
 
         if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error?.message ?? "Gemini API error");
+          upstreamStatus = response.status;
+          throw new Error("Gemini APIへのリクエストに失敗しました");
         }
 
         const reader = response.body!.getReader();
@@ -118,9 +119,14 @@ ${combined}`;
         ));
         controller.close();
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "不明なエラー";
+        console.error("[novel-check] provider API request failed", {
+          provider: "gemini",
+          status: upstreamStatus,
+          errorCode: upstreamStatus === null ? "UPSTREAM_REQUEST_FAILED" : "UPSTREAM_API_ERROR",
+          errorType: err instanceof Error ? err.name : "unknown",
+        });
         controller.enqueue(encoder.encode(
-          JSON.stringify({ type: "chunk", text: `\n\n（エラー: ${msg}）` }) + "\n"
+          JSON.stringify({ type: "chunk", text: "\n\n（エラー: Gemini APIへのリクエストに失敗しました）" }) + "\n"
         ));
         controller.enqueue(encoder.encode(
           JSON.stringify({ type: "done", aborted: true }) + "\n"

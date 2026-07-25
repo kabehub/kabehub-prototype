@@ -54,7 +54,7 @@ export default function PrivacyPage() {
       <section>
         <h2>4. APIキーの取り扱い</h2>
         <p>
-          セルフプランをご利用のユーザーがAIプロバイダー（Anthropic・Google・OpenAI）のAPIキーを設定する場合、当該APIキーはユーザー自身のブラウザのLocalStorageにのみ保存されます。<strong>当社のサーバーはAPIキーを収集・保存・処理しません。</strong>APIキーの管理はユーザーの責任において行ってください。
+          セルフプランをご利用のユーザーがAIプロバイダー（Anthropic・Google・OpenAI・Ideogram・OpenRouter）のAPIキーを設定する場合、当該APIキーはユーザー自身のブラウザのLocalStorageに保存されます。AI機能のご利用時には、選択したAIプロバイダーへのリクエスト中継のため当社サーバーへ一時的に送信されますが、当社はAPIキーをKabeHubのアプリケーションデータベースへ永続保存せず、意図的にログへ記録しません。APIキーの管理はユーザーの責任において行ってください。
         </p>
       </section>
 

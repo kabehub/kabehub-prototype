@@ -51,7 +51,7 @@ export default function TermsPage() {
       <section>
         <h2>第6条（APIキーの管理）</h2>
         <p>
-          セルフプランを利用するユーザーは、各AIプロバイダーのAPIキーをご自身のブラウザのLocalStorageに保存します。当社のサーバーはAPIキーを収集・保存しません。APIキーの漏洩・不正利用についての責任はユーザー自身が負うものとします。
+          セルフプランを利用するユーザーは、各AIプロバイダー（Anthropic・Google・OpenAI・Ideogram・OpenRouter）のAPIキーをご自身のブラウザのLocalStorageに保存します。AI機能のご利用時には、選択したAIプロバイダーへのリクエスト中継のため当社サーバーへ一時的に送信されますが、当社はAPIキーをKabeHubのアプリケーションデータベースへ永続保存しません。APIキーの漏洩・不正利用についての責任はユーザー自身が負うものとします。
         </p>
       </section>
 

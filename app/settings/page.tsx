@@ -562,7 +562,7 @@ function SettingsContent() {
               APIキー・モデル設定
             </h2>
             <p className="text-xs text-gray-600 mt-1">
-              キーはこのブラウザのローカルストレージに保存されます。KabeHubのサーバーには送信されません。
+              キーはこのブラウザのLocalStorageに保存されます。AI機能の利用時には、選択したAIプロバイダーへリクエストを中継するため、暗号化された通信を通じてKabeHubのサーバーへ一時的に送信されます。KabeHubはAPIキーをアプリケーションのデータベースへ永続保存せず、アプリケーションログへ意図的に記録しません。
             </p>
           </div>
 

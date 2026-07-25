@@ -31,7 +31,7 @@ async function test(name, fn) {
 }
 
 function response(ok, data) {
-  return { ok, json: async () => data };
+  return { ok, status: ok ? 200 : 400, json: async () => data };
 }
 
 async function rejectsMessage(promise, message) {
@@ -65,34 +65,18 @@ async function rejectsMessage(promise, message) {
 
   await test("createEmbedding uses the generic HTTP error by default", async () => {
     global.fetch = async () => response(false, { error: { message: "provider detail" } });
-    await rejectsMessage(createEmbedding("key", "input"), "Embedding API error");
+    await rejectsMessage(createEmbedding("key", "input"), "OpenAI APIへのリクエストに失敗しました");
   });
 
-  await test("createEmbedding exposes provider error when requested", async () => {
+  await test("createEmbedding never exposes provider error bodies", async () => {
     global.fetch = async () => response(false, { error: { message: "provider detail" } });
-    await rejectsMessage(
-      createEmbedding("key", "input", { apiErrorMode: "provider" }),
-      "provider detail",
-    );
+    await rejectsMessage(createEmbedding("key", "input"), "OpenAI APIへのリクエストに失敗しました");
   });
 
-  await test("createEmbedding falls back for invalid provider error bodies", async () => {
-    for (const failedResponse of [
-      { ok: false, json: async () => { throw new SyntaxError("invalid JSON"); } },
-      response(false, { error: {} }),
-    ]) {
-      global.fetch = async () => failedResponse;
-      await rejectsMessage(
-        createEmbedding("key", "input", { apiErrorMode: "provider" }),
-        "Embedding API error",
-      );
-    }
-  });
-
-  await test("createEmbedding rejects missing or malformed embeddings", async () => {
+  await test("createEmbedding uses a fixed error for missing or malformed embeddings", async () => {
     for (const data of [{}, { data: [{ embedding: "not an array" }] }]) {
       global.fetch = async () => response(true, data);
-      await rejectsMessage(createEmbedding("key", "input"), "Missing embedding");
+      await rejectsMessage(createEmbedding("key", "input"), "OpenAI APIへのリクエストに失敗しました");
     }
   });
 
@@ -119,7 +103,7 @@ async function rejectsMessage(promise, message) {
 
   await test("chatCompleteMini throws the expected HTTP error", async () => {
     global.fetch = async () => response(false, {});
-    await rejectsMessage(chatCompleteMini("key", "system", "user"), "Chat Completions API error");
+    await rejectsMessage(chatCompleteMini("key", "system", "user"), "OpenAI APIへのリクエストに失敗しました");
   });
 
   await test("chatCompleteMini returns null for non-string content", async () => {

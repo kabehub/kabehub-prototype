@@ -156,7 +156,6 @@ export default function NovelCheckPage() {
 
       const sharedHeaders: Record<string, string> = {
         "Content-Type": "application/json",
-        ...(geminiKey ? { "x-gemini-api-key": geminiKey } : {}),
       };
 
       // チェック実行メタデータをメモとして保存

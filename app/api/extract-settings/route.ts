@@ -61,6 +61,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'API key is required (x-anthropic-api-key, x-gemini-api-key, or x-openai-api-key)' }, { status: 400 })
   }
 
+  function providerFailure(providerId: 'claude' | 'gemini' | 'openai', providerLabel: string, status: number) {
+    console.error('[extract-settings] provider API error', {
+      provider: providerId,
+      status,
+      errorCode: 'UPSTREAM_API_ERROR',
+    })
+    return NextResponse.json(
+      {
+        error: `${providerLabel} APIへのリクエストに失敗しました`,
+        provider: providerId,
+        status,
+      },
+      { status },
+    )
+  }
+
   function normalizeMessageRole(role: string): 'user' | 'assistant' | 'other' {
     return role === 'user' || role === 'assistant' ? role : 'other'
   }
@@ -117,9 +133,7 @@ export async function POST(req: NextRequest) {
         }),
       })
       if (!res.ok) {
-        const errText = await res.text()
-        console.error('[extract-settings] Claude API error:', res.status, errText)
-        return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+        return providerFailure('claude', 'Claude', res.status)
       }
       const data = await res.json()
       rawText = data.content[0].text
@@ -137,9 +151,7 @@ export async function POST(req: NextRequest) {
         }
       )
       if (!res.ok) {
-        const errText = await res.text()
-        console.error('[extract-settings] Gemini API error:', res.status, errText)
-        return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+        return providerFailure('gemini', 'Gemini', res.status)
       }
       const data = await res.json()
       rawText = data.candidates[0].content.parts[0].text
@@ -160,9 +172,7 @@ export async function POST(req: NextRequest) {
         }),
       })
       if (!res.ok) {
-        const errText = await res.text()
-        console.error('[extract-settings] OpenAI API error:', res.status, errText)
-        return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+        return providerFailure('openai', 'OpenAI', res.status)
       }
       const data = await res.json()
       rawText = data.choices[0].message.content
@@ -178,8 +188,10 @@ export async function POST(req: NextRequest) {
     try {
       parsed = JSON.parse(cleanText)
     } catch (parseErr) {
-      console.error('[extract-settings] JSONパース失敗:', parseErr)
-      console.error('[extract-settings] cleanText 全文:', cleanText)
+      console.error('[extract-settings] JSON parse failed', {
+        provider,
+        errorType: parseErr instanceof Error ? parseErr.name : 'unknown',
+      })
       return NextResponse.json({ error: 'parse_error' }, { status: 500 })
     }
 
@@ -201,7 +213,18 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(parsed)
   } catch (err) {
-    console.error('[extract-settings] エラー:', err)
-    return NextResponse.json({ error: 'extract_failed' }, { status: 500 })
+    console.error('[extract-settings] request failed', {
+      provider,
+      errorType: err instanceof Error ? err.name : 'unknown',
+    })
+    const providerLabel = provider === 'claude' ? 'Claude' : provider === 'gemini' ? 'Gemini' : 'OpenAI'
+    return NextResponse.json(
+      {
+        error: `${providerLabel} APIへのリクエストに失敗しました`,
+        provider,
+        status: 502,
+      },
+      { status: 502 },
+    )
   }
 }

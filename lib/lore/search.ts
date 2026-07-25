@@ -44,7 +44,7 @@ export async function embedQuery(
   signal: AbortSignal,
 ): Promise<number[] | null> {
   try {
-    return await createEmbedding(openaiKey, query, { signal, apiErrorMode: "provider" });
+    return await createEmbedding(openaiKey, query, { signal });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") throw err;
     const message = err instanceof Error ? err.message : String(err);

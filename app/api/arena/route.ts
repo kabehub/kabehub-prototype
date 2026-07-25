@@ -7,6 +7,55 @@ import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 export const dynamic = "force-dynamic";
 
 type ChatMessage = { role: string; content: string; provider?: string };
+type ArenaProvider = "claude" | "gemini" | "openai";
+
+const PROVIDER_LABELS: Record<ArenaProvider, string> = {
+  claude: "Claude",
+  gemini: "Gemini",
+  openai: "OpenAI",
+};
+
+async function fetchProvider(
+  provider: ArenaProvider,
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch {
+    console.error("[arena] provider API request failed", {
+      provider,
+      status: null,
+      errorCode: "UPSTREAM_REQUEST_FAILED",
+    });
+    throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
+  }
+
+  if (!response.ok) {
+    console.error("[arena] provider API error", {
+      provider,
+      status: response.status,
+      errorCode: "UPSTREAM_API_ERROR",
+    });
+    throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
+  }
+
+  return response;
+}
+
+async function readProviderJson(provider: ArenaProvider, response: Response): Promise<any> {
+  try {
+    return await response.json();
+  } catch {
+    console.error("[arena] invalid provider API response", {
+      provider,
+      status: response.status,
+      errorCode: "UPSTREAM_RESPONSE_INVALID",
+    });
+    throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
+  }
+}
 
 // デフォルトモデル（modelIdが未指定の場合のフォールバック）
 const DEFAULT_MODELS: Record<string, ModelId> = {
@@ -34,13 +83,12 @@ async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
   if (systemPrompt?.trim()) body.system = systemPrompt.trim();
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchProvider("claude", "https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message ?? "Claude API error");
+  const data = await readProviderJson("claude", res);
   return data.content?.[0]?.text ?? "（応答の取得に失敗しました）";
 }
 
@@ -51,12 +99,16 @@ async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?
   }));
   const body: Record<string, unknown> = { contents };
   if (systemPrompt?.trim()) body.systemInstruction = { parts: [{ text: systemPrompt.trim() }] };
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+  const res = await fetchProvider(
+    "gemini",
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify(body),
+    },
   );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message ?? "Gemini API error");
+  const data = await readProviderJson("gemini", res);
   const parts = data.candidates?.[0]?.content?.parts;
   const text = Array.isArray(parts)
     ? parts
@@ -73,13 +125,12 @@ async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt?
   msgs.push(...messages.map((m) => ({ role: m.role, content: m.content })));
 
   if (modelId === "gpt-5.5-pro") {
-    const res = await fetch("https://api.openai.com/v1/responses", {
+    const res = await fetchProvider("openai", "https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model: modelId, input: msgs, max_output_tokens: 8192, store: false }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message ?? "OpenAI Responses API error");
+    const data = await readProviderJson("openai", res);
     const text = data.output
       ?.flatMap((output: { content?: { type: string; text: string }[] }) => output.content ?? [])
       .filter((content: { type: string }) => content.type === "output_text")
@@ -88,13 +139,12 @@ async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt?
     return text || "（応答の取得に失敗しました）";
   }
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetchProvider("openai", "https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model: modelId, messages: msgs }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message ?? "OpenAI API error");
+  const data = await readProviderJson("openai", res);
   return data.choices?.[0]?.message?.content ?? "（応答の取得に失敗しました）";
 }
 

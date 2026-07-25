@@ -118,7 +118,7 @@ function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCar
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
+          ...(patchBody.action === "update_text" ? { "x-openai-api-key": openaiKey } : {}),
         },
         body: JSON.stringify(patchBody),
       });

@@ -1,43 +1,65 @@
 import { LORE_EMBEDDING_MODEL, LORE_CHAT_MODEL } from "../internalModels";
 
-type ApiErrorMode = "generic" | "provider";
+export class AiProviderRequestError extends Error {
+  readonly provider = "openai";
+
+  constructor(
+    readonly status: number | null,
+    readonly errorCode: "UPSTREAM_API_ERROR" | "UPSTREAM_REQUEST_FAILED" | "UPSTREAM_RESPONSE_INVALID",
+  ) {
+    super("OpenAI APIへのリクエストに失敗しました");
+    this.name = "AiProviderRequestError";
+  }
+}
+
+function providerRequestError(
+  status: number | null,
+  errorCode: "UPSTREAM_API_ERROR" | "UPSTREAM_REQUEST_FAILED" | "UPSTREAM_RESPONSE_INVALID",
+): AiProviderRequestError {
+  console.error("[lore/openai] provider API request failed", {
+    provider: "openai",
+    status,
+    errorCode,
+  });
+  return new AiProviderRequestError(status, errorCode);
+}
 
 export async function createEmbedding(
   openaiKey: string,
   input: string,
-  opts?: { signal?: AbortSignal; apiErrorMode?: ApiErrorMode },
+  opts?: { signal?: AbortSignal },
 ): Promise<number[]> {
-  const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({ model: LORE_EMBEDDING_MODEL, input }),
-    signal: opts?.signal,
-  });
+  let embRes: Response;
+  try {
+    embRes = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({ model: LORE_EMBEDDING_MODEL, input }),
+      signal: opts?.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    throw providerRequestError(null, "UPSTREAM_REQUEST_FAILED");
+  }
 
   if (!embRes.ok) {
-    if (opts?.apiErrorMode === "provider") {
-      const providerMessage = await readProviderErrorMessage(embRes);
-      throw new Error(providerMessage ?? "Embedding API error");
-    }
-    throw new Error("Embedding API error");
+    throw providerRequestError(embRes.status, "UPSTREAM_API_ERROR");
   }
 
-  const embData = await embRes.json();
-  const embedding = embData?.data?.[0]?.embedding;
-  if (!Array.isArray(embedding)) throw new Error("Missing embedding");
-  return embedding as number[];
-}
-
-async function readProviderErrorMessage(response: Response): Promise<string | null> {
+  let embData: any;
   try {
-    const data = await response.json();
-    return typeof data?.error?.message === "string" ? data.error.message : null;
+    embData = await embRes.json();
   } catch {
-    return null;
+    throw providerRequestError(embRes.status, "UPSTREAM_RESPONSE_INVALID");
   }
+  const embedding = embData?.data?.[0]?.embedding;
+  if (!Array.isArray(embedding)) {
+    throw providerRequestError(embRes.status, "UPSTREAM_RESPONSE_INVALID");
+  }
+  return embedding as number[];
 }
 
 export async function chatCompleteMini(
@@ -46,25 +68,35 @@ export async function chatCompleteMini(
   userContent: string,
   opts?: { jsonMode?: boolean },
 ): Promise<string | null> {
-  const llmRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({
-      model: LORE_CHAT_MODEL,
-      ...(opts?.jsonMode ? { response_format: { type: "json_object" } } : {}),
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-    }),
-  });
+  let llmRes: Response;
+  try {
+    llmRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: LORE_CHAT_MODEL,
+        ...(opts?.jsonMode ? { response_format: { type: "json_object" } } : {}),
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+      }),
+    });
+  } catch {
+    throw providerRequestError(null, "UPSTREAM_REQUEST_FAILED");
+  }
 
-  if (!llmRes.ok) throw new Error("Chat Completions API error");
+  if (!llmRes.ok) throw providerRequestError(llmRes.status, "UPSTREAM_API_ERROR");
 
-  const llmData = await llmRes.json();
+  let llmData: any;
+  try {
+    llmData = await llmRes.json();
+  } catch {
+    throw providerRequestError(llmRes.status, "UPSTREAM_RESPONSE_INVALID");
+  }
   const content = llmData?.choices?.[0]?.message?.content;
   return typeof content === "string" ? content : null;
 }

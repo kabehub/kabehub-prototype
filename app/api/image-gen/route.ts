@@ -7,21 +7,52 @@ import { isOwnedStoragePath } from '@/lib/storage-path-guard'
 import { getDefaultImageModel, isAllowedImageModel } from '@/lib/modelRegistry'
 
 type ImageResult = { imageData: string; mimeType: string }
-type HandlerResult = { result: ImageResult; error: null } | { result: null; error: string }
+type ImageProvider = 'gemini' | 'openai' | 'ideogram' | 'openrouter'
+type HandlerResult =
+  | { result: ImageResult; error: null }
+  | { result: null; error: string; provider: ImageProvider; status: number }
 type ImageInput = { base64: string; mimeType: string }
+
+const PROVIDER_LABELS: Record<ImageProvider, string> = {
+  gemini: 'Gemini',
+  openai: 'OpenAI',
+  ideogram: 'Ideogram',
+  openrouter: 'OpenRouter',
+}
+
+function handlerError(
+  provider: ImageProvider,
+  error: string,
+  status: number,
+): HandlerResult {
+  return { result: null, error, provider, status }
+}
+
+function upstreamError(provider: ImageProvider, status: number): HandlerResult {
+  console.error('[image-gen] provider API error', {
+    provider,
+    status,
+    errorCode: 'UPSTREAM_API_ERROR',
+  })
+  return handlerError(
+    provider,
+    `${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`,
+    status,
+  )
+}
 
 async function handleGemini(req: NextRequest, prompt: string, modelId: string | undefined, imageInput?: ImageInput): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-gemini-api-key')
   if (!apiKey) {
-    return { result: null, error: 'APIキーが設定されていません' }
+    return handlerError('gemini', 'APIキーが設定されていません', 400)
   }
 
   const geminiModel = modelId ?? getDefaultImageModel('gemini') ?? 'gemini-2.5-flash-image'
   if (!isAllowedImageModel('gemini', geminiModel)) {
-    return { result: null, error: '不正なモデルIDです' }
+    return handlerError('gemini', '不正なモデルIDです', 400)
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`
   const body = {
     contents: [{
       parts: [
@@ -34,20 +65,19 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
   })
 
   if (!res.ok) {
-    const err = await res.text()
-    return { result: null, error: `Gemini API エラー: ${err}` }
+    return upstreamError('gemini', res.status)
   }
 
   const data = await res.json()
   const parts = data?.candidates?.[0]?.content?.parts ?? []
   const imagePart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData)
   if (!imagePart) {
-    return { result: null, error: '画像データが返ってきませんでした' }
+    return handlerError('gemini', 'Gemini APIから画像データが返されませんでした', 502)
   }
 
   return {
@@ -61,11 +91,11 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
 
 async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: ImageInput): Promise<HandlerResult> {
   if (imageInput) {
-    return { result: null, error: 'OpenAIはimg2imgに非対応です' }
+    return handlerError('openai', 'OpenAIはimg2imgに非対応です', 400)
   }
   const apiKey = req.headers.get('x-openai-api-key')
   if (!apiKey) {
-    return { result: null, error: 'APIキーが設定されていません' }
+    return handlerError('openai', 'APIキーが設定されていません', 400)
   }
 
   const res = await fetch('https://api.openai.com/v1/images/generations', {
@@ -83,14 +113,13 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
   })
 
   if (!res.ok) {
-    const err = await res.text()
-    return { result: null, error: `OpenAI API エラー: ${err}` }
+    return upstreamError('openai', res.status)
   }
 
   const data = await res.json()
   const b64 = data?.data?.[0]?.b64_json
   if (!b64) {
-    return { result: null, error: '画像データが返ってきませんでした' }
+    return handlerError('openai', 'OpenAI APIから画像データが返されませんでした', 502)
   }
 
   return { result: { imageData: b64, mimeType: 'image/png' }, error: null }
@@ -99,7 +128,7 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
 async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: ImageInput): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-ideogram-api-key')
   if (!apiKey) {
-    return { result: null, error: 'APIキーが設定されていません' }
+    return handlerError('ideogram', 'APIキーが設定されていません', 400)
   }
 
   const formData = new FormData()
@@ -124,19 +153,18 @@ async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: Ima
   })
 
   if (!res.ok) {
-    const err = await res.text()
-    return { result: null, error: `Ideogram API エラー: ${err}` }
+    return upstreamError('ideogram', res.status)
   }
 
   const data = await res.json()
   const imageUrl = data?.data?.[0]?.url
   if (!imageUrl) {
-    return { result: null, error: '画像データが返ってきませんでした' }
+    return handlerError('ideogram', 'Ideogram APIから画像データが返されませんでした', 502)
   }
 
   const imgRes = await fetch(imageUrl)
   if (!imgRes.ok) {
-    return { result: null, error: '画像の取得に失敗しました' }
+    return upstreamError('ideogram', imgRes.status)
   }
 
   const arrayBuffer = await imgRes.arrayBuffer()
@@ -149,7 +177,7 @@ async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: Ima
 async function handleOpenRouter(req: NextRequest, prompt: string): Promise<HandlerResult> {
   const apiKey = req.headers.get('x-openrouter-api-key')
   if (!apiKey) {
-    return { result: null, error: 'APIキーが設定されていません' }
+    return handlerError('openrouter', 'APIキーが設定されていません', 400)
   }
 
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -166,14 +194,13 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
   })
 
   if (!res.ok) {
-    const err = await res.text()
-    return { result: null, error: `OpenRouter API エラー: ${err}` }
+    return upstreamError('openrouter', res.status)
   }
 
   const data = await res.json()
   const imageDataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url
   if (!imageDataUrl) {
-    return { result: null, error: '画像データが返ってきませんでした' }
+    return handlerError('openrouter', 'OpenRouter APIから画像データが返されませんでした', 502)
   }
 
   const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '')
@@ -244,16 +271,40 @@ export async function POST(req: NextRequest) {
   }
 
   let handlerResult: HandlerResult
-  switch (provider) {
-    case 'gemini':     handlerResult = await handleGemini(req, prompt, modelId, imageInput); break
-    case 'openai':     handlerResult = await handleOpenAI(req, prompt, imageInput); break
-    case 'ideogram':   handlerResult = await handleIdeogram(req, prompt, imageInput); break
-    case 'openrouter': handlerResult = await handleOpenRouter(req, prompt); break
-    default:           return NextResponse.json({ error: '不正なproviderです' }, { status: 400 })
+  try {
+    switch (provider) {
+      case 'gemini':     handlerResult = await handleGemini(req, prompt, modelId, imageInput); break
+      case 'openai':     handlerResult = await handleOpenAI(req, prompt, imageInput); break
+      case 'ideogram':   handlerResult = await handleIdeogram(req, prompt, imageInput); break
+      case 'openrouter': handlerResult = await handleOpenRouter(req, prompt); break
+      default:           return NextResponse.json({ error: '不正なproviderです' }, { status: 400 })
+    }
+  } catch {
+    const failedProvider = provider as ImageProvider
+    console.error('[image-gen] provider API request failed', {
+      provider: failedProvider,
+      status: null,
+      errorCode: 'UPSTREAM_REQUEST_FAILED',
+    })
+    return NextResponse.json(
+      {
+        error: `${PROVIDER_LABELS[failedProvider]} APIへのリクエストに失敗しました`,
+        provider: failedProvider,
+        status: 502,
+      },
+      { status: 502 },
+    )
   }
 
   if (handlerResult.error !== null) {
-    return NextResponse.json({ error: handlerResult.error }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: handlerResult.error,
+        provider: handlerResult.provider,
+        status: handlerResult.status,
+      },
+      { status: handlerResult.status },
+    )
   }
 
   const { imageData, mimeType } = handlerResult.result
