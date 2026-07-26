@@ -111,6 +111,17 @@ function assertReportOnlyCsp(response) {
   return value;
 }
 
+async function assertJsonUnauthorized(response) {
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.has("location"), false);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.match(
+    response.headers.get("content-type") ?? "",
+    /^application\/json\b/i
+  );
+  assert.deepEqual(await response.json(), { error: "Unauthorized" });
+}
+
 test("normal and prefetch root requests retain auth checks", async () => {
   assert.equal(matches("/"), true);
   const normal = await invoke("/", { setRefreshedCookie: true });
@@ -202,15 +213,12 @@ test("optional-auth explore API checks session without redirect", async () => {
   );
 });
 
-test("protected APIs return bodyless 401 for unauthenticated users", async () => {
+test("protected APIs return JSON 401 for unauthenticated users", async () => {
   for (const pathname of ["/api/chat", "/api/stats"]) {
     assert.equal(matches(pathname), true);
     const result = await invoke(pathname, { setRefreshedCookie: true });
     assert.equal(result.sessionCheckCount, 1);
-    assert.equal(result.response.status, 401);
-    assert.equal(result.response.headers.has("location"), false);
-    assert.equal(result.response.headers.get("cache-control"), "no-store");
-    assert.equal(await result.response.text(), "");
+    await assertJsonUnauthorized(result.response);
 
     const setCookie = result.response.headers.get("set-cookie") ?? "";
     assert.match(setCookie, /sb-refresh=updated/);
@@ -253,8 +261,7 @@ test("GitHub callback matcher and session-check exclusions share a path boundary
   assert.equal(matches(lookalike), true);
   const protectedResult = await invoke(lookalike);
   assert.equal(protectedResult.sessionCheckCount, 1);
-  assert.equal(protectedResult.response.status, 401);
-  assert.equal(protectedResult.response.headers.has("location"), false);
+  await assertJsonUnauthorized(protectedResult.response);
 });
 
 test("known broad MCP and share exclusions remain unchanged", async () => {

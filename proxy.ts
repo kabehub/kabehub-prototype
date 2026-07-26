@@ -159,12 +159,15 @@ export async function proxy(req: NextRequest) {
   };
 
   const unauthorizedApiResponse = () => {
-    const unauthorized = new NextResponse(null, {
-      status: 401,
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    });
+    const unauthorized = NextResponse.json(
+      { error: "Unauthorized" },
+      {
+        status: 401,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
     return finalizeWithCookies(unauthorized);
   };
 

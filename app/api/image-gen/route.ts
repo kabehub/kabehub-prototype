@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerSupabaseClient(req, supabaseRes)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
-    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const userId = user.id
 
