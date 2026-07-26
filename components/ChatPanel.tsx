@@ -430,6 +430,7 @@ export default function ChatPanel({
     setNotesLoading(true);
     try {
       const res = await fetch(`/api/threads/${threadId}/notes`, { cache: "no-store" });
+      if (!res.ok) throw new Error("メモ取得失敗");
       const data: ThreadNote[] = await res.json();
       setNotes(data);
     } catch (err) {
@@ -443,6 +444,7 @@ export default function ChatPanel({
     if (!threadId) return;
     try {
       const res = await fetch(`/api/threads/${threadId}/message-notes`, { cache: "no-store" });
+      if (!res.ok) throw new Error("メッセージノート取得失敗");
       const data: MessageNote[] = await res.json();
       setMessageNotes(data);
     } catch (err) {
@@ -455,6 +457,7 @@ export default function ChatPanel({
     setDraftsLoading(true);
     try {
       const res = await fetch(`/api/threads/${threadId}/drafts`, { cache: "no-store" });
+      if (!res.ok) throw new Error("下書き取得失敗");
       const data: Draft[] = await res.json();
       setDrafts(data);
     } catch (err) {
@@ -716,11 +719,14 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: clean }),
       });
+      if (!res.ok) throw new Error("タグ追加失敗");
       const data = await res.json();
       // 重複(duplicate: true)でなければstateに追加
       if (data && !data.duplicate && !data.error && data.id) {
         setTags((prev) => [...prev, data]);
       }
+    } catch (err) {
+      console.error("タグ追加失敗:", err);
     } finally {
       tagSubmittingRef.current = false;
     }
@@ -745,6 +751,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: newNoteContent.trim() }),
       });
+      if (!res.ok) throw new Error("メモ追加失敗");
       const note: ThreadNote = await res.json();
       setNotes((prev) => [...prev, note]);
       setNewNoteContent("");
@@ -761,6 +768,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, content: editingNoteContent.trim() }),
       });
+      if (!res.ok) throw new Error("メモ更新失敗");
       const updated: ThreadNote = await res.json();
       setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
       setEditingNoteId(null);
@@ -791,6 +799,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId, content }),
       });
+      if (!res.ok) throw new Error("メッセージノート追加失敗");
       const note: MessageNote = await res.json();
       setMessageNotes((prev) => [...prev, note]);
     } catch (err) {
@@ -820,6 +829,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: inputValue.trim() }),
       });
+      if (!res.ok) throw new Error("下書き保存失敗");
       const draft: Draft = await res.json();
       setDrafts((prev) => [draft, ...prev]);
       onInputChange("");

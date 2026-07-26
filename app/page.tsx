@@ -98,6 +98,7 @@ export default function Home() {
 
       try {
         const res = await fetch("/api/profile", { cache: "no-store" });
+        if (!res.ok) throw new Error("プロフィール取得失敗");
         const json = await res.json();
         if (!ignore) {
           setDisplayName(json.profile?.display_name?.trim() || null);
@@ -175,6 +176,7 @@ export default function Home() {
   const fetchThreads = useCallback(async () => {
     try {
       const res = await fetch("/api/threads", { cache: "no-store" });
+      if (!res.ok) throw new Error("スレッド一覧の取得失敗");
       const data: Thread[] = await res.json();
       setThreads(data);
       setDisplayThreads(data);
@@ -246,6 +248,7 @@ export default function Home() {
     setIsSearching(true);
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&target=${target}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("検索失敗");
       const data: (Thread & { matchedMessageIds?: string[] })[] = await res.json();
       setDisplayThreads(data);
     } catch (err) {
@@ -471,6 +474,10 @@ export default function Home() {
       signal: controller.signal,
     });
 
+    if (!res.ok) {
+      throw new Error("チャット応答取得失敗");
+    }
+
     // Content-Typeがapplication/json → エラーまたはメモ応答（非ストリーミング）
     const contentType = res.headers.get("Content-Type") ?? "";
     if (contentType.includes("application/json")) {
@@ -621,6 +628,7 @@ export default function Home() {
             attachedImages: attachedImages ?? [],
           }),
         });
+        if (!res.ok) throw new Error("一時送信失敗");
         const { assistantMessage } = await res.json();
         const tempAssistant: Message = {
           ...assistantMessage,
@@ -936,6 +944,7 @@ export default function Home() {
       } else {
         // isLastボタンから: DBから最新を取得（既存挙動を維持）
         const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+        if (!res.ok) throw new Error("再生成失敗");
         const latestMessages: Message[] = await res.json();
         const activeLatestMessages = latestMessages.filter(m => m.is_active !== false);
 
@@ -1079,6 +1088,7 @@ export default function Home() {
       }
 
       const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+      if (!res.ok) throw new Error("編集再生成失敗");
       const freshMessages: Message[] = await res.json();
       setMessages(freshMessages);
       await fetchThreads();
