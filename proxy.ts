@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { buildCspHeaderValue } from "@/lib/csp";
+import { isMcpBearerApi, isPublicShareReadApi } from "@/lib/proxy-paths";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 let supabaseHttpOrigin = "";
@@ -36,7 +37,10 @@ function isLoginPage(pathname: string): boolean {
   return pathname === "/login";
 }
 
-function shouldRunSupabaseSessionCheck(pathname: string): boolean {
+function shouldRunSupabaseSessionCheck(
+  pathname: string,
+  method: string
+): boolean {
   if (
     pathname === "/" ||
     pathname.startsWith("/settings/") ||
@@ -50,8 +54,8 @@ function shouldRunSupabaseSessionCheck(pathname: string): boolean {
 
   if (pathname.startsWith("/api/")) {
     if (
-      pathname.startsWith("/api/mcp") ||
-      pathname.startsWith("/api/share") ||
+      isMcpBearerApi(pathname) ||
+      isPublicShareReadApi(pathname, method) ||
       pathname === "/api/reports" ||
       pathname.startsWith("/api/reports/") ||
       pathname === "/api/auth/github/callback" ||
@@ -120,7 +124,10 @@ export async function proxy(req: NextRequest) {
     return target;
   };
 
-  const shouldRunSessionCheck = shouldRunSupabaseSessionCheck(pathname);
+  const shouldRunSessionCheck = shouldRunSupabaseSessionCheck(
+    pathname,
+    req.method
+  );
 
   if (!shouldRunSessionCheck) {
     return applyCsp(res);
@@ -206,6 +213,6 @@ export const config = {
     "/settings/:path*",
     "/login",
     "/admin/:path*",
-    "/api/((?!mcp|share|reports(?:/|$)|auth/github/callback(?:/|$)|cron/storage-cleanup(?:/|$)|csp-report(?:/|$)).*)",
+    "/api/((?!mcp(?:/|$)|reports(?:/|$)|auth/github/callback(?:/|$)|cron/storage-cleanup(?:/|$)|csp-report(?:/|$)).*)",
   ],
 };

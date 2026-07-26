@@ -74,6 +74,10 @@ const { NextRequest } = require("next/server");
 const {
   unstable_doesMiddlewareMatch: doesProxyMatch,
 } = require("next/experimental/testing/server");
+const {
+  isMcpBearerApi,
+  isPublicShareReadApi,
+} = require(path.join(__dirname, "..", "lib", "proxy-paths.ts"));
 const { config, proxy } = require(path.join(__dirname, "..", "proxy.ts"));
 
 const pendingTests = [];
@@ -82,6 +86,8 @@ function test(name, fn) {
   pendingTests.push({ name, fn });
 }
 
+// Next.js 16.2.11 の testing API は method を受け取らないため、
+// config.matcher の判定は pathname/headers のみ（method 非依存）で検証する。
 function matches(pathname, headers) {
   return doesProxyMatch({
     config,
@@ -96,6 +102,7 @@ async function invoke(pathname, options = {}) {
   sessionCheckCount = 0;
   setRefreshedCookie = options.setRefreshedCookie ?? false;
   const request = new NextRequest(`https://www.kabehub.com${pathname}`, {
+    method: options.method ?? "GET",
     headers: options.headers,
   });
   const response = await proxy(request);
@@ -121,6 +128,119 @@ async function assertJsonUnauthorized(response) {
   );
   assert.deepEqual(await response.json(), { error: "Unauthorized" });
 }
+
+test("MCP Bearer API uses a segment boundary", () => {
+  assert.equal(isMcpBearerApi("/api/mcp"), true);
+  assert.equal(isMcpBearerApi("/api/mcp/"), true);
+  assert.equal(isMcpBearerApi("/api/mcp/threads"), true);
+  assert.equal(isMcpBearerApi("/api/mcp-tokens"), false);
+  assert.equal(isMcpBearerApi("/api/mcpx"), false);
+});
+
+test("only public share read paths are session-exempt", () => {
+  assert.equal(isPublicShareReadApi("/api/share/abc", "GET"), true);
+  assert.equal(isPublicShareReadApi("/api/share/abc/", "HEAD"), true);
+  assert.equal(isPublicShareReadApi("/api/share/abc", "POST"), false);
+  assert.equal(isPublicShareReadApi("/api/share/abc/fork", "GET"), false);
+  assert.equal(isPublicShareReadApi("/api/share/abc/fork", "POST"), false);
+  assert.equal(isPublicShareReadApi("/api/share", "GET"), false);
+});
+
+test("MCP and share matcher/session boundaries match the specification", async () => {
+  const cases = [
+    {
+      pathname: "/api/mcp",
+      method: "GET",
+      matcherRuns: false,
+      sessionCheckRuns: false,
+    },
+    {
+      pathname: "/api/mcp/",
+      method: "GET",
+      matcherRuns: false,
+      sessionCheckRuns: false,
+    },
+    {
+      pathname: "/api/mcp/threads",
+      method: "GET",
+      matcherRuns: false,
+      sessionCheckRuns: false,
+    },
+    {
+      pathname: "/api/mcp-tokens",
+      method: "GET",
+      matcherRuns: true,
+      sessionCheckRuns: true,
+    },
+    {
+      pathname: "/api/mcpx",
+      method: "GET",
+      matcherRuns: true,
+      sessionCheckRuns: true,
+    },
+    {
+      pathname: "/api/share/abc",
+      method: "GET",
+      matcherRuns: true,
+      sessionCheckRuns: false,
+    },
+    {
+      pathname: "/api/share/abc/",
+      method: "GET",
+      matcherRuns: true,
+      sessionCheckRuns: false,
+    },
+    {
+      pathname: "/api/share/abc",
+      method: "POST",
+      matcherRuns: true,
+      sessionCheckRuns: true,
+    },
+    {
+      pathname: "/api/share/abc/fork",
+      method: "POST",
+      matcherRuns: true,
+      sessionCheckRuns: true,
+    },
+    {
+      pathname: "/api/share/abc/fork/",
+      method: "POST",
+      matcherRuns: true,
+      sessionCheckRuns: true,
+    },
+    {
+      pathname: "/api/share/abc/fork/x",
+      method: "GET",
+      matcherRuns: true,
+      sessionCheckRuns: true,
+    },
+    {
+      pathname: "/api/shared-something",
+      method: "GET",
+      matcherRuns: true,
+      sessionCheckRuns: true,
+    },
+  ];
+
+  for (const {
+    pathname,
+    method,
+    matcherRuns,
+    sessionCheckRuns,
+  } of cases) {
+    assert.equal(
+      matches(pathname),
+      matcherRuns,
+      `${method} ${pathname}: matcherRuns`
+    );
+    const result = await invoke(pathname, { method });
+    assert.equal(
+      result.sessionCheckCount,
+      sessionCheckRuns ? 1 : 0,
+      `${method} ${pathname}: sessionCheckRuns`
+    );
+  }
+});
 
 test("normal and prefetch root requests retain auth checks", async () => {
   assert.equal(matches("/"), true);
@@ -264,15 +384,35 @@ test("GitHub callback matcher and session-check exclusions share a path boundary
   await assertJsonUnauthorized(protectedResult.response);
 });
 
-test("known broad MCP and share exclusions remain unchanged", async () => {
-  for (const pathname of [
-    "/api/mcp-tokens",
-    "/api/share/example-token/fork",
+test("newly protected MCP token operations and share fork return JSON 401", async () => {
+  for (const { pathname, method } of [
+    { pathname: "/api/mcp-tokens", method: "GET" },
+    { pathname: "/api/mcp-tokens", method: "POST" },
+    { pathname: "/api/mcp-tokens", method: "DELETE" },
+    { pathname: "/api/share/abc/fork", method: "POST" },
   ]) {
-    assert.equal(matches(pathname), false);
-    const result = await invoke(pathname);
-    assert.equal(result.sessionCheckCount, 0);
+    assert.equal(matches(pathname), true);
+    const result = await invoke(pathname, { method });
+    assert.equal(result.sessionCheckCount, 1);
+    await assertJsonUnauthorized(result.response);
+  }
+});
+
+test("authenticated MCP token operations and share fork pass through the proxy", async () => {
+  for (const { pathname, method } of [
+    { pathname: "/api/mcp-tokens", method: "GET" },
+    { pathname: "/api/mcp-tokens", method: "POST" },
+    { pathname: "/api/mcp-tokens", method: "DELETE" },
+    { pathname: "/api/share/abc/fork", method: "POST" },
+  ]) {
+    assert.equal(matches(pathname), true);
+    const result = await invoke(pathname, {
+      method,
+      user: { id: "user-1" },
+    });
+    assert.equal(result.sessionCheckCount, 1);
     assert.equal(result.response.status, 200);
+    assert.equal(result.response.headers.has("location"), false);
   }
 });
 
