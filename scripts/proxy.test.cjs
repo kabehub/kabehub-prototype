@@ -202,15 +202,29 @@ test("optional-auth explore API checks session without redirect", async () => {
   );
 });
 
-test("protected APIs check session and redirect unauthenticated users", async () => {
+test("protected APIs return bodyless 401 for unauthenticated users", async () => {
+  for (const pathname of ["/api/chat", "/api/stats"]) {
+    assert.equal(matches(pathname), true);
+    const result = await invoke(pathname, { setRefreshedCookie: true });
+    assert.equal(result.sessionCheckCount, 1);
+    assert.equal(result.response.status, 401);
+    assert.equal(result.response.headers.has("location"), false);
+    assert.equal(result.response.headers.get("cache-control"), "no-store");
+    assert.equal(await result.response.text(), "");
+
+    const setCookie = result.response.headers.get("set-cookie") ?? "";
+    assert.match(setCookie, /sb-refresh=updated/);
+    assert.match(setCookie, /HttpOnly/i);
+    assert.match(setCookie, /Path=\//i);
+  }
+});
+
+test("authenticated protected API requests pass through the proxy", async () => {
   assert.equal(matches("/api/chat"), true);
-  const result = await invoke("/api/chat");
+  const result = await invoke("/api/chat", { user: { id: "user-1" } });
   assert.equal(result.sessionCheckCount, 1);
-  assert.equal(result.response.status, 307);
-  assert.equal(
-    result.response.headers.get("location"),
-    "https://www.kabehub.com/login?next=%2Fapi%2Fchat"
-  );
+  assert.equal(result.response.status, 200);
+  assert.equal(result.response.headers.has("location"), false);
 });
 
 test("CSP reports bypass CSP and Supabase auth", async () => {
@@ -239,7 +253,8 @@ test("GitHub callback matcher and session-check exclusions share a path boundary
   assert.equal(matches(lookalike), true);
   const protectedResult = await invoke(lookalike);
   assert.equal(protectedResult.sessionCheckCount, 1);
-  assert.equal(protectedResult.response.status, 307);
+  assert.equal(protectedResult.response.status, 401);
+  assert.equal(protectedResult.response.headers.has("location"), false);
 });
 
 test("known broad MCP and share exclusions remain unchanged", async () => {

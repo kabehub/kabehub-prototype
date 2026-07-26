@@ -147,12 +147,25 @@ export async function proxy(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const redirectWithCookies = (url: URL) => {
-    const redirect = NextResponse.redirect(url);
+  const finalizeWithCookies = (target: NextResponse) => {
     res.cookies.getAll().forEach((cookie) => {
-      redirect.cookies.set(cookie);
+      target.cookies.set(cookie);
     });
-    return applyCsp(redirect);
+    return applyCsp(target);
+  };
+
+  const redirectWithCookies = (url: URL) => {
+    return finalizeWithCookies(NextResponse.redirect(url));
+  };
+
+  const unauthorizedApiResponse = () => {
+    const unauthorized = new NextResponse(null, {
+      status: 401,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
+    return finalizeWithCookies(unauthorized);
   };
 
   if (
@@ -161,6 +174,9 @@ export async function proxy(req: NextRequest) {
     !isLoginPage(pathname) &&
     pathname !== "/auth/callback"
   ) {
+    if (pathname.startsWith("/api/")) {
+      return unauthorizedApiResponse();
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
     return redirectWithCookies(loginUrl);
