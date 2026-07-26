@@ -70,6 +70,9 @@ function shouldRunSupabaseSessionCheck(
     return true;
   }
 
+  // Other matched page routes, including /auth/callback, skip the
+  // Supabase session check. Their Route or page implementation owns
+  // any authentication behavior.
   return false;
 }
 
@@ -181,8 +184,7 @@ export async function proxy(req: NextRequest) {
   if (
     !user &&
     !isPublicOptionalAuthApi(pathname) &&
-    !isLoginPage(pathname) &&
-    pathname !== "/auth/callback"
+    !isLoginPage(pathname)
   ) {
     if (pathname.startsWith("/api/")) {
       return unauthorizedApiResponse();

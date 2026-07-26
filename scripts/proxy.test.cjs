@@ -321,6 +321,17 @@ test("explore pages receive CSP without a session check", async () => {
   );
 });
 
+test("Google auth callback receives CSP without a session check", async () => {
+  assert.equal(matches("/auth/callback?code=test"), true);
+
+  const result = await invoke("/auth/callback?code=test");
+
+  assert.equal(result.sessionCheckCount, 0);
+  assert.equal(result.response.status, 200);
+  assert.equal(result.response.headers.has("location"), false);
+  assertReportOnlyCsp(result.response);
+});
+
 test("optional-auth explore API checks session without redirect", async () => {
   assert.equal(matches("/api/explore"), true);
   const result = await invoke("/api/explore");

@@ -337,6 +337,25 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - `MessageBubble.tsx` の editRegen textarea は `enterMode` 設定と独立して Ctrl/Cmd+Enter 固定（意図的な仕様）
 - `app/arena/page.tsx` の人間ターン入力は変更対象外（Enter送信のまま）
 
+### `proxy.ts` の認証境界対応表
+
+正本は `lib/proxy-paths.ts` のコメントと `scripts/proxy.test.cjs` のマトリクステスト。
+本表はそれらの要約であり、判定ロジックを変更したら本表も手動更新すること。
+
+| パス種別 | matcher | セッション確認 | 未認証時・備考 |
+|---|---:|---:|---|
+| `/`・`/settings/*`・`/admin/*` | ○ | ○ | ページなので `/login?next=...` へ307 |
+| `/login` | ○ | ○ | 未ログインは表示、ログイン済みは `/` へ307 |
+| その他の通常ページ（`/auth/callback`含む） | ○※ | ✕ | CSPのみ付与。ページ・Route自身の実装に委ねる |
+| 一般の保護API | ○ | ○ | 未認証は JSON 401 |
+| `/api/explore` | ○ | ○ | セッション取得は試すが、未認証でも通過（`isPublicOptionalAuthApi`） |
+| `/api/share/[token]` の GET/HEAD | ○ | ✕ | 公開読み取り（`isPublicShareReadApi`） |
+| `/api/share/[token]` の POST・子Route（fork等） | ○ | ○ | 原則保護 |
+| `/api/mcp`・`/api/mcp/*` | ✕ | — | MCP Bearer認証（`isMcpBearerApi`） |
+| `/api/reports`・GitHub callback・Cron・CSP report | ✕ | — | 各Routeの独自契約 |
+
+※通常ページのprefetchはmatcherの`missing`条件により起動しない場合がある。
+
 ### MCP関連
 
 - `/api/mcp/*` はBearer認証のため、middlewareのmatcherに `/api/((?!mcp).*)` が必要
