@@ -29,14 +29,15 @@ const expectedLegacyModelConfig = {
     models: [
       { id: "claude-fable-5", label: "Fable 5", badge: "最高精度" },
       { id: "claude-sonnet-5", label: "Sonnet 5", badge: "新標準" },
-      { id: "claude-opus-4-8", label: "Opus 4.8", badge: "最高精度" },
+      { id: "claude-opus-5", label: "Opus 5", badge: "最高精度" },
+      { id: "claude-opus-4-8", label: "Opus 4.8", badge: "高精度" },
       { id: "claude-opus-4-7", label: "Opus 4.7", badge: "高精度" },
       { id: "claude-opus-4-6", label: "Opus 4.6", badge: "高精度" },
       { id: "claude-sonnet-4-5", label: "Sonnet 4.5", badge: "標準" },
       { id: "claude-sonnet-4-6", label: "Sonnet 4.6", badge: "高性能" },
       { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", badge: "軽量・爆速" },
     ],
-    defaultModel: "claude-sonnet-4-5",
+    defaultModel: "claude-sonnet-5",
     lsKey: "kabehub_claude_model",
   },
   gemini: {
@@ -110,6 +111,49 @@ for (const provider of ["claude", "gemini", "openai"]) {
     assert.equal(registry.isAllowedModel(provider, id, allowedSurface), true, `${provider}/${surface}`);
     assert.equal(registry.MODEL_REGISTRY.find((model) => model.id === id).status, "active");
   }
+}
+
+assert.equal(registry.PROVIDER_CONFIG.claude.uiDefaultModelId, "claude-sonnet-5");
+assert.equal(registry.PROVIDER_CONFIG.claude.chatFallbackModelId, "claude-sonnet-5");
+assert.equal(registry.PROVIDER_CONFIG.claude.arenaFallbackModelId, "claude-sonnet-5");
+
+for (const modelId of ["claude-opus-5", "claude-sonnet-5", "claude-fable-5"]) {
+  assert.deepEqual(
+    registry.resolveClaudeRequestOverrides(modelId, false),
+    { max_tokens: 16000 },
+    `${modelId}/off`
+  );
+  assert.deepEqual(
+    registry.resolveClaudeRequestOverrides(modelId, true),
+    { max_tokens: 16000 },
+    `${modelId}/on`
+  );
+}
+
+for (const modelId of ["claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6"]) {
+  assert.deepEqual(
+    registry.resolveClaudeRequestOverrides(modelId, false),
+    { max_tokens: 8192 },
+    `${modelId}/off`
+  );
+  assert.deepEqual(
+    registry.resolveClaudeRequestOverrides(modelId, true),
+    { thinking: { type: "adaptive", display: "summarized" }, max_tokens: 16000 },
+    `${modelId}/on`
+  );
+}
+
+for (const modelId of ["claude-sonnet-4-5", "claude-haiku-4-5-20251001"]) {
+  assert.deepEqual(
+    registry.resolveClaudeRequestOverrides(modelId, false),
+    { max_tokens: 8192 },
+    `${modelId}/off`
+  );
+  assert.deepEqual(
+    registry.resolveClaudeRequestOverrides(modelId, true),
+    { thinking: { type: "enabled", budget_tokens: 10000 }, max_tokens: 16000 },
+    `${modelId}/on`
+  );
 }
 
 const ids = registry.MODEL_REGISTRY.map((model) => model.id);

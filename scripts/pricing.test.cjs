@@ -48,6 +48,7 @@ const { getPricing, calcCost, formatUSD } = require("../lib/pricing.ts");
 // ────────────────────────────────────────────────────────────
 assert.deepEqual(getPricing("gpt-4o"), { inputPerMTok: 2.5, outputPerMTok: 10.0 });
 assert.deepEqual(getPricing("gemini-2.5-pro"), { inputPerMTok: 1.25, outputPerMTok: 10.0 });
+assert.deepEqual(getPricing("claude-opus-5"), { inputPerMTok: 5.0, outputPerMTok: 25.0 });
 assert.deepEqual(getPricing("ideogram-v3"), { inputPerMTok: 0, outputPerMTok: 0.08 });
 assert.deepEqual(getPricing("black-forest-labs/flux.2-pro"), { inputPerMTok: 0, outputPerMTok: 0.055 });
 

@@ -83,7 +83,7 @@ KabeHubの裏コンセプトは「おまえのものはおまえのもの」で�
 |フロントエンド|Next.js 14 (App Router) + React + Tailwind CSS|
 |データベース|Supabase (PostgreSQL) + RLS|
 |認証|Supabase Auth（Google OAuth）|
-|AI (メイン)|Anthropic Claude API（claude-fable-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-5 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5）|
+|AI (メイン)|Anthropic Claude API（claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5）|
 |AI (サブ1)|Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.5-flash-lite）|
 |AI (サブ2)|OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna）|
 |画像生成|Gemini（gemini-2.5-flash-image）/ OpenAI（gpt-image-2）/ Ideogram（ideogram-v3）/ OpenRouter経由Flux（flux.2-pro）|

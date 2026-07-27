@@ -17,10 +17,10 @@ export type PricingRule = ModelPricing & {
 };
 
 type ModelSurface = { chat: boolean; arena: boolean };
-type ThinkingConfig = {
-  mode: "none" | "extended" | "adaptive";
-  note?: string;
-};
+type ThinkingConfig =
+  | { control: "unsupported" }
+  | { control: "always_on"; note?: string }
+  | { control: "toggleable"; requestType: "adaptive" | "enabled"; defaultOn: boolean; note?: string };
 
 export type TextModelDef = {
   kind: "text";
@@ -53,33 +53,34 @@ const price = (inputPerMTok: number, outputPerMTok: number): PricingRule[] => [
 ];
 
 export const MODEL_REGISTRY = [
-  { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "adaptive", note: "Fable 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" }, pricing: price(10.00, 50.00) },
-  { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "adaptive", note: "Sonnet 5はExtended Thinkingに非対応です（Adaptive Thinkingは自動適用）" }, pricing: [
+  { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00) },
+  { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5はAdaptive Thinkingが標準で有効です" }, pricing: [
     { inputPerMTok: 2.00, outputPerMTok: 10.00, note: "導入価格" },
     { from: "2026-09-01T00:00:00.000Z", inputPerMTok: 3.00, outputPerMTok: 15.00 },
   ] },
-  { kind: "text", id: "claude-opus-4-8", provider: "claude", label: "Opus 4.8", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "extended" }, pricing: price(5.00, 25.00) },
-  { kind: "text", id: "claude-opus-4-7", provider: "claude", label: "Opus 4.7", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "extended" }, pricing: price(5.00, 25.00) },
-  { kind: "text", id: "claude-opus-4-6", provider: "claude", label: "Opus 4.6", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "extended" }, pricing: price(5.00, 25.00) },
-  { kind: "text", id: "claude-sonnet-4-5", provider: "claude", label: "Sonnet 4.5", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "extended" }, pricing: price(3.00, 15.00) },
-  { kind: "text", id: "claude-sonnet-4-6", provider: "claude", label: "Sonnet 4.6", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "extended" }, pricing: price(3.00, 15.00) },
-  { kind: "text", id: "claude-haiku-4-5-20251001", provider: "claude", label: "Haiku 4.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none", note: "Haiku 4.5は非対応です" }, pricing: price(1.00, 5.00) },
+  { kind: "text", id: "claude-opus-5", provider: "claude", label: "Opus 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Opus 5はAdaptive Thinkingが標準で有効です" }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-opus-4-8", provider: "claude", label: "Opus 4.8", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-opus-4-7", provider: "claude", label: "Opus 4.7", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-opus-4-6", provider: "claude", label: "Opus 4.6", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-sonnet-4-5", provider: "claude", label: "Sonnet 4.5", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(3.00, 15.00) },
+  { kind: "text", id: "claude-sonnet-4-6", provider: "claude", label: "Sonnet 4.6", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(3.00, 15.00) },
+  { kind: "text", id: "claude-haiku-4-5-20251001", provider: "claude", label: "Haiku 4.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(1.00, 5.00) },
 
-  { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(0.30, 2.50) },
-  { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(1.25, 10.00) },
-  { kind: "text", id: "gemini-3.5-flash", provider: "gemini", label: "3.5 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(1.50, 9.00) },
-  { kind: "text", id: "gemini-3.1-flash-lite", provider: "gemini", label: "3.1 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(0.25, 1.50) },
-  { kind: "text", id: "gemini-3.6-flash", provider: "gemini", label: "3.6 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(1.50, 7.50) },
-  { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(0.30, 2.50) },
+  { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
+  { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.25, 10.00) },
+  { kind: "text", id: "gemini-3.5-flash", provider: "gemini", label: "3.5 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 9.00) },
+  { kind: "text", id: "gemini-3.1-flash-lite", provider: "gemini", label: "3.1 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.25, 1.50) },
+  { kind: "text", id: "gemini-3.6-flash", provider: "gemini", label: "3.6 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 7.50) },
+  { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
 
-  { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(2.50, 10.00) },
-  { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(0.75, 4.50) },
-  { kind: "text", id: "gpt-5.4", provider: "openai", label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(2.50, 15.00) },
-  { kind: "text", id: "gpt-5.5", provider: "openai", label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(5.00, 30.00) },
-  { kind: "text", id: "gpt-5.5-pro", provider: "openai", label: "GPT-5.5 Pro", badge: "最上位", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(30.00, 180.00) },
-  { kind: "text", id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(5.00, 30.00) },
-  { kind: "text", id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(2.50, 15.00) },
-  { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { mode: "none" }, pricing: price(1.00, 6.00) },
+  { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00) },
+  { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50) },
+  { kind: "text", id: "gpt-5.4", provider: "openai", label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00) },
+  { kind: "text", id: "gpt-5.5", provider: "openai", label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00) },
+  { kind: "text", id: "gpt-5.5-pro", provider: "openai", label: "GPT-5.5 Pro", badge: "最上位", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(30.00, 180.00) },
+  { kind: "text", id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00) },
+  { kind: "text", id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00) },
+  { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.00, 6.00) },
 
   { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2", badge: "OpenAI", status: "active", img2img: false, pricing: [] },
   { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, pricing: [] },
@@ -104,7 +105,7 @@ export type ImageProviderConfig = {
 };
 
 export const PROVIDER_CONFIG: Record<TextProvider | "image_gen", ProviderConfig | ImageProviderConfig> = {
-  claude: { label: "Claude", uiDefaultModelId: "claude-sonnet-4-5", chatFallbackModelId: "claude-sonnet-4-5", arenaFallbackModelId: "claude-sonnet-4-5", lsKey: "kabehub_claude_model" },
+  claude: { label: "Claude", uiDefaultModelId: "claude-sonnet-5", chatFallbackModelId: "claude-sonnet-5", arenaFallbackModelId: "claude-sonnet-5", lsKey: "kabehub_claude_model" },
   gemini: { label: "Gemini", uiDefaultModelId: "gemini-2.5-flash", chatFallbackModelId: "gemini-2.5-flash", arenaFallbackModelId: "gemini-2.5-flash", lsKey: "kabehub_gemini_model" },
   openai: { label: "ChatGPT", uiDefaultModelId: "gpt-5.4-mini", chatFallbackModelId: "gpt-5.4-mini", arenaFallbackModelId: "gpt-5.4-mini", lsKey: "kabehub_openai_model" },
   image_gen: { label: "画像生成", defaultModelId: "gpt-image-2", lsKey: "kabehub_image_provider" },
@@ -204,13 +205,33 @@ export function isAllowedModel(provider: TextProvider, modelId: string, surface:
   return MODEL_REGISTRY.some((model) => model.kind === "text" && model.provider === provider && model.id === modelId && model.status === "active" && model.surfaces[surface]);
 }
 
-export function getThinkingSupport(modelId: string): ThinkingConfig {
+export function getThinkingSupport(modelId: string): ThinkingConfig & { note?: string } {
   const model = MODEL_REGISTRY.find((candidate): candidate is Extract<(typeof MODEL_REGISTRY)[number], { kind: "text" }> => candidate.kind === "text" && candidate.id === modelId);
-  return model?.thinking ?? { mode: "none" };
+  return model?.thinking ?? { control: "unsupported" };
 }
 
-export function supportsExtendedThinking(modelId: string): boolean {
-  return getThinkingSupport(modelId).mode === "extended";
+export function canToggleDeepThinking(modelId: string): boolean {
+  const cfg = getThinkingSupport(modelId);
+  return cfg.control === "toggleable" && !cfg.defaultOn;
+}
+
+export function resolveClaudeRequestOverrides(
+  modelId: string,
+  manualDeepThinkingRequested: boolean
+): { thinking?: Record<string, unknown>; max_tokens: number } {
+  const cfg = getThinkingSupport(modelId);
+
+  if (cfg.control === "always_on" || (cfg.control === "toggleable" && cfg.defaultOn)) {
+    return { max_tokens: 16000 };
+  }
+
+  if (cfg.control === "toggleable" && manualDeepThinkingRequested) {
+    return cfg.requestType === "enabled"
+      ? { thinking: { type: "enabled", budget_tokens: 10000 }, max_tokens: 16000 }
+      : { thinking: { type: "adaptive", display: "summarized" }, max_tokens: 16000 };
+  }
+
+  return { max_tokens: 8192 };
 }
 
 export function resolveImageModel(modelId: string): ImageModelDef | null {

@@ -79,7 +79,7 @@ I'm not an engineer by trade — I'm a tax accountant. I started from nearly zer
 |Frontend|Next.js 14 (App Router) + React + Tailwind CSS|
 |Database|Supabase (PostgreSQL) + RLS|
 |Auth|Supabase Auth (Google OAuth)|
-|AI (Primary)|Anthropic Claude API (claude-sonnet-4-5 / claude-sonnet-4-6)|
+|AI (Primary)|Anthropic Claude API (claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001)|
 |AI (Secondary)|Google Gemini API (gemini-2.5-flash / gemini-2.5-pro)|
 |AI (Tertiary)|OpenAI API (gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5)|
 |Deploy|Vercel|

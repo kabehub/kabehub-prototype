@@ -118,7 +118,7 @@ assert.equal(loadModel("openai"), "gpt-5.5-pro");
 // MODEL_CONFIG スナップショット（registry移行時の意図しない値変化を検出するための固定）
 // defaultModel / lsKey
 // ────────────────────────────────────────────────────────────
-assert.equal(MODEL_CONFIG.claude.defaultModel, "claude-sonnet-4-5");
+assert.equal(MODEL_CONFIG.claude.defaultModel, "claude-sonnet-5");
 assert.equal(MODEL_CONFIG.claude.lsKey, "kabehub_claude_model");
 assert.equal(MODEL_CONFIG.gemini.defaultModel, "gemini-2.5-flash");
 assert.equal(MODEL_CONFIG.gemini.lsKey, "kabehub_gemini_model");
@@ -143,6 +143,7 @@ assert.deepEqual(modelIdsByProvider, {
   claude: [
     "claude-fable-5",
     "claude-sonnet-5",
+    "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
@@ -165,24 +166,20 @@ assert.deepEqual(modelIdsByProvider, {
 // ────────────────────────────────────────────────────────────
 assert.deepEqual(
   [...THINKING_UNSUPPORTED_MODELS].sort(),
-  ["claude-fable-5", "claude-haiku-4-5-20251001", "claude-sonnet-5"].sort()
+  ["claude-fable-5", "claude-opus-5", "claude-sonnet-5"].sort()
 );
-assert.equal(isThinkingUnsupported("claude-haiku-4-5-20251001"), true);
+assert.equal(isThinkingUnsupported("claude-haiku-4-5-20251001"), false);
 assert.equal(isThinkingUnsupported("claude-fable-5"), true);
+assert.equal(isThinkingUnsupported("claude-opus-5"), true);
 assert.equal(isThinkingUnsupported("claude-sonnet-5"), true);
 assert.equal(isThinkingUnsupported("claude-opus-4-8"), false);
 assert.equal(isThinkingUnsupported("claude-sonnet-4-5"), false);
 
 assert.equal(canUseDeepThinking("claude", "claude-opus-4-8"), true);
-assert.equal(canUseDeepThinking("claude", "claude-sonnet-5"), false); // Thinking非対応3モデルの一つ
+assert.equal(canUseDeepThinking("claude", "claude-sonnet-5"), false); // Adaptive Thinking標準搭載のため手動トグル不要
 assert.equal(canUseDeepThinking("claude", "claude-fable-5"), false);
-assert.equal(canUseDeepThinking("claude", "claude-haiku-4-5-20251001"), false);
+assert.equal(canUseDeepThinking("claude", "claude-opus-5"), false);
+assert.equal(canUseDeepThinking("claude", "claude-haiku-4-5-20251001"), true);
 assert.equal(canUseDeepThinking("gemini", "claude-opus-4-8"), false); // provider不一致（claude以外は常にfalse）
 
 console.log("loadModel tests passed");
-
-// ⚠️ 未カバー・既知の重複（コードコメントとして記録。registry化(T1)で解消予定）:
-// JSX内の「深く考える」ボタンのtitle文言分岐は THINKING_UNSUPPORTED_MODELS とは別に
-// モデルIDが直接3回ハードコードされており（selectedModel === "claude-haiku-4-5-20251001" 等）、
-// ChatInput()コンポーネント本体（未呼び出し）の中にあるため本テストでは検証できない。
-// 目視確認: 3つのIDが THINKING_UNSUPPORTED_MODELS の集合と一致していること（現状は一致している）。

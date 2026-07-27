@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
-import { isAllowedModel, getDefaultModel } from "@/lib/modelRegistry";
+import { getDefaultModel, isAllowedModel, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -76,10 +76,10 @@ function isOpenAIModel(modelId: string): modelId is OpenAIModel {
   return isAllowedModel("openai", modelId, "arena");
 }
 
-async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: ClaudeModel = "claude-sonnet-4-5"): Promise<string> {
+async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: ClaudeModel): Promise<string> {
   const body: Record<string, unknown> = {
     model: modelId,
-    max_tokens: 8192,
+    ...resolveClaudeRequestOverrides(modelId, false),
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
   if (systemPrompt?.trim()) body.system = systemPrompt.trim();
@@ -89,7 +89,16 @@ async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt?
     body: JSON.stringify(body),
   });
   const data = await readProviderJson("claude", res);
-  return data.content?.[0]?.text ?? "（応答の取得に失敗しました）";
+  if (data.stop_reason === "refusal") {
+    return "（AIの安全基準により、この内容には回答できませんでした）";
+  }
+  const text = Array.isArray(data.content)
+    ? data.content
+        .filter((b: { type?: string }) => b.type === "text")
+        .map((b: { text?: string }) => b.text ?? "")
+        .join("")
+    : "";
+  return text || "（応答の取得に失敗しました）";
 }
 
 async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: GeminiModel = "gemini-2.5-flash"): Promise<string> {

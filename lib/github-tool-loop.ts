@@ -263,7 +263,7 @@ async function callAnthropicWithoutTools(
       },
       body: JSON.stringify({
         model: params.modelId,
-        max_tokens: 512,
+        max_tokens: 4096,
         system: buildDiscoverySystemPrompt(params.systemPrompt),
         messages,
       }),

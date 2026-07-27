@@ -10,7 +10,12 @@ import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
 import { buildReferenceBlock, buildReferencePreamble } from "@/lib/ai-context-blocks";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
-import { isAllowedModel, getDefaultModel, supportsExtendedThinking } from "@/lib/modelRegistry";
+import {
+  canToggleDeepThinking,
+  getDefaultModel,
+  isAllowedModel,
+  resolveClaudeRequestOverrides,
+} from "@/lib/modelRegistry";
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
@@ -147,9 +152,9 @@ async function pumpSSE(
 function streamClaude(
   apiKey: string,
   messages: ChatMessage[],
-  stableSystemPrompt?: string,
-  dynamicSystemPrompt?: string,
-  modelId: ClaudeModel = "claude-sonnet-4-5",
+  stableSystemPrompt: string | undefined,
+  dynamicSystemPrompt: string | undefined,
+  modelId: ClaudeModel,
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
   onUsage?: (u: UsageData) => void,
@@ -189,19 +194,23 @@ function streamClaude(
 
   const body: Record<string, unknown> = {
     model: modelId,
-    max_tokens: 8192,
+    ...resolveClaudeRequestOverrides(modelId, Boolean(isDeepThinking)),
     stream: true,
     messages: messagesForAPI,
   };
-  if (isDeepThinking) {
-    body.thinking = { type: "enabled", budget_tokens: 10000 };
-    body.max_tokens = 16000;
-    // temperatureは指定しない（thinking有効時はtemperature固定のためリクエストに含めてはいけない）
-  }
   if (systemBlock) body.system = systemBlock;
 
   return new ReadableStream<string>({
     async start(controller) {
+      const enqueueText = (text: string) => {
+        controller.enqueue(
+          isDeepThinking
+            ? JSON.stringify({ kind: "text", text }) + "\n"
+            : text
+        );
+      };
+      let refusalHandled = false;
+
       try {
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -241,17 +250,21 @@ function streamClaude(
               if (process.env.NODE_ENV === "development") {
                 console.log("[Cache output]", { output_tokens: u.output_tokens ?? 0 });
               }
+              if (parsed.delta?.stop_reason === "refusal" && !refusalHandled) {
+                refusalHandled = true;
+                enqueueText("\n\n（AIの安全基準により、この内容には回答できませんでした）");
+              }
             }
 
             if (parsed.type === "content_block_delta") {
               if (isDeepThinking) {
                 if (parsed.delta?.type === "text_delta") {
-                  controller.enqueue(JSON.stringify({ kind: "text", text: parsed.delta.text }) + "\n");
+                  enqueueText(parsed.delta.text);
                 } else if (parsed.delta?.type === "thinking_delta") {
                   controller.enqueue(JSON.stringify({ kind: "thinking", text: parsed.delta.thinking }) + "\n");
                 }
               } else if (parsed.delta?.type === "text_delta") {
-                controller.enqueue(parsed.delta.text);
+                enqueueText(parsed.delta.text);
               }
             }
           });
@@ -1025,6 +1038,10 @@ export async function POST(req: NextRequest) {
   }
 
   const resolvedModelId: ModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
+  const manualThinkingEnabled =
+    provider === "claude" &&
+    Boolean(isDeepThinking) &&
+    canToggleDeepThinking(resolvedModelId);
 
   const sourceMessagesForParticipants: ChatMessage[] = branchEditMessagesForApi ?? messages ?? [];
 
@@ -1160,7 +1177,7 @@ export async function POST(req: NextRequest) {
   if (
     provider === "claude" &&
     githubRepo &&
-    !isDeepThinking &&
+    !manualThinkingEnabled &&
     anthropicKey
   ) {
     try {
@@ -1278,8 +1295,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         });
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
-      const effectiveDeepThinking = (isDeepThinking ?? false) && supportsExtendedThinking(resolvedModelId);
-      aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, effectiveDeepThinking, trimResult.cacheAnchorIndex);
+      aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, manualThinkingEnabled, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {
         return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
@@ -1327,7 +1343,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         const { done, value } = await reader.read();
         if (done) break;
 
-        if (isDeepThinking) {
+        if (manualThinkingEnabled) {
           try {
             const inner = JSON.parse(value.trimEnd());
             if (inner.kind === "text") {
@@ -1372,7 +1388,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
     provider: usedProvider,
     createdAt: now,
     modelId: resolvedModelId,
-    isDeepThinking: isDeepThinking ?? false,
+    isDeepThinking: manualThinkingEnabled,
   }) + "\n";
 
   // UTF-16文字数での判定。日本語で実質約600KB相当。
@@ -1394,7 +1410,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
 
   const outputStream = new TransformStream<string, string>({
     transform(chunk, controller) {
-      if (isDeepThinking) {
+      if (manualThinkingEnabled) {
         // JSON行形式: テキスト部分のみDBに蓄積、thinking部分は含めない
         try {
           const inner = JSON.parse(chunk.trimEnd());

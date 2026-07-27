@@ -7,7 +7,7 @@ import {
   loadModel as registryLoadModel,
   saveModel as registrySaveModel,
   getThinkingSupport,
-  supportsExtendedThinking,
+  canToggleDeepThinking,
   resolveImageModel,
 } from "@/lib/modelRegistry";
 export type { ClaudeModel, GeminiModel, OpenAIModel, ImageGenModel, ModelId, Provider } from "@/types";
@@ -94,16 +94,16 @@ export function saveModel(provider: Provider, modelId: ModelId): void {
 
 export const THINKING_UNSUPPORTED_MODELS = new Set<ModelId>(
   MODEL_CONFIG.claude.models
-    .filter((model) => !supportsExtendedThinking(model.id))
+    .filter((model) => !canToggleDeepThinking(model.id))
     .map((model) => model.id)
 );
 
 export function isThinkingUnsupported(modelId: ModelId): boolean {
-  return !supportsExtendedThinking(modelId);
+  return !canToggleDeepThinking(modelId);
 }
 
 export function canUseDeepThinking(provider: Provider, modelId: ModelId): boolean {
-  return provider === "claude" && supportsExtendedThinking(modelId);
+  return provider === "claude" && canToggleDeepThinking(modelId);
 }
 
 const LS_ENTER_MODE = "kabehub_enter_mode" as const;

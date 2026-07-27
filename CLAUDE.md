@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/07/18（v174基準）
+最終更新: 2026/07/27（v174基準）
 > このファイルはコード（types/index.ts・lib/modelRegistry.ts・lib/pricing.ts・app/api/chat/route.ts・app/api/arena/route.ts・components/ChatInput.tsx）とファイル構成一覧との突き合わせを経て更新。ただし一部ファイルは名称からの推測のみで内容未確認（⚠️マーク箇所）。
 
 ## プロダクト概要
@@ -61,7 +61,7 @@ git pull origin main
 | フロントエンド | Next.js 14 (App Router) + React + Tailwind CSS |
 | DB | Supabase (PostgreSQL) — 法人アカウント admin@kabehub.com |
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
-| AI メイン | Anthropic Claude API（claude-fable-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-5 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
+| AI メイン | Anthropic Claude API（claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
 | AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.5-flash-lite） |
 | AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna）※gpt-5.5-proは`/v1/chat/completions`非対応のため、chat・arena両方で`/v1/responses`へ分岐する |
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
@@ -70,7 +70,7 @@ git pull origin main
 | デプロイ | Vercel（kabehub.com） |
 | Markdown | react-markdown + remark-gfm + @tailwindcss/typography |
 
-モデルIDのUnion型は `types/index.ts`、実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金は `lib/modelRegistry.ts` で管理する。両者には双方向の型一致チェック（`AssertNever`）があり、不一致は型エラーになる。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` をimportして使う。モデル追加・削除時は `types/index.ts` と `lib/modelRegistry.ts` の両方を更新すること。
+モデルIDのUnion型は `types/index.ts`、実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金は `lib/modelRegistry.ts` で管理する。両者には双方向の型一致チェック（`AssertNever`）があり、不一致は型エラーになる。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` / `resolveClaudeRequestOverrides` をimportして使い、手動Thinking UIの可否は `canToggleDeepThinking` から導出する。モデル追加・削除時は `types/index.ts` と `lib/modelRegistry.ts` の両方を更新すること。
 
 ---
 
@@ -80,8 +80,8 @@ git pull origin main
 
 | ファイル | 役割 |
 |-|-|
-| `app/api/chat/route.ts` | チャット送受信の中枢。ストリーミング・DB保存（Promise Bridge）・waitUntilフォールバック・RAG注入・GitHub Tool Loop・Extended Thinkingガードをすべて担う。**最も複雑なファイル。後述の地雷を必ず読むこと** |
-| `app/api/arena/route.ts` | AI闘技場（複数AI同士の議論）のターン管理。**chat/route.tsと異なり非ストリーミング実装**（`await res.json()`で一括取得）。Promise Bridge・Extended Thinkingガードは未適用（非ストリーミング実装のため対象外）。gpt-5.5-pro用の`/v1/responses`分岐に対応済み |
+| `app/api/chat/route.ts` | チャット送受信の中枢。ストリーミング・DB保存（Promise Bridge）・waitUntilフォールバック・RAG注入・GitHub Tool Loop・Claude Thinking制御をすべて担う。**最も複雑なファイル。後述の地雷を必ず読むこと** |
+| `app/api/arena/route.ts` | AI闘技場（複数AI同士の議論）のターン管理。**chat/route.tsと異なり非ストリーミング実装**（`await res.json()`で一括取得）。ClaudeのThinking/max_tokens設定は`resolveClaudeRequestOverrides`を共有し、text blockを全件結合する。gpt-5.5-pro用の`/v1/responses`分岐に対応済み |
 | `app/api/explore/route.ts` | 公開スレッド一覧。sort パラメータ（newest/popular/trending）対応 |
 | `app/api/share/[token]/route.ts` | 共有ページ用データ取得。shared_atフィルター（スナップショット型共有）あり。**後方互換に注意** |
 | `app/api/share/[token]/fork/route.ts` | 共有スレッドのフォーク処理 ⚠️内容未確認 |
@@ -199,7 +199,7 @@ git pull origin main
 | `lib/supabase/route-handler.ts` | Route Handler用 |
 | `lib/supabase/download-image.ts` | 画像ダウンロードヘルパー ⚠️内容未確認 |
 | `lib/supabase.ts` | Supabase関連の共通処理 ⚠️内容未確認 |
-| `lib/modelRegistry.ts` | モデル台帳。モデルID・表示情報・利用surface・デフォルト・Thinking対応・料金・許可判定を一元管理 |
+| `lib/modelRegistry.ts` | モデル台帳。モデルID・表示情報・利用surface・デフォルト・Thinking対応・料金・許可判定を一元管理。`canToggleDeepThinking`と`resolveClaudeRequestOverrides`も提供 |
 | `lib/pricing.ts` | `getPricing`を`lib/modelRegistry.ts`から再exportする互換ファサード。`calcCost`・`formatUSD`を提供 |
 | `lib/lore.ts` | MemoryKind拡張・LoreSearchResult拡張・`searchLore` / `searchLoreV2` |
 | `lib/loreMemorySelect.ts` | `LORE_MEMORY_SELECT` 定数を共通化 |
@@ -507,7 +507,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - **iPhone実機確認未了**: モデルドロップダウン・サイドバードロワー・ヘッダー・＋ドロップアップ・会話履歴ドロワー・サイドバー折り畳みボタンの動作確認
 - `ProfilePage.tsx` の日本語テキストが英語になっている（v112でCodex文字化け対処のため・手動修正要）
 - 画像生成 Tech Debt（sharp圧縮・pg_cron自動削除・⭐Saveボタン・設定ページのデフォルトプロバイダー選択UI）
-- Opus 4.8 の Extended Thinking 対応（将来対応）
 - GitHub連携 Pinned Files失敗時のUI通知未実装（現状はconsole.warnのみ）
 - 統合成功後にF5なしで候補リストが消えないケース（fetchConsolidationCandidatesのタイミング問題）
 - `loadEnterMode()` / `isMobileViewport()` が `ChatInput.tsx` と `ChatInputCentered.tsx` に重複定義。`lib/inputUtils.ts` への共通化が望ましい

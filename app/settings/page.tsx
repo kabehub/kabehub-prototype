@@ -80,7 +80,7 @@ function SettingsContent() {
   const [apiKeySaved, setApiKeySaved] = useState(false)
 
   // モデル選択 state
-  const [claudeModel, setClaudeModel] = useState<ModelId>('claude-sonnet-4-5')
+  const [claudeModel, setClaudeModel] = useState<ModelId>(MODEL_CONFIG.claude.defaultModel)
   const [geminiModel, setGeminiModel] = useState<ModelId>('gemini-2.5-flash')
   const [openaiModel, setOpenaiModel] = useState<ModelId>('gpt-5.4-mini')
 
