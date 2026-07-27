@@ -15,6 +15,32 @@
  * セッション確認はしない（false）という非対称な組み合わせが意図的に存在する。
  */
 
+const PROTECTED_STATIC_PAGES = new Set([
+  "/stats",
+  "/memory",
+  "/album",
+  "/arena",
+  "/calendar",
+  "/image",
+  "/novel-check",
+]);
+
+/**
+ * MB-dで新たにログイン必須化した8ページの判定。
+ * 末尾スラッシュは正規化して比較する。
+ * /arena/[token]・/threads/[id]（tree以外）は対象外。
+ */
+export function isProtectedPagePath(pathname: string): boolean {
+  const normalizedPath =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname;
+
+  if (PROTECTED_STATIC_PAGES.has(normalizedPath)) return true;
+
+  return /^\/threads\/[^/]+\/tree$/.test(normalizedPath);
+}
+
 /** Bearer認証専用のMCP API。Supabase Cookieセッションを参照しない。 */
 export function isMcpBearerApi(pathname: string): boolean {
   return pathname === "/api/mcp" || pathname.startsWith("/api/mcp/");

@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { buildCspHeaderValue } from "@/lib/csp";
-import { isMcpBearerApi, isPublicShareReadApi } from "@/lib/proxy-paths";
+import {
+  isMcpBearerApi,
+  isProtectedPagePath,
+  isPublicShareReadApi,
+} from "@/lib/proxy-paths";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 let supabaseHttpOrigin = "";
@@ -47,7 +51,8 @@ function shouldRunSupabaseSessionCheck(
     pathname === "/settings" ||
     pathname === "/login" ||
     pathname.startsWith("/admin/") ||
-    pathname === "/admin"
+    pathname === "/admin" ||
+    isProtectedPagePath(pathname)
   ) {
     return true;
   }
@@ -70,9 +75,9 @@ function shouldRunSupabaseSessionCheck(
     return true;
   }
 
-  // Other matched page routes, including /auth/callback, skip the
-  // Supabase session check. Their Route or page implementation owns
-  // any authentication behavior.
+  // Remaining matched page routes, including /auth/callback and public
+  // share views, skip the Supabase session check. Their Route or page
+  // implementation owns any authentication behavior.
   return false;
 }
 
@@ -215,6 +220,14 @@ export const config = {
     "/settings/:path*",
     "/login",
     "/admin/:path*",
+    "/stats",
+    "/memory",
+    "/album",
+    "/arena",
+    "/calendar",
+    "/image",
+    "/novel-check",
+    "/threads/:id/tree",
     "/api/((?!mcp(?:/|$)|reports(?:/|$)|auth/github/callback(?:/|$)|cron/storage-cleanup(?:/|$)|csp-report(?:/|$)).*)",
   ],
 };

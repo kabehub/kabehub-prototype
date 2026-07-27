@@ -76,6 +76,7 @@ const {
 } = require("next/experimental/testing/server");
 const {
   isMcpBearerApi,
+  isProtectedPagePath,
   isPublicShareReadApi,
 } = require(path.join(__dirname, "..", "lib", "proxy-paths.ts"));
 const { config, proxy } = require(path.join(__dirname, "..", "proxy.ts"));
@@ -144,6 +145,122 @@ test("only public share read paths are session-exempt", () => {
   assert.equal(isPublicShareReadApi("/api/share/abc/fork", "GET"), false);
   assert.equal(isPublicShareReadApi("/api/share/abc/fork", "POST"), false);
   assert.equal(isPublicShareReadApi("/api/share", "GET"), false);
+});
+
+test("newly protected page paths normalize one trailing slash", () => {
+  assert.equal(isProtectedPagePath("/stats/"), true);
+  assert.equal(isProtectedPagePath("/arena/"), true);
+  assert.equal(isProtectedPagePath("/threads/abc/tree/"), true);
+});
+
+test("thread tree matcher includes a trailing slash", () => {
+  assert.equal(
+    matches("/threads/abc/tree/", { "next-router-prefetch": "1" }),
+    true,
+    "/threads/abc/tree/ should match config.matcher during prefetch"
+  );
+});
+
+test("thread tree matcher rejects a lookalike nested path", () => {
+  assert.equal(
+    matches("/threads/abc/tree/extra", { "next-router-prefetch": "1" }),
+    false,
+    "/threads/abc/tree/extra should not match config.matcher during prefetch"
+  );
+});
+
+test("newly protected pages enforce auth including prefetch", async () => {
+  const protectedPaths = [
+    "/stats",
+    "/memory",
+    "/album",
+    "/arena",
+    "/calendar",
+    "/image",
+    "/novel-check",
+    "/threads/abc/tree",
+  ];
+  const prefetchHeaders = { "next-router-prefetch": "1" };
+
+  for (const pathname of protectedPaths) {
+    assert.equal(
+      isProtectedPagePath(pathname),
+      true,
+      `${pathname}: protected path`
+    );
+    assert.equal(matches(pathname), true, `${pathname}: normal matcher`);
+
+    const anonymous = await invoke(pathname);
+    assert.equal(
+      anonymous.sessionCheckCount,
+      1,
+      `${pathname}: anonymous session check`
+    );
+    assert.equal(anonymous.response.status, 307, `${pathname}: redirect status`);
+    const location = new URL(anonymous.response.headers.get("location"));
+    assert.equal(location.pathname, "/login", `${pathname}: redirect pathname`);
+    assert.equal(
+      location.searchParams.get("next"),
+      pathname,
+      `${pathname}: redirect next`
+    );
+
+    assert.equal(
+      matches(pathname, prefetchHeaders),
+      true,
+      `${pathname}: prefetch matcher`
+    );
+
+    const authenticated = await invoke(pathname, {
+      user: { id: "user-1" },
+    });
+    assert.equal(
+      authenticated.sessionCheckCount,
+      1,
+      `${pathname}: authenticated session check`
+    );
+    assert.equal(
+      authenticated.response.status,
+      200,
+      `${pathname}: authenticated status`
+    );
+    assert.equal(
+      authenticated.response.headers.has("location"),
+      false,
+      `${pathname}: authenticated location`
+    );
+  }
+});
+
+test("nearby public pages stay outside the new auth boundary", async () => {
+  const publicPaths = [
+    "/arena/abc",
+    "/threads/abc",
+    "/threads/abc/tree/extra",
+    "/explore",
+  ];
+  const prefetchHeaders = { purpose: "prefetch" };
+
+  for (const pathname of publicPaths) {
+    assert.equal(
+      isProtectedPagePath(pathname),
+      false,
+      `${pathname}: protected path`
+    );
+    assert.equal(
+      matches(pathname, prefetchHeaders),
+      false,
+      `${pathname}: prefetch matcher`
+    );
+
+    const result = await invoke(pathname);
+    assert.equal(
+      result.sessionCheckCount,
+      0,
+      `${pathname}: direct proxy session check`
+    );
+    assert.equal(result.response.status, 200, `${pathname}: direct proxy status`);
+  }
 });
 
 test("MCP and share matcher/session boundaries match the specification", async () => {
