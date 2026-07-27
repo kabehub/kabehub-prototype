@@ -23,37 +23,6 @@ export type GithubToolLoopParams = {
   onProgress?: (msg: string) => void;
 };
 
-export const GITHUB_TOOLS = [
-  {
-    name: "list_github_directory",
-    description: "リポジトリの指定パスにあるファイル・ディレクトリの一覧を取得する。まず path=\"\" でルートを確認してリポジトリ構造を把握すること。",
-    input_schema: {
-      type: "object",
-      properties: {
-        path: {
-          type: "string",
-          description: "ルートからの相対パス。ルートを取得する場合は空文字 \"\" を指定。例: \"app/api\"",
-        },
-      },
-      required: ["path"],
-    },
-  },
-  {
-    name: "read_github_file",
-    description: "指定パスのファイル内容を取得する。関係しそうなファイルのみ読むこと。",
-    input_schema: {
-      type: "object",
-      properties: {
-        path: {
-          type: "string",
-          description: "ファイルの相対パス。例: \"app/api/chat/route.ts\"",
-        },
-      },
-      required: ["path"],
-    },
-  },
-] as const;
-
 type AnthropicContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
@@ -206,49 +175,6 @@ ${exploredFiles.map((file) => file.content
 <!-- warnings: ${warnings.join(" / ")} -->`;
 }
 
-async function callAnthropicMessages(
-  params: GithubToolLoopParams,
-  messages: AnthropicToolMessage[],
-): Promise<{ response?: AnthropicMessageResponse; warning?: string }> {
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": params.anthropicKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "prompt-caching-2024-07-31",
-      },
-      body: JSON.stringify({
-        model: params.modelId,
-        max_tokens: 4096,
-        system: buildDiscoverySystemPrompt(params.systemPrompt),
-        messages,
-        tools: GITHUB_TOOLS,
-        tool_choice: { type: "auto" },
-      }),
-    });
-
-    if (!response.ok) {
-      return { warning: `Anthropic API エラー（HTTP ${response.status}）` };
-    }
-
-    const parsed = await response.json() as AnthropicMessageResponse;
-    // [DEBUG] Anthropic API response
-    console.log("[DEBUG][Anthropic Response]", JSON.stringify({
-      stop_reason: parsed.stop_reason,
-      contentTypes: parsed.content?.map(b => b.type),
-      toolUseNames: parsed.content
-        ?.filter(b => b.type === "tool_use")
-        .map(b => (b as { type: "tool_use"; name: string }).name),
-    }));
-    return { response: parsed };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown";
-    return { warning: `GitHub Tool Loop エラー: ${message}` };
-  }
-}
-
 async function callAnthropicWithoutTools(
   params: GithubToolLoopParams,
   messages: AnthropicToolMessage[],
@@ -283,14 +209,6 @@ async function callAnthropicWithoutTools(
     const message = error instanceof Error ? error.message : "unknown";
     return { warning: `GitHub Tool Loop エラー: ${message}` };
   }
-}
-
-function getToolUseBlocks(content: AnthropicContentBlock[] | undefined): Extract<AnthropicContentBlock, { type: "tool_use" }>[] {
-  if (!Array.isArray(content)) {
-    return [];
-  }
-
-  return content.filter((block): block is Extract<AnthropicContentBlock, { type: "tool_use" }> => block.type === "tool_use");
 }
 
 export async function runGithubToolLoop(
