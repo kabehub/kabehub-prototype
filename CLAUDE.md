@@ -357,6 +357,14 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ※通常ページのprefetchはmatcherの`missing`条件により起動しない場合がある。
 
+### `next` 往復の認証境界
+
+`next` の生成・許可・正規化判定の正本は、`lib/proxy-paths.ts` の
+`isProtectedRedirectPath()`・`isShareRedirectPath()`・
+`resolveAllowedNextRedirect()` とテストである。変更時は `proxy.ts`・
+`app/auth/callback/route.ts`・`scripts/proxy.test.cjs`・
+`scripts/auth-callback-route.test.cjs` を必ず同時に更新すること。
+
 ### MCP関連
 
 - `/api/mcp/*` はBearer認証のため、middlewareのmatcherに `/api/((?!mcp).*)` が必要

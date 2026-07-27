@@ -77,11 +77,30 @@ const {
 const {
   isMcpBearerApi,
   isProtectedPagePath,
+  isProtectedRedirectPath,
   isPublicShareReadApi,
 } = require(path.join(__dirname, "..", "lib", "proxy-paths.ts"));
 const { config, proxy } = require(path.join(__dirname, "..", "proxy.ts"));
 
 const pendingTests = [];
+const protectedPagePaths = [
+  "/stats",
+  "/memory",
+  "/album",
+  "/arena",
+  "/calendar",
+  "/image",
+  "/novel-check",
+  "/threads/abc/tree",
+];
+const protectedRedirectPaths = [
+  "/",
+  "/settings",
+  "/settings/x",
+  "/admin",
+  "/admin/x",
+  ...protectedPagePaths,
+];
 
 function test(name, fn) {
   pendingTests.push({ name, fn });
@@ -153,6 +172,60 @@ test("newly protected page paths normalize one trailing slash", () => {
   assert.equal(isProtectedPagePath("/threads/abc/tree/"), true);
 });
 
+test("protected redirect paths use the complete explicit page whitelist", () => {
+  for (const pathname of protectedRedirectPaths) {
+    assert.equal(
+      isProtectedRedirectPath(pathname),
+      true,
+      `${pathname}: protected redirect path`
+    );
+  }
+
+  for (const pathname of [
+    "/login",
+    "/explore",
+    "/share/abc",
+    "/arena/abc",
+  ]) {
+    assert.equal(
+      isProtectedRedirectPath(pathname),
+      false,
+      `${pathname}: rejected redirect path`
+    );
+  }
+});
+
+test("login runs the session check but is never an allowed next target", async () => {
+  assert.equal(matches("/login"), true);
+  assert.equal(isProtectedRedirectPath("/login"), false);
+
+  const anonymous = await invoke("/login");
+  assert.equal(anonymous.sessionCheckCount, 1);
+  assert.equal(anonymous.response.status, 200);
+});
+
+test("every next generated for an anonymous protected page is allowed", async () => {
+  for (const pathname of protectedRedirectPaths) {
+    const result = await invoke(pathname);
+    assert.equal(
+      result.sessionCheckCount,
+      1,
+      `${pathname}: session check`
+    );
+    assert.equal(result.response.status, 307, `${pathname}: redirect status`);
+
+    const location = new URL(result.response.headers.get("location"));
+    const next = location.searchParams.get("next");
+    assert.equal(location.pathname, "/login", `${pathname}: login redirect`);
+    assert.equal(next, pathname, `${pathname}: generated next`);
+    assert.equal(
+      isProtectedRedirectPath(next),
+      true,
+      `${pathname}: generated next is accepted`
+    );
+  }
+});
+
 test("thread tree matcher includes a trailing slash", () => {
   assert.equal(
     matches("/threads/abc/tree/", { "next-router-prefetch": "1" }),
@@ -170,19 +243,9 @@ test("thread tree matcher rejects a lookalike nested path", () => {
 });
 
 test("newly protected pages enforce auth including prefetch", async () => {
-  const protectedPaths = [
-    "/stats",
-    "/memory",
-    "/album",
-    "/arena",
-    "/calendar",
-    "/image",
-    "/novel-check",
-    "/threads/abc/tree",
-  ];
   const prefetchHeaders = { "next-router-prefetch": "1" };
 
-  for (const pathname of protectedPaths) {
+  for (const pathname of protectedPagePaths) {
     assert.equal(
       isProtectedPagePath(pathname),
       true,

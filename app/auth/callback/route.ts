@@ -1,10 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAllowedNextRedirect } from "@/lib/proxy-paths";
 
-  // ⚠️ このファイルはSupabase Auth（Googleログイン）専用のコールバックです。
-  // GitHub連携のコールバックは app/api/auth/github/callback/route.ts です。
-  // 過去にこの2ファイルの処理が混同されていた経緯があるため、絶対に混同しないこと。
+// ⚠️ このファイルはSupabase Auth（Googleログイン）専用のコールバックです。
+// GitHub連携のコールバックは app/api/auth/github/callback/route.ts です。
+// 過去にこの2ファイルの処理が混同されていた経緯があるため、絶対に混同しないこと。
 
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
@@ -31,24 +32,33 @@ export async function GET(req: NextRequest) {
 
     const { error, data } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      // next が /share/ で始まる場合のみ許可（オープンリダイレクト対策）
-      const next = searchParams.get("next");
-      if (next && next.startsWith("/share/")) {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
-
-      // ③ handle未設定ならオンボーディングへ
       const userId = data.session?.user?.id;
+      let handle: string | null = null;
+
       if (userId) {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("handle")
           .eq("id", userId)
           .single();
 
-        if (!profile?.handle) {
-          return NextResponse.redirect(`${origin}/settings?onboarding=true`);
+        if (!profileError) {
+          handle = profile?.handle ?? null;
         }
+      }
+
+      // 取得エラー・レコードなし・handle未設定（userId欠落を含む）は
+      // すべて同じ未設定状態として扱い、nextを参照せずオンボーディングへ送る。
+      if (!handle) {
+        return NextResponse.redirect(`${origin}/settings?onboarding=true`);
+      }
+
+      const target = resolveAllowedNextRedirect(
+        searchParams.get("next"),
+        origin
+      );
+      if (target) {
+        return NextResponse.redirect(target.toString());
       }
 
       return NextResponse.redirect(`${origin}/`);

@@ -41,6 +41,63 @@ export function isProtectedPagePath(pathname: string): boolean {
   return /^\/threads\/[^/]+\/tree$/.test(normalizedPath);
 }
 
+/**
+ * 未ログイン時にproxyがnextを生成し、ログイン後の復帰を許可する保護ページ。
+ * shouldRunSupabaseSessionCheck() のページ判定条件のうち、/login は含まない
+ * （/login はセッション確認対象だがnext復帰先としては不適格なため）。
+ */
+export function isProtectedRedirectPath(pathname: string): boolean {
+  return (
+    pathname === "/" ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/") ||
+    isProtectedPagePath(pathname)
+  );
+}
+
+/**
+ * 公開共有ページ。next復帰先として許可する。
+ * /api/share/[token] の isPublicShareReadApi() と同じ「単一セグメントのみ」境界。
+ */
+export function isShareRedirectPath(pathname: string): boolean {
+  return /^\/share\/[^/]+\/?$/.test(pathname);
+}
+
+/**
+ * app/auth/callback/route.ts が受け取る未信頼の next クエリ値を検証する。
+ * - 相対/絶対を問わずoriginで解決し、同一origin以外は拒否
+ * - query/hash付きは拒否
+ * - 正規化後のpathnameに対して許可判定を行う（dot-segment等によるすり抜け防止）
+ * 戻り値: 許可する場合は正規化済みURL、拒否する場合はnull
+ */
+export function resolveAllowedNextRedirect(
+  rawNext: string | null,
+  origin: string
+): URL | null {
+  if (!rawNext) return null;
+
+  let target: URL;
+  try {
+    target = new URL(rawNext, origin);
+  } catch {
+    return null;
+  }
+
+  if (target.origin !== origin) return null;
+  if (target.search || target.hash) return null;
+
+  if (
+    isProtectedRedirectPath(target.pathname) ||
+    isShareRedirectPath(target.pathname)
+  ) {
+    return target;
+  }
+
+  return null;
+}
+
 /** Bearer認証専用のMCP API。Supabase Cookieセッションを参照しない。 */
 export function isMcpBearerApi(pathname: string): boolean {
   return pathname === "/api/mcp" || pathname.startsWith("/api/mcp/");

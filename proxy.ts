@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildCspHeaderValue } from "@/lib/csp";
 import {
   isMcpBearerApi,
-  isProtectedPagePath,
+  isProtectedRedirectPath,
   isPublicShareReadApi,
 } from "@/lib/proxy-paths";
 
@@ -46,13 +46,8 @@ function shouldRunSupabaseSessionCheck(
   method: string
 ): boolean {
   if (
-    pathname === "/" ||
-    pathname.startsWith("/settings/") ||
-    pathname === "/settings" ||
-    pathname === "/login" ||
-    pathname.startsWith("/admin/") ||
-    pathname === "/admin" ||
-    isProtectedPagePath(pathname)
+    isProtectedRedirectPath(pathname) ||
+    isLoginPage(pathname)
   ) {
     return true;
   }
