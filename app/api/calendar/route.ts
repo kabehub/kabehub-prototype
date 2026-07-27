@@ -1,14 +1,31 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
+  const authResponse = new NextResponse();
+  const supabase = createRouteHandlerSupabaseClient(req, authResponse);
+
+  const finalizeResponse = <T extends NextResponse>(response: T): T => {
+    const authCookies = authResponse.cookies.getAll();
+    for (const cookie of authCookies) {
+      response.cookies.set(cookie);
+    }
+    if (authCookies.length > 0) {
+      response.headers.set("Cache-Control", "private, no-store");
+    }
+    return response;
+  };
+
+  const finalizeJson = (body: unknown, init?: ResponseInit): NextResponse =>
+    finalizeResponse(NextResponse.json(body, init));
+
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  if (!user) {
+    return finalizeJson({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { searchParams } = new URL(req.url);
   const year = parseInt(searchParams.get("year") ?? String(new Date().getFullYear()), 10);
@@ -28,10 +45,8 @@ export async function GET(req: NextRequest) {
     .order("updated_at", { ascending: false });
 
   if (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    return finalizeJson({ error: error.message }, { status: 500 });
   }
 
-  return new Response(JSON.stringify(threads ?? []), {
-    headers: { "Content-Type": "application/json" },
-  });
+  return finalizeJson(threads ?? []);
 }

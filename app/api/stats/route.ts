@@ -4,11 +4,28 @@ import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
+  const authResponse = new NextResponse();
+  const supabase = createRouteHandlerSupabaseClient(req, authResponse);
+
+  const finalizeResponse = <T extends NextResponse>(response: T): T => {
+    const authCookies = authResponse.cookies.getAll();
+    for (const cookie of authCookies) {
+      response.cookies.set(cookie);
+    }
+    if (authCookies.length > 0) {
+      response.headers.set("Cache-Control", "private, no-store");
+    }
+    return response;
+  };
+
+  const finalizeJson = (body: unknown, init?: ResponseInit): NextResponse =>
+    finalizeResponse(NextResponse.json(body, init));
+
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) {
+    return finalizeJson({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const period = req.nextUrl.searchParams.get("period") ?? "today";
   const tz = req.nextUrl.searchParams.get("tz") ?? "Asia/Tokyo";
@@ -39,7 +56,9 @@ export async function GET(req: NextRequest) {
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return finalizeJson({ error: error.message }, { status: 500 });
+  }
 
   const rows = messages ?? [];
 
@@ -83,5 +102,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ sends, total_tokens, by_model, hourly, since: sinceIso });
+  return finalizeJson({ sends, total_tokens, by_model, hourly, since: sinceIso });
 }
