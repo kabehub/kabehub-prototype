@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { generateBulkExportZip } from '@/lib/exportUtils'
-import { MODEL_CONFIG, loadModel, saveModel, type Provider, type ModelId } from '@/components/ChatInput'
+import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
 import type { McpToken } from '@/types'
 
 type Profile = {

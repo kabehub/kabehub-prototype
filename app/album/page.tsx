@@ -259,7 +259,6 @@ function AlbumCard({
 export default function AlbumPage() {
   const router = useRouter();
   const [items, setItems] = useState<AlbumItem[]>([]);
-  const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -295,7 +294,6 @@ export default function AlbumPage() {
       hasMoreRef.current = data.hasMore;
       setHasMore(data.hasMore);
       pageRef.current = pageNum + 1;
-      setPage(pageNum + 1);
     } catch (err) {
       console.error("アルバム取得失敗:", err);
     } finally {

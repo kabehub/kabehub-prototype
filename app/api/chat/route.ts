@@ -23,7 +23,6 @@ export const dynamic = 'force-dynamic';
 
 type ChatMessage = { role: string; content: string; provider?: string; model_id?: string | null; is_active?: boolean };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
-type ContentBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } } | ImageBlock;
 type UsageData = { input_tokens: number | null; output_tokens: number | null };
 type BranchMeta = { branch_root_id: string; branch_index: number; parent_id: string };
 type ChatProvider = "claude" | "gemini" | "openai";

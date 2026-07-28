@@ -18,7 +18,6 @@ import {
   buildMessageById,
   compareMessagesForDisplay,
   getAnchorKey,
-  getOrderNo,
   resolveBranchBlockAnchor,
   resolveCurrentLaneKey,
   type BranchLane,
@@ -178,7 +177,6 @@ export default function ChatPanel({
   const [shareSaving, setShareSaving] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
-  const [sharedAt, setSharedAt] = useState<string | null>(null);  // ✅ v76
   const [pushSaved, setPushSaved] = useState(false);              // ✅ v76: Push完了トースト
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [pendingDefaultTitle, setPendingDefaultTitle] = useState<string | null>(null);
@@ -324,8 +322,6 @@ export default function ChatPanel({
     } catch {}
   }, []);
 
-  const hasAnyApiKey = !!(apiKeyDrafts.anthropic || apiKeyDrafts.gemini || apiKeyDrafts.openai);
-
   const handleSaveApiKeys = () => {
     try {
       if (apiKeyDrafts.anthropic.trim()) {
@@ -404,7 +400,6 @@ export default function ChatPanel({
   useEffect(() => setShareHideMemos(thread?.hide_memos ?? false), [threadId, thread?.hide_memos]);
   useEffect(() => setShareAllowPromptFork(thread?.allow_prompt_fork ?? true), [threadId, thread?.allow_prompt_fork]);
   useEffect(() => setShareToken(thread?.share_token ?? null), [threadId, thread?.share_token]);
-  useEffect(() => setSharedAt(thread?.shared_at ?? null), [threadId, thread?.shared_at]);
   useEffect(() => setShareGenre((thread?.genre as string | null) ?? null), [threadId, thread?.genre]);
   useEffect(() => setSystemPromptDraft(thread?.system_prompt ?? ""), [threadId, thread?.system_prompt]);
   useEffect(() => setRoleplayMode(thread?.roleplay_mode ?? false), [threadId, thread?.roleplay_mode]);
@@ -504,7 +499,6 @@ export default function ChatPanel({
     setShareHideMemos(thread?.hide_memos ?? false);
     setShareAllowPromptFork(thread?.allow_prompt_fork ?? true);
     setShareToken(thread?.share_token ?? null);
-    setSharedAt(thread?.shared_at ?? null);  // ✅ v76
     setShareGenre((thread?.genre as string | null) ?? null); // 👈 追加
     setSelectedParentGenreId(null); // 👈 追加
   };
@@ -954,11 +948,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   };
 
   const {
-    activeAnchorByInactiveRootKeyDirect,
-    childGroupKeysByParentRootId,
-    parentAnchorByInactiveRootKeyDirect,
-    activeAnchorByInactiveRootKey,
-    branchGroupsByAnchor,
     inactiveBranchGroupsByAnchor,
     branchBlocksByAnchor,
   } = useMemo(() => {
@@ -1134,11 +1123,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     );
 
     return {
-      activeAnchorByInactiveRootKeyDirect,
-      childGroupKeysByParentRootId,
-      parentAnchorByInactiveRootKeyDirect,
-      activeAnchorByInactiveRootKey,
-      branchGroupsByAnchor,
       inactiveBranchGroupsByAnchor,
       branchBlocksByAnchor,
     };
