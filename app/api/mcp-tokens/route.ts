@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { hashMcpToken } from "@/lib/mcp-token-hash";
 
 export async function GET(req: NextRequest) {
   const res = NextResponse.next();
@@ -28,13 +29,7 @@ export async function POST(req: NextRequest) {
 
   const rawToken = crypto.randomUUID();
 
-  const hashBuffer = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(rawToken)
-  );
-  const tokenHash = Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const tokenHash = await hashMcpToken(rawToken);
 
   const { data, error } = await supabase
     .from("mcp_tokens")

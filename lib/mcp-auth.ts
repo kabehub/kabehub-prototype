@@ -3,6 +3,7 @@
 // ブラウザのログイン認証とは混ぜないこと。
 
 import { createClient } from '@supabase/supabase-js'
+import { hashMcpToken } from './mcp-token-hash'
 
 function serviceRoleClient() {
   return createClient(
@@ -18,10 +19,7 @@ export async function authenticateMcpToken(req: Request): Promise<string | null>
 
   const rawToken = authHeader.slice(7).trim()
 
-  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawToken))
-  const tokenHash = Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
+  const tokenHash = await hashMcpToken(rawToken)
 
   const supabase = serviceRoleClient()
   const { data, error } = await supabase
