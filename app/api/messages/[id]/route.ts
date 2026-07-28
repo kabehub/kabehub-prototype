@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
+import { deleteOwnedMessage } from "@/lib/messages/delete";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
-import { removeStoragePaths } from "@/lib/supabase/storage-cleanup";
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -10,47 +10,14 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: existing, error: selectError } = await supabase
-    .from("messages")
-    .select("metadata")
-    .eq("id", params.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (selectError) {
-    return NextResponse.json({ error: selectError.message }, { status: 500 });
+  const result = await deleteOwnedMessage({
+    supabase,
+    userId: user.id,
+    messageId: params.id,
+  });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 500 });
   }
-
-  const { error: archiveError } = await supabase
-    .from("lore_embeddings")
-    .update({ is_archived: true })
-    .eq("source_message_id", params.id)
-    .eq("user_id", user.id)
-    .eq("is_pinned", false);
-
-  if (archiveError) {
-    console.warn("Failed to archive lore_embeddings for deleted message:", archiveError.message);
-  }
-
-  const { error } = await supabase
-    .from("messages")
-    .delete()
-    .eq("id", params.id)
-    .eq("user_id", user.id);
-  if (error) return NextResponse.json({ error }, { status: 500 });
-
-  const storagePath = existing?.metadata?.storagePath;
-  if (isOwnedStoragePath(storagePath, user.id)) {
-    const cleanup = await removeStoragePaths(supabase, [storagePath]);
-    if (cleanup.failedCount > 0) {
-      console.warn("[messages-delete] storage cleanup incomplete", {
-        scope: "message",
-        attemptedCount: cleanup.attemptedCount,
-        failedCount: cleanup.failedCount,
-      });
-    }
-  }
-
   return NextResponse.json({ success: true });
 }
 
