@@ -122,22 +122,6 @@ export type GenreId = typeof GENRES[number]["children"][number]["id"];
 // 大分類IDの型
 export type ParentGenreId = typeof GENRES[number]["id"];
 
-// 中分類IDから親の大分類オブジェクトを逆引き
-export function getParentGenre(genreId: GenreId) {
-  return GENRES.find((parent) =>
-    parent.children.some((child) => child.id === genreId)
-  );
-}
-
-// 中分類IDからラベルを取得
-export function getGenreLabel(genreId: GenreId): string {
-  for (const parent of GENRES) {
-    const child = parent.children.find((c) => c.id === genreId);
-    if (child) return child.label;
-  }
-  return genreId;
-}
-
 // 大分類IDに属する中分類IDの配列を取得（exploreのIN絞り込み用）
 export function getChildIds(parentId: ParentGenreId): string[] {
   return (

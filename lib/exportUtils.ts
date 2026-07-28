@@ -40,7 +40,6 @@ export const processCsvBlocks = (content: string, omitCsv: boolean): string => {
 // エクスポートコンテンツ生成（ChatPanel.tsx から移動）
 // ============================================================
 
-export type ExportFormat = "txt" | "md" | "md2" | "csv";
 export type ExportOptions = { omitCsv: boolean };
 
 // タイムスタンプフォーマット（例: 2026-05-06 07:36）

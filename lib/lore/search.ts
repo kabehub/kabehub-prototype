@@ -1,15 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { createEmbedding } from "./openai";
 
-export interface LoreSearchOptions {
-  query: string;
-  folderName: string;
-  userId: string;
-  topK?: number;
-  openaiKey: string;
-  timeoutMs?: number;
-}
-
 export interface LoreSearchOptionsV2 {
   query: string;
   folderName: string | null;
@@ -31,8 +22,6 @@ export type LoreSearchV2Result = {
   sourceThreadId: string | null;
   sourceMessageId: string | null;
 };
-
-export type LoreSearchResult = LoreSearchV2Result;
 
 // ─── embedding生成（共通化）─────────────────────────────────────────────
 // 失敗時（HTTPエラー・レスポンス構造不正）は console.warn の上で null を返す。
@@ -130,35 +119,6 @@ export async function searchLoreV2ByEmbedding(
     sourceThreadId: row.source_thread_id,
     sourceMessageId: row.source_message_id,
   }));
-}
-
-// ─── 既存の外部シグネチャ（変更禁止）：内部でembedQuery+ByEmbedding版に委譲 ──────
-export async function searchLore(
-  supabase: SupabaseClient,
-  opts: LoreSearchOptions,
-): Promise<string[]> {
-  const { query, folderName, userId, topK = 3, openaiKey, timeoutMs = 3000 } = opts;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const embedding = await embedQuery(openaiKey, query, controller.signal);
-    if (!embedding) return [];
-    return await searchLoreByEmbedding(supabase, embedding, {
-      folderName,
-      userId,
-      topK,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if ((err as Error).name === "AbortError") {
-      console.warn("[lore] search timed out after", timeoutMs, "ms — skipping injection");
-    }
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export async function searchLoreV2(
