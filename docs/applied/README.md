@@ -20,6 +20,7 @@
 | migration_v129_dreaming_batch_multi_hardening.sql | consolidate_dreaming_batch_multi / rollback_dreaming_batch_multi の認証検証・search_path固定・EXECUTE権限限定（B-02対応） |
 | migration_v130_delete_current_user_hardening.sql | delete_current_user のEXECUTE権限限定・未認証拒否ガード追加（B-02縮小適用） |
 | migration_v131_storage_orphan_cleanup.sql | 孤児Storageオブジェクト候補検出RPC・実行履歴テーブル新設（B-04b／H-29対応） |
+| migration_v176_dreaming_rpc_and_trigger_cleanup.sql | updated_atトリガー関数統合・consolidate_dreaming_batch/rollback_dreaming_batchの未使用オーバーロード削除（監査D対応 D-18/D-19/D-20） |
 | v78_mcp_tokens_migration.sql | mcp_tokens テーブル新設 |
 | v89_migration.sql | messages.model_id カラム追加 |
 | v141c_migration.sql | Dreaming保護条件変更の適用手順記録（直接再実行するファイルではない） |

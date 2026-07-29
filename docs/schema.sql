@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/07/21（migration_v131_storage_orphan_cleanup.sql反映）
+-- 最終更新: 2026/07/28（migration_v176_dreaming_rpc_and_trigger_cleanup.sql反映）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -41,6 +41,11 @@
 --   - migration_v131_storage_orphan_cleanup.sql（B-04b／H-29対応：
 --     孤児Storageオブジェクト候補検出RPC・検索用部分式インデックス・
 --     Cron実行履歴テーブルを新設）
+--
+-- 2026/07/28、以下1本のマイグレーションを本番適用し、本ファイルに反映：
+--   - migration_v176_dreaming_rpc_and_trigger_cleanup.sql（監査D対応：
+--     updated_atトリガー関数をupdate_updated_at_columnへ統一し、
+--     未使用のDreaming RPCオーバーロード2件を削除）
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1172,19 +1177,9 @@ create policy "novel_settings: delete own"
   on novel_settings for delete
   using (auth.uid() = user_id);
 
-create or replace function update_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
 create trigger novel_settings_updated_at
   before update on novel_settings
-  for each row execute function update_updated_at();
+  for each row execute function update_updated_at_column();
 
 -- ============================================================
 -- アカウント削除RPC
@@ -1545,62 +1540,6 @@ begin
 end;
 $$;
 
--- Dreaming（記憶統合）: 2件統合・タグ明示指定版
--- 【注意】consolidate_dreaming_batch は上記と2つのシグネチャでオーバーロードされている
-create or replace function consolidate_dreaming_batch(
-  p_user_id uuid, p_lore_id_a uuid, p_lore_id_b uuid, p_merged_text text,
-  p_embedding vector, p_memory_kind text, p_temporal_status text, p_folder_name text,
-  p_tags text[], p_importance double precision, p_confidence double precision
-)
-returns uuid
-language plpgsql
-as $$
-declare
-  new_id        uuid;
-  updated_count int;
-begin
-  if exists (
-    select 1 from lore_embeddings
-    where id in (p_lore_id_a, p_lore_id_b)
-      and (
-        user_id != p_user_id
-        or is_archived = true
-        or superseded_by is not null
-        or is_pinned = true
-        or extraction_version in ('user_edited', 'user_created', 'liked_ai', 'liked_ai_cleaned')
-      )
-  ) then
-    raise exception 'source records failed protection check';
-  end if;
-  perform id from lore_embeddings
-  where id in (p_lore_id_a, p_lore_id_b)
-  order by id
-  for update;
-  insert into lore_embeddings (
-    user_id, chunk_text, embedding, memory_kind,
-    temporal_status, extraction_version, source_type,
-    source_thread_id, source_message_id, source_message_number,
-    folder_name, tags, importance_score, confidence_score
-  ) values (
-    p_user_id, p_merged_text, p_embedding, p_memory_kind,
-    p_temporal_status, 'dreaming_batch', 'consolidation',
-    null, null, null,
-    p_folder_name, p_tags, p_importance, p_confidence
-  ) returning id into new_id;
-  update lore_embeddings
-  set is_archived = true, superseded_by = new_id
-  where id in (p_lore_id_a, p_lore_id_b)
-    and user_id = p_user_id
-    and is_archived = false
-    and superseded_by is null;
-  get diagnostics updated_count = row_count;
-  if updated_count <> 2 then
-    raise exception 'expected 2 source records to be archived, got %', updated_count;
-  end if;
-  return new_id;
-end;
-$$;
-
 -- Dreaming（記憶統合）: 3件以上のマルチ統合版
 -- extraction_version の保護対象に liked_ai / liked_ai_cleaned を含む
 create or replace function public.consolidate_dreaming_batch_multi(
@@ -1693,62 +1632,6 @@ revoke execute on function public.consolidate_dreaming_batch_multi(
 grant execute on function public.consolidate_dreaming_batch_multi(
   uuid, uuid[], text, vector, text, text, text, double precision, double precision
 ) to authenticated;
-
--- Dreaming統合の取り消し（2件統合分）
-create or replace function rollback_dreaming_batch(
-  p_user_id uuid, p_consolidated_id uuid
-)
-returns void
-language plpgsql
-as $$
-declare
-  restored_count int;
-begin
-  if not exists (
-    select 1 from lore_embeddings
-    where id = p_consolidated_id
-      and user_id = p_user_id
-      and extraction_version = 'dreaming_batch'
-      and source_type = 'consolidation'
-      and is_archived = false
-      and is_pinned = false
-      and superseded_by is null
-  ) then
-    raise exception 'consolidated record not found or protected' using errcode = 'P0001';
-  end if;
-
-  if (
-    select count(*) from lore_embeddings
-    where superseded_by = p_consolidated_id
-      and user_id = p_user_id
-      and is_archived = true
-      and is_pinned = false
-      and extraction_version not in ('user_edited', 'user_created')
-  ) <> 2 then
-    raise exception 'expected 2 source records to restore, got unexpected count'
-      using errcode = 'P0001';
-  end if;
-
-  update lore_embeddings
-  set is_archived = false, superseded_by = null
-  where superseded_by = p_consolidated_id
-    and user_id = p_user_id
-    and is_archived = true
-    and is_pinned = false
-    and extraction_version not in ('user_edited', 'user_created');
-
-  get diagnostics restored_count = row_count;
-  if restored_count <> 2 then
-    raise exception 'expected 2 source records to be restored, got %', restored_count
-      using errcode = 'P0001';
-  end if;
-
-  update lore_embeddings
-  set is_archived = true
-  where id = p_consolidated_id
-    and user_id = p_user_id;
-end;
-$$;
 
 -- Dreaming統合の取り消し（マルチ統合分）
 create or replace function public.rollback_dreaming_batch_multi(
