@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
-import { normalizeConsolidationCandidate, type ConsolidationCandidate } from "@/lib/lore/mappers";
+import { clamp, normalizeConsolidationCandidate, type ConsolidationCandidate } from "@/lib/lore/mappers";
 import { pairKey } from "@/lib/lore/consolidation";
 
 export const dynamic = "force-dynamic";
 
 type SimilarLorePairRow = Record<string, unknown>;
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
 
 export async function GET(req: NextRequest) {
   const res = new NextResponse();

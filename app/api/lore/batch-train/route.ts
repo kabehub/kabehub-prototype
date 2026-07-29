@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { runBatchTrain } from "@/lib/lore/batchTrain";
+import { clamp } from "@/lib/lore/mappers";
 
 export const dynamic = "force-dynamic";
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
 
 export async function POST(req: NextRequest) {
   const openaiKey = req.headers.get("x-openai-api-key");

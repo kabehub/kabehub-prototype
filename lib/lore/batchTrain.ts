@@ -1,5 +1,6 @@
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { chatCompleteMini, createEmbedding } from "@/lib/lore/openai";
+import { clamp } from "@/lib/lore/mappers";
 
 type MessageRow = { id: string; thread_id: string; content: string; created_at: string };
 type ExtractedMemory = { text: string; memoryKind?: string; temporalStatus?: string; importanceScore?: number; confidenceScore?: number };
@@ -26,10 +27,6 @@ const MEMORY_KINDS = new Set([
 ]);
 
 const TEMPORAL_STATUSES = new Set(["current", "past", "future", "expired", "uncertain"]);
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
 
 function normalizeMemory(value: unknown): ExtractedMemory | null {
   if (!value || typeof value !== "object") return null;
