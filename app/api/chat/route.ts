@@ -10,6 +10,7 @@ import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
 import { buildReferenceBlock, buildReferencePreamble } from "@/lib/ai-context-blocks";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
+import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 import {
   buildDefaultModels,
   canToggleDeepThinking,
@@ -1091,13 +1092,10 @@ export async function POST(req: NextRequest) {
         if (!isOwnedStoragePath(storagePath, userId)) {
           console.warn('[imageContextId] storagePathの所有権検証に失敗したため画像コンテキストをスキップします')
         } else {
-          const { data: blob } = await supabase.storage
-            .from('generated-images')
-            .download(storagePath)
+          const downloaded = await downloadImageAsBase64(supabase, storagePath)
 
-          if (blob) {
-            const arrayBuffer = await blob.arrayBuffer()
-            const base64 = Buffer.from(arrayBuffer).toString('base64')
+          if (downloaded) {
+            const { base64 } = downloaded
 
             const contextBlock: ImageBlock = {
               type: 'image',
