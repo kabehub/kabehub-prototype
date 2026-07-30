@@ -45,12 +45,12 @@ export function parseGithubBlobUrl(url: string): {
   }
 }
 
-function encodePath(path: string): string {
+export function encodeGithubPath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
 export function toRawGithubUrl(parsed: NonNullable<ReturnType<typeof parseGithubBlobUrl>>): string {
-  return `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${parsed.branch}/${encodePath(parsed.path)}`;
+  return `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${parsed.branch}/${encodeGithubPath(parsed.path)}`;
 }
 
 export function isAllowedExtension(path: string): boolean {
@@ -63,12 +63,24 @@ export function isAllowedExtension(path: string): boolean {
   return ALLOWED_EXTENSIONS.some((extension) => lowerPath.endsWith(extension));
 }
 
-function truncateContent(content: string): { content: string; truncated: boolean } {
+export function truncateGithubContent(content: string): { content: string; truncated: boolean } {
   if (content.length <= MAX_CHARS_PER_FILE) {
     return { content, truncated: false };
   }
 
   return { content: content.slice(0, MAX_CHARS_PER_FILE), truncated: true };
+}
+
+export function decodeGithubContentsPayload(data: unknown): string | null {
+  if (
+    typeof data === "object" && data !== null &&
+    "encoding" in data && "content" in data &&
+    (data as { encoding?: unknown }).encoding === "base64" &&
+    typeof (data as { content?: unknown }).content === "string"
+  ) {
+    return Buffer.from((data as { content: string }).content.replace(/\s/g, ""), "base64").toString("utf8");
+  }
+  return null;
 }
 
 function authHeaders(accessToken?: string): HeadersInit {
@@ -107,13 +119,13 @@ export async function fetchGithubFile(
   try {
     const rawResponse = await fetchWithTimeout(toRawGithubUrl(parsed), { headers });
     if (rawResponse.ok) {
-      return truncateContent(await rawResponse.text());
+      return truncateGithubContent(await rawResponse.text());
     }
   } catch {
     // Raw取得に失敗した場合はGitHub Contents APIにフォールバックする。
   }
 
-  const contentsUrl = `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${encodePath(parsed.path)}?ref=${encodeURIComponent(parsed.branch)}`;
+  const contentsUrl = `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${encodeGithubPath(parsed.path)}?ref=${encodeURIComponent(parsed.branch)}`;
 
   try {
     const apiResponse = await fetchWithTimeout(contentsUrl, {
@@ -128,18 +140,9 @@ export async function fetchGithubFile(
     }
 
     const data: unknown = await apiResponse.json();
-    if (
-      typeof data === "object" &&
-      data !== null &&
-      "encoding" in data &&
-      "content" in data &&
-      (data as { encoding?: unknown }).encoding === "base64" &&
-      typeof (data as { content?: unknown }).content === "string"
-    ) {
-      const content = Buffer
-        .from((data as { content: string }).content.replace(/\s/g, ""), "base64")
-        .toString("utf8");
-      return truncateContent(content);
+    const content = decodeGithubContentsPayload(data);
+    if (content !== null) {
+      return truncateGithubContent(content);
     }
 
     return { error: "GitHubからの取得に失敗しました（HTTP 415）" };
@@ -242,7 +245,7 @@ export async function listGithubDirectory(
   },
 ): Promise<ListGithubDirectoryResult> {
   const timeoutMs = options?.timeoutMs ?? 5_000;
-  const encodedPath = path ? `/${encodePath(path)}` : "";
+  const encodedPath = path ? `/${encodeGithubPath(path)}` : "";
   const refQuery = options?.ref ? `?ref=${encodeURIComponent(options.ref)}` : "";
   const url = `https://api.github.com/repos/${repo}/contents${encodedPath}${refQuery}`;
 

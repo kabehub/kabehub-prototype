@@ -1,4 +1,10 @@
-import { isAllowedExtension, listGithubDirectory, MAX_CHARS_PER_FILE } from "./github";
+import {
+  decodeGithubContentsPayload,
+  encodeGithubPath,
+  isAllowedExtension,
+  listGithubDirectory,
+  truncateGithubContent,
+} from "./github";
 
 export type GithubToolLoopResult = {
   contextBlock: string;
@@ -69,18 +75,6 @@ function validateGithubPath(path: string): { valid: true } | { valid: false; rea
   return { valid: true };
 }
 
-function encodeGithubPath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-function truncateGithubContent(content: string): { content: string; truncated: boolean } {
-  if (content.length <= MAX_CHARS_PER_FILE) {
-    return { content, truncated: false };
-  }
-
-  return { content: content.slice(0, MAX_CHARS_PER_FILE), truncated: true };
-}
-
 async function readGithubFileByPath(
   repo: string,
   path: string,
@@ -106,17 +100,8 @@ async function readGithubFileByPath(
     }
 
     const data: unknown = await response.json();
-    if (
-      typeof data === "object" &&
-      data !== null &&
-      "encoding" in data &&
-      "content" in data &&
-      (data as { encoding?: unknown }).encoding === "base64" &&
-      typeof (data as { content?: unknown }).content === "string"
-    ) {
-      const content = Buffer
-        .from((data as { content: string }).content.replace(/\s/g, ""), "base64")
-        .toString("utf8");
+    const content = decodeGithubContentsPayload(data);
+    if (content !== null) {
       return truncateGithubContent(content);
     }
 
