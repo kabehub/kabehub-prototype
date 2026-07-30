@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
-import { chatCompleteMini } from "@/lib/lore/openai";
 import {
   CONSOLIDATION_SOURCE_SELECT,
   ConsolidationSourceRow,
   normalizePair,
   validateApprovedPair,
+  validateMergedText,
 } from "@/lib/lore/consolidation";
+import { generateMergedText } from "@/lib/lore/consolidationLlm";
 
 export const dynamic = "force-dynamic";
-
-const CONSOLIDATION_PROMPT = `2つの記憶を、重複を取り除いて1つに統合してください。
-元の記憶にない新事実は追加しないでください。
-矛盾がある場合は、より新しい記憶を優先し、古い内容は「以前は〜だったが、現在は〜」のように整理してください。
-出力は統合後の記憶本文のみ。説明や前置きは不要です。`;
 
 function newerSource(a: ConsolidationSourceRow, b: ConsolidationSourceRow) {
   const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -29,26 +25,6 @@ function suggestedValue(
 ) {
   if (a && a === b) return a;
   return newer ?? a ?? b ?? fallback;
-}
-
-function buildUserPrompt(sourceA: ConsolidationSourceRow, sourceB: ConsolidationSourceRow) {
-  return `記憶A（created_at: ${sourceA.created_at ?? "unknown"}）:
-${sourceA.chunk_text}
-
-記憶B（created_at: ${sourceB.created_at ?? "unknown"}）:
-${sourceB.chunk_text}`;
-}
-
-async function generateMergedText(openaiKey: string, sourceA: ConsolidationSourceRow, sourceB: ConsolidationSourceRow) {
-  const mergedText = await chatCompleteMini(
-    openaiKey,
-    CONSOLIDATION_PROMPT,
-    buildUserPrompt(sourceA, sourceB),
-  );
-  if (typeof mergedText !== "string" || mergedText.trim().length === 0) {
-    throw new Error("Missing merged text");
-  }
-  return mergedText.trim();
 }
 
 export async function POST(req: NextRequest) {
@@ -89,7 +65,9 @@ export async function POST(req: NextRequest) {
   try {
     const { sourceA, sourceB } = validated;
     const newer = newerSource(sourceA, sourceB);
-    const mergedText = await generateMergedText(openaiKey, sourceA, sourceB);
+    const mergedText = await generateMergedText(openaiKey, [sourceA, sourceB]);
+    const validationError = validateMergedText(mergedText);
+    if (validationError) throw new Error(validationError);
 
     return NextResponse.json({
       mergedText,

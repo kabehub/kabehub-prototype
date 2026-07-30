@@ -43,6 +43,34 @@ export type ConsolidationSourceRow = {
   created_at: string | null;
 };
 
+export function buildConsolidationUserPrompt(sources: ConsolidationSourceRow[]) {
+  return sources
+    .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
+    .map((source, index) =>
+      `記憶${index + 1}（created_at: ${source.created_at ?? "unknown"}）:\n${source.chunk_text}`
+    )
+    .join("\n\n---\n\n");
+}
+
+export function isJsonStringLike(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || !["{", "[", "\""].includes(trimmed[0])) return false;
+
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function validateMergedText(value: string) {
+  if (!value.trim()) return "Merged text is empty";
+  if (value.length > 500) return "Merged text exceeds 500 characters";
+  if (isJsonStringLike(value)) return "Merged text must not be JSON";
+  return null;
+}
+
 export function validateApprovedPair(
   rows: ConsolidationSourceRow[],
   userId: string,

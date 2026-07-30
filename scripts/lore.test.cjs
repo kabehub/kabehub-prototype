@@ -16,8 +16,8 @@ Module._resolveFilename = function resolveFilename(request, parent, isMain, opti
 
 const testExportsByFile = new Map([
   ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId", "toMemoryCard", "memoryNeedsReview", "clamp"]],
-  ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "validateApprovedPair", "validateDreamingSources"]],
-  ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind", "buildUserPrompt", "isJsonStringLike", "validateMergedText"]],
+  ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "buildConsolidationUserPrompt", "isJsonStringLike", "validateMergedText", "validateApprovedPair", "validateDreamingSources"]],
+  ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind"]],
   ["app/api/lore/consolidate/preview/route.ts", ["newerSource", "suggestedValue"]],
   ["app/api/lore/consolidate/merge/route.ts", ["normalizeTags"]],
   ["lib/lore/batchTrain.ts", ["normalizeMemory", "buildMemoryExtractionPrompt", "fetchTargetMessages"]],
@@ -183,26 +183,26 @@ test("dreaming rejects four protected variants and mismatched folder/kind", () =
   assert.ok(consolidationModule.validateDreamingSources([source("a"), source("b")], "user", ["a", "b"]));
 });
 
-test("buildUserPrompt destructively sorts sources oldest-first", () => {
+test("buildConsolidationUserPrompt destructively sorts sources oldest-first", () => {
   const validated = [source("a"), source("b")];
-  const prompt = dreaming.buildUserPrompt(validated);
+  const prompt = consolidationModule.buildConsolidationUserPrompt(validated);
   assert.deepEqual(validated.map((row) => row.id), ["b", "a"]);
   assert.equal(validated[0].id, "b", "after generateMergedText, validated[0] is currently the oldest source");
   assert.equal(prompt, "記憶1（created_at: 2025-01-01T00:00:00Z）:\nb\n\n---\n\n記憶2（created_at: 2025-01-02T00:00:00Z）:\na");
 });
 
 test("validateMergedText and isJsonStringLike preserve current boundaries", () => {
-  assert.equal(dreaming.validateMergedText(""), "Merged text is empty");
-  assert.equal(dreaming.validateMergedText("   "), "Merged text is empty");
-  assert.equal(dreaming.validateMergedText("x".repeat(500)), null);
-  assert.equal(dreaming.validateMergedText("x".repeat(501)), "Merged text exceeds 500 characters");
+  assert.equal(consolidationModule.validateMergedText(""), "Merged text is empty");
+  assert.equal(consolidationModule.validateMergedText("   "), "Merged text is empty");
+  assert.equal(consolidationModule.validateMergedText("x".repeat(500)), null);
+  assert.equal(consolidationModule.validateMergedText("x".repeat(501)), "Merged text exceeds 500 characters");
   for (const value of ["{}", "[]", "\"text\""]) {
-    assert.equal(dreaming.isJsonStringLike(value), true);
-    assert.equal(dreaming.validateMergedText(value), "Merged text must not be JSON");
+    assert.equal(consolidationModule.isJsonStringLike(value), true);
+    assert.equal(consolidationModule.validateMergedText(value), "Merged text must not be JSON");
   }
   for (const value of ["{broken", "123", "null"]) {
-    assert.equal(dreaming.isJsonStringLike(value), false);
-    assert.equal(dreaming.validateMergedText(value), null);
+    assert.equal(consolidationModule.isJsonStringLike(value), false);
+    assert.equal(consolidationModule.validateMergedText(value), null);
   }
 });
 

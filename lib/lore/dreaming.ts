@@ -4,7 +4,9 @@ import {
   CONSOLIDATION_SOURCE_SELECT,
   ConsolidationSourceRow,
   validateDreamingSources,
+  validateMergedText,
 } from "@/lib/lore/consolidation";
+import { generateMergedText } from "@/lib/lore/consolidationLlm";
 import {
   DreamingCandidate,
   normalizeDreamingCandidate,
@@ -16,11 +18,6 @@ const LIKED_AI_CLEANING_PROMPT = `以下はチャットAIの発言テキスト�
 「〜である。」調の客観的な知識文として3〜5行で書き直してください。
 元の内容にない事実は追加しないでください。
 出力は書き直したテキストのみ。説明・前置き不要。`;
-
-const CONSOLIDATION_PROMPT = `複数の記憶を、重複を取り除いて1つに統合してください。
-元の記憶にない新事実は追加しないでください。
-矛盾がある場合は、created_at が新しい記憶を優先し、古い内容は「以前は〜だったが、現在は〜」のように整理してください。
-出力は統合後の記憶本文のみ。説明や前置きは不要です。`;
 
 type SimilarLorePairRow = Record<string, unknown>;
 
@@ -78,46 +75,6 @@ export function hasSameFolderNameAndMemoryKind(sources: ConsolidationSourceRow[]
   return sources.every((source) =>
     source.folder_name === first.folder_name && source.memory_kind === first.memory_kind
   );
-}
-
-export function buildUserPrompt(sources: ConsolidationSourceRow[]) {
-  return sources
-    .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
-    .map((source, index) =>
-      `記憶${index + 1}（created_at: ${source.created_at ?? "unknown"}）:\n${source.chunk_text}`
-    )
-    .join("\n\n---\n\n");
-}
-
-async function generateMergedText(openaiKey: string, sources: ConsolidationSourceRow[]) {
-  const mergedText = await chatCompleteMini(
-    openaiKey,
-    CONSOLIDATION_PROMPT,
-    buildUserPrompt(sources),
-  );
-  if (typeof mergedText !== "string" || mergedText.trim().length === 0) {
-    throw new Error("Missing merged text");
-  }
-  return mergedText.trim();
-}
-
-export function isJsonStringLike(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed || !["{", "[", "\""].includes(trimmed[0])) return false;
-
-  try {
-    JSON.parse(trimmed);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function validateMergedText(value: string) {
-  if (!value.trim()) return "Merged text is empty";
-  if (value.length > 500) return "Merged text exceeds 500 characters";
-  if (isJsonStringLike(value)) return "Merged text must not be JSON";
-  return null;
 }
 
 type CleanResult = {
