@@ -256,5 +256,26 @@ export type RegistryGeminiModel =
 export type RegistryOpenAIModel =
   Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; provider: "openai"; status: "active" }>["id"];
 
+export type RegistryTextModel =
+  | RegistryClaudeModel
+  | RegistryGeminiModel
+  | RegistryOpenAIModel;
+
+export function buildDefaultModels(surface: "chat" | "arena"): Record<string, RegistryTextModel> {
+  return {
+    claude: getDefaultModel("claude", surface) as RegistryClaudeModel,
+    gemini: getDefaultModel("gemini", surface) as RegistryGeminiModel,
+    openai: getDefaultModel("openai", surface) as RegistryOpenAIModel,
+  };
+}
+
+export function createModelGuards(surface: "chat" | "arena") {
+  return {
+    isClaudeModel: (modelId: string): modelId is RegistryClaudeModel => isAllowedModel("claude", modelId, surface),
+    isGeminiModel: (modelId: string): modelId is RegistryGeminiModel => isAllowedModel("gemini", modelId, surface),
+    isOpenAIModel: (modelId: string): modelId is RegistryOpenAIModel => isAllowedModel("openai", modelId, surface),
+  };
+}
+
 export type RegistryImageGenModel =
   Extract<(typeof MODEL_REGISTRY)[number], { kind: "image"; status: "active" }>["id"];

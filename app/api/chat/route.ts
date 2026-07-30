@@ -11,9 +11,9 @@ import { getGithubToken } from "@/lib/github-token-store";
 import { buildReferenceBlock, buildReferencePreamble } from "@/lib/ai-context-blocks";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 import {
+  buildDefaultModels,
   canToggleDeepThinking,
-  getDefaultModel,
-  isAllowedModel,
+  createModelGuards,
   resolveClaudeRequestOverrides,
 } from "@/lib/modelRegistry";
 import type { LoreSearchV2Result } from "@/lib/lore";
@@ -48,11 +48,7 @@ const dropTrailingUserUnconditional = (source: ChatMessage[]): ChatMessage[] => 
   return source;
 };
 
-const DEFAULT_MODELS: Record<string, ModelId> = {
-  claude: getDefaultModel("claude", "chat") as ModelId,
-  gemini: getDefaultModel("gemini", "chat") as ModelId,
-  openai: getDefaultModel("openai", "chat") as ModelId,
-};
+const DEFAULT_MODELS = buildDefaultModels("chat");
 
 const RAG_TRIGGER_KEYWORDS = [
   "前に", "以前", "覚えて", "覚えてる", "方針", "このプロジェクト",
@@ -64,17 +60,7 @@ function shouldSearchRagMemory(content: string): boolean {
   return RAG_TRIGGER_KEYWORDS.some(kw => content.includes(kw));
 }
 
-function isClaudeModel(modelId: string): modelId is ClaudeModel {
-  return isAllowedModel("claude", modelId, "chat");
-}
-
-function isGeminiModel(modelId: string): modelId is GeminiModel {
-  return isAllowedModel("gemini", modelId, "chat");
-}
-
-function isOpenAIModel(modelId: string): modelId is OpenAIModel {
-  return isAllowedModel("openai", modelId, "chat");
-}
+const { isClaudeModel, isGeminiModel, isOpenAIModel } = createModelGuards("chat");
 
 function stripLegacyAssistantLabelPrefix(content: string): string {
   return content.replace(/^(\s*\[.*?\]\s*)+/, "");
@@ -1180,7 +1166,7 @@ export async function POST(req: NextRequest) {
     anthropicKey
   ) {
     try {
-      const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : getDefaultModel("claude", "chat");
+      const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : DEFAULT_MODELS.claude;
       const systemPromptForGithubLoop = dynamicSystemText
         ? stableSystemPrompt + "\n\n" + dynamicSystemText
         : stableSystemPrompt;

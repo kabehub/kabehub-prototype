@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
-import { getDefaultModel, isAllowedModel, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
+import { buildDefaultModels, createModelGuards, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -58,23 +58,9 @@ async function readProviderJson(provider: ArenaProvider, response: Response): Pr
 }
 
 // デフォルトモデル（modelIdが未指定の場合のフォールバック）
-const DEFAULT_MODELS: Record<string, ModelId> = {
-  claude: getDefaultModel("claude", "arena") as ModelId,
-  gemini: getDefaultModel("gemini", "arena") as ModelId,
-  openai: getDefaultModel("openai", "arena") as ModelId,
-};
+const DEFAULT_MODELS = buildDefaultModels("arena");
 
-function isClaudeModel(modelId: string): modelId is ClaudeModel {
-  return isAllowedModel("claude", modelId, "arena");
-}
-
-function isGeminiModel(modelId: string): modelId is GeminiModel {
-  return isAllowedModel("gemini", modelId, "arena");
-}
-
-function isOpenAIModel(modelId: string): modelId is OpenAIModel {
-  return isAllowedModel("openai", modelId, "arena");
-}
+const { isClaudeModel, isGeminiModel, isOpenAIModel } = createModelGuards("arena");
 
 async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: ClaudeModel): Promise<string> {
   const body: Record<string, unknown> = {

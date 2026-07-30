@@ -183,4 +183,31 @@ for (const [provider, modelId, pricing] of newModels) {
   assert.deepEqual(registry.getPricing(modelId), pricing, `${modelId}/pricing`);
 }
 
+for (const surface of ["chat", "arena"]) {
+  const defaults = registry.buildDefaultModels(surface);
+  for (const provider of ["claude", "gemini", "openai"]) {
+    assert.equal(
+      defaults[provider],
+      registry.getDefaultModel(provider, surface),
+      `${provider}/${surface}`
+    );
+  }
+}
+
+for (const surface of ["chat", "arena"]) {
+  const guards = registry.createModelGuards(surface);
+  for (const model of registry.MODEL_REGISTRY) {
+    if (model.kind !== "text") continue;
+    const expected = { claude: "isClaudeModel", gemini: "isGeminiModel", openai: "isOpenAIModel" }[model.provider];
+    assert.equal(
+      guards[expected](model.id),
+      registry.isAllowedModel(model.provider, model.id, surface),
+      `${expected}/${model.id}/${surface}`
+    );
+  }
+  assert.equal(guards.isClaudeModel("unknown-model"), false);
+  assert.equal(guards.isGeminiModel("unknown-model"), false);
+  assert.equal(guards.isOpenAIModel("unknown-model"), false);
+}
+
 console.log("modelRegistry tests passed");
