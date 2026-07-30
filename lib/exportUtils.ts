@@ -5,6 +5,7 @@
 //    キャラ名はエクスポート出力内では一切使用しない。
 
 import JSZip from "jszip";
+import { formatDateTime } from "@/lib/formatters";
 import { Message, Thread } from "@/types";
 
 // ============================================================
@@ -42,20 +43,9 @@ export const processCsvBlocks = (content: string, omitCsv: boolean): string => {
 
 export type ExportOptions = { omitCsv: boolean };
 
-// タイムスタンプフォーマット（例: 2026-05-06 07:36）
-const formatTimestamp = (isoString: string): string => {
-  const d = new Date(isoString);
-  const yyyy = d.getFullYear();
-  const MM = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const HH = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${MM}-${dd} ${HH}:${mm}`;
-};
-
 // MD2用メッセージブロック生成
 const buildMd2Message = (msg: Message, options: ExportOptions): string => {
-  const timestamp = formatTimestamp(msg.created_at);
+  const timestamp = formatDateTime(msg.created_at);
   const lines: string[] = [];
   const content = processCsvBlocks(msg.content, options.omitCsv);
 
@@ -252,7 +242,7 @@ export const buildExportContent = (
     // ✅ v63追加: なりきりモード注記（CSVコメント行）
     buildRoleplayNotice(thread, "csv").forEach((l) => lines.push(l));
     messages.forEach((msg) => {
-      const timestamp = new Date(msg.created_at).toLocaleString("ja-JP");
+      const timestamp = formatDateTime(msg.created_at);
       const rawContent = msg.content.replace(/\n/g, " ");
       const needsQuote = /[,"\n]/.test(rawContent);
       const escapedContent = rawContent.replace(/"/g, '""');
@@ -280,7 +270,7 @@ export const buildExportContent = (
         msg.provider === "memo" ? "【📝 メモ】" :
         msg.role === "user" ? "【あなた】" :
         `【${aiLabel}】`;
-      const time = new Date(msg.created_at).toLocaleString("ja-JP");
+      const time = formatDateTime(msg.created_at);
       lines.push(`${roleLabel} ${time}`);
       lines.push(processCsvBlocks(msg.content, options.omitCsv));
       lines.push("");

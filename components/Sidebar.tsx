@@ -1,6 +1,7 @@
 "use client";
 
 import { Thread } from "@/types";
+import { timeAgo } from "@/lib/formatters";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 
@@ -19,16 +20,6 @@ interface SidebarProps {
   isMobileOverlay?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "今";
-  if (mins < 60) return `${mins}分前`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}時間前`;
-  return `${Math.floor(hrs / 24)}日前`;
 }
 
 // フォルダ名でスレッドをグループ化

@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { timeAgo } from "@/lib/formatters";
 import { GENRES } from "@/lib/genres";
 
 // ---- 型定義 ----
@@ -20,19 +21,6 @@ interface ExploreThread {
   like_count: number;
   liked_by_me: boolean;
   genre: string | null; // 👈 追加
-}
-
-// ---- ユーティリティ ----
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "今";
-  if (mins < 60) return `${mins}分前`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}時間前`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}日前`;
-  return new Date(dateStr).toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
 }
 
 // ---- ☆いいねボタン ----

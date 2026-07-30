@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
+import { formatUSD } from "@/lib/pricing";
 
 interface NovelFile {
   name: string;
@@ -18,12 +19,6 @@ const CHECK_ITEMS = [
 function getTodayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function formatCost(usd: number): string {
-  if (usd < 0.001) return "< $0.001";
-  if (usd < 0.01) return `$${usd.toFixed(3)}`;
-  return `$${usd.toFixed(2)}`;
 }
 
 async function readFileAsText(file: File): Promise<string> {
@@ -268,8 +263,8 @@ export default function NovelCheckPage() {
           <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "12px", color: "var(--ink-muted)", marginBottom: "6px" }}>
             <span>総文字数: <strong style={{ color: "var(--ink)" }}>{totalChars.toLocaleString()}</strong>文字</span>
             <span>推定トークン数: <strong style={{ color: "var(--ink)" }}>{estimatedTokens.toLocaleString()}</strong></span>
-            <span>flash概算: <strong style={{ color: "var(--ink)" }}>{formatCost(flashCost)}</strong></span>
-            <span>pro概算: <strong style={{ color: "var(--ink)" }}>{formatCost(proCost)}</strong></span>
+            <span>flash概算: <strong style={{ color: "var(--ink)" }}>{formatUSD(flashCost)}</strong></span>
+            <span>pro概算: <strong style={{ color: "var(--ink)" }}>{formatUSD(proCost)}</strong></span>
           </div>
           <div style={{ fontSize: "10px", color: "var(--ink-faint)" }}>
             ※日本語のトークン数は目安です。実際の請求額と若干異なる場合があります

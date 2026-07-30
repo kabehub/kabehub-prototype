@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { formatDateTime } from "@/lib/formatters";
 import { supabase } from "@/lib/supabase/client";
 
 interface AlbumItem {
@@ -15,16 +16,6 @@ interface AlbumItem {
     image_deleted?: boolean;
   };
   signedUrl: string | null;
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${y}/${mo}/${day} ${h}:${mi}`;
 }
 
 function SkeletonCard() {
@@ -142,7 +133,7 @@ function AlbumCard({
           color: "var(--ink-faint)",
           fontFamily: "'JetBrains Mono', monospace",
         }}>
-          {formatDate(item.created_at)}
+          {formatDateTime(item.created_at)}
         </p>
 
         {/* ボタン群（選択モード中は非表示） */}
