@@ -16,45 +16,10 @@
 // THINKING_UNSUPPORTED_MODELS等）だけを検証する。
 
 const assert = require("node:assert/strict");
-const Module = require("node:module");
-const path = require("node:path");
-const fs = require("node:fs");
-const ts = require("typescript");
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
 
-const rootDir = path.resolve(__dirname, "..");
-const originalResolveFilename = Module._resolveFilename;
-
-Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
-  if (request.startsWith("@/")) {
-    return originalResolveFilename.call(
-      this,
-      path.join(rootDir, request.slice(2)),
-      parent,
-      isMain,
-      options
-    );
-  }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
-
-function compileTsx(module, filename) {
-  const source = fs.readFileSync(filename, "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2018,
-      esModuleInterop: true,
-      // ChatInput()コンポーネント本体は呼び出さないため変換方式は動作に影響しないが、
-      // react/jsx-runtime経由の変換（ReactJSX）の方が「未importのReactグローバル」に
-      // 依存せず将来的なトップレベルJSX定数の追加にも耐性があるためこちらを採用
-      jsx: ts.JsxEmit.ReactJSX,
-    },
-    fileName: filename,
-  }).outputText;
-  module._compile(output, filename);
-}
-require.extensions[".ts"] = compileTsx;
-require.extensions[".tsx"] = compileTsx;
+installTsLoader({ jsx: true });
+installAliasResolver();
 
 const {
   loadModel,

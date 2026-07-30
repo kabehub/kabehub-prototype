@@ -1,18 +1,9 @@
 const assert = require("node:assert/strict");
-const Module = require("node:module");
 const path = require("node:path");
-const fs = require("node:fs");
-const ts = require("typescript");
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
 
 const rootDir = path.resolve(__dirname, "..");
-const originalResolveFilename = Module._resolveFilename;
-
-Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
-  if (request.startsWith("@/")) {
-    return originalResolveFilename.call(this, path.join(rootDir, request.slice(2)), parent, isMain, options);
-  }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
+installAliasResolver();
 
 const testExportsByFile = new Map([
   ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId", "toMemoryCard", "memoryNeedsReview", "clamp"]],
@@ -24,25 +15,15 @@ const testExportsByFile = new Map([
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
 ]);
 
-function compile(module, filename) {
-  const source = fs.readFileSync(filename, "utf8");
-  let output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2018,
-      esModuleInterop: true,
-      jsx: ts.JsxEmit.ReactJSX,
-    },
-    fileName: filename,
-  }).outputText;
-
-  const relativePath = path.relative(rootDir, filename).split(path.sep).join("/");
-  const names = testExportsByFile.get(relativePath);
-  if (names) output += `\nmodule.exports.__test = { ${names.join(", ")} };`;
-  module._compile(output, filename);
-}
-require.extensions[".ts"] = compile;
-require.extensions[".tsx"] = compile;
+installTsLoader({
+  jsx: true,
+  transformOutput(output, filename) {
+    const relativePath = path.relative(rootDir, filename).split(path.sep).join("/");
+    const names = testExportsByFile.get(relativePath);
+    if (!names) return output;
+    return `${output}\nmodule.exports.__test = { ${names.join(", ")} };`;
+  },
+});
 
 global.fetch = async () => {
   throw new Error("Network access is forbidden in lore characterization tests");

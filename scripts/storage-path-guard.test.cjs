@@ -1,19 +1,7 @@
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const ts = require("typescript");
+const { installTsLoader } = require("./testBootstrap.cjs");
 
-require.extensions[".ts"] = function compileTypescript(module, filename) {
-  const source = fs.readFileSync(filename, "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2018,
-      esModuleInterop: true,
-    },
-    fileName: filename,
-  }).outputText;
-  module._compile(output, filename);
-};
+installTsLoader();
 
 const { isOwnedStoragePath } = require("../lib/storage-path-guard.ts");
 

@@ -1,37 +1,20 @@
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const Module = require("node:module");
 const path = require("node:path");
-const ts = require("typescript");
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
 
 const rootDir = path.resolve(__dirname, "..");
 const routePath = "app/api/cron/storage-cleanup/route.ts";
-const originalResolveFilename = Module._resolveFilename;
 
-Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
-  if (request.startsWith("@/")) {
-    request = path.join(rootDir, request.slice(2));
-  }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
-
-require.extensions[".ts"] = function compileTypescript(module, filename) {
-  const source = fs.readFileSync(filename, "utf8");
-  let output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2018,
-      esModuleInterop: true,
-    },
-    fileName: filename,
-  }).outputText;
-
-  const relativePath = path.relative(rootDir, filename).split(path.sep).join("/");
-  if (relativePath === routePath) {
-    output += "\nmodule.exports.__test = { getCleanupMode, selectCandidatePaths };";
-  }
-  module._compile(output, filename);
-};
+installAliasResolver();
+installTsLoader({
+  transformOutput(output, filename) {
+    const relativePath = path.relative(rootDir, filename).split(path.sep).join("/");
+    if (relativePath === routePath) {
+      return `${output}\nmodule.exports.__test = { getCleanupMode, selectCandidatePaths };`;
+    }
+    return output;
+  },
+});
 
 const adminModule = require("../lib/supabase/admin.ts");
 const storageCleanupModule = require("../lib/supabase/storage-cleanup.ts");

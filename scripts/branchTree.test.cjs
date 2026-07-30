@@ -1,36 +1,8 @@
 const assert = require("node:assert/strict");
-const Module = require("node:module");
-const path = require("node:path");
-const ts = require("typescript");
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
 
-const rootDir = path.resolve(__dirname, "..");
-const originalResolveFilename = Module._resolveFilename;
-
-Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
-  if (request.startsWith("@/")) {
-    return originalResolveFilename.call(
-      this,
-      path.join(rootDir, request.slice(2)),
-      parent,
-      isMain,
-      options
-    );
-  }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
-
-require.extensions[".ts"] = function compileTypescript(module, filename) {
-  const source = require("node:fs").readFileSync(filename, "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2018,
-      esModuleInterop: true,
-    },
-    fileName: filename,
-  }).outputText;
-  module._compile(output, filename);
-};
+installTsLoader();
+installAliasResolver();
 
 const {
   SYNTHETIC_ROOT_ID,

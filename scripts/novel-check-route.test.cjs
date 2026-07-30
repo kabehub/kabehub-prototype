@@ -1,8 +1,7 @@
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const Module = require("node:module");
 const path = require("node:path");
-const ts = require("typescript");
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
 
 globalThis.AsyncLocalStorage =
   require("node:async_hooks").AsyncLocalStorage;
@@ -38,31 +37,8 @@ Module._load = function loadWithSupabaseMock(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const originalResolveFilename = Module._resolveFilename;
-Module._resolveFilename = function resolveAlias(
-  request,
-  parent,
-  isMain,
-  options
-) {
-  if (request.startsWith("@/")) {
-    request = path.join(__dirname, "..", request.slice(2));
-  }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
-
-require.extensions[".ts"] = function compileTypescript(module, filename) {
-  const source = fs.readFileSync(filename, "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2018,
-      esModuleInterop: true,
-    },
-    fileName: filename,
-  }).outputText;
-  module._compile(output, filename);
-};
+installTsLoader();
+installAliasResolver();
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";

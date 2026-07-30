@@ -1,24 +1,8 @@
 const assert = require("node:assert/strict");
-const Module = require("node:module");
-const path = require("node:path");
-const fs = require("node:fs");
-const ts = require("typescript");
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
 
-const rootDir = path.resolve(__dirname, "..");
-const originalResolveFilename = Module._resolveFilename;
-Module._resolveFilename = function (request, parent, isMain, options) {
-  if (request.startsWith("@/")) request = path.join(rootDir, request.slice(2));
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
-function compile(module, filename) {
-  const output = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2018, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
-    fileName: filename,
-  }).outputText;
-  module._compile(output, filename);
-}
-require.extensions[".ts"] = compile;
-require.extensions[".tsx"] = compile;
+installTsLoader({ jsx: true });
+installAliasResolver();
 
 const registry = require("../lib/modelRegistry.ts");
 const legacyPricing = require("../lib/pricing.ts");

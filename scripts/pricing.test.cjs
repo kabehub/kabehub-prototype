@@ -3,43 +3,14 @@
 //
 // 実行方法: node scripts/pricing.test.cjs
 //
-// 既存の scripts/branchTree.test.cjs と同じ方式（ts.transpileModuleでその場コンパイルしてrequire）を採用。
+// 共通のテストbootstrapでTypeScriptをその場コンパイルしてrequireする。
 
 const assert = require("node:assert/strict");
-const Module = require("node:module");
-const path = require("node:path");
-const fs = require("node:fs");
-const ts = require("typescript");
-
-const rootDir = path.resolve(__dirname, "..");
-const originalResolveFilename = Module._resolveFilename;
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
 
 // "@/xxx" エイリアスの解決（lib/pricing.ts自体は@/を使わないが、既存テストとの方式統一のため用意）
-Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
-  if (request.startsWith("@/")) {
-    return originalResolveFilename.call(
-      this,
-      path.join(rootDir, request.slice(2)),
-      parent,
-      isMain,
-      options
-    );
-  }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
-};
-
-require.extensions[".ts"] = function compileTypescript(module, filename) {
-  const source = fs.readFileSync(filename, "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2018,
-      esModuleInterop: true,
-    },
-    fileName: filename,
-  }).outputText;
-  module._compile(output, filename);
-};
+installTsLoader();
+installAliasResolver();
 
 const { getPricing, calcCost, formatUSD } = require("../lib/pricing.ts");
 
