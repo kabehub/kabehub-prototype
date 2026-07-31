@@ -47,7 +47,10 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
     return handlerError('gemini', 'APIキーが設定されていません', 400)
   }
 
-  const geminiModel = modelId ?? getDefaultImageModel('gemini') ?? 'gemini-2.5-flash-image'
+  const geminiModel = modelId ?? getDefaultImageModel('gemini')
+  if (!geminiModel) {
+    return handlerError('gemini', '画像生成モデルが設定されていません', 500)
+  }
   if (!isAllowedImageModel('gemini', geminiModel)) {
     return handlerError('gemini', '不正なモデルIDです', 400)
   }
@@ -98,6 +101,11 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
     return handlerError('openai', 'APIキーが設定されていません', 400)
   }
 
+  const openaiModel = getDefaultImageModel('openai')
+  if (!openaiModel) {
+    return handlerError('openai', '画像生成モデルが設定されていません', 500)
+  }
+
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
@@ -105,7 +113,7 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: getDefaultImageModel('openai') ?? 'gpt-image-2',
+      model: openaiModel,
       prompt,
       n: 1,
       size: '1024x1024',
@@ -136,7 +144,10 @@ async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: Ima
   formData.append('rendering_speed', 'TURBO')
   formData.append('style_type', 'AUTO')
 
-  const ideogramModel = getDefaultImageModel('ideogram') ?? 'ideogram-v3'
+  const ideogramModel = getDefaultImageModel('ideogram')
+  if (!ideogramModel) {
+    return handlerError('ideogram', '画像生成モデルが設定されていません', 500)
+  }
   let endpoint = `https://api.ideogram.ai/v1/${ideogramModel}/generate`
   if (imageInput) {
     const buffer = Buffer.from(imageInput.base64, 'base64')
@@ -180,6 +191,11 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
     return handlerError('openrouter', 'APIキーが設定されていません', 400)
   }
 
+  const openrouterModel = getDefaultImageModel('openrouter')
+  if (!openrouterModel) {
+    return handlerError('openrouter', '画像生成モデルが設定されていません', 500)
+  }
+
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -187,7 +203,7 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: getDefaultImageModel('openrouter') ?? 'black-forest-labs/flux.2-pro',
+      model: openrouterModel,
       messages: [{ role: 'user', content: prompt }],
       modalities: ['image'],
     }),

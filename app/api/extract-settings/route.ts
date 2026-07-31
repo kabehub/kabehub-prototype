@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
 import { sanitizeReferenceText } from '@/lib/ai-context-blocks'
+import { EXTRACT_SETTINGS_CONFIG } from '@/lib/modelRegistry'
 
 // GET /api/extract-settings?thread_id=xxx
 export async function GET(req: NextRequest) {
@@ -126,7 +127,7 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
+          model: EXTRACT_SETTINGS_CONFIG.claude,
           max_tokens: 4096,
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
 
     } else if (provider === 'gemini') {
       const res = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        `https://generativelanguage.googleapis.com/v1beta/models/${EXTRACT_SETTINGS_CONFIG.gemini}:generateContent`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey! },
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: EXTRACT_SETTINGS_CONFIG.openai,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user',   content: userContent },

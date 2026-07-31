@@ -32,20 +32,27 @@ type ImagePageMetadata = {
   badge: string;
 };
 
-export type TextModelDef = {
+type TextModelBase = {
   kind: "text";
   id: ModelId;
-  provider: TextProvider;
   label: string;
   badge: string;
   status: ModelStatus;
   surfaces: ModelSurface;
   thinking: ThinkingConfig;
   pricing: PricingRule[];
-  features?: {
-    novelCheck?: NovelCheckFeature;
-  };
+  features?: { novelCheck?: NovelCheckFeature };
 };
+
+export type OpenAICapability =
+  | { api: "chat_completions"; tokenParam: "max_tokens" | "max_completion_tokens" }
+  | { api: "responses" };
+
+type ClaudeTextModelDef = TextModelBase & { provider: "claude" };
+type GeminiTextModelDef = TextModelBase & { provider: "gemini" };
+type OpenAITextModelDef = TextModelBase & { provider: "openai"; openai: OpenAICapability };
+
+export type TextModelDef = ClaudeTextModelDef | GeminiTextModelDef | OpenAITextModelDef;
 
 export type ImageModelDef = {
   kind: "image";
@@ -87,14 +94,14 @@ export const MODEL_REGISTRY = [
   { kind: "text", id: "gemini-3.6-flash", provider: "gemini", label: "3.6 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 7.50) },
   { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
 
-  { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00) },
-  { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50) },
-  { kind: "text", id: "gpt-5.4", provider: "openai", label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00) },
-  { kind: "text", id: "gpt-5.5", provider: "openai", label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00) },
-  { kind: "text", id: "gpt-5.5-pro", provider: "openai", label: "GPT-5.5 Pro", badge: "最上位", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(30.00, 180.00) },
-  { kind: "text", id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00) },
-  { kind: "text", id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00) },
-  { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.00, 6.00) },
+  { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
+  { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.4", provider: "openai", label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.5", provider: "openai", label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.5-pro", provider: "openai", label: "GPT-5.5 Pro", badge: "最上位", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(30.00, 180.00), openai: { api: "responses" } },
+  { kind: "text", id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.00, 6.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
 
   { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2", badge: "OpenAI", status: "active", img2img: false, pricing: [] },
   { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, pricing: [], imagePage: { label: "2.5 Flash Image", badge: "既存" } },
@@ -103,6 +110,13 @@ export const MODEL_REGISTRY = [
   { kind: "image", id: "gemini-3.1-flash-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(0.50, 60.00), imagePage: { label: "3.1 Flash Image", badge: "新" } },
   { kind: "image", id: "gemini-3-pro-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(2.00, 120.00), imagePage: { label: "3 Pro Image", badge: "高性能" } },
 ] as const satisfies readonly ModelDef[];
+
+// Responses API呼び出し時の出力上限。Chat・Arena共通（同一モデル・同一エンドポイントのため同一概念として統合）
+export const OPENAI_RESPONSES_CONFIG = { maxOutputTokens: 8192 } as const;
+
+// Chat Completions分岐の出力上限。Chat機能専用の運用値。
+// Arena routeは元々token parameter・出力上限を送っていないため、この値はChat routeにのみ適用する。
+export const CHAT_OPENAI_CONFIG = { maxOutputTokens: 8192 } as const;
 
 export type ProviderConfig = {
   label: string;
@@ -219,7 +233,11 @@ export function isAllowedModel(provider: TextProvider, modelId: string, surface:
   return MODEL_REGISTRY.some((model) => model.kind === "text" && model.provider === provider && model.id === modelId && model.status === "active" && model.surfaces[surface]);
 }
 
-export const NOVEL_CHECK_CONFIG = { defaultModelId: "gemini-2.5-flash" } as const;
+export const NOVEL_CHECK_CONFIG = {
+  defaultModelId: "gemini-2.5-flash",
+  estimatedTokensPerCharacter: 1.2,
+  maxOutputTokens: 8192,
+} as const;
 
 type NovelCheckRegistryModel =
   Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; features: { novelCheck: NovelCheckFeature } }>;
@@ -317,6 +335,31 @@ export type RegistryGeminiModel =
 
 export type RegistryOpenAIModel =
   Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; provider: "openai"; status: "active" }>["id"];
+
+type OpenAIRegistryModel = Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; provider: "openai" }>;
+
+export function getOpenAICapability(modelId: RegistryOpenAIModel): OpenAICapability {
+  const model = MODEL_REGISTRY.find(
+    (candidate): candidate is OpenAIRegistryModel =>
+      candidate.kind === "text" && candidate.provider === "openai" && candidate.id === modelId
+  );
+  if (!model) {
+    throw new Error(`OpenAI capability is missing for model: ${modelId}`);
+  }
+  return model.openai;
+}
+
+type TextModelByProvider = {
+  claude: RegistryClaudeModel;
+  gemini: RegistryGeminiModel;
+  openai: RegistryOpenAIModel;
+};
+
+export const EXTRACT_SETTINGS_CONFIG = {
+  claude: "claude-sonnet-4-6",
+  gemini: "gemini-2.5-flash",
+  openai: "gpt-4o",
+} as const satisfies TextModelByProvider;
 
 export type RegistryTextModel =
   | RegistryClaudeModel

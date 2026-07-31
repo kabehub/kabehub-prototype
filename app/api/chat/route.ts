@@ -14,7 +14,10 @@ import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 import {
   buildDefaultModels,
   canToggleDeepThinking,
+  CHAT_OPENAI_CONFIG,
   createModelGuards,
+  getOpenAICapability,
+  OPENAI_RESPONSES_CONFIG,
   resolveClaudeRequestOverrides,
 } from "@/lib/modelRegistry";
 import type { LoreSearchV2Result } from "@/lib/lore";
@@ -383,13 +386,13 @@ function streamOpenAI(
   return new ReadableStream<string>({
     async start(controller) {
       try {
-        // gpt-5.5-pro は /v1/chat/completions 非対応 → Responses API 経由
-        if (modelId === "gpt-5.5-pro") {
+        const capability = getOpenAICapability(modelId);
+        if (capability.api === "responses") {
           const input = msgs.map((m) => ({ role: m.role, content: m.content as string }));
           const res = await fetch("https://api.openai.com/v1/responses", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: modelId, input, max_output_tokens: 8192, store: false }),
+            body: JSON.stringify({ model: modelId, input, max_output_tokens: OPENAI_RESPONSES_CONFIG.maxOutputTokens, store: false }),
             signal,
           });
           if (!res.ok) {
@@ -413,7 +416,7 @@ function streamOpenAI(
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: modelId, ...(modelId === "gpt-4o" ? { max_tokens: 8192 } : { max_completion_tokens: 8192 }), stream: true, stream_options: { include_usage: true }, messages: msgs }),
+          body: JSON.stringify({ model: modelId, [capability.tokenParam]: CHAT_OPENAI_CONFIG.maxOutputTokens, stream: true, stream_options: { include_usage: true }, messages: msgs }),
           signal,
         });
 

@@ -112,6 +112,11 @@ for (const modelId of ["gemini-3.1-flash-image", "gemini-3-pro-image"]) {
   assert.equal(registry.MODEL_REGISTRY.find((model) => model.id === modelId).status, "hidden");
 }
 
+// image-gen: 全Image API providerでactiveモデルが存在する
+for (const apiProvider of ["openai", "gemini", "ideogram", "openrouter"]) {
+  assert.ok(registry.getDefaultImageModel(apiProvider), apiProvider);
+}
+
 const expectedNovelCheckModels = [
   { id: "gemini-2.5-flash", label: "2.5 Flash", estimatedInputPerMTok: 0.075 },
   { id: "gemini-2.5-pro", label: "2.5 Pro", estimatedInputPerMTok: 1.25 },
@@ -137,6 +142,34 @@ assert.deepEqual(registry.getPricing("gemini-2.5-flash"), {
   inputPerMTok: 0.3,
   outputPerMTok: 2.5,
 });
+
+// NOVEL_CHECK_CONFIG拡張
+assert.equal(registry.NOVEL_CHECK_CONFIG.estimatedTokensPerCharacter, 1.2);
+assert.equal(registry.NOVEL_CHECK_CONFIG.maxOutputTokens, 8192);
+
+// getOpenAICapability: 全active OpenAIモデルで成功する
+for (const model of registry.MODEL_REGISTRY) {
+  if (model.kind === "text" && model.provider === "openai" && model.status === "active") {
+    assert.doesNotThrow(() => registry.getOpenAICapability(model.id), model.id);
+  }
+}
+
+// 個別モデルのcapability検証
+assert.deepEqual(registry.getOpenAICapability("gpt-4o"), { api: "chat_completions", tokenParam: "max_tokens" });
+assert.deepEqual(registry.getOpenAICapability("gpt-5.4-mini"), { api: "chat_completions", tokenParam: "max_completion_tokens" });
+assert.deepEqual(registry.getOpenAICapability("gpt-5.5-pro"), { api: "responses" });
+
+// fail-fast
+assert.throws(() => registry.getOpenAICapability("unknown-model"), /OpenAI capability is missing/);
+
+// budget定数
+assert.equal(registry.OPENAI_RESPONSES_CONFIG.maxOutputTokens, 8192);
+assert.equal(registry.CHAT_OPENAI_CONFIG.maxOutputTokens, 8192);
+
+// EXTRACT_SETTINGS_CONFIG: 各providerのactiveモデルであること
+assert.equal(registry.MODEL_REGISTRY.find(m => m.id === registry.EXTRACT_SETTINGS_CONFIG.claude && m.kind === "text" && m.provider === "claude")?.status, "active");
+assert.equal(registry.MODEL_REGISTRY.find(m => m.id === registry.EXTRACT_SETTINGS_CONFIG.gemini && m.kind === "text" && m.provider === "gemini")?.status, "active");
+assert.equal(registry.MODEL_REGISTRY.find(m => m.id === registry.EXTRACT_SETTINGS_CONFIG.openai && m.kind === "text" && m.provider === "openai")?.status, "active");
 
 for (const model of registry.MODEL_REGISTRY) {
   // 画像モデルはchat surfaceを持たず、この不変条件の対象外。

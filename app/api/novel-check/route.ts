@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { sanitizeAttributeValue, sanitizeReferenceText } from "@/lib/ai-context-blocks";
-import { isAllowedNovelCheckModel } from "@/lib/modelRegistry";
+import { isAllowedNovelCheckModel, NOVEL_CHECK_CONFIG } from "@/lib/modelRegistry";
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     .join("\n");
 
   const totalChars = checkedTexts.reduce((sum, t) => sum + t.content.length, 0);
-  const estimatedTokens = Math.ceil(totalChars * 1.2);
+  const estimatedTokens = Math.ceil(totalChars * NOVEL_CHECK_CONFIG.estimatedTokensPerCharacter);
 
   const checkList = checkItems.map((item, i) => `${i + 1}. ${item}`).join("\n");
 
@@ -89,7 +89,7 @@ ${combined}`;
 
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { maxOutputTokens: 8192 },
+    generationConfig: { maxOutputTokens: NOVEL_CHECK_CONFIG.maxOutputTokens },
   };
 
   const stream = new ReadableStream<Uint8Array>({

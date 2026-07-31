@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { v4 as uuidv4 } from "uuid";
-import { buildDefaultModels, createModelGuards, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
+import { buildDefaultModels, createModelGuards, getOpenAICapability, OPENAI_RESPONSES_CONFIG, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -119,11 +119,12 @@ async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt:
   if (systemPrompt?.trim()) msgs.push({ role: "system", content: systemPrompt.trim() });
   msgs.push(...messages.map((m) => ({ role: m.role, content: m.content })));
 
-  if (modelId === "gpt-5.5-pro") {
+  const capability = getOpenAICapability(modelId);
+  if (capability.api === "responses") {
     const res = await fetchProvider("openai", "https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: modelId, input: msgs, max_output_tokens: 8192, store: false }),
+      body: JSON.stringify({ model: modelId, input: msgs, max_output_tokens: OPENAI_RESPONSES_CONFIG.maxOutputTokens, store: false }),
     });
     const data = await readProviderJson("openai", res);
     const text = data.output
