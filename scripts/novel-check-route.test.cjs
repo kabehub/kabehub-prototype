@@ -56,7 +56,7 @@ const { POST } = require(path.join(
 const pendingTests = [];
 const validBody = {
   texts: [{ name: "chapter.txt", content: "Example manuscript" }],
-  modelId: "gemini-test",
+  modelId: "gemini-2.5-flash",
   checkItems: ["Consistency"],
 };
 
@@ -147,6 +147,23 @@ test("invalid input 400 finalizes cookies without upstream fetch", async () => {
     error: "texts must be an array of { name: string, content: string }",
   });
   assertRefreshedCookie(response);
+  assert.equal(fetchCallCount, 0);
+});
+
+test("unsupported model 400 without upstream fetch", async () => {
+  resetMocks({ user: { id: "user-1" } });
+
+  const response = await invoke({
+    body: {
+      ...validBody,
+      modelId: "gemini-test",
+    },
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "Unsupported modelId",
+  });
   assert.equal(fetchCallCount, 0);
 });
 

@@ -22,6 +22,16 @@ type ThinkingConfig =
   | { control: "always_on"; note?: string }
   | { control: "toggleable"; requestType: "adaptive" | "enabled"; defaultOn: boolean; note?: string };
 
+type NovelCheckFeature = {
+  label: string;
+  estimatedInputPerMTok: number;
+};
+
+type ImagePageMetadata = {
+  label: string;
+  badge: string;
+};
+
 export type TextModelDef = {
   kind: "text";
   id: ModelId;
@@ -32,6 +42,9 @@ export type TextModelDef = {
   surfaces: ModelSurface;
   thinking: ThinkingConfig;
   pricing: PricingRule[];
+  features?: {
+    novelCheck?: NovelCheckFeature;
+  };
 };
 
 export type ImageModelDef = {
@@ -44,6 +57,7 @@ export type ImageModelDef = {
   status: ModelStatus;
   img2img: boolean;
   pricing: PricingRule[];
+  imagePage?: ImagePageMetadata;
 };
 
 export type ModelDef = TextModelDef | ImageModelDef;
@@ -66,8 +80,8 @@ export const MODEL_REGISTRY = [
   { kind: "text", id: "claude-sonnet-4-6", provider: "claude", label: "Sonnet 4.6", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(3.00, 15.00) },
   { kind: "text", id: "claude-haiku-4-5-20251001", provider: "claude", label: "Haiku 4.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(1.00, 5.00) },
 
-  { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
-  { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.25, 10.00) },
+  { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50), features: { novelCheck: { label: "2.5 Flash", estimatedInputPerMTok: 0.075 } } },
+  { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.25, 10.00), features: { novelCheck: { label: "2.5 Pro", estimatedInputPerMTok: 1.25 } } },
   { kind: "text", id: "gemini-3.5-flash", provider: "gemini", label: "3.5 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 9.00) },
   { kind: "text", id: "gemini-3.1-flash-lite", provider: "gemini", label: "3.1 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.25, 1.50) },
   { kind: "text", id: "gemini-3.6-flash", provider: "gemini", label: "3.6 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 7.50) },
@@ -83,11 +97,11 @@ export const MODEL_REGISTRY = [
   { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.00, 6.00) },
 
   { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2", badge: "OpenAI", status: "active", img2img: false, pricing: [] },
-  { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, pricing: [] },
+  { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, pricing: [], imagePage: { label: "2.5 Flash Image", badge: "既存" } },
   { kind: "image", id: "ideogram-v3", provider: "image_gen", apiProvider: "ideogram", label: "Ideogram V3", badge: "Ideogram", status: "active", img2img: true, pricing: price(0, 0.08) },
   { kind: "image", id: "black-forest-labs/flux.2-pro", provider: "image_gen", apiProvider: "openrouter", label: "Flux 2 Pro", badge: "OpenRouter", status: "active", img2img: false, pricing: price(0, 0.055) },
-  { kind: "image", id: "gemini-3.1-flash-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(0.50, 60.00) },
-  { kind: "image", id: "gemini-3-pro-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(2.00, 120.00) },
+  { kind: "image", id: "gemini-3.1-flash-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(0.50, 60.00), imagePage: { label: "3.1 Flash Image", badge: "新" } },
+  { kind: "image", id: "gemini-3-pro-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(2.00, 120.00), imagePage: { label: "3 Pro Image", badge: "高性能" } },
 ] as const satisfies readonly ModelDef[];
 
 export type ProviderConfig = {
@@ -205,6 +219,29 @@ export function isAllowedModel(provider: TextProvider, modelId: string, surface:
   return MODEL_REGISTRY.some((model) => model.kind === "text" && model.provider === provider && model.id === modelId && model.status === "active" && model.surfaces[surface]);
 }
 
+export const NOVEL_CHECK_CONFIG = { defaultModelId: "gemini-2.5-flash" } as const;
+
+type NovelCheckRegistryModel =
+  Extract<(typeof MODEL_REGISTRY)[number], { kind: "text"; features: { novelCheck: NovelCheckFeature } }>;
+
+export function getNovelCheckModels(): { id: string; label: string; estimatedInputPerMTok: number }[] {
+  return MODEL_REGISTRY
+    .filter((model): model is NovelCheckRegistryModel =>
+      model.kind === "text" &&
+      "features" in model &&
+      model.features?.novelCheck !== undefined
+    )
+    .map((model) => ({
+      id: model.id,
+      label: model.features.novelCheck.label,
+      estimatedInputPerMTok: model.features.novelCheck.estimatedInputPerMTok,
+    }));
+}
+
+export function isAllowedNovelCheckModel(modelId: string): boolean {
+  return getNovelCheckModels().some((model) => model.id === modelId);
+}
+
 export function getThinkingSupport(modelId: string): ThinkingConfig & { note?: string } {
   const model = MODEL_REGISTRY.find((candidate): candidate is Extract<(typeof MODEL_REGISTRY)[number], { kind: "text" }> => candidate.kind === "text" && candidate.id === modelId);
   return model?.thinking ?? { control: "unsupported" };
@@ -245,6 +282,31 @@ export function isAllowedImageModel(apiProvider: ImageApiProvider, modelId: stri
 
 export function getDefaultImageModel(apiProvider: ImageApiProvider): ModelId | null {
   return MODEL_REGISTRY.find((model) => model.kind === "image" && model.apiProvider === apiProvider && model.status === "active")?.id ?? null;
+}
+
+export type RegistryImagePageModel =
+  Extract<(typeof MODEL_REGISTRY)[number], { kind: "image"; imagePage: ImagePageMetadata }>["id"];
+
+type ImagePageRegistryModel =
+  Extract<(typeof MODEL_REGISTRY)[number], { kind: "image"; imagePage: ImagePageMetadata }>;
+
+export const IMAGE_PAGE_CONFIG = {
+  defaultGeminiModelId: "gemini-2.5-flash-image",
+} as const satisfies { defaultGeminiModelId: RegistryImagePageModel };
+
+export function getImagePageModels(apiProvider: ImageApiProvider): { id: RegistryImagePageModel; label: string; badge: string }[] {
+  return MODEL_REGISTRY
+    .filter((model): model is ImagePageRegistryModel =>
+      model.kind === "image" &&
+      model.apiProvider === apiProvider &&
+      "imagePage" in model &&
+      model.imagePage !== undefined
+    )
+    .map((model) => ({
+      id: model.id,
+      label: model.imagePage.label,
+      badge: model.imagePage.badge,
+    }));
 }
 
 export type RegistryClaudeModel =

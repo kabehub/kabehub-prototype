@@ -83,6 +83,61 @@ for (const id of representativeIds) {
 // T6以降は本registryのre-exportなので、pricing:[] の完全一致でnullに終端する。
 assert.equal(registry.getPricing("gemini-2.5-flash-image"), null);
 
+const expectedImagePageModels = [
+  { id: "gemini-2.5-flash-image", label: "2.5 Flash Image", badge: "既存" },
+  { id: "gemini-3.1-flash-image", label: "3.1 Flash Image", badge: "新" },
+  { id: "gemini-3-pro-image", label: "3 Pro Image", badge: "高性能" },
+];
+assert.deepEqual(registry.getImagePageModels("gemini"), expectedImagePageModels);
+assert.deepEqual(registry.getImagePageModels("openai"), []);
+assert.deepEqual(
+  registry.MODEL_REGISTRY
+    .filter((model) => model.imagePage !== undefined)
+    .map((model) => ({ id: model.id, imagePage: model.imagePage })),
+  expectedImagePageModels.map(({ id, label, badge }) => ({
+    id,
+    imagePage: { label, badge },
+  }))
+);
+assert.ok(
+  registry.getImagePageModels("gemini")
+    .some((model) => model.id === registry.getDefaultImageModel("gemini"))
+);
+assert.equal(registry.IMAGE_PAGE_CONFIG.defaultGeminiModelId, "gemini-2.5-flash-image");
+assert.ok(
+  registry.getImagePageModels("gemini")
+    .some((model) => model.id === registry.IMAGE_PAGE_CONFIG.defaultGeminiModelId)
+);
+for (const modelId of ["gemini-3.1-flash-image", "gemini-3-pro-image"]) {
+  assert.equal(registry.MODEL_REGISTRY.find((model) => model.id === modelId).status, "hidden");
+}
+
+const expectedNovelCheckModels = [
+  { id: "gemini-2.5-flash", label: "2.5 Flash", estimatedInputPerMTok: 0.075 },
+  { id: "gemini-2.5-pro", label: "2.5 Pro", estimatedInputPerMTok: 1.25 },
+];
+assert.deepEqual(registry.getNovelCheckModels(), expectedNovelCheckModels);
+assert.deepEqual(
+  registry.MODEL_REGISTRY
+    .filter((model) => model.features?.novelCheck !== undefined)
+    .map((model) => ({ id: model.id, ...model.features.novelCheck })),
+  expectedNovelCheckModels
+);
+assert.ok(
+  registry.getNovelCheckModels()
+    .some((model) => model.id === registry.NOVEL_CHECK_CONFIG.defaultModelId)
+);
+for (const model of expectedNovelCheckModels) {
+  assert.equal(registry.isAllowedNovelCheckModel(model.id), true, model.id);
+}
+for (const modelId of ["gemini-3.5-flash", "gpt-5.4-mini", "unknown-model"]) {
+  assert.equal(registry.isAllowedNovelCheckModel(modelId), false, modelId);
+}
+assert.deepEqual(registry.getPricing("gemini-2.5-flash"), {
+  inputPerMTok: 0.3,
+  outputPerMTok: 2.5,
+});
+
 for (const model of registry.MODEL_REGISTRY) {
   // 画像モデルはchat surfaceを持たず、この不変条件の対象外。
   if (model.kind === "text" && model.surfaces.chat) assert.ok(model.pricing.length > 0, model.id);

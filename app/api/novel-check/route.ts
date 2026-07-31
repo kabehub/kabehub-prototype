@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { sanitizeAttributeValue, sanitizeReferenceText } from "@/lib/ai-context-blocks";
+import { isAllowedNovelCheckModel } from "@/lib/modelRegistry";
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +58,10 @@ export async function POST(req: NextRequest) {
   }
 
   const checkedTexts = texts as { name: string; content: string }[];
+
+  if (!isAllowedNovelCheckModel(modelId)) {
+    return finalizeJson({ error: "Unsupported modelId" }, { status: 400 });
+  }
 
   const combined = checkedTexts
     .map((t) => `<file name="${sanitizeAttributeValue(t.name)}">\n${sanitizeReferenceText(t.content)}\n</file>`)

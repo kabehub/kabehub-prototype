@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  getDefaultImageModel,
+  getImagePageModels,
+  IMAGE_PAGE_CONFIG,
+  type RegistryImagePageModel,
+} from '@/lib/modelRegistry'
 
 const LS_KEYS = {
   gemini:     'kabehub_gemini_key',
@@ -26,25 +32,21 @@ const HEADER_KEYS: Record<Provider, string> = {
   openrouter: 'x-openrouter-api-key',
 }
 
-const GEMINI_IMAGE_MODELS = [
-  { id: 'gemini-2.5-flash-image', label: '2.5 Flash Image', badge: '既存' },
-  { id: 'gemini-3.1-flash-image', label: '3.1 Flash Image', badge: '新' },
-  { id: 'gemini-3-pro-image',     label: '3 Pro Image',     badge: '高性能' },
-]
+const GEMINI_IMAGE_MODELS = getImagePageModels('gemini')
 
-function getModelId(provider: Provider, geminiModel: string): string {
+function getModelId(provider: Provider, geminiModel: RegistryImagePageModel): string | null {
   switch (provider) {
     case 'gemini':     return geminiModel
-    case 'openai':     return 'gpt-image-2'
-    case 'ideogram':   return 'ideogram-v3'
-    case 'openrouter': return 'black-forest-labs/flux.2-pro'
+    case 'openai':
+    case 'ideogram':
+    case 'openrouter': return getDefaultImageModel(provider)
   }
 }
 
 export default function ImageGenPage() {
   const router = useRouter()
   const [provider, setProvider] = useState<Provider>('gemini')
-  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash-image')
+  const [geminiModel, setGeminiModel] = useState<RegistryImagePageModel>(IMAGE_PAGE_CONFIG.defaultGeminiModelId)
   const [prompt, setPrompt] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +68,12 @@ export default function ImageGenPage() {
       return
     }
 
+    const modelId = getModelId(provider, geminiModel)
+    if (modelId === null) {
+      setError(`${PROVIDER_LABELS[provider]} で利用可能な画像モデルがありません。`)
+      return
+    }
+
     if (prevObjectUrl.current) {
       URL.revokeObjectURL(prevObjectUrl.current)
       prevObjectUrl.current = null
@@ -77,8 +85,6 @@ export default function ImageGenPage() {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       headers[HEADER_KEYS[provider]] = apiKey
-
-      const modelId = getModelId(provider, geminiModel)
 
       const res = await fetch('/api/image-gen', {
         method: 'POST',
@@ -183,7 +189,7 @@ export default function ImageGenPage() {
             </div>
           )}
           <div style={{ fontSize: '12px', color: '#4b5563', marginTop: '6px' }}>
-            {getModelId(provider, geminiModel)}
+            {getModelId(provider, geminiModel) ?? ''}
           </div>
         </div>
 

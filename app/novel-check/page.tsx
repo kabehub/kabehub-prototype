@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import { formatUSD } from "@/lib/pricing";
+import { getNovelCheckModels, NOVEL_CHECK_CONFIG } from "@/lib/modelRegistry";
 
 interface NovelFile {
   name: string;
@@ -15,6 +16,9 @@ const CHECK_ITEMS = [
   "口調ブレ：キャラクターごとの話し方の一貫性",
   "固有名詞：人名・地名・固有名詞の表記揺れ",
 ];
+
+const NOVEL_CHECK_MODELS = getNovelCheckModels();
+type NovelCheckModelId = (typeof NOVEL_CHECK_MODELS)[number]["id"];
 
 function getTodayStr(): string {
   const d = new Date();
@@ -33,7 +37,7 @@ async function readFileAsText(file: File): Promise<string> {
 export default function NovelCheckPage() {
   const [files, setFiles] = useState<NovelFile[]>([]);
   const [checkItems, setCheckItems] = useState<string[]>([...CHECK_ITEMS]);
-  const [selectedModel, setSelectedModel] = useState<"gemini-2.5-flash" | "gemini-2.5-pro">("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState<NovelCheckModelId>(NOVEL_CHECK_CONFIG.defaultModelId);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState("");
   const [metaInfo, setMetaInfo] = useState<{ totalChars: number; estimatedTokens: number } | null>(null);
@@ -49,8 +53,11 @@ export default function NovelCheckPage() {
 
   const totalChars = files.reduce((sum, f) => sum + f.content.length, 0);
   const estimatedTokens = Math.ceil(totalChars * 1.2);
-  const flashCost = (estimatedTokens / 1_000_000) * 0.075;
-  const proCost = (estimatedTokens / 1_000_000) * 1.25;
+  const estimatedModelCosts = NOVEL_CHECK_MODELS.map((model) => ({
+    id: model.id,
+    label: model.label.split(" ").pop()?.toLowerCase() ?? model.label.toLowerCase(),
+    cost: (estimatedTokens / 1_000_000) * model.estimatedInputPerMTok,
+  }));
 
   const processFiles = useCallback(async (fileList: FileList) => {
     const added: NovelFile[] = [];
@@ -263,8 +270,9 @@ export default function NovelCheckPage() {
           <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "12px", color: "var(--ink-muted)", marginBottom: "6px" }}>
             <span>総文字数: <strong style={{ color: "var(--ink)" }}>{totalChars.toLocaleString()}</strong>文字</span>
             <span>推定トークン数: <strong style={{ color: "var(--ink)" }}>{estimatedTokens.toLocaleString()}</strong></span>
-            <span>flash概算: <strong style={{ color: "var(--ink)" }}>{formatUSD(flashCost)}</strong></span>
-            <span>pro概算: <strong style={{ color: "var(--ink)" }}>{formatUSD(proCost)}</strong></span>
+            {estimatedModelCosts.map((model) => (
+              <span key={model.id}>{model.label}概算: <strong style={{ color: "var(--ink)" }}>{formatUSD(model.cost)}</strong></span>
+            ))}
           </div>
           <div style={{ fontSize: "10px", color: "var(--ink-faint)" }}>
             ※日本語のトークン数は目安です。実際の請求額と若干異なる場合があります
@@ -298,23 +306,23 @@ export default function NovelCheckPage() {
           モデル
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
-          {(["gemini-2.5-flash", "gemini-2.5-pro"] as const).map((m) => (
+          {NOVEL_CHECK_MODELS.map((model) => (
             <button
-              key={m}
-              onClick={() => setSelectedModel(m)}
+              key={model.id}
+              onClick={() => setSelectedModel(model.id)}
               style={{
                 padding: "6px 14px",
                 borderRadius: "6px",
-                border: `1px solid ${selectedModel === m ? "var(--accent)" : "var(--border)"}`,
-                background: selectedModel === m ? "var(--accent)" : "white",
-                color: selectedModel === m ? "white" : "var(--ink-muted)",
+                border: `1px solid ${selectedModel === model.id ? "var(--accent)" : "var(--border)"}`,
+                background: selectedModel === model.id ? "var(--accent)" : "white",
+                color: selectedModel === model.id ? "white" : "var(--ink-muted)",
                 fontSize: "12px",
                 cursor: "pointer",
                 transition: "all 0.12s",
                 fontFamily: "'JetBrains Mono', monospace",
               }}
             >
-              {m}
+              {model.id}
             </button>
           ))}
         </div>
