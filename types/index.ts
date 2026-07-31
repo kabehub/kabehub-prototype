@@ -5,38 +5,12 @@ import type {
   RegistryImageGenModel,
 } from "@/lib/modelRegistry";
 
-// ⚠️ このブロックが型エラーになったら、types/index.ts のUnion型と
-// lib/modelRegistry.ts の MODEL_REGISTRY がズレている。
-// モデル追加・削除時は両方を同時に更新すること。
-type AssertNever<T extends never> = T;
-
-type _ClaudeMissingFromTypes = AssertNever<Exclude<RegistryClaudeModel, ClaudeModel>>;
-type _ClaudeExtraInTypes     = AssertNever<Exclude<ClaudeModel, RegistryClaudeModel>>;
-
-type _GeminiMissingFromTypes = AssertNever<Exclude<RegistryGeminiModel, GeminiModel>>;
-type _GeminiExtraInTypes     = AssertNever<Exclude<GeminiModel, RegistryGeminiModel>>;
-
-type _OpenAIMissingFromTypes = AssertNever<Exclude<RegistryOpenAIModel, OpenAIModel>>;
-type _OpenAIExtraInTypes     = AssertNever<Exclude<OpenAIModel, RegistryOpenAIModel>>;
-
-type _ImageGenMissingFromTypes = AssertNever<Exclude<RegistryImageGenModel, ImageGenModel>>;
-type _ImageGenExtraInTypes     = AssertNever<Exclude<ImageGenModel, RegistryImageGenModel>>;
-
 export type Provider = "claude" | "gemini" | "openai" | "image_gen";
 
-export type ClaudeModel =
-  | "claude-fable-5"
-  | "claude-opus-5"
-  | "claude-opus-4-8"
-  | "claude-opus-4-7"
-  | "claude-opus-4-6"
-  | "claude-sonnet-5"
-  | "claude-sonnet-4-5"
-  | "claude-sonnet-4-6"
-  | "claude-haiku-4-5-20251001";
-export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3.5-flash" | "gemini-3.1-flash-lite" | "gemini-3.6-flash" | "gemini-3.5-flash-lite";
-export type OpenAIModel = "gpt-4o" | "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.5" | "gpt-5.5-pro" | "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna";
-export type ImageGenModel = "gpt-image-2" | "gemini-2.5-flash-image" | "ideogram-v3" | "black-forest-labs/flux.2-pro";
+export type ClaudeModel = RegistryClaudeModel;
+export type GeminiModel = RegistryGeminiModel;
+export type OpenAIModel = RegistryOpenAIModel;
+export type ImageGenModel = RegistryImageGenModel;
 
 export type ModelId = ClaudeModel | GeminiModel | OpenAIModel | ImageGenModel;
 

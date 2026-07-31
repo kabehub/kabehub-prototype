@@ -9,6 +9,7 @@ import OutlinePane from "@/components/OutlinePane";
 import NovelSettingsPane from "@/components/NovelSettingsPane";
 import { supabase } from "@/lib/supabase/client";
 import { loadModel, type ModelId, type Provider, type SubmittedAttachedImageFile } from "@/components/ChatInput";
+import { getDefaultImageModel, type ImageApiProvider } from "@/lib/modelRegistry";
 import type { User } from "@supabase/supabase-js";
 
 type NovelSettingsData = {
@@ -783,9 +784,7 @@ export default function Home() {
       localStorage.setItem("lastActiveThreadId", resolvedThreadId)
     }
 
-    setIsLoading(true)
-
-    const PROVIDER_MAP: Record<string, string> = {
+    const PROVIDER_MAP: Record<string, ImageApiProvider> = {
       gemini: 'gemini',
       openai: 'openai',
       ideogram: 'ideogram',
@@ -795,14 +794,10 @@ export default function Home() {
       ?? localStorage.getItem('kabehub_image_provider')
       ?? 'openai'
     const resolvedProvider = PROVIDER_MAP[rawProvider] ?? 'openai'
+    const modelId = getDefaultImageModel(resolvedProvider)
+    if (modelId === null) return
 
-    const MODEL_MAP: Record<string, string> = {
-      gemini: 'gemini-2.5-flash-image',
-      openai: 'gpt-image-2',
-      ideogram: 'ideogram-v3',
-      openrouter: 'black-forest-labs/flux.2-pro',
-    }
-    const modelId = MODEL_MAP[resolvedProvider]
+    setIsLoading(true)
 
     const headers: Record<string, string> = {
       ...getApiKeyHeaders(),

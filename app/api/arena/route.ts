@@ -87,7 +87,7 @@ async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt:
   return text || "（応答の取得に失敗しました）";
 }
 
-async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: GeminiModel = "gemini-2.5-flash"): Promise<string> {
+async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: GeminiModel): Promise<string> {
   const contents = messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
@@ -114,7 +114,7 @@ async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt?
   return text || "（応答の取得に失敗しました）";
 }
 
-async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt?: string, modelId: OpenAIModel = "gpt-4o"): Promise<string> {
+async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: OpenAIModel): Promise<string> {
   const msgs: { role: string; content: string }[] = [];
   if (systemPrompt?.trim()) msgs.push({ role: "system", content: systemPrompt.trim() });
   msgs.push(...messages.map((m) => ({ role: m.role, content: m.content })));

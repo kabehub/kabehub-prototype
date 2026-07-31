@@ -281,8 +281,8 @@ function streamClaude(
 function streamGemini(
   apiKey: string,
   messages: ChatMessage[],
-  systemPrompt?: string,
-  modelId: GeminiModel = "gemini-2.5-flash",
+  systemPrompt: string | undefined,
+  modelId: GeminiModel,
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
   onUsage?: (u: UsageData) => void,
@@ -355,8 +355,8 @@ function streamGemini(
 function streamOpenAI(
   apiKey: string,
   messages: ChatMessage[],
-  systemPrompt?: string,
-  modelId: OpenAIModel = "gpt-5.4-mini",
+  systemPrompt: string | undefined,
+  modelId: OpenAIModel,
   imageBlocks: ImageBlock[] = [],
   signal?: AbortSignal,
   onUsage?: (u: UsageData) => void,
