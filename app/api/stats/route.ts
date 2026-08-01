@@ -1,31 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const authResponse = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, authResponse);
-
-  const finalizeResponse = <T extends NextResponse>(response: T): T => {
-    const authCookies = authResponse.cookies.getAll();
-    for (const cookie of authCookies) {
-      response.cookies.set(cookie);
-    }
-    if (authCookies.length > 0) {
-      response.headers.set("Cache-Control", "private, no-store");
-    }
-    return response;
-  };
-
-  const finalizeJson = (body: unknown, init?: ResponseInit): NextResponse =>
-    finalizeResponse(NextResponse.json(body, init));
-
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return finalizeJson({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const period = req.nextUrl.searchParams.get("period") ?? "today";
   const tz = req.nextUrl.searchParams.get("tz") ?? "Asia/Tokyo";

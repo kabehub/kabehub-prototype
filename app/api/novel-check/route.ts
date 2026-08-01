@@ -1,32 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { sanitizeAttributeValue, sanitizeReferenceText } from "@/lib/ai-context-blocks";
 import { isAllowedNovelCheckModel, NOVEL_CHECK_CONFIG } from "@/lib/modelRegistry";
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const authResponse = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, authResponse);
-
-  const finalizeResponse = <T extends NextResponse>(response: T): T => {
-    const authCookies = authResponse.cookies.getAll();
-    for (const cookie of authCookies) {
-      response.cookies.set(cookie);
-    }
-    if (authCookies.length > 0) {
-      response.headers.set("Cache-Control", "private, no-store");
-    }
-    return response;
-  };
-
-  const finalizeJson = (body: unknown, init?: ResponseInit): NextResponse =>
-    finalizeResponse(NextResponse.json(body, init));
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return finalizeJson({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson, finalizeResponse } = auth;
 
   const geminiKey = req.headers.get("x-gemini-api-key");
   if (!geminiKey) {
