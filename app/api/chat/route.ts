@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
 import { embedQuery, searchLoreByEmbedding, searchLoreV2ByEmbedding, searchLoreV2 } from "@/lib/lore";
+import { CHAT_LORE_SEARCH_POLICY } from "@/lib/lore/types";
 import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
@@ -958,7 +959,10 @@ export async function POST(req: NextRequest) {
 
   if (wantsLoreBook || wantsMemorySearch) {
     const combinedController = new AbortController();
-    const combinedTimer = setTimeout(() => combinedController.abort(), 3_000);
+    const combinedTimer = setTimeout(
+      () => combinedController.abort(),
+      CHAT_LORE_SEARCH_POLICY.combined.timeoutMs,
+    );
 
     try {
       const embedding = await embedQuery(openaiKey!, userContent, combinedController.signal);
@@ -973,7 +977,7 @@ export async function POST(req: NextRequest) {
             ? searchLoreByEmbedding(supabase, embedding, {
                 folderName: loreTargetFolder!,
                 userId,
-                topK: 3,
+                topK: CHAT_LORE_SEARCH_POLICY.loreBook.topK,
                 signal: combinedController.signal,
               })
             : Promise.resolve([] as string[]),
@@ -981,7 +985,8 @@ export async function POST(req: NextRequest) {
             ? searchLoreV2ByEmbedding(supabase, embedding, {
                 folderName: currentFolderName ?? null,
                 userId,
-                topK: 5,
+                topK: CHAT_LORE_SEARCH_POLICY.memory.topK,
+                matchThreshold: CHAT_LORE_SEARCH_POLICY.memory.matchThreshold,
                 signal: combinedController.signal,
               })
             : Promise.resolve([] as LoreSearchV2Result[]),
@@ -1224,10 +1229,10 @@ export async function POST(req: NextRequest) {
         query: userContent,
         folderName: ragFolderName,
         userId,
-        topK: 4,
+        topK: CHAT_LORE_SEARCH_POLICY.rag.topK,
         openaiKey,
-        timeoutMs: 3_000,
-        matchThreshold: 0.3,
+        timeoutMs: CHAT_LORE_SEARCH_POLICY.rag.timeoutMs,
+        matchThreshold: CHAT_LORE_SEARCH_POLICY.rag.matchThreshold,
       });
       if (ragResults.length > 0) {
         const ragBody = ragResults.map(r => `[Memory Kind: ${r.memoryKind}]

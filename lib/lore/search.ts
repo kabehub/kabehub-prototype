@@ -5,10 +5,10 @@ export interface LoreSearchOptionsV2 {
   query: string;
   folderName: string | null;
   userId: string;
-  topK?: number;
+  topK: number;
   openaiKey: string;
-  timeoutMs?: number;
-  matchThreshold?: number;
+  timeoutMs: number;
+  matchThreshold: number;
 }
 
 export type LoreSearchV2Result = {
@@ -46,9 +46,9 @@ export async function embedQuery(
 export async function searchLoreByEmbedding(
   supabase: SupabaseClient,
   embedding: number[],
-  opts: { folderName: string; userId: string; topK?: number; signal: AbortSignal },
+  opts: { folderName: string; userId: string; topK: number; signal: AbortSignal },
 ): Promise<string[]> {
-  const { folderName, userId, topK = 3, signal } = opts;
+  const { folderName, userId, topK, signal } = opts;
 
   const { data, error } = await supabase
     .rpc("match_lore_embeddings", {
@@ -76,12 +76,12 @@ export async function searchLoreV2ByEmbedding(
   opts: {
     folderName: string | null;
     userId: string;
-    topK?: number;
-    matchThreshold?: number;
+    topK: number;
+    matchThreshold: number;
     signal: AbortSignal;
   },
 ): Promise<LoreSearchV2Result[]> {
-  const { folderName, userId, topK = 5, matchThreshold = 0.3, signal } = opts;
+  const { folderName, userId, topK, matchThreshold, signal } = opts;
 
   const { data, error } = await supabase
     .rpc("match_lore_embeddings_v2", {
@@ -125,7 +125,7 @@ export async function searchLoreV2(
   supabase: SupabaseClient,
   opts: LoreSearchOptionsV2,
 ): Promise<LoreSearchV2Result[]> {
-  const { query, folderName, userId, topK = 5, openaiKey, timeoutMs = 3000, matchThreshold = 0.3 } = opts;
+  const { query, folderName, userId, topK, openaiKey, timeoutMs, matchThreshold } = opts;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

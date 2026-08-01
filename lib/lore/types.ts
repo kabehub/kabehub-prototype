@@ -30,3 +30,21 @@ export const LIKED_AI_DEFAULTS = {
 // この値はUI側が常に明示送信する固定値であり、サーバーのデフォルトとは別概念
 // （たまたまサーバー側のclamp上限=100と一致している）。
 export const BATCH_TRAIN_UI_REQUEST_LIMIT = 100;
+
+export const CHAT_LORE_SEARCH_POLICY = {
+  combined: {
+    timeoutMs: 3_000,
+  },
+  loreBook: {
+    topK: 3,
+  },
+  memory: {
+    topK: 5,
+    matchThreshold: 0.3,
+  },
+  rag: {
+    topK: 4,
+    timeoutMs: 3_000,
+    matchThreshold: 0.3,
+  },
+} as const;
