@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { PINNED_GITHUB_FILES_MAX } from '@/lib/validationLimits'
 
 // GET /api/folder-settings?folder_name=xxx
 export async function GET(req: NextRequest) {
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
         system_prompt: system_prompt ?? null,
         folder_type: folder_type ?? null,
         ...(pinned_github_files !== undefined
-          ? { pinned_github_files: (pinned_github_files as string[]).slice(0, 5) }
+          ? { pinned_github_files: (pinned_github_files as string[]).slice(0, PINNED_GITHUB_FILES_MAX) }
           : {}),
         ...(github_repo !== undefined ? { github_repo: github_repo ?? null } : {}),
         ...(github_ref !== undefined ? { github_ref: github_ref ?? null } : {}),

@@ -2,6 +2,7 @@
 
 import { Thread } from "@/types";
 import { timeAgo } from "@/lib/formatters";
+import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 
@@ -1282,11 +1283,11 @@ export default function Sidebar({
                  Pinned Files
               </div>
               <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}>
-                このフォルダで常に参照するGitHubファイル（最大5件・合計約60,000文字まで）
+                このフォルダで常に参照するGitHubファイル（最大{PINNED_GITHUB_FILES_MAX}件・合計約60,000文字まで）
               </div>
 
               {/* URL入力欄 */}
-              {(folderSettingsModal.pinnedFiles.length < 5) && (
+              {(folderSettingsModal.pinnedFiles.length < PINNED_GITHUB_FILES_MAX) && (
                 <PinnedFileInput
                   onAdd={(url) => {
                     setFolderSettingsModal(prev =>
@@ -1295,9 +1296,9 @@ export default function Sidebar({
                   }}
                 />
               )}
-              {folderSettingsModal.pinnedFiles.length >= 5 && (
+              {folderSettingsModal.pinnedFiles.length >= PINNED_GITHUB_FILES_MAX && (
                 <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "6px" }}>
-                  上限（5件）に達しています
+                  上限（{PINNED_GITHUB_FILES_MAX}件）に達しています
                 </div>
               )}
 

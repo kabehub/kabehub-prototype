@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { generateBulkExportZip } from '@/lib/exportUtils'
 import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
+import { isValidHandleFormat, isAllUpperHandle, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from '@/lib/validationLimits'
 import type { McpToken } from '@/types'
 
 type Profile = {
@@ -33,8 +34,11 @@ const LS_KEYS = {
 
 function validateHandle(value: string): string | null {
   if (!value) return '入力してください'
-  if (!/^[a-zA-Z][a-zA-Z0-9_-]{2,19}$/.test(value)) {
-    return '英字始まり・英数字/_/-・3〜20文字で入力してください'
+  if (!isValidHandleFormat(value)) {
+    return `英字始まり・英数字/_/-・${HANDLE_MIN_LENGTH}〜${HANDLE_MAX_LENGTH}文字で入力してください`
+  }
+  if (isAllUpperHandle(value)) {
+    return '全て大文字のIDは使用できません（将来の限定機能です）'
   }
   return null
 }
@@ -487,7 +491,7 @@ function SettingsContent() {
               <p className="text-xs text-blue-400">変更されます</p>
             )}
             <p className="text-xs text-gray-600">
-              英字始まり・英数字 / _ / - のみ・3〜20文字
+              英字始まり・英数字 / _ / - のみ・{HANDLE_MIN_LENGTH}〜{HANDLE_MAX_LENGTH}文字
             </p>
           </div>
 

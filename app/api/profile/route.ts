@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { isValidHandleFormat, isAllUpperHandle, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from '@/lib/validationLimits'
 
 // ✅v32追加: 予約語リスト（/@handle URLと衝突するシステムパス）
 const RESERVED_HANDLES = new Set([
@@ -39,12 +40,13 @@ export async function POST(req: NextRequest) {
 
   const { handle, display_name, bio } = await req.json()
 
-  const normalized = handle?.toLowerCase()
-  const formatOk = /^[a-z][a-z0-9_-]{2,19}$/.test(normalized ?? '')
-  const notAllUpper = handle !== handle?.toUpperCase()
+  const rawHandle = typeof handle === 'string' ? handle : ''
+  const normalized = rawHandle.toLowerCase()
+  const formatOk = isValidHandleFormat(rawHandle)
+  const notAllUpper = !isAllUpperHandle(rawHandle)
 
   if (!formatOk) {
-    return NextResponse.json({ error: '英字始まり・英数字/_/-・3〜20文字で入力してください' }, { status: 400 })
+    return NextResponse.json({ error: `英字始まり・英数字/_/-・${HANDLE_MIN_LENGTH}〜${HANDLE_MAX_LENGTH}文字で入力してください` }, { status: 400 })
   }
   if (!notAllUpper) {
     return NextResponse.json({ error: '全て大文字のIDは使用できません（将来の限定機能です）' }, { status: 400 })
