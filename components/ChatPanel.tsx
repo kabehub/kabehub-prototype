@@ -9,6 +9,7 @@ import ExportModal from "./ExportModal";
 import { GENRES } from "@/lib/genres";
 import { generateMessageSummary } from "@/lib/stringUtils";
 import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
+import { TAG_NAME_MAX_LENGTH, normalizeTagName } from "@/lib/validationLimits";
 import PublishConfirmModal from "./PublishConfirmModal";
 import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
 import {
@@ -700,8 +701,9 @@ const handleToggleRoleplayMode = (next: boolean) => {
   const handleAddTag = async () => {
     if (!thread || tagSubmittingRef.current) return;
     const raw = tagInputValue;
-    const clean = raw.replace(/^#+/, "").replace(/[\s\u3000]/g, "").slice(0, 20);
+    const clean = normalizeTagName(raw);
     if (!clean) { setTagInputValue(""); setShowTagInput(false); return; }
+    if (clean.length > TAG_NAME_MAX_LENGTH) return;
 
     tagSubmittingRef.current = true;
     setTagInputValue("");
@@ -1385,14 +1387,18 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                   name="tag-input"
                   type="text"
                   value={tagInputValue}
-                  onChange={(e) => setTagInputValue(e.target.value.slice(0, 20))}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (normalizeTagName(next).length <= TAG_NAME_MAX_LENGTH) {
+                      setTagInputValue(next);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") { e.preventDefault(); handleAddTag(); }
                     if (e.key === "Escape") { e.stopPropagation(); setShowTagInput(false); setTagInputValue(""); }
                   }}
                   onBlur={handleAddTag}
                   placeholder="#タグ名"
-                  maxLength={21} // # + 20文字
                   style={{ padding: "2px 8px", borderRadius: "12px", border: "1px solid var(--accent-muted)", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", width: "100px" }}
                 />
               ) : (

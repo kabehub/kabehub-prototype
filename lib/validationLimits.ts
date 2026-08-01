@@ -16,3 +16,9 @@ export function isValidHandleFormat(value: string): boolean {
 export function isAllUpperHandle(value: string): boolean {
   return value === value.toUpperCase();
 }
+
+export const TAG_NAME_MAX_LENGTH = 20;
+
+export function normalizeTagName(value: string): string {
+  return value.replace(/^#+/, "").replace(/[\s\u3000]/g, "");
+}
