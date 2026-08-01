@@ -22,3 +22,5 @@ export const TAG_NAME_MAX_LENGTH = 20;
 export function normalizeTagName(value: string): string {
   return value.replace(/^#+/, "").replace(/[\s\u3000]/g, "");
 }
+
+export const BULK_ARCHIVE_MAX_ITEMS = 50;

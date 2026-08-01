@@ -8,6 +8,7 @@ import { toMemoryCard, memoryNeedsReview } from "@/lib/lore/mappers";
 import type { ConsolidationCandidate } from "@/lib/lore/mappers";
 import type { LoreMemoryRow } from "@/lib/lore/types";
 import { DREAMING_DEFAULTS, BATCH_TRAIN_UI_REQUEST_LIMIT } from "@/lib/lore/types";
+import { BULK_ARCHIVE_MAX_ITEMS } from "@/lib/validationLimits";
 
 type TemporalStatusUpdateResult = {
   pastCount: number;
@@ -978,7 +979,30 @@ export default function MemoryPage() {
   };
 
   const handleSelectAll = () => {
-    setSelectedIds(new Set(filteredCards.map((c) => c.id)));
+    const ids = filteredCards.slice(0, BULK_ARCHIVE_MAX_ITEMS).map((c) => c.id);
+    setSelectedIds(new Set(ids));
+    if (filteredCards.length > BULK_ARCHIVE_MAX_ITEMS) {
+      setBulkArchiveMessage(`一度に選択できるのは最大${BULK_ARCHIVE_MAX_ITEMS}件です。`);
+    } else {
+      setBulkArchiveMessage(null);
+    }
+  };
+
+  const handleToggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      if (prev.has(id)) {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      }
+      if (prev.size >= BULK_ARCHIVE_MAX_ITEMS) {
+        setBulkArchiveMessage(`一度に選択できるのは最大${BULK_ARCHIVE_MAX_ITEMS}件です。`);
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
   };
 
   const handleBulkArchive = async () => {
@@ -1374,13 +1398,7 @@ export default function MemoryPage() {
                         onUpdate={handleUpdate}
                         onArchive={handleArchive}
                         selected={selectedIds.has(card.id)}
-                        onSelect={(id) =>
-                          setSelectedIds((prev) => {
-                            const next = new Set(prev);
-                            next.has(id) ? next.delete(id) : next.add(id);
-                            return next;
-                          })
-                        }
+                        onSelect={handleToggleSelection}
                       />
                     ))}
                   </div>
@@ -1396,13 +1414,7 @@ export default function MemoryPage() {
                   onUpdate={handleUpdate}
                   onArchive={handleArchive}
                   selected={selectedIds.has(card.id)}
-                  onSelect={(id) =>
-                    setSelectedIds((prev) => {
-                      const next = new Set(prev);
-                      next.has(id) ? next.delete(id) : next.add(id);
-                      return next;
-                    })
-                  }
+                  onSelect={handleToggleSelection}
                 />
               ))}
             </div>

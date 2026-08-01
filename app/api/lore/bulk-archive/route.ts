@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { BULK_ARCHIVE_MAX_ITEMS } from "@/lib/validationLimits";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,8 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(ids) || ids.length === 0) {
     return NextResponse.json({ error: "ids must be a non-empty array" }, { status: 400 });
   }
-  if (ids.length > 50) {
-    return NextResponse.json({ error: "ids must not exceed 50 items" }, { status: 400 });
+  if (ids.length > BULK_ARCHIVE_MAX_ITEMS) {
+    return NextResponse.json({ error: `ids must not exceed ${BULK_ARCHIVE_MAX_ITEMS} items` }, { status: 400 });
   }
 
   const { data, error } = await supabase
