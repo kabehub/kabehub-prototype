@@ -1,21 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { AiProviderRequestError, createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const openaiKey = req.headers.get("x-openai-api-key");
-  if (!openaiKey) return NextResponse.json({ error: "x-openai-api-key header required" }, { status: 400 });
+  if (!openaiKey) return finalizeJson({ error: "x-openai-api-key header required" }, { status: 400 });
 
   const { folderName, chunks } = await req.json();
   if (!folderName || !Array.isArray(chunks)) {
-    return NextResponse.json({ error: "folderName and chunks are required" }, { status: 400 });
+    return finalizeJson({ error: "folderName and chunks are required" }, { status: 400 });
   }
 
   const embeddedChunks: { chunkText: string; embedding: number[] }[] = [];
@@ -32,7 +31,7 @@ export async function POST(req: NextRequest) {
         errorCode: err instanceof AiProviderRequestError ? err.errorCode : "UPSTREAM_RESPONSE_INVALID",
         errorType: err instanceof Error ? err.name : "unknown",
       });
-      return NextResponse.json(
+      return finalizeJson(
         { error: "OpenAI APIへのリクエストに失敗しました", provider: "openai", status },
         { status },
       );
@@ -43,7 +42,7 @@ export async function POST(req: NextRequest) {
   const { error: delError } = await supabase.from('lore_embeddings').delete()
     .eq('user_id', user.id).eq('folder_name', folderName);
   if (delError) {
-    return NextResponse.json({ error: "既存のLoreデータの削除に失敗しました" }, { status: 500 });
+    return finalizeJson({ error: "既存のLoreデータの削除に失敗しました" }, { status: 500 });
   }
 
   if (embeddedChunks.length > 0) {
@@ -56,9 +55,9 @@ export async function POST(req: NextRequest) {
       })),
     );
     if (insError) {
-      return NextResponse.json({ error: "Loreデータの保存に失敗しました" }, { status: 500 });
+      return finalizeJson({ error: "Loreデータの保存に失敗しました" }, { status: 500 });
     }
   }
 
-  return NextResponse.json({ ok: true, count: embeddedChunks.length });
+  return finalizeJson({ ok: true, count: embeddedChunks.length });
 }

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { LORE_MEMORY_SELECT } from "@/lib/lore/selects";
 import { createEmbedding } from "@/lib/lore/openai";
 import type { LorePatchRequest } from "@/types";
@@ -8,18 +8,14 @@ export const dynamic = "force-dynamic";
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const id = params.id;
   const body = await req.json().catch(() => null) as LorePatchRequest | null;
   if (!body || typeof body.action !== "string") {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return finalizeJson({ error: "Invalid request body" }, { status: 400 });
   }
 
   try {
@@ -31,10 +27,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (targetError) return NextResponse.json({ error: targetError.message }, { status: 500 });
-      if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      if (targetError) return finalizeJson({ error: targetError.message }, { status: 500 });
+      if (!target) return finalizeJson({ error: "Not found" }, { status: 404 });
       if (target.is_pinned === true) {
-        return NextResponse.json(
+        return finalizeJson(
           { error: "固定済みの記憶はアーカイブできません。先に固定を解除してください。" },
           { status: 409 },
         );
@@ -53,8 +49,8 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (targetError) return NextResponse.json({ error: targetError.message }, { status: 500 });
-      if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      if (targetError) return finalizeJson({ error: targetError.message }, { status: 500 });
+      if (!target) return finalizeJson({ error: "Not found" }, { status: 404 });
       currentMemoryKind = target.memory_kind;
     }
 
@@ -70,12 +66,12 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       case "update_text": {
         const chunkText = body.chunkText?.trim();
         if (!chunkText) {
-          return NextResponse.json({ error: "chunkText is required" }, { status: 400 });
+          return finalizeJson({ error: "chunkText is required" }, { status: 400 });
         }
 
         const openaiKey = req.headers.get("x-openai-api-key");
         if (!openaiKey) {
-          return NextResponse.json({ error: "x-openai-api-key header required" }, { status: 400 });
+          return finalizeJson({ error: "x-openai-api-key header required" }, { status: 400 });
         }
 
         updates.chunk_text = chunkText;
@@ -90,7 +86,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
       case "update_meta": {
         if (!body.memoryKind && !body.temporalStatus) {
-          return NextResponse.json({ error: "memoryKind or temporalStatus is required" }, { status: 400 });
+          return finalizeJson({ error: "memoryKind or temporalStatus is required" }, { status: 400 });
         }
 
         updates.extraction_version = "user_edited";
@@ -115,7 +111,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
         break;
 
       default:
-        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+        return finalizeJson({ error: "Invalid action" }, { status: 400 });
     }
 
     const { data, error } = await supabase
@@ -126,11 +122,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .select(LORE_MEMORY_SELECT)
       .maybeSingle();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (error) return finalizeJson({ error: error.message }, { status: 500 });
+    if (!data) return finalizeJson({ error: "Not found" }, { status: 404 });
 
-    return NextResponse.json(data);
+    return finalizeJson(data);
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return finalizeJson({ error: (err as Error).message }, { status: 500 });
   }
 }

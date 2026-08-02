@@ -1,16 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const folderName = req.nextUrl.searchParams.get("folder_name");
-  if (!folderName) return NextResponse.json({ error: "folder_name is required" }, { status: 400 });
+  if (!folderName) return finalizeJson({ error: "folder_name is required" }, { status: 400 });
 
   const { data, error } = await supabase
     .from('lore_embeddings')
@@ -19,7 +18,7 @@ export async function GET(req: NextRequest) {
     .eq('folder_name', folderName)
     .order('created_at', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ chunks: data ?? [] });
+  return finalizeJson({ chunks: data ?? [] });
 }

@@ -1,18 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { LORE_MEMORY_SELECT } from "@/lib/lore/selects";
 import { createEmbedding } from "@/lib/lore/openai";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { searchParams } = new URL(req.url);
   const folder = searchParams.get("folder");
@@ -57,29 +53,25 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(data ?? []);
+  return finalizeJson(data ?? []);
 }
 
 export async function POST(req: NextRequest) {
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const openaiKey = req.headers.get("x-openai-api-key");
   if (!openaiKey) {
-    return NextResponse.json({ error: "x-openai-api-key header required" }, { status: 400 });
+    return finalizeJson({ error: "x-openai-api-key header required" }, { status: 400 });
   }
 
   const body = await req.json().catch(() => ({}));
   const chunkText = typeof body.chunkText === "string" ? body.chunkText.trim() : "";
   if (!chunkText) {
-    return NextResponse.json({ error: "chunkText is required" }, { status: 400 });
+    return finalizeJson({ error: "chunkText is required" }, { status: 400 });
   }
 
   try {
@@ -103,10 +95,10 @@ export async function POST(req: NextRequest) {
       .select(LORE_MEMORY_SELECT)
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return finalizeJson({ error: error.message }, { status: 500 });
 
-    return NextResponse.json(data, { status: 201 });
+    return finalizeJson(data, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return finalizeJson({ error: (err as Error).message }, { status: 500 });
   }
 }
