@@ -1,14 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const url = new URL(req.url);
   const page = parseInt(url.searchParams.get("page") ?? "0", 10);
@@ -23,7 +22,7 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-  if (error) return NextResponse.json({ error }, { status: 500 });
+  if (error) return finalizeJson({ error }, { status: 500 });
 
   const rawStoragePaths = (messages ?? []).map(
     (m: Record<string, unknown>) =>
@@ -72,7 +71,7 @@ export async function GET(req: NextRequest) {
   });
 
   const total = count ?? 0;
-  return NextResponse.json({
+  return finalizeJson({
     items,
     total,
     hasMore: (page + 1) * PAGE_SIZE < total,

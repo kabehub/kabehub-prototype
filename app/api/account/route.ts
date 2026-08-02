@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import {
   listAllObjectPathsUnderPrefix,
   removeStoragePaths,
@@ -7,10 +7,9 @@ import {
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 
 export async function DELETE(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   let objectPaths: string[];
   try {
@@ -19,7 +18,7 @@ export async function DELETE(req: NextRequest) {
     console.error("[account-delete] storage listing failed", {
       scope: "account",
     });
-    return NextResponse.json(
+    return finalizeJson(
       { error: "アカウント削除の準備に失敗しました。時間をおいて再度お試しください。" },
       { status: 500 }
     );
@@ -32,7 +31,7 @@ export async function DELETE(req: NextRequest) {
     console.error("[account-delete] unexpected path in listing result", {
       scope: "account",
     });
-    return NextResponse.json(
+    return finalizeJson(
       { error: "アカウント削除の準備に失敗しました。時間をおいて再度お試しください。" },
       { status: 500 }
     );
@@ -46,7 +45,7 @@ export async function DELETE(req: NextRequest) {
         attemptedCount: cleanup.attemptedCount,
         failedCount: cleanup.failedCount,
       });
-      return NextResponse.json(
+      return finalizeJson(
         { error: "データの削除に失敗しました。時間をおいて再度お試しください。" },
         { status: 500 }
       );
@@ -58,11 +57,11 @@ export async function DELETE(req: NextRequest) {
     console.error("[account-delete] delete_current_user RPC failed", {
       scope: "account",
     });
-    return NextResponse.json(
+    return finalizeJson(
       { error: "アカウント削除に失敗しました。時間をおいて再度お試しください。" },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ success: true });
+  return finalizeJson({ success: true });
 }

@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { sanitizeReferenceText } from '@/lib/ai-context-blocks'
 import { EXTRACT_SETTINGS_CONFIG } from '@/lib/modelRegistry'
 
 // GET /api/extract-settings?thread_id=xxx
 export async function GET(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createRouteHandlerSupabaseClient(req, res)
   const { searchParams } = new URL(req.url)
   const thread_id = searchParams.get('thread_id')
 
@@ -14,10 +12,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'thread_id is required' }, { status: 400 })
   }
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireRouteUser(req)
+  if (!auth.ok) return auth.response
+  const { user, supabase, finalizeJson } = auth
 
   const { data, error } = await supabase
     .from('novel_settings')
@@ -26,11 +23,11 @@ export async function GET(req: NextRequest) {
     .eq('thread_id', thread_id)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return finalizeJson({ error: error.message }, { status: 500 })
   }
 
   const arr = data ?? []
-  return NextResponse.json({
+  return finalizeJson({
     characters: arr.find(r => r.type === 'character')?.data?.characters ?? [],
     factions:   arr.find(r => r.type === 'faction')?.data?.factions   ?? [],
     glossary:   arr.find(r => r.type === 'glossary')?.data?.glossary  ?? [],
@@ -40,13 +37,9 @@ export async function GET(req: NextRequest) {
 // POST /api/extract-settings
 // body: { threadId: string, messages: {role:string, content:string}[], folderName?: string }
 export async function POST(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createRouteHandlerSupabaseClient(req, res)
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireRouteUser(req)
+  if (!auth.ok) return auth.response
+  const { user, supabase, finalizeJson } = auth
 
   const anthropicKey = req.headers.get('x-anthropic-api-key')
   const geminiKey    = req.headers.get('x-gemini-api-key')
@@ -59,7 +52,7 @@ export async function POST(req: NextRequest) {
     null
 
   if (!provider) {
-    return NextResponse.json({ error: 'API key is required (x-anthropic-api-key, x-gemini-api-key, or x-openai-api-key)' }, { status: 400 })
+    return finalizeJson({ error: 'API key is required (x-anthropic-api-key, x-gemini-api-key, or x-openai-api-key)' }, { status: 400 })
   }
 
   function providerFailure(providerId: 'claude' | 'gemini' | 'openai', providerLabel: string, status: number) {
@@ -68,7 +61,7 @@ export async function POST(req: NextRequest) {
       status,
       errorCode: 'UPSTREAM_API_ERROR',
     })
-    return NextResponse.json(
+    return finalizeJson(
       {
         error: `${providerLabel} APIへのリクエストに失敗しました`,
         provider: providerId,
@@ -105,7 +98,7 @@ export async function POST(req: NextRequest) {
         typeof (m as { content?: unknown }).content !== 'string'
       )
     ) {
-      return NextResponse.json({ error: 'messages must be an array of { role: string, content: string }' }, { status: 400 })
+      return finalizeJson({ error: 'messages must be an array of { role: string, content: string }' }, { status: 400 })
     }
 
     const userContent = [
@@ -193,7 +186,7 @@ export async function POST(req: NextRequest) {
         provider,
         errorType: parseErr instanceof Error ? parseErr.name : 'unknown',
       })
-      return NextResponse.json({ error: 'parse_error' }, { status: 500 })
+      return finalizeJson({ error: 'parse_error' }, { status: 500 })
     }
 
     const { error: upsertError } = await supabase
@@ -209,17 +202,17 @@ export async function POST(req: NextRequest) {
 
     if (upsertError) {
       console.error('[extract-settings] upsert失敗:', upsertError)
-      return NextResponse.json({ error: 'db_error', detail: upsertError.message }, { status: 500 })
+      return finalizeJson({ error: 'db_error', detail: upsertError.message }, { status: 500 })
     }
 
-    return NextResponse.json(parsed)
+    return finalizeJson(parsed)
   } catch (err) {
     console.error('[extract-settings] request failed', {
       provider,
       errorType: err instanceof Error ? err.name : 'unknown',
     })
     const providerLabel = provider === 'claude' ? 'Claude' : provider === 'gemini' ? 'Gemini' : 'OpenAI'
-    return NextResponse.json(
+    return finalizeJson(
       {
         error: `${providerLabel} APIへのリクエストに失敗しました`,
         provider,

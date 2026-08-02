@@ -1,12 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { hashMcpToken } from "@/lib/mcp-token-hash";
 
 export async function GET(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { data, error } = await supabase
     .from("mcp_tokens")
@@ -14,15 +13,14 @@ export async function GET(req: NextRequest) {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ tokens: data });
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
+  return finalizeJson({ tokens: data });
 }
 
 export async function POST(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json().catch(() => ({}));
   const name: string | null = body.name ?? null;
@@ -37,19 +35,18 @@ export async function POST(req: NextRequest) {
     .select("id, name, created_at, last_used_at")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ token: rawToken, meta: data }, { status: 201 });
+  return finalizeJson({ token: rawToken, meta: data }, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { id } = await req.json();
-  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+  if (!id) return finalizeJson({ error: "id is required" }, { status: 400 });
 
   const { error } = await supabase
     .from("mcp_tokens")
@@ -57,6 +54,6 @@ export async function DELETE(req: NextRequest) {
     .eq("id", id)
     .eq("user_id", user.id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
+  return finalizeJson({ success: true });
 }

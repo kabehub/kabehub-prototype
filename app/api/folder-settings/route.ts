@@ -1,18 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { NextRequest } from 'next/server'
+import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { PINNED_GITHUB_FILES_MAX } from '@/lib/validationLimits'
 
 // GET /api/folder-settings?folder_name=xxx
 export async function GET(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createRouteHandlerSupabaseClient(req, res)
   const { searchParams } = new URL(req.url)
   const folder_name = searchParams.get('folder_name')
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireRouteUser(req)
+  if (!auth.ok) return auth.response
+  const { user, supabase, finalizeJson } = auth
 
   if (!folder_name) {
     const { data, error } = await supabase
@@ -21,10 +18,10 @@ export async function GET(req: NextRequest) {
       .eq('user_id', user.id)
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return finalizeJson({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data ?? [])
+    return finalizeJson(data ?? [])
   }
 
   const { data, error } = await supabase
@@ -35,10 +32,10 @@ export async function GET(req: NextRequest) {
     .maybeSingle()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return finalizeJson({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({
+  return finalizeJson({
     system_prompt: data?.system_prompt ?? null,
     folder_type: data?.folder_type ?? null,
     pinned_github_files: data?.pinned_github_files ?? [],
@@ -50,36 +47,32 @@ export async function GET(req: NextRequest) {
 // POST /api/folder-settings
 // body: { folder_name: string, system_prompt: string }
 export async function POST(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createRouteHandlerSupabaseClient(req, res)
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireRouteUser(req)
+  if (!auth.ok) return auth.response
+  const { user, supabase, finalizeJson } = auth
 
   const { folder_name, system_prompt, folder_type, pinned_github_files, github_repo, github_ref } = await req.json()
 
   if (!folder_name) {
-    return NextResponse.json({ error: 'folder_name is required' }, { status: 400 })
+    return finalizeJson({ error: 'folder_name is required' }, { status: 400 })
   }
 
   // pinned_github_files バリデーション
   if (pinned_github_files !== undefined && !Array.isArray(pinned_github_files)) {
-    return NextResponse.json({ error: 'pinned_github_files must be an array' }, { status: 400 })
+    return finalizeJson({ error: 'pinned_github_files must be an array' }, { status: 400 })
   }
 
   // github_repo バリデーション
   if (github_repo !== undefined && github_repo !== null) {
     if (typeof github_repo !== 'string' || !/^[^/]+\/[^/]+$/.test(github_repo)) {
-      return NextResponse.json({ error: 'github_repo は owner/repo 形式で入力してください' }, { status: 400 })
+      return finalizeJson({ error: 'github_repo は owner/repo 形式で入力してください' }, { status: 400 })
     }
   }
 
   // github_ref バリデーション
   if (github_ref !== undefined && github_ref !== null) {
     if (typeof github_ref !== 'string' || github_ref.length > 255) {
-      return NextResponse.json({ error: 'github_ref は255文字以内の文字列で入力してください' }, { status: 400 })
+      return finalizeJson({ error: 'github_ref は255文字以内の文字列で入力してください' }, { status: 400 })
     }
   }
 
@@ -101,8 +94,8 @@ export async function POST(req: NextRequest) {
     )
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return finalizeJson({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true })
+  return finalizeJson({ success: true })
 }

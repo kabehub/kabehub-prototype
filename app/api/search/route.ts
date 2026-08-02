@@ -1,19 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";
@@ -25,8 +18,8 @@ export async function GET(req: NextRequest) {
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
-    if (error) return NextResponse.json({ error }, { status: 500 });
-    return NextResponse.json(data ?? []);
+    if (error) return finalizeJson({ error }, { status: 500 });
+    return finalizeJson(data ?? []);
   }
 
   const pattern = `%${query}%`;
@@ -57,7 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (threadIds.size === 0) {
-    return NextResponse.json([]);
+    return finalizeJson([]);
   }
 
   const { data, error } = await supabase
@@ -67,12 +60,12 @@ export async function GET(req: NextRequest) {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error }, { status: 500 });
+  if (error) return finalizeJson({ error }, { status: 500 });
 
   const result = (data ?? []).map((t) => ({
     ...t,
     matchedMessageIds: matchedMsgMap.get(t.id) ?? [],
   }));
 
-  return NextResponse.json(result);
+  return finalizeJson(result);
 }
