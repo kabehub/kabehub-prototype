@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import {
   collectOwnedStoragePaths,
   removeStoragePaths,
@@ -8,10 +8,9 @@ import { v4 as uuidv4 } from "uuid";
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { data: thread } = await supabase
     .from("threads")
@@ -20,7 +19,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("user_id", user.id)
     .single();
 
-  if (!thread) return NextResponse.json({ error: "Not Found" }, { status: 404 });
+  if (!thread) return finalizeJson({ error: "Not Found" }, { status: 404 });
   const forkedFromId = thread.forked_from_id;
 
   const { data: threadMessages, error: msgSelectError } = await supabase
@@ -30,7 +29,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("user_id", user.id);
 
   if (msgSelectError) {
-    return NextResponse.json({ error: msgSelectError.message }, { status: 500 });
+    return finalizeJson({ error: msgSelectError.message }, { status: 500 });
   }
 
   const { error: archiveError } = await supabase
@@ -51,7 +50,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("user_id", user.id);
 
   if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    return finalizeJson({ error: deleteError.message }, { status: 500 });
   }
 
   const ownedPaths = collectOwnedStoragePaths(threadMessages ?? [], user.id);
@@ -76,15 +75,14 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ success: true });
+  return finalizeJson({ success: true });
 }
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json();
   const updates: Record<string, unknown> = {};
@@ -113,7 +111,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .maybeSingle();
 
   if (threadError) {
-    return NextResponse.json({ error: threadError.message }, { status: 500 });
+    return finalizeJson({ error: threadError.message }, { status: 500 });
   }
 
   if (body.needsToken && body.is_public) {
@@ -133,6 +131,6 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
+  return finalizeJson(data);
 }

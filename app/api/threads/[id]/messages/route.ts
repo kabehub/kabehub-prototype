@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import {
   collectOwnedStoragePaths,
   removeStoragePaths,
@@ -7,13 +7,9 @@ import {
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { data, error } = await supabase
     .from("messages")
@@ -25,19 +21,18 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
 
   if (error) {
     console.error("messages fetch error:", error);
-    return NextResponse.json([], { status: 500 });
+    return finalizeJson([], { status: 500 });
   }
 
-  return NextResponse.json(data ?? []);
+  return finalizeJson(data ?? []);
 }
 
 // 指定メッセージ以降を全部削除
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { fromCreatedAt } = await req.json();
   const isValidFromCreatedAt =
@@ -45,7 +40,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     !Number.isNaN(Date.parse(fromCreatedAt));
 
   if (!isValidFromCreatedAt) {
-    return NextResponse.json(
+    return finalizeJson(
       { error: "Invalid fromCreatedAt timestamp" },
       { status: 400 }
     );
@@ -58,8 +53,8 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (threadError) return NextResponse.json({ error: threadError }, { status: 500 });
-  if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+  if (threadError) return finalizeJson({ error: threadError }, { status: 500 });
+  if (!thread) return finalizeJson({ error: "Thread not found" }, { status: 404 });
 
   const { data: targetMessages, error: targetError } = await supabase
     .from("messages")
@@ -69,7 +64,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .gte("created_at", fromCreatedAt);
 
   if (targetError) {
-    return NextResponse.json({ error: targetError.message }, { status: 500 });
+    return finalizeJson({ error: targetError.message }, { status: 500 });
   }
 
   const targetIds = (targetMessages ?? []).map((m) => m.id);
@@ -94,7 +89,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("user_id", user.id)
     .gte("created_at", fromCreatedAt);
 
-  if (error) return NextResponse.json({ error }, { status: 500 });
+  if (error) return finalizeJson({ error }, { status: 500 });
 
   const ownedPaths = collectOwnedStoragePaths(targetMessages ?? [], user.id);
   if (ownedPaths.length > 0) {
@@ -108,5 +103,5 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ success: true });
+  return finalizeJson({ success: true });
 }

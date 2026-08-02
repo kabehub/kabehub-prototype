@@ -1,18 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
 
 // POST: いいね追加
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const threadId = params.id;
 
@@ -24,7 +20,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .maybeSingle();
 
   if (publicThreadRes.error) {
-    return NextResponse.json({ error: "Failed to verify thread" }, { status: 500 });
+    return finalizeJson({ error: "Failed to verify thread" }, { status: 500 });
   }
 
   let thread = publicThreadRes.data;
@@ -38,16 +34,16 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       .maybeSingle();
 
     if (ownThreadRes.error) {
-      return NextResponse.json({ error: "Failed to verify thread" }, { status: 500 });
+      return finalizeJson({ error: "Failed to verify thread" }, { status: 500 });
     }
     thread = ownThreadRes.data;
   }
 
   if (!thread) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return finalizeJson({ error: "Not found" }, { status: 404 });
   }
   if (thread.user_id === user.id) {
-    return NextResponse.json({ error: "Cannot like your own thread" }, { status: 403 });
+    return finalizeJson({ error: "Cannot like your own thread" }, { status: 403 });
   }
 
   const { error } = await supabase
@@ -65,9 +61,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         console.warn("[threads] recalc_likes_count failed:", recalcError);
       }
 
-      return NextResponse.json({ ok: true });
+      return finalizeJson({ ok: true });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return finalizeJson({ error: error.message }, { status: 500 });
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_likes_count", {
@@ -76,22 +72,18 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   if (recalcError) {
     console.error("[threads] recalc_likes_count failed:", recalcError);
-    return NextResponse.json({ error: "Failed to sync likes count" }, { status: 500 });
+    return finalizeJson({ error: "Failed to sync likes count" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return finalizeJson({ ok: true });
 }
 
 // DELETE: いいね解除
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { error } = await supabase
     .from("likes")
@@ -101,7 +93,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
 
   // DELETE: いいね解除 --- likes delete の後に追加
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return finalizeJson({ error: error.message }, { status: 500 });
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_likes_count", {
@@ -110,8 +102,8 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
 
   if (recalcError) {
     console.error("[threads] recalc_likes_count failed:", recalcError);
-    return NextResponse.json({ error: "Failed to sync likes count" }, { status: 500 });
+    return finalizeJson({ error: "Failed to sync likes count" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return finalizeJson({ ok: true });
 }

@@ -1,17 +1,13 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export async function GET(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { data, error } = await supabase
     .from("threads")
@@ -19,14 +15,17 @@ export async function GET(req: NextRequest) {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
   if (error) {
-    return NextResponse.json([], { status: 500 });
+    return finalizeJson([], { status: 500 });
   }
 
-  return NextResponse.json(data ?? [], {
+  const response = finalizeJson(data ?? [], {
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
       "Pragma": "no-cache",
       "Expires": "0",
     },
   });
+  // Cookie finalization applies a generic cache policy; preserve this route's existing contract.
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  return response;
 }

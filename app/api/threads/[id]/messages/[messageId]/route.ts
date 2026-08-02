@@ -1,16 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { deleteOwnedMessage } from "@/lib/messages/delete";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export async function DELETE(
   req: NextRequest,
   props: { params: Promise<{ id: string; messageId: string }> }
 ) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const result = await deleteOwnedMessage({
     supabase,
@@ -19,9 +18,9 @@ export async function DELETE(
     threadId: params.id,
   });
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 500 });
+    return finalizeJson({ error: result.error }, { status: 500 });
   }
-  return NextResponse.json({ success: true });
+  return finalizeJson({ success: true });
 }
 
 export async function PATCH(
@@ -29,10 +28,9 @@ export async function PATCH(
   props: { params: Promise<{ id: string; messageId: string }> }
 ) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json();
   const updates: Record<string, unknown> = {};
@@ -41,7 +39,7 @@ export async function PATCH(
   if (body.branch_id !== undefined) updates.branch_id = body.branch_id;
 
   if (Object.keys(updates).length === 0) {
-    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    return finalizeJson({ error: "No valid fields to update" }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -53,6 +51,6 @@ export async function PATCH(
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error }, { status: 500 });
-  return NextResponse.json({ message: data });
+  if (error) return finalizeJson({ error }, { status: 500 });
+  return finalizeJson({ message: data });
 }

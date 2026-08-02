@@ -1,14 +1,13 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { deleteOwnedMessage } from "@/lib/messages/delete";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const result = await deleteOwnedMessage({
     supabase,
@@ -16,19 +15,18 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     messageId: params.id,
   });
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 500 });
+    return finalizeJson({ error: result.error }, { status: 500 });
   }
-  return NextResponse.json({ success: true });
+  return finalizeJson({ success: true });
 }
 
 // ── PATCH /api/messages/[id] ─────────────────────────────────────
 // content の部分更新 と is_hidden フラグの切り替えに使用
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json();
 
@@ -40,7 +38,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .eq("id", params.id)
       .eq("user_id", user.id)
       .single();
-    if (fetchError) return NextResponse.json({ error: fetchError }, { status: 500 });
+    if (fetchError) return finalizeJson({ error: fetchError }, { status: 500 });
 
     const storagePath = existing?.metadata?.storagePath;
     if (storagePath) {
@@ -50,7 +48,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
           .remove([storagePath]);
         if (storageError) {
           console.error("Storage削除エラー:", JSON.stringify(storageError));
-          return NextResponse.json({ error: storageError.message }, { status: 500 });
+          return finalizeJson({ error: storageError.message }, { status: 500 });
         }
       } else {
         console.warn("[delete_image] storagePath is outside user namespace; skipped storage.remove", {
@@ -66,9 +64,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .update({ metadata: newMetadata })
       .eq("id", params.id)
       .eq("user_id", user.id);
-    if (updateError) return NextResponse.json({ error: updateError }, { status: 500 });
+    if (updateError) return finalizeJson({ error: updateError }, { status: 500 });
 
-    return NextResponse.json({ success: true });
+    return finalizeJson({ success: true });
   }
 
   // 許可するフィールドのみ更新（content / is_hidden）
@@ -77,7 +75,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (typeof body.is_hidden === "boolean") updates.is_hidden = body.is_hidden;
 
   if (Object.keys(updates).length === 0) {
-    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    return finalizeJson({ error: "No valid fields to update" }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -88,6 +86,6 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error }, { status: 500 });
-  return NextResponse.json({ message: data });
+  if (error) return finalizeJson({ error }, { status: 500 });
+  return finalizeJson({ message: data });
 }
