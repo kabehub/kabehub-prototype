@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
 import { buildDefaultModels, createModelGuards, getOpenAICapability, OPENAI_RESPONSES_CONFIG, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
@@ -173,10 +173,9 @@ async function callAI(
 }
 
 export async function POST(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
   const userId = user.id;
 
   let body: {
@@ -198,7 +197,7 @@ export async function POST(req: NextRequest) {
     body = JSON.parse(rawText);
   } catch (err) {
     console.error("arena route: JSON parse error", err);
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return finalizeJson({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   // ── 人間乱入メッセージの保存モード ──────────────────────────
@@ -220,7 +219,7 @@ export async function POST(req: NextRequest) {
       provider: humanMsg.provider,
       user_id: userId,
     });
-    return NextResponse.json({ message: humanMsg });
+    return finalizeJson({ message: humanMsg });
   }
 
   // ── タイムトラベルモード ──────────────────────────────────────
@@ -232,8 +231,8 @@ export async function POST(req: NextRequest) {
       .eq("thread_id", threadId)
       .eq("user_id", userId)
       .gte("created_at", since);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true });
+    if (error) return finalizeJson({ error: error.message }, { status: 500 });
+    return finalizeJson({ ok: true });
   }
 
   const {
@@ -256,7 +255,7 @@ export async function POST(req: NextRequest) {
     (providerForValidation === "gemini" && !isGeminiModel(modelForValidation)) ||
     (providerForValidation === "openai" && !isOpenAIModel(modelForValidation))
   ) {
-    return NextResponse.json(
+    return finalizeJson(
       { error: `Invalid modelId "${modelForValidation}" for provider "${providerForValidation}"` },
       { status: 400 }
     );
@@ -362,5 +361,5 @@ export async function POST(req: NextRequest) {
     user_id: userId,
   });
 
-  return NextResponse.json({ message: assistantMessage });
+  return finalizeJson({ message: assistantMessage });
 }

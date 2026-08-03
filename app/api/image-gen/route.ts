@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 import { isOwnedStoragePath } from '@/lib/storage-path-guard'
 import { getDefaultImageModel, isAllowedImageModel } from '@/lib/modelRegistry'
@@ -233,12 +233,9 @@ export async function POST(req: NextRequest) {
   }
 
   // 認証を処理の先頭に移動：threadIdの有無にかかわらず、外部AI APIを呼ぶ前に本人確認を済ませる
-  const supabaseRes = NextResponse.next()
-  const supabase = createRouteHandlerSupabaseClient(req, supabaseRes)
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const auth = await requireRouteUser(req)
+  if (!auth.ok) return auth.response
+  const { user, supabase, finalizeJson } = auth
   const userId = user.id
 
   // thread所有確認も先頭に移動：外部AI APIを呼ぶ前にthreadIdが本人所有か確認する
@@ -251,7 +248,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (threadError || !thread) {
-      return NextResponse.json({ error: 'スレッドが見つかりません' }, { status: 404 })
+      return finalizeJson({ error: 'スレッドが見つかりません' }, { status: 404 })
     }
   }
 
@@ -267,12 +264,12 @@ export async function POST(req: NextRequest) {
 
     const refStoragePath = refMessage?.metadata?.storagePath
     if (refError || !isOwnedStoragePath(refStoragePath, userId)) {
-      return NextResponse.json({ error: '参照画像が見つかりません' }, { status: 404 })
+      return finalizeJson({ error: '参照画像が見つかりません' }, { status: 404 })
     }
 
     const downloaded = await downloadImageAsBase64(supabase, refStoragePath)
     if (!downloaded) {
-      return NextResponse.json({ error: '参照画像のダウンロードに失敗しました' }, { status: 500 })
+      return finalizeJson({ error: '参照画像のダウンロードに失敗しました' }, { status: 500 })
     }
 
     imageInput = {
@@ -293,7 +290,7 @@ export async function POST(req: NextRequest) {
       case 'openai':     handlerResult = await handleOpenAI(req, prompt, imageInput); break
       case 'ideogram':   handlerResult = await handleIdeogram(req, prompt, imageInput); break
       case 'openrouter': handlerResult = await handleOpenRouter(req, prompt); break
-      default:           return NextResponse.json({ error: '不正なproviderです' }, { status: 400 })
+      default:           return finalizeJson({ error: '不正なproviderです' }, { status: 400 })
     }
   } catch {
     const failedProvider = provider as ImageProvider
@@ -302,7 +299,7 @@ export async function POST(req: NextRequest) {
       status: null,
       errorCode: 'UPSTREAM_REQUEST_FAILED',
     })
-    return NextResponse.json(
+    return finalizeJson(
       {
         error: `${PROVIDER_LABELS[failedProvider]} APIへのリクエストに失敗しました`,
         provider: failedProvider,
@@ -313,7 +310,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (handlerResult.error !== null) {
-    return NextResponse.json(
+    return finalizeJson(
       {
         error: handlerResult.error,
         provider: handlerResult.provider,
@@ -327,7 +324,7 @@ export async function POST(req: NextRequest) {
 
   // threadId なし → 従来通り imageData/mimeType のみ返す（認証は先頭で確認済み）
   if (!threadId) {
-    return NextResponse.json({ imageData, mimeType })
+    return finalizeJson({ imageData, mimeType })
   }
 
   // threadId は先頭で本人所有を確認済み。Storage アップロード → DB保存へ進む
@@ -339,7 +336,7 @@ export async function POST(req: NextRequest) {
     .upload(storagePath, buffer, { contentType: mimeType })
 
   if (uploadError) {
-    return NextResponse.json({ error: `Storage アップロード失敗: ${uploadError.message}` }, { status: 500 })
+    return finalizeJson({ error: `Storage アップロード失敗: ${uploadError.message}` }, { status: 500 })
   }
 
   // TODO: sharp による WebP 圧縮対応（現在は未圧縮のままアップロード）
@@ -366,8 +363,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (dbError) {
-    return NextResponse.json({ error: `DB保存失敗: ${dbError.message}` }, { status: 500 })
+    return finalizeJson({ error: `DB保存失敗: ${dbError.message}` }, { status: 500 })
   }
 
-  return NextResponse.json({ messageId: message.id, storagePath: actualPath, imageData, mimeType })
+  return finalizeJson({ messageId: message.id, storagePath: actualPath, imageData, mimeType })
 }

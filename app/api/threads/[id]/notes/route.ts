@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
-import { createThreadResourceHandlers, createThreadResourceFinalizers } from "@/lib/threadResourceCrud";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
+import { createThreadResourceHandlers } from "@/lib/threadResourceCrud";
 
 const handlers = createThreadResourceHandlers({
   table: "thread_notes",
@@ -16,12 +16,9 @@ export const POST = handlers.POST;
 export const DELETE = handlers.DELETE;
 
 export async function PATCH(req: NextRequest) {
-  const authResponse = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, authResponse);
-  const { finalizeJson } = createThreadResourceFinalizers(authResponse);
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return finalizeJson({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { id, content } = await req.json();
   const { data, error } = await supabase
