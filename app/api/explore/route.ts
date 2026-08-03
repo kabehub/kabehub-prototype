@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { getOptionalRouteUser } from "@/lib/supabase/route-auth";
 import type { ParentGenreId } from "@/lib/genres";
 
 export const dynamic = "force-dynamic";
@@ -44,12 +44,7 @@ function parseSortCursor(cursor: string | null): SortCursor | null {
 }
 
 export async function GET(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, supabase, finalizeJson } = await getOptionalRouteUser(req);
 
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";
@@ -157,7 +152,7 @@ export async function GET(req: NextRequest) {
 
   if (queryError) {
     console.error("explore API error:", queryError);
-    return NextResponse.json({ error: queryError.message }, { status: 500 });
+    return finalizeJson({ error: queryError.message }, { status: 500 });
   }
 
   const hasMore = rows.length > limit;
@@ -230,5 +225,5 @@ export async function GET(req: NextRequest) {
       : lastItem.created_at
     : null;
 
-  return NextResponse.json({ items: result, nextCursor, hasMore });
+  return finalizeJson({ items: result, nextCursor, hasMore });
 }

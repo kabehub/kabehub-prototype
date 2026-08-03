@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { getOptionalRouteUser } from "@/lib/supabase/route-auth";
 
 function createServiceRoleSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -44,8 +44,7 @@ export async function POST(req: NextRequest) {
   const reporterIp = forwardedFor ? forwardedFor.split(",")[0].trim() : "unknown";
 
   // ログイン中ユーザーのIDを取得（未ログインはnull）
-  const supabase = createRouteHandlerSupabaseClient(req, new NextResponse());
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, finalizeJson } = await getOptionalRouteUser(req);
   const reporterUserId = user?.id ?? null;
 
   // SECURITY DEFINER RPC経由でinsert（service_role専用）
@@ -60,19 +59,19 @@ export async function POST(req: NextRequest) {
     }));
   } catch (serviceRoleError) {
     console.error("通報用Supabaseクライアントの初期化エラー:", serviceRoleError);
-    return NextResponse.json({ error: "報告の送信に失敗しました" }, { status: 500 });
+    return finalizeJson({ error: "報告の送信に失敗しました" }, { status: 500 });
   }
 
   if (error) {
     if (error.message.includes("duplicate_report")) {
-      return NextResponse.json(
+      return finalizeJson(
         { error: "この投稿はすでに報告済みです（24時間以内）" },
         { status: 429 }
       );
     }
     console.error("通報保存エラー:", error);
-    return NextResponse.json({ error: "報告の送信に失敗しました" }, { status: 500 });
+    return finalizeJson({ error: "報告の送信に失敗しました" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return finalizeJson({ ok: true });
 }
