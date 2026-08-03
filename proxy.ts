@@ -155,6 +155,7 @@ export async function proxy(req: NextRequest) {
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
   const finalizeWithCookies = (target: NextResponse) => {
@@ -182,7 +183,7 @@ export async function proxy(req: NextRequest) {
   };
 
   if (
-    !user &&
+    (authError || !user) &&
     !isPublicOptionalAuthApi(pathname) &&
     !isLoginPage(pathname)
   ) {
@@ -194,7 +195,7 @@ export async function proxy(req: NextRequest) {
     return redirectWithCookies(loginUrl);
   }
 
-  if (user && isLoginPage(pathname)) {
+  if (!authError && user && isLoginPage(pathname)) {
     return redirectWithCookies(new URL("/", req.url));
   }
 

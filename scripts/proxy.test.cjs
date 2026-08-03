@@ -7,6 +7,7 @@ globalThis.AsyncLocalStorage =
   require("node:async_hooks").AsyncLocalStorage;
 
 let currentUser = null;
+let currentAuthError = null;
 let sessionCheckCount = 0;
 let setRefreshedCookie = false;
 
@@ -28,7 +29,10 @@ Module._load = function loadWithSupabaseMock(request, parent, isMain) {
                   },
                 ]);
               }
-              return { data: { user: currentUser } };
+              return {
+                data: { user: currentUser },
+                error: currentAuthError,
+              };
             },
           },
         };
@@ -95,6 +99,7 @@ function matches(pathname, headers) {
 
 async function invoke(pathname, options = {}) {
   currentUser = options.user ?? null;
+  currentAuthError = options.authError ?? null;
   sessionCheckCount = 0;
   setRefreshedCookie = options.setRefreshedCookie ?? false;
   const request = new NextRequest(`https://www.kabehub.com${pathname}`, {
@@ -514,6 +519,38 @@ test("protected APIs return JSON 401 for unauthenticated users", async () => {
   }
 });
 
+test("protected API auth errors return JSON 401 with cookies and no CSP", async () => {
+  const result = await invoke("/api/chat", {
+    authError: { message: "invalid session" },
+    setRefreshedCookie: true,
+  });
+
+  assert.equal(result.sessionCheckCount, 1);
+  await assertJsonUnauthorized(result.response);
+  assert.match(
+    result.response.headers.get("set-cookie") ?? "",
+    /sb-refresh=updated/
+  );
+  assert.equal(
+    result.response.headers.has("content-security-policy-report-only"),
+    false
+  );
+});
+
+test("protected page auth errors redirect to login with CSP", async () => {
+  const result = await invoke("/stats", {
+    authError: { message: "invalid session" },
+  });
+
+  assert.equal(result.sessionCheckCount, 1);
+  assert.equal(result.response.status, 307);
+  assert.equal(
+    result.response.headers.get("location"),
+    "https://www.kabehub.com/login?next=%2Fstats"
+  );
+  assertReportOnlyCsp(result.response);
+});
+
 test("authenticated protected API requests pass through the proxy", async () => {
   assert.equal(matches("/api/chat"), true);
   const result = await invoke("/api/chat", { user: { id: "user-1" } });
@@ -595,6 +632,18 @@ test("login redirect behavior remains unchanged", async () => {
     authenticated.response.headers.get("location"),
     "https://www.kabehub.com/"
   );
+});
+
+test("login stays visible when Supabase returns both a user and auth error", async () => {
+  const result = await invoke("/login", {
+    user: { id: "stale-user" },
+    authError: { message: "invalid session" },
+  });
+
+  assert.equal(result.sessionCheckCount, 1);
+  assert.equal(result.response.status, 200);
+  assert.equal(result.response.headers.has("location"), false);
+  assertReportOnlyCsp(result.response);
 });
 
 test("CSP mode is fail-safe and nonce changes per request", async () => {
