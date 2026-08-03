@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/formatters";
 import { supabase } from "@/lib/supabase/client";
+import { getClientUser } from "@/lib/supabase/client-auth";
 
 interface AlbumItem {
   id: string;
@@ -264,8 +265,8 @@ export default function AlbumPage() {
 
   // 認証確認
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) router.push("/login");
+    getClientUser(supabase).then(({ user }) => {
+      if (!user) router.push("/login");
     });
   }, [router]);
 

@@ -2,21 +2,39 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 
 function LoginContent() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "";
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   const handleGoogleLogin = async () => {
     const redirectTo = next
       ? `${location.origin}/auth/callback?next=${encodeURIComponent(next)}`
       : `${location.origin}/auth/callback`;
 
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
+    setAuthError(null);
+    setIsSigningIn(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo },
+      });
+
+      if (error) {
+        console.error("[handleGoogleLogin] signInWithOAuth failed:", error.message);
+        setAuthError("ログインに失敗しました。しばらくしてから再度お試しください。");
+        setIsSigningIn(false);
+      }
+      // 成功時は外部リダイレクトが始まるためisSigningInはfalseに戻さない
+    } catch (error) {
+      console.error("[handleGoogleLogin] signInWithOAuth threw unexpectedly:", error);
+      setAuthError("ログインに失敗しました。しばらくしてから再度お試しください。");
+      setIsSigningIn(false);
+    }
   };
 
   return (
@@ -70,6 +88,7 @@ function LoginContent() {
 
         <button
           onClick={handleGoogleLogin}
+          disabled={isSigningIn}
           style={{
             display: "flex",
             alignItems: "center",
@@ -93,6 +112,12 @@ function LoginContent() {
           </svg>
           Googleでログイン
         </button>
+
+        {authError && (
+          <p role="alert" style={{ fontSize: "12px", color: "#f87171", textAlign: "center", margin: 0 }}>
+            {authError}
+          </p>
+        )}
 
         <p style={{
           fontSize: "12px",

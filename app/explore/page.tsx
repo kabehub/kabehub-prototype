@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { timeAgo } from "@/lib/formatters";
 import { GENRES } from "@/lib/genres";
+import { getClientUser } from "@/lib/supabase/client-auth";
 
 // ---- 型定義 ----
 interface ExploreThread {
@@ -451,8 +452,12 @@ function ExploreContent() {
   const handleFork = useCallback(
     async (thread: ExploreThread) => {
       const { supabase } = await import("@/lib/supabase/client");
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
+      const { user, error } = await getClientUser(supabase);
+      if (error) {
+        alert("認証状態の確認に失敗しました。もう一度お試しください。");
+        return;
+      }
+      if (!user) {
         const currentParams = searchParams.toString();
         window.location.href = `/login?next=/explore${currentParams ? `?${currentParams}` : ""}`;
         return;

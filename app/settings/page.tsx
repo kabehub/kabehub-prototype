@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import { getClientUser } from '@/lib/supabase/client-auth'
 import { generateBulkExportZip } from '@/lib/exportUtils'
 import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
 import { isValidHandleFormat, isAllUpperHandle, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from '@/lib/validationLimits'
@@ -269,8 +270,15 @@ function SettingsContent() {
   const handleBulkExport = async () => {
     setIsExporting(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const { user, error } = await getClientUser(supabase)
+      if (error) {
+        alert("認証状態の確認に失敗しました。もう一度お試しください。")
+        return
+      }
+      if (!user) {
+        window.location.href = "/login?next=/settings"
+        return
+      }
 
       const userId = user.id
       const exportedAt = new Date().toISOString()
@@ -368,7 +376,7 @@ function SettingsContent() {
 
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { user } = await getClientUser(supabase)
       if (!user) { router.push('/login'); return }
 
       const res = await fetch('/api/profile')
@@ -1133,8 +1141,23 @@ function SettingsContent() {
                 try {
                   const response = await fetch('/api/account', { method: 'DELETE' })
                   if (!response.ok) throw new Error('Account deletion request failed')
-                  await supabase.auth.signOut()
-                  router.push('/login')
+
+                  try {
+                    const { error: signOutError } = await supabase.auth.signOut()
+                    if (signOutError) {
+                      console.error('[handleDeleteAccount] signOut failed:', signOutError.message)
+                      alert(
+                        'アカウントの削除は完了しました。ログアウト処理の一部に失敗しましたが、ログイン画面へ移動します。'
+                      )
+                    }
+                  } catch (signOutException) {
+                    console.error('[handleDeleteAccount] signOut threw unexpectedly:', signOutException)
+                    alert(
+                      'アカウントの削除は完了しました。ログアウト処理の一部に失敗しましたが、ログイン画面へ移動します。'
+                    )
+                  } finally {
+                    window.location.replace('/login')
+                  }
                 } catch (err) {
                   console.error('アカウント削除に失敗しました', err)
                   alert('アカウント削除に失敗しました。時間をおいて再度お試しください。')

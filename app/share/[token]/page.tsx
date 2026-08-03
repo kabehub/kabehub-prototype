@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, use } from "react";
 import { Message, Thread } from "@/types";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
+import { getClientUser } from "@/lib/supabase/client-auth";
 
 type ShareData = {
   thread: Thread;
@@ -127,7 +128,7 @@ export default function SharePage(props: { params: Promise<{ token: string }> })
   const fetchLikeInfo = async (threadId: string) => {
     try {
       const { supabase } = await import("@/lib/supabase/client");
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user } = await getClientUser(supabase);
       const { count } = await supabase
         .from("likes")
         .select("*", { count: "exact", head: true })
@@ -172,8 +173,12 @@ export default function SharePage(props: { params: Promise<{ token: string }> })
 
   const handleFork = async () => {
   const { supabase } = await import("@/lib/supabase/client");
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) {
+  const { user, error } = await getClientUser(supabase);
+  if (error) {
+    alert("認証状態の確認に失敗しました。もう一度お試しください。");
+    return;
+  }
+  if (!user) {
     window.location.href = `/login?next=/share/${params.token}`;
     return;
   }

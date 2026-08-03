@@ -8,6 +8,7 @@ import ChatPanel from "@/components/ChatPanel";
 import OutlinePane from "@/components/OutlinePane";
 import NovelSettingsPane from "@/components/NovelSettingsPane";
 import { supabase } from "@/lib/supabase/client";
+import { getClientUser } from "@/lib/supabase/client-auth";
 import { loadModel, type ModelId, type Provider, type SubmittedAttachedImageFile } from "@/components/ChatInput";
 import { getDefaultImageModel, type ImageApiProvider } from "@/lib/modelRegistry";
 import type { User } from "@supabase/supabase-js";
@@ -81,7 +82,7 @@ export default function Home() {
 
   // ── ユーザー情報の取得 ───────────────────────────────────
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    getClientUser(supabase).then(({ user }) => setUser(user));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
@@ -156,7 +157,12 @@ export default function Home() {
   }, [isLoading]);
 
   const handleLogout = useCallback(async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("[handleLogout] signOut failed:", error.message);
+      alert("ログアウトに失敗しました。もう一度お試しください。");
+      return;
+    }
     window.location.href = "/login";
   }, []);
 
