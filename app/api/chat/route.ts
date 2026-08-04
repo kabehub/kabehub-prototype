@@ -620,12 +620,19 @@ export async function POST(req: NextRequest) {
   let githubAccessToken: string | null = null;
 
   if (!isTemporary) {
-    let { data: thread } = await supabase
+    let { data: thread, error: threadError } = await supabase
       .from('threads')
       .select('folder_name, user_id')
       .eq('id', threadId)
       .eq('user_id', userId)
       .maybeSingle();
+
+    if (threadError) {
+      return new Response(JSON.stringify({ error: threadError.message }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     if (!thread) {
       const title = userContent.slice(0, 20) + (userContent.length > 20 ? "…" : "");
@@ -641,12 +648,19 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const { data: confirmedThread } = await supabase
+      const { data: confirmedThread, error: confirmedThreadError } = await supabase
         .from('threads')
         .select('folder_name, user_id')
         .eq('id', threadId)
         .eq('user_id', userId)
         .maybeSingle();
+
+      if (confirmedThreadError) {
+        return new Response(JSON.stringify({ error: confirmedThreadError.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
       if (!confirmedThread) {
         return new Response(JSON.stringify({ error: "スレッドが見つかりません" }), {
@@ -660,9 +674,15 @@ export async function POST(req: NextRequest) {
 
     currentFolderName = thread?.folder_name ?? null;
     if (thread?.folder_name) {
-      const { data: folderSetting } = await supabase
+      const { data: folderSetting, error: folderSettingError } = await supabase
         .from('folder_settings').select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
         .eq('user_id', userId).eq('folder_name', thread.folder_name).maybeSingle();
+      if (folderSettingError) {
+        return new Response(JSON.stringify({ error: folderSettingError.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       pinnedGithubFiles = Array.isArray(folderSetting?.pinned_github_files)
         ? folderSetting.pinned_github_files
         : [];
@@ -683,7 +703,7 @@ export async function POST(req: NextRequest) {
   let originalLightAssistant: { content: string; model_id: string | null } | null = null;
 
   if (isLightRegenerate) {
-    const { data: targetAssistant } = await supabase
+    const { data: targetAssistant, error: targetAssistantError } = await supabase
       .from("messages")
       .select("id, content, model_id")
       .eq("id", targetMessageId)
@@ -691,6 +711,13 @@ export async function POST(req: NextRequest) {
       .eq("user_id", userId)
       .eq("role", "assistant")
       .maybeSingle();
+
+    if (targetAssistantError) {
+      return new Response(JSON.stringify({ error: targetAssistantError.message }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     if (!targetAssistant) {
       return new Response(JSON.stringify({ error: "target assistant message not found" }), {
@@ -704,7 +731,7 @@ export async function POST(req: NextRequest) {
     };
 
     if (targetUserMessageId) {
-      const { data: targetUser } = await supabase
+      const { data: targetUser, error: targetUserError } = await supabase
         .from("messages")
         .select("id, content")
         .eq("id", targetUserMessageId)
@@ -712,6 +739,13 @@ export async function POST(req: NextRequest) {
         .eq("user_id", userId)
         .eq("role", "user")
         .maybeSingle();
+
+      if (targetUserError) {
+        return new Response(JSON.stringify({ error: targetUserError.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
       if (!targetUser) {
         return new Response(JSON.stringify({ error: "target user message not found" }), {
