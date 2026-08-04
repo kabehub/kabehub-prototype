@@ -80,6 +80,7 @@ export function hasSameFolderNameAndMemoryKind(sources: ConsolidationSourceRow[]
 type CleanResult = {
   cleaned: number;
   failed: number;
+  error: string | null;
 };
 
 async function cleanLikedAiRecords(
@@ -88,7 +89,7 @@ async function cleanLikedAiRecords(
   userId: string,
   limit = 10
 ): Promise<CleanResult> {
-  const { data: records } = await supabase
+  const { data: records, error: recordsError } = await supabase
     .from("lore_embeddings")
     .select("id, chunk_text, folder_name, memory_kind, temporal_status, importance_score, confidence_score, tags, source_message_id, source_thread_id, metadata")
     .eq("user_id", userId)
@@ -98,7 +99,8 @@ async function cleanLikedAiRecords(
     .order("created_at", { ascending: true })
     .limit(limit);
 
-  if (!records?.length) return { cleaned: 0, failed: 0 };
+  if (recordsError) return { cleaned: 0, failed: 0, error: recordsError.message };
+  if (!records?.length) return { cleaned: 0, failed: 0, error: null };
 
   let cleaned = 0;
   let failed = 0;
@@ -163,7 +165,7 @@ async function cleanLikedAiRecords(
     }
   }
 
-  return { cleaned, failed };
+  return { cleaned, failed, error: null };
 }
 
 export async function callConsolidateDreaming(
@@ -303,6 +305,7 @@ export async function runDreamingBatch(
     failed,
     cleaned: cleanResult.cleaned,
     cleanFailed: cleanResult.failed,
+    cleanError: cleanResult.error,
     results,
   };
 }

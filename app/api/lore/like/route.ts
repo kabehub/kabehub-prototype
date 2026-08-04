@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   if (message.role !== "assistant")
     return finalizeJson({ error: "Only assistant messages can be liked" }, { status: 400 });
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("lore_embeddings")
     .select("id")
     .eq("source_message_id", messageId)
@@ -41,6 +41,8 @@ export async function POST(req: NextRequest) {
     .eq("user_id", user.id)
     .maybeSingle();
 
+  if (existingError)
+    return finalizeJson({ error: existingError.message }, { status: 500 });
   if (existing) return finalizeJson({ alreadyLiked: true });
 
   let embedding: number[];
@@ -60,11 +62,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: thread } = await serviceRoleClient()
+  const { data: thread, error: threadError } = await serviceRoleClient()
     .from("threads")
     .select("folder_name")
     .eq("id", message.thread_id)
     .single();
+
+  if (threadError)
+    return finalizeJson({ error: threadError.message }, { status: 500 });
 
   const { memoryKind, importanceScore, confidenceScore } = LIKED_AI_DEFAULTS;
   const { error: insertError } = await supabase.from("lore_embeddings").insert({
