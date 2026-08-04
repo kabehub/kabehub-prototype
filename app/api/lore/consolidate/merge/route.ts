@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LORE_MEMORY_SELECT } from "@/lib/loreMemorySelect";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { createEmbedding } from "@/lib/lore/openai";
 import {
   CONSOLIDATION_SOURCE_SELECT,
@@ -21,13 +21,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "x-openai-api-key header required" }, { status: 400 });
   }
 
-  const res = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json().catch(() => ({}));
   const idA = typeof body.idA === "string" ? body.idA.trim() : "";
@@ -39,7 +35,7 @@ export async function POST(req: NextRequest) {
     : null;
 
   if (!idA || !idB || idA === idB || !mergedText) {
-    return NextResponse.json({ error: "Invalid merge request" }, { status: 400 });
+    return finalizeJson({ error: "Invalid merge request" }, { status: 400 });
   }
 
   const [loreIdA, loreIdB] = normalizePair(idA, idB);
@@ -49,11 +45,11 @@ export async function POST(req: NextRequest) {
     .select(CONSOLIDATION_SOURCE_SELECT)
     .in("id", [loreIdA, loreIdB]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
 
   const validated = validateApprovedPair((data ?? []) as unknown as ConsolidationSourceRow[], user.id, loreIdA, loreIdB);
   if (!validated) {
-    return NextResponse.json({ error: "Invalid lore pair" }, { status: 400 });
+    return finalizeJson({ error: "Invalid lore pair" }, { status: 400 });
   }
 
   try {
@@ -84,7 +80,7 @@ export async function POST(req: NextRequest) {
       .select("id")
       .single();
 
-    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+    if (insertError) return finalizeJson({ error: insertError.message }, { status: 500 });
 
     const { data: updatedRows, error: updateError } = await supabase
       .from("lore_embeddings")
@@ -102,7 +98,7 @@ export async function POST(req: NextRequest) {
         .eq("id", inserted.id)
         .eq("user_id", user.id);
 
-      return NextResponse.json(
+      return finalizeJson(
         { error: updateError?.message ?? "Failed to archive source memories" },
         { status: 500 },
       );
@@ -115,10 +111,10 @@ export async function POST(req: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    if (fetchError) return finalizeJson({ error: fetchError.message }, { status: 500 });
 
-    return NextResponse.json(merged, { status: 201 });
+    return finalizeJson(merged, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return finalizeJson({ error: (err as Error).message }, { status: 500 });
   }
 }

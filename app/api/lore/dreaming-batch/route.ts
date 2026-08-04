@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runDreamingBatch } from "@/lib/lore/dreaming";
 import { clamp } from "@/lib/lore/mappers";
 import { DREAMING_DEFAULTS } from "@/lib/lore/types";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +12,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "x-openai-api-key header required" }, { status: 400 });
   }
 
-  const res = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json().catch(() => ({}));
   const rawLimit = typeof body.limit === "number" ? body.limit : Number(body.limit);
@@ -35,8 +31,8 @@ export async function POST(req: NextRequest) {
       threshold,
       folderName,
     });
-    return NextResponse.json(result);
+    return finalizeJson(result);
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return finalizeJson({ error: (err as Error).message }, { status: 500 });
   }
 }

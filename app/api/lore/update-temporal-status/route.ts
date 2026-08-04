@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -25,13 +25,9 @@ function normalizeResult(data: TemporalStatusResult | TemporalStatusResult[] | n
 }
 
 export async function POST(req: NextRequest) {
-  const res = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json().catch(() => ({}));
   const folderName = typeof body.folderName === "string" && body.folderName.trim()
@@ -44,8 +40,8 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return finalizeJson({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(normalizeResult(data as TemporalStatusResult | TemporalStatusResult[] | null));
+  return finalizeJson(normalizeResult(data as TemporalStatusResult | TemporalStatusResult[] | null));
 }

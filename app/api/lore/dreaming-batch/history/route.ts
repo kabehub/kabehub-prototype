@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { LORE_MEMORY_SELECT } from "@/lib/loreMemorySelect";
 import { clamp } from "@/lib/lore/mappers";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +12,9 @@ type DreamingHistoryRow = {
 };
 
 export async function GET(req: NextRequest) {
-  const res = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const rawLimit = Number.parseInt(req.nextUrl.searchParams.get("limit") ?? "", 10);
   const limit = clamp(Number.isFinite(rawLimit) ? rawLimit : 20, 1, 20);
@@ -39,7 +35,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { data: newRecords, error: newRecordsError } = await newRecordsQuery;
-  if (newRecordsError) return NextResponse.json({ error: newRecordsError.message }, { status: 500 });
+  if (newRecordsError) return finalizeJson({ error: newRecordsError.message }, { status: 500 });
 
   const typedNewRecords = (newRecords ?? []) as unknown as DreamingHistoryRow[];
   const newIds = typedNewRecords
@@ -47,7 +43,7 @@ export async function GET(req: NextRequest) {
     .filter((id): id is string => typeof id === "string");
 
   if (newIds.length === 0) {
-    return NextResponse.json({ history: [] });
+    return finalizeJson({ history: [] });
   }
 
   const { data: sourceRecords, error: sourceRecordsError } = await supabase
@@ -57,7 +53,7 @@ export async function GET(req: NextRequest) {
     .in("superseded_by", newIds);
 
   if (sourceRecordsError) {
-    return NextResponse.json({ error: sourceRecordsError.message }, { status: 500 });
+    return finalizeJson({ error: sourceRecordsError.message }, { status: 500 });
   }
 
   const typedSourceRecords = (sourceRecords ?? []) as unknown as DreamingHistoryRow[];
@@ -68,7 +64,7 @@ export async function GET(req: NextRequest) {
     sourcesByNewId.set(supersededBy, [...(sourcesByNewId.get(supersededBy) ?? []), source]);
   }
 
-  return NextResponse.json({
+  return finalizeJson({
     history: typedNewRecords.map((newRecord) => ({
       newRecord,
       sources: (sourcesByNewId.get(newRecord.id) ?? []).map(({ superseded_by: _supersededBy, ...source }) => source),

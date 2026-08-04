@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { clamp, normalizeConsolidationCandidate, type ConsolidationCandidate } from "@/lib/lore/mappers";
 import { pairKey } from "@/lib/lore/consolidation";
 
@@ -8,13 +8,9 @@ export const dynamic = "force-dynamic";
 type SimilarLorePairRow = Record<string, unknown>;
 
 export async function GET(req: NextRequest) {
-  const res = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const rawThreshold = Number(req.nextUrl.searchParams.get("threshold"));
   const rawLimit = Number.parseInt(req.nextUrl.searchParams.get("limit") ?? "", 10);
@@ -29,14 +25,14 @@ export async function GET(req: NextRequest) {
     p_folder_name: folderName,
   });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
 
   const candidates = ((Array.isArray(data) ? data : []) as SimilarLorePairRow[])
     .map(normalizeConsolidationCandidate)
     .filter((candidate): candidate is ConsolidationCandidate => Boolean(candidate));
 
   if (candidates.length === 0) {
-    return NextResponse.json({ candidates: [] });
+    return finalizeJson({ candidates: [] });
   }
 
   const { data: dismissals, error: dismissalsError } = await supabase
@@ -45,7 +41,7 @@ export async function GET(req: NextRequest) {
     .eq("user_id", user.id);
 
   if (dismissalsError) {
-    return NextResponse.json({ error: dismissalsError.message }, { status: 500 });
+    return finalizeJson({ error: dismissalsError.message }, { status: 500 });
   }
 
   const dismissedPairs = new Set(
@@ -54,7 +50,7 @@ export async function GET(req: NextRequest) {
       .map((row) => pairKey(row.lore_id_a as string, row.lore_id_b as string)),
   );
 
-  return NextResponse.json({
+  return finalizeJson({
     candidates: candidates.filter((candidate) => !dismissedPairs.has(pairKey(candidate.idA, candidate.idB))),
   });
 }

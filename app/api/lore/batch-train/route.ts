@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { runBatchTrain } from "@/lib/lore/batchTrain";
 import { clamp } from "@/lib/lore/mappers";
 
@@ -11,13 +11,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "x-openai-api-key header required" }, { status: 400 });
   }
 
-  const res = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json().catch(() => ({}));
   const rawLimit = typeof body.limit === "number" ? body.limit : Number(body.limit);
@@ -26,14 +22,14 @@ export async function POST(req: NextRequest) {
   try {
     const result = await runBatchTrain(supabase, openaiKey, user.id, limit);
     if (!result.ok) {
-      return NextResponse.json({
+      return finalizeJson({
         error: result.error.message,
         processedCount: result.processedCount,
         insertedCount: result.insertedCount,
       }, { status: 500 });
     }
-    return NextResponse.json(result);
+    return finalizeJson(result);
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    return finalizeJson({ error: (error as Error).message }, { status: 500 });
   }
 }

@@ -1,18 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { NextRequest } from "next/server";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const res = new NextResponse();
-  const supabase = createRouteHandlerSupabaseClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { branchRootId, branchIndex } = await req.json();
   if (!branchRootId || branchIndex == null) {
-    return NextResponse.json({ error: "branchRootId and branchIndex are required" }, { status: 400 });
+    return finalizeJson({ error: "branchRootId and branchIndex are required" }, { status: 400 });
   }
 
   const threadId = params.id;
@@ -25,9 +24,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .eq("id", branchRootId)
     .single();
 
-  if (rootFetchError) return NextResponse.json({ error: rootFetchError.message }, { status: 500 });
+  if (rootFetchError) return finalizeJson({ error: rootFetchError.message }, { status: 500 });
   if (rootMessage?.message_number == null) {
-    return NextResponse.json({ error: "branch root message_number is missing" }, { status: 400 });
+    return finalizeJson({ error: "branch root message_number is missing" }, { status: 400 });
   }
 
   const { error: deactivateError } = await supabase
@@ -38,7 +37,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .eq("is_active", true)
     .gte("message_number", rootMessage.message_number);
 
-  if (deactivateError) return NextResponse.json({ error: deactivateError.message }, { status: 500 });
+  if (deactivateError) return finalizeJson({ error: deactivateError.message }, { status: 500 });
 
   const { error: activateError } = await supabase
     .from("messages")
@@ -48,7 +47,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .eq("branch_root_id", branchRootId)
     .eq("branch_index", branchIndex);
 
-  if (activateError) return NextResponse.json({ error: activateError.message }, { status: 500 });
+  if (activateError) return finalizeJson({ error: activateError.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true });
+  return finalizeJson({ ok: true });
 }
