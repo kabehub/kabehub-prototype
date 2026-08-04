@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { requireRouteUser } from '@/lib/supabase/route-auth'
 import {
   buildChainBlocksByRootAnchor,
   buildCurrentLaneKeyByBranchRootId,
@@ -11,15 +11,13 @@ import { Message } from '@/types'
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const supabase = createRouteHandlerSupabaseClient(req, new NextResponse())
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireRouteUser(req)
+  if (!auth.ok) return auth.response
+  const { user, supabase, finalizeJson } = auth
 
   const { anchorMessageId } = await req.json().catch(() => ({ anchorMessageId: null }))
   if (!anchorMessageId || typeof anchorMessageId !== 'string') {
-    return NextResponse.json({ error: 'anchorMessageId is required' }, { status: 400 })
+    return finalizeJson({ error: 'anchorMessageId is required' }, { status: 400 })
   }
 
   const sourceThreadId = params.id
@@ -33,7 +31,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .single()
 
   if (threadError || !sourceThread) {
-    return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
+    return finalizeJson({ error: 'Thread not found' }, { status: 404 })
   }
 
   const { data: sourceMessages, error: messagesError } = await supabase
@@ -44,7 +42,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .order('created_at', { ascending: true })
 
   if (messagesError) {
-    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
+    return finalizeJson({ error: 'Failed to fetch messages' }, { status: 500 })
   }
 
   const orderedMessages = [...((sourceMessages ?? []) as Message[])].sort(compareMessagesForDisplay)
@@ -67,7 +65,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const anchorIndex = visibleMessages.findIndex((msg) => msg.id === anchorMessageId)
   if (anchorIndex === -1) {
-    return NextResponse.json({ error: 'Anchor message not found' }, { status: 404 })
+    return finalizeJson({ error: 'Anchor message not found' }, { status: 404 })
   }
 
   const targetMessages = visibleMessages
@@ -90,7 +88,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .single()
 
   if (newThreadError || !newThread) {
-    return NextResponse.json({ error: 'Failed to create thread' }, { status: 500 })
+    return finalizeJson({ error: 'Failed to create thread' }, { status: 500 })
   }
 
   if (targetMessages.length > 0) {
@@ -132,9 +130,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
     if (insertError) {
       await supabase.from('threads').delete().eq('id', newThread.id)
-      return NextResponse.json({ error: 'Failed to copy messages' }, { status: 500 })
+      return finalizeJson({ error: 'Failed to copy messages' }, { status: 500 })
     }
   }
 
-  return NextResponse.json({ thread: newThread })
+  return finalizeJson({ thread: newThread })
 }

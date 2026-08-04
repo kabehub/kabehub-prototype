@@ -1,13 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerSupabaseClient } from '@/lib/supabase/route-handler'
+import { NextRequest } from 'next/server'
+import { requireRouteUser } from '@/lib/supabase/route-auth'
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const supabase = createRouteHandlerSupabaseClient(req, new NextResponse())
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireRouteUser(req)
+  if (!auth.ok) return auth.response
+  const { user, supabase, finalizeJson } = auth
 
   const sourceThreadId = params.id
 
@@ -20,7 +18,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .single()
 
   if (threadError || !sourceThread) {
-    return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
+    return finalizeJson({ error: 'Thread not found' }, { status: 404 })
   }
 
   // コピー元メッセージの取得
@@ -32,7 +30,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .order('created_at', { ascending: true })
 
   if (messagesError) {
-    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
+    return finalizeJson({ error: 'Failed to fetch messages' }, { status: 500 })
   }
 
   // 新スレッドの作成
@@ -51,7 +49,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .single()
 
   if (newThreadError || !newThread) {
-    return NextResponse.json({ error: 'Failed to create thread' }, { status: 500 })
+    return finalizeJson({ error: 'Failed to create thread' }, { status: 500 })
   }
 
   // メッセージの一括コピー
@@ -77,9 +75,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       console.error('copy insertError:', insertError)
       // スレッドだけ作成されてメッセージが入らない中途半端な状態を防ぐ
       await supabase.from('threads').delete().eq('id', newThread.id)
-      return NextResponse.json({ error: 'Failed to copy messages' }, { status: 500 })
+      return finalizeJson({ error: 'Failed to copy messages' }, { status: 500 })
     }
   }
 
-  return NextResponse.json({ thread: newThread })
+  return finalizeJson({ thread: newThread })
 }
