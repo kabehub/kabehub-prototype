@@ -175,6 +175,31 @@ export async function GET(req: NextRequest) {
       supabase.from("thread_tags").select("thread_id, name").in("thread_id", threadIds),
     ]);
 
+    if (likeRes.error) {
+      console.warn("explore likes enrichment error:", {
+        code: likeRes.error.code,
+        message: likeRes.error.message,
+      });
+    }
+    if (messageRes.error) {
+      console.warn("explore messages enrichment error:", {
+        code: messageRes.error.code,
+        message: messageRes.error.message,
+      });
+    }
+    if (profileRes.error) {
+      console.warn("explore profiles enrichment error:", {
+        code: profileRes.error.code,
+        message: profileRes.error.message,
+      });
+    }
+    if (tagRes.error) {
+      console.warn("explore tags enrichment error:", {
+        code: tagRes.error.code,
+        message: tagRes.error.message,
+      });
+    }
+
     for (const row of likeRes.data ?? []) {
       likeCounts[row.thread_id] = (likeCounts[row.thread_id] ?? 0) + 1;
       if (user && row.user_id === user.id) likedByMe[row.thread_id] = true;

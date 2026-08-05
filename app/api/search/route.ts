@@ -31,6 +31,10 @@ export async function GET(req: NextRequest) {
       supabase.from("threads").select("id").ilike("title", pattern).eq("user_id", user.id),
       supabase.from("messages").select("id, thread_id").ilike("content", pattern).eq("user_id", user.id),
     ]);
+    const searchError = titleRes.error ?? msgRes.error;
+    if (searchError) {
+      return finalizeJson({ error: searchError.message }, { status: 500 });
+    }
     (titleRes.data ?? []).forEach((t) => threadIds.add(t.id));
     (msgRes.data ?? []).forEach((m) => {
       threadIds.add(m.thread_id);
@@ -38,10 +42,16 @@ export async function GET(req: NextRequest) {
       matchedMsgMap.set(m.thread_id, [...existing, m.id]);
     });
   } else if (target === "title") {
-    const { data } = await supabase.from("threads").select("id").ilike("title", pattern).eq("user_id", user.id);
+    const { data, error } = await supabase.from("threads").select("id").ilike("title", pattern).eq("user_id", user.id);
+    if (error) {
+      return finalizeJson({ error: error.message }, { status: 500 });
+    }
     (data ?? []).forEach((t) => threadIds.add(t.id));
   } else if (target === "message") {
-    const { data } = await supabase.from("messages").select("id, thread_id").ilike("content", pattern).eq("user_id", user.id);
+    const { data, error } = await supabase.from("messages").select("id, thread_id").ilike("content", pattern).eq("user_id", user.id);
+    if (error) {
+      return finalizeJson({ error: error.message }, { status: 500 });
+    }
     (data ?? []).forEach((m) => {
       threadIds.add(m.thread_id);
       const existing = matchedMsgMap.get(m.thread_id) ?? [];
