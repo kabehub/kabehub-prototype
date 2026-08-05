@@ -37,6 +37,11 @@ interface QueueItem {
   intervention?: string;
 }
 
+type ArenaTurnResult = {
+  message: Message;
+  saved: boolean;
+};
+
 // ── ユーティリティ ───────────────────────────────────────────────
 
 function getApiKeyHeaders(): Record<string, string> {
@@ -89,6 +94,7 @@ export default function ArenaPage() {
   const [showIntervention, setShowIntervention] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [humanInputText, setHumanInputText] = useState("");
+  const [unsavedResult, setUnsavedResult] = useState<Message | null>(null);
 
   // actionQueue方式のstate
   const [actionQueue, setActionQueue] = useState<QueueItem[]>([]);
@@ -114,7 +120,7 @@ export default function ArenaPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, thinkingLabel]);
+  }, [messages, thinkingLabel, unsavedResult]);
 
   // ── players配列（useMemoで安定化） ────────────────────────────
   const players = useMemo((): PlayerConfig[] => {
@@ -150,7 +156,7 @@ export default function ArenaPage() {
       isVeryFirst: boolean,
       topic: string,
       interventionContent?: string
-    ): Promise<Message> => {
+    ): Promise<ArenaTurnResult> => {
       const selfLabel = playerLabels[pIdx] ?? `AI${pIdx + 1}`;
       const opponentLabel = playerLabels.filter((_, i) => i !== pIdx).join(" / ") || "相手";
       const isAi1Position = pIdx % 2 === 0;
@@ -178,9 +184,12 @@ export default function ArenaPage() {
         }),
       });
 
+      const data = await res.json() as Partial<ArenaTurnResult>;
       if (!res.ok) throw new Error("arena API error");
-      const { message } = await res.json();
-      return message as Message;
+      if (!data.message || typeof data.saved !== "boolean") {
+        throw new Error("arena API response error");
+      }
+      return { message: data.message, saved: data.saved };
     },
     [threadId, playerLabels]
   );
@@ -219,7 +228,7 @@ export default function ArenaPage() {
         const isVeryFirst = currentMessages.length === 0 && nextAction.turn === 0 && nextAction.pIdx === 0;
         const interventionContent = nextAction.intervention;
 
-        const newMsg = await runOneTurn(
+        const result = await runOneTurn(
           currentMessages,
           player,
           nextAction.pIdx,
@@ -229,17 +238,24 @@ export default function ArenaPage() {
         );
 
         if (!isCancelled) {
+          setThinkingLabel(null);
+          if (!result.saved) {
+            // 未保存の生成結果はcanonicalな履歴へ入れず、残りのAIターンも実行しない。
+            setUnsavedResult(result.message);
+            setActionQueue([]);
+            setIsRunning(false);
+            return;
+          }
+
           setMessages((prev) => {
-            const updated = [...prev, newMsg];
+            const updated = [...prev, result.message];
             messagesRef.current = updated;
             return updated;
           });
-          setThinkingLabel(null);
           setActionQueue((prev) => prev.slice(1));
         }
       } catch (err) {
         if (!isCancelled) {
-          console.error("arena run error:", err);
           alert(`エラーが発生しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
           setIsRunning(false);
           setThinkingLabel(null);
@@ -266,6 +282,7 @@ export default function ArenaPage() {
   // ── Nターン実行開始 ───────────────────────────────────────────
   const handleRun = useCallback(() => {
     if (isRunning || waitingForHuman !== null) return;
+    setUnsavedResult(null);
     setIsRunning(true);
 
     const intervention = interventionText.trim() || undefined;
@@ -304,18 +321,15 @@ export default function ArenaPage() {
           mode: "saveHumanMessage",
           threadId,
           content,
+          topic: config.topic,
         }),
       });
-      if (!res.ok) console.warn("人間メッセージのDB保存に失敗しました");
+      const data = await res.json() as { ok?: boolean; message?: Message };
+      if (!res.ok || data.ok === false || !data.message) {
+        throw new Error("人間メッセージのDB保存に失敗しました");
+      }
 
-      const newMsg: Message = {
-        id: uuidv4(),
-        thread_id: threadId,
-        role: "user",
-        content,
-        provider: "user",
-        created_at: new Date().toISOString(),
-      };
+      const newMsg = data.message;
 
       setMessages((prev) => {
         const updated = [...prev, newMsg];
@@ -330,9 +344,9 @@ export default function ArenaPage() {
       setActionQueue((prev) => prev.slice(1));
       setIsRunning(true);
     } catch (err) {
-      console.error("human submit error:", err);
+      alert(err instanceof Error ? err.message : "人間メッセージのDB保存に失敗しました");
     }
-  }, [humanInputText, waitingForHuman, playerLabels, threadId]);
+  }, [humanInputText, waitingForHuman, playerLabels, threadId, config.topic]);
 
   // ── タイムトラベル（指定メッセージ以降を全削除） ─────────────
 const handleTimeTravel = useCallback(async (targetMsg: Message) => {
@@ -362,9 +376,8 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
     // キューをリセット（削除後は改めて「続ける」ボタンで再開）
     setActionQueue([]);
 
-  } catch (err) {
+  } catch {
     // RLSエラーの場合のフォールバック: /api/arena 経由で削除
-    console.warn("直接DELETE失敗、/api/arena 経由で再試行:", err);
     try {
       const res2 = await fetch("/api/arena", {
         method: "POST",
@@ -487,6 +500,16 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
     navigator.clipboard.writeText(url);
     alert("URLをコピーしました！");
   }, [shareToken]);
+
+  const handleCopyUnsavedResult = useCallback(async () => {
+    if (!unsavedResult) return;
+    try {
+      await navigator.clipboard.writeText(unsavedResult.content);
+      alert("未保存の結果をコピーしました！");
+    } catch {
+      alert("コピーに失敗しました");
+    }
+  }, [unsavedResult]);
 
   // ── XシェアURL生成 ────────────────────────────────────────────
   const buildXShareUrl = useCallback(() => {
@@ -824,6 +847,33 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
             );
           });
         })()}
+        {unsavedResult && (
+          <div
+            role="alert"
+            style={{
+              marginTop: "16px",
+              padding: "16px",
+              border: "1px solid #f59e0b",
+              borderRadius: "8px",
+              background: "#fffbeb",
+              color: "#78350f",
+            }}
+          >
+            <div style={{ fontSize: "12px", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", marginBottom: "8px" }}>
+              ⚠️ このAI応答は生成されましたが、DBに保存できませんでした
+            </div>
+            <div style={{ fontSize: "13px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              {unsavedResult.content}
+            </div>
+            <button
+              type="button"
+              onClick={handleCopyUnsavedResult}
+              style={{ marginTop: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #f59e0b", background: "white", color: "#92400e", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}
+            >
+              📋 内容をコピー
+            </button>
+          </div>
+        )}
         {thinkingLabel && (
           <ArenaThinking label={thinkingLabel} isAi1={thinkingIsAi1} />
         )}

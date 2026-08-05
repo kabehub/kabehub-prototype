@@ -1,4 +1,5 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
 import { buildDefaultModels, createModelGuards, getOpenAICapability, OPENAI_RESPONSES_CONFIG, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
@@ -8,6 +9,16 @@ export const dynamic = "force-dynamic";
 
 type ChatMessage = { role: string; content: string; provider?: string };
 type ArenaProvider = "claude" | "gemini" | "openai";
+type EnsureArenaThreadResult =
+  | { ok: true; created: boolean }
+  | { ok: false; response: NextResponse };
+
+type EnsureArenaThreadParams = {
+  supabase: SupabaseClient;
+  threadId: string;
+  topic: string | undefined;
+  userId: string;
+};
 
 const PROVIDER_LABELS: Record<ArenaProvider, string> = {
   claude: "Claude",
@@ -25,8 +36,9 @@ async function fetchProvider(
     response = await fetch(url, init);
   } catch {
     console.error("[arena] provider API request failed", {
-      provider,
-      status: null,
+      route: "arena",
+      operation: `request_${provider}_api`,
+      table: "provider_api",
       errorCode: "UPSTREAM_REQUEST_FAILED",
     });
     throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
@@ -34,9 +46,10 @@ async function fetchProvider(
 
   if (!response.ok) {
     console.error("[arena] provider API error", {
-      provider,
-      status: response.status,
-      errorCode: "UPSTREAM_API_ERROR",
+      route: "arena",
+      operation: `request_${provider}_api`,
+      table: "provider_api",
+      errorCode: `UPSTREAM_API_ERROR_${response.status}`,
     });
     throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
   }
@@ -49,9 +62,10 @@ async function readProviderJson(provider: ArenaProvider, response: Response): Pr
     return await response.json();
   } catch {
     console.error("[arena] invalid provider API response", {
-      provider,
-      status: response.status,
-      errorCode: "UPSTREAM_RESPONSE_INVALID",
+      route: "arena",
+      operation: `parse_${provider}_api_response`,
+      table: "provider_api",
+      errorCode: `UPSTREAM_RESPONSE_INVALID_${response.status}`,
     });
     throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
   }
@@ -61,6 +75,139 @@ async function readProviderJson(provider: ArenaProvider, response: Response): Pr
 const DEFAULT_MODELS = buildDefaultModels("arena");
 
 const { isClaudeModel, isGeminiModel, isOpenAIModel } = createModelGuards("arena");
+
+async function ensureArenaThread({
+  supabase,
+  threadId,
+  topic,
+  userId,
+}: EnsureArenaThreadParams): Promise<EnsureArenaThreadResult> {
+  const { data: existingThread, error: lookupError } = await supabase
+    .from("threads")
+    .select("id")
+    .eq("id", threadId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("[db-operation-failed]", {
+      route: "arena",
+      operation: "ensure_thread_lookup",
+      table: "threads",
+      errorCode: lookupError.code,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Failed to verify arena thread" }, { status: 500 }),
+    };
+  }
+  if (existingThread) return { ok: true, created: false };
+
+  const title = `【AI闘技場】${(topic ?? "").slice(0, 30)}`;
+  const { error: insertError } = await supabase
+    .from("threads")
+    .insert({ id: threadId, title, user_id: userId });
+
+  if (!insertError) return { ok: true, created: true };
+
+  if (insertError.code !== "23505") {
+    console.error("[db-operation-failed]", {
+      route: "arena",
+      operation: "ensure_thread_insert",
+      table: "threads",
+      errorCode: insertError.code,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Failed to create arena thread" }, { status: 500 }),
+    };
+  }
+
+  // 同時リクエストが先に作成した場合だけ成功扱いにする。別ユーザー所有の同一IDは500のまま。
+  const { data: racedThread, error: recheckError } = await supabase
+    .from("threads")
+    .select("id")
+    .eq("id", threadId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (recheckError) {
+    console.error("[db-operation-failed]", {
+      route: "arena",
+      operation: "ensure_thread_recheck",
+      table: "threads",
+      errorCode: recheckError.code,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Failed to verify arena thread" }, { status: 500 }),
+    };
+  }
+  if (racedThread) return { ok: true, created: false };
+
+  console.error("[db-operation-failed]", {
+    route: "arena",
+    operation: "ensure_thread_insert_conflict",
+    table: "threads",
+    errorCode: insertError.code,
+  });
+  return {
+    ok: false,
+    response: NextResponse.json({ error: "Failed to create arena thread" }, { status: 500 }),
+  };
+}
+
+async function compensateCreatedArenaThread({
+  supabase,
+  threadId,
+  userId,
+  operation,
+}: {
+  supabase: SupabaseClient;
+  threadId: string;
+  userId: string;
+  operation: string;
+}): Promise<void> {
+  const { error: compensationError } = await supabase
+    .from("threads")
+    .delete()
+    .eq("id", threadId)
+    .eq("user_id", userId);
+
+  if (compensationError) {
+    console.error("[db-compensation-failed]", {
+      route: "arena",
+      operation,
+      table: "threads",
+      errorCode: compensationError.code,
+    });
+  }
+}
+
+async function compensateInterventionMessage({
+  supabase,
+  messageId,
+  userId,
+}: {
+  supabase: SupabaseClient;
+  messageId: string;
+  userId: string;
+}): Promise<void> {
+  const { error: compensationError } = await supabase
+    .from("messages")
+    .delete()
+    .eq("id", messageId)
+    .eq("user_id", userId);
+
+  if (compensationError) {
+    console.error("[db-compensation-failed]", {
+      route: "arena",
+      operation: "delete_intervention_after_assistant_insert",
+      table: "messages",
+      errorCode: compensationError.code,
+    });
+  }
+}
 
 async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: ClaudeModel): Promise<string> {
   const body: Record<string, unknown> = {
@@ -175,7 +322,7 @@ async function callAI(
 export async function POST(req: NextRequest) {
   const auth = await requireRouteUser(req);
   if (!auth.ok) return auth.response;
-  const { user, supabase, finalizeJson } = auth;
+  const { user, supabase, finalizeJson, finalizeResponse } = auth;
   const userId = user.id;
 
   let body: {
@@ -195,14 +342,22 @@ export async function POST(req: NextRequest) {
   try {
     const rawText = await req.text();
     body = JSON.parse(rawText);
-  } catch (err) {
-    console.error("arena route: JSON parse error", err);
+  } catch {
     return finalizeJson({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // DB保存のHTTP契約:
+  // - thread / human / intervention INSERT失敗: 500 + { error }
+  // - assistant INSERT失敗: 200 + { message, saved: false }
+  // - assistant INSERT成功: 200 + { message, saved: true }
+  // 補償DELETEが失敗しても、原因となった保存失敗のstatus/bodyは変更しない。
+
   // ── 人間乱入メッセージの保存モード ──────────────────────────
   if (body.mode === "saveHumanMessage") {
-    const { threadId, content: msgContent } = body;
+    const { threadId, content: msgContent, topic } = body;
+    const ensuredThread = await ensureArenaThread({ supabase, threadId, topic, userId });
+    if (!ensuredThread.ok) return finalizeResponse(ensuredThread.response);
+
     const humanMsg = {
       id: uuidv4(),
       thread_id: threadId,
@@ -211,7 +366,7 @@ export async function POST(req: NextRequest) {
       provider: "user" as const,
       created_at: new Date().toISOString(),
     };
-    await supabase.from("messages").insert({
+    const { error: humanInsertError } = await supabase.from("messages").insert({
       id: humanMsg.id,
       thread_id: humanMsg.thread_id,
       role: humanMsg.role,
@@ -219,7 +374,24 @@ export async function POST(req: NextRequest) {
       provider: humanMsg.provider,
       user_id: userId,
     });
-    return finalizeJson({ message: humanMsg });
+    if (humanInsertError) {
+      console.error("[db-operation-failed]", {
+        route: "arena",
+        operation: "insert_human_message",
+        table: "messages",
+        errorCode: humanInsertError.code,
+      });
+      if (ensuredThread.created) {
+        await compensateCreatedArenaThread({
+          supabase,
+          threadId,
+          userId,
+          operation: "delete_thread_after_human_insert",
+        });
+      }
+      return finalizeJson({ error: "Failed to save human message" }, { status: 500 });
+    }
+    return finalizeJson({ ok: true, message: humanMsg });
   }
 
   // ── タイムトラベルモード ──────────────────────────────────────
@@ -268,17 +440,17 @@ export async function POST(req: NextRequest) {
     openai: req.headers.get("x-openai-api-key") || undefined,
   };
 
-  // スレッド作成
+  // スレッド作成（このリクエストで作成した場合だけ、後続失敗時の補償対象にする）
+  let arenaThreadCreated = false;
   if (isFirst) {
-    const { data: exists } = await supabase.from("threads").select("id").eq("id", threadId).single();
-    if (!exists) {
-      const title = `【AI闘技場】${(topic ?? "").slice(0, 30)}`;
-      await supabase.from("threads").insert({ id: threadId, title, user_id: userId });
-    }
+    const ensuredThread = await ensureArenaThread({ supabase, threadId, topic, userId });
+    if (!ensuredThread.ok) return finalizeResponse(ensuredThread.response);
+    arenaThreadCreated = ensuredThread.created;
   }
 
   // 介入メッセージ保存
   let historyWithIntervention = [...(history ?? [])];
+  let savedInterventionMessageId: string | null = null;
   if (interventionContent?.trim()) {
     const interventionMsg = {
       id: uuidv4(),
@@ -288,7 +460,7 @@ export async function POST(req: NextRequest) {
       provider: "user" as const,
       created_at: new Date().toISOString(),
     };
-    await supabase.from("messages").insert({
+    const { error: interventionInsertError } = await supabase.from("messages").insert({
       id: interventionMsg.id,
       thread_id: interventionMsg.thread_id,
       role: interventionMsg.role,
@@ -296,6 +468,24 @@ export async function POST(req: NextRequest) {
       provider: interventionMsg.provider,
       user_id: userId,
     });
+    if (interventionInsertError) {
+      console.error("[db-operation-failed]", {
+        route: "arena",
+        operation: "insert_intervention_message",
+        table: "messages",
+        errorCode: interventionInsertError.code,
+      });
+      if (arenaThreadCreated) {
+        await compensateCreatedArenaThread({
+          supabase,
+          threadId,
+          userId,
+          operation: "delete_thread_after_intervention_insert",
+        });
+      }
+      return finalizeJson({ error: "Failed to save intervention message" }, { status: 500 });
+    }
+    savedInterventionMessageId = interventionMsg.id;
     const interventionForApi = `[状況更新] 以下の新しい事実が判明しました。自然な会話の流れの中で、この事実に対するあなたの見解を簡潔に混ぜ込んで反論してください。事実：${interventionContent}`;
     historyWithIntervention = [...(history ?? []), { role: "user", content: interventionForApi }];
   }
@@ -352,7 +542,7 @@ export async function POST(req: NextRequest) {
     created_at: new Date().toISOString(),
   };
 
-  await supabase.from("messages").insert({
+  const { error: assistantInsertError } = await supabase.from("messages").insert({
     id: assistantMessage.id,
     thread_id: threadId,
     role: assistantMessage.role,
@@ -361,5 +551,29 @@ export async function POST(req: NextRequest) {
     user_id: userId,
   });
 
-  return finalizeJson({ message: assistantMessage });
+  if (assistantInsertError) {
+    console.error("[db-operation-failed]", {
+      route: "arena",
+      operation: "insert_assistant_message",
+      table: "messages",
+      errorCode: assistantInsertError.code,
+    });
+    if (arenaThreadCreated) {
+      await compensateCreatedArenaThread({
+        supabase,
+        threadId,
+        userId,
+        operation: "delete_thread_after_assistant_insert",
+      });
+    } else if (savedInterventionMessageId) {
+      await compensateInterventionMessage({
+        supabase,
+        messageId: savedInterventionMessageId,
+        userId,
+      });
+    }
+    return finalizeJson({ message: assistantMessage, saved: false });
+  }
+
+  return finalizeJson({ message: assistantMessage, saved: true });
 }
