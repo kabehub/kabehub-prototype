@@ -793,13 +793,20 @@ export async function POST(req: NextRequest) {
     if (branchEdit?.baseUserMessageId) {
       // branchEditモード: 旧user以降を inactive化 → 新userを新規insert
       // 1. baseUserを取得してmessage_numberを確認
-      const { data: baseUser } = await supabase
+      const { data: baseUser, error: baseUserError } = await supabase
         .from("messages")
         .select("id, message_number, branch_root_id, branch_index, is_active")
         .eq("id", branchEdit.baseUserMessageId)
         .eq("thread_id", threadId)
         .eq("user_id", userId)
-        .single();
+        .maybeSingle();
+
+      if (baseUserError) {
+        return new Response(JSON.stringify({ error: baseUserError.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
       if (!baseUser) {
         return new Response(JSON.stringify({ error: "baseUserMessage not found" }), {
@@ -843,7 +850,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 3. branch_root_id と branch_index を決定
-        const { data: maxBranchRow } = await supabase
+        const { data: maxBranchRow, error: maxBranchRowError } = await supabase
           .from("messages")
           .select("branch_index")
           .eq("thread_id", threadId)
@@ -853,10 +860,17 @@ export async function POST(req: NextRequest) {
           .limit(1)
           .maybeSingle();
 
+        if (maxBranchRowError) {
+          return new Response(JSON.stringify({ error: maxBranchRowError.message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
         const nextBranchIndex = (maxBranchRow?.branch_index ?? 0) + 1;
 
         // 4. message_numberを採番
-        const { data: maxNumRow } = await supabase
+        const { data: maxNumRow, error: maxNumRowError } = await supabase
           .from("messages")
           .select("message_number")
           .eq("thread_id", threadId)
@@ -864,6 +878,13 @@ export async function POST(req: NextRequest) {
           .order("message_number", { ascending: false })
           .limit(1)
           .maybeSingle();
+
+        if (maxNumRowError) {
+          return new Response(JSON.stringify({ error: maxNumRowError.message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
         const nextMessageNumber = (maxNumRow?.message_number ?? 0) + 1;
 
@@ -900,7 +921,7 @@ export async function POST(req: NextRequest) {
           parent_id: userMessage.id,
         };
 
-        const { data: activeMessages } = await supabase
+        const { data: activeMessages, error: activeMessagesError } = await supabase
           .from("messages")
           .select("role, content, provider")
           .eq("thread_id", threadId)
@@ -908,6 +929,13 @@ export async function POST(req: NextRequest) {
           .not("is_active", "eq", false)
           .lt("message_number", nextMessageNumber)
           .order("message_number", { ascending: true });
+
+        if (activeMessagesError) {
+          return new Response(JSON.stringify({ error: activeMessagesError.message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
         branchEditMessagesForApi = [
           ...(activeMessages ?? []).map((m) => ({
@@ -919,7 +947,7 @@ export async function POST(req: NextRequest) {
         ];
       }
     } else {
-      const { data: lastActiveMsg } = await supabase
+      const { data: lastActiveMsg, error: lastActiveMsgError } = await supabase
         .from("messages")
         .select("branch_root_id, branch_index")
         .eq("thread_id", threadId)
@@ -928,6 +956,13 @@ export async function POST(req: NextRequest) {
         .order("message_number", { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      if (lastActiveMsgError) {
+        return new Response(JSON.stringify({ error: lastActiveMsgError.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
       if (lastActiveMsg?.branch_root_id != null) {
         branchEditMeta = {
