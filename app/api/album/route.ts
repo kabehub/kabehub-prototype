@@ -51,9 +51,15 @@ export async function GET(req: NextRequest) {
 
   const signedUrls: Record<string, string> = {};
   if (storagePaths.length > 0) {
-    const { data: urlData } = await supabase.storage
+    const { data: urlData, error: urlError } = await supabase.storage
       .from("generated-images")
       .createSignedUrls(storagePaths, 3600);
+    if (urlError) {
+      console.warn("[album] createSignedUrls failed", {
+        error: urlError.message,
+        pathCount: storagePaths.length,
+      });
+    }
     if (urlData) {
       for (const item of urlData) {
         if (item.signedUrl && item.path) signedUrls[item.path] = item.signedUrl;
