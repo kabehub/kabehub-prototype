@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { LORE_MEMORY_SELECT } from "@/lib/loreMemorySelect";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { createEmbedding } from "@/lib/lore/openai";
 import {
@@ -10,10 +9,6 @@ import {
 } from "@/lib/lore/consolidation";
 
 export const dynamic = "force-dynamic";
-
-function normalizeTags(...tagLists: Array<string[] | null>) {
-  return Array.from(new Set(tagLists.flatMap((tags) => tags ?? []).filter((tag) => typeof tag === "string")));
-}
 
 export async function POST(req: NextRequest) {
   const openaiKey = req.headers.get("x-openai-api-key");
@@ -53,67 +48,42 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { sourceA, sourceB } = validated;
-    const newerSource = (sourceA.created_at ?? "") >= (sourceB.created_at ?? "") ? sourceA : sourceB;
     const newEmbedding = await createEmbedding(openaiKey, mergedText);
-    const now = new Date().toISOString();
+    const { data: mergedId, error: rpcError } = await supabase.rpc(
+      "merge_user_edited_lore_pair",
+      {
+        p_user_id: user.id,
+        p_lore_id_a: loreIdA,
+        p_lore_id_b: loreIdB,
+        p_merged_text: mergedText,
+        p_embedding: newEmbedding,
+        p_memory_kind: memoryKind,
+        p_temporal_status: temporalStatus,
+      },
+    );
 
-    const { data: inserted, error: insertError } = await supabase
-      .from("lore_embeddings")
-      .insert({
-        user_id: user.id,
-        folder_name: newerSource.folder_name,
-        chunk_text: mergedText,
-        embedding: newEmbedding,
-        memory_kind: memoryKind ?? sourceA.memory_kind,
-        temporal_status: temporalStatus ?? sourceA.temporal_status,
-        extraction_version: "user_edited",
-        source_type: "consolidation",
-        source_thread_id: null,
-        source_message_id: null,
-        source_message_number: null,
-        tags: normalizeTags(sourceA.tags, sourceB.tags),
-        importance_score: Math.max(sourceA.importance_score ?? 0, sourceB.importance_score ?? 0),
-        confidence_score: ((sourceA.confidence_score ?? 0) + (sourceB.confidence_score ?? 0)) / 2,
-        last_confirmed_at: now,
-      })
-      .select("id")
-      .single();
+    if (rpcError) {
+      console.error("[lore-merge-rpc-failed]", {
+        route: "lore-consolidate-merge",
+        operation: "merge_user_edited_lore_pair",
+        table: "lore_embeddings",
+        errorCode: rpcError.code,
+      });
 
-    if (insertError) return finalizeJson({ error: insertError.message }, { status: 500 });
+      if (
+        rpcError.message.includes("protection check")
+        || rpcError.message.includes("expected 2 source records")
+      ) {
+        return finalizeJson(
+          { error: "Source memories changed, please retry" },
+          { status: 409 },
+        );
+      }
 
-    const { data: updatedRows, error: updateError } = await supabase
-      .from("lore_embeddings")
-      .update({ is_archived: true, superseded_by: inserted.id })
-      .eq("user_id", user.id)
-      .in("id", [loreIdA, loreIdB])
-      .eq("is_archived", false)
-      .is("superseded_by", null)
-      .select("id");
-
-    if (updateError || (updatedRows ?? []).length !== 2) {
-      await supabase
-        .from("lore_embeddings")
-        .delete()
-        .eq("id", inserted.id)
-        .eq("user_id", user.id);
-
-      return finalizeJson(
-        { error: updateError?.message ?? "Failed to archive source memories" },
-        { status: 500 },
-      );
+      return finalizeJson({ error: "Failed to merge source memories" }, { status: 500 });
     }
 
-    const { data: merged, error: fetchError } = await supabase
-      .from("lore_embeddings")
-      .select(LORE_MEMORY_SELECT)
-      .eq("id", inserted.id)
-      .eq("user_id", user.id)
-      .single();
-
-    if (fetchError) return finalizeJson({ error: fetchError.message }, { status: 500 });
-
-    return finalizeJson(merged, { status: 201 });
+    return finalizeJson({ id: mergedId }, { status: 201 });
   } catch (err) {
     return finalizeJson({ error: (err as Error).message }, { status: 500 });
   }
