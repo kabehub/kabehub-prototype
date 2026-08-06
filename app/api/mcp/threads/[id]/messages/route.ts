@@ -16,12 +16,21 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   const supabase = serviceRoleClient()
 
   // スレッドの所有者確認
-  const { data: thread } = await supabase
+  const { data: thread, error: threadError } = await supabase
     .from('threads')
     .select('id')
     .eq('id', params.id)
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
+  if (threadError) {
+    console.error('[db-operation-failed]', {
+      route: 'mcp_threads_messages_get',
+      operation: 'verify_thread_ownership',
+      table: 'threads',
+      errorCode: threadError.code,
+    })
+    return NextResponse.json({ error: 'Failed to verify thread' }, { status: 500 })
+  }
   if (!thread) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { data, error } = await supabase
@@ -48,12 +57,21 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const supabase = serviceRoleClient()
 
   // スレッドの所有者確認
-  const { data: thread } = await supabase
+  const { data: thread, error: threadError } = await supabase
     .from('threads')
     .select('id')
     .eq('id', params.id)
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
+  if (threadError) {
+    console.error('[db-operation-failed]', {
+      route: 'mcp_threads_messages_post',
+      operation: 'verify_thread_ownership',
+      table: 'threads',
+      errorCode: threadError.code,
+    })
+    return NextResponse.json({ error: 'Failed to verify thread' }, { status: 500 })
+  }
   if (!thread) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const body = await req.json().catch(() => ({}))
@@ -71,11 +89,21 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // updated_at を threads に反映
-  await supabase
+  // 更新失敗はベストエフォート。失敗してもmessages取得自体は成功として返す。
+  const { error: threadUpdateError } = await supabase
     .from('threads')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', params.id)
+    .eq('user_id', userId)
+
+  if (threadUpdateError) {
+    console.warn('[db-operation-failed]', {
+      route: 'mcp_threads_messages_post',
+      operation: 'update_thread_timestamp',
+      table: 'threads',
+      errorCode: threadUpdateError.code,
+    })
+  }
 
   return NextResponse.json({ message: data }, { status: 201 })
 }

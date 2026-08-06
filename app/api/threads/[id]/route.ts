@@ -12,12 +12,22 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   if (!auth.ok) return auth.response;
   const { user, supabase, finalizeJson } = auth;
 
-  const { data: thread } = await supabase
+  const { data: thread, error: threadError } = await supabase
     .from("threads")
     .select("id, forked_from_id")
     .eq("id", params.id)
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (threadError) {
+    console.error("[db-operation-failed]", {
+      route: "threads_id_delete",
+      operation: "verify_thread_ownership",
+      table: "threads",
+      errorCode: threadError.code,
+    });
+    return finalizeJson({ error: "Failed to verify thread" }, { status: 500 });
+  }
 
   if (!thread) return finalizeJson({ error: "Not Found" }, { status: 404 });
   const forkedFromId = thread.forked_from_id;
@@ -32,6 +42,8 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     return finalizeJson({ error: msgSelectError.message }, { status: 500 });
   }
 
+  // 補助処理（アーカイブ・storage cleanup・fork count再計算）はベストエフォート。
+  // これらの失敗だけではthread削除の成功レスポンスを変更しない。
   const { error: archiveError } = await supabase
     .from("lore_embeddings")
     .update({ is_archived: true })
@@ -40,7 +52,12 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("is_pinned", false);
 
   if (archiveError) {
-    console.warn("Failed to archive lore_embeddings for deleted thread:", archiveError.message);
+    console.warn("[db-operation-failed]", {
+      route: "threads_id_delete",
+      operation: "archive_lore_embeddings",
+      table: "lore_embeddings",
+      errorCode: archiveError.code,
+    });
   }
 
   const { error: deleteError } = await supabase
@@ -50,6 +67,12 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("user_id", user.id);
 
   if (deleteError) {
+    console.error("[db-operation-failed]", {
+      route: "threads_id_delete",
+      operation: "delete_thread",
+      table: "threads",
+      errorCode: deleteError.code,
+    });
     return finalizeJson({ error: deleteError.message }, { status: 500 });
   }
 
@@ -57,10 +80,11 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   if (ownedPaths.length > 0) {
     const cleanup = await removeStoragePaths(supabase, ownedPaths);
     if (cleanup.failedCount > 0) {
-      console.warn("[threads-delete] storage cleanup incomplete", {
-        scope: "thread",
-        attemptedCount: cleanup.attemptedCount,
-        failedCount: cleanup.failedCount,
+      console.warn("[db-operation-failed]", {
+        route: "threads_id_delete",
+        operation: "remove_owned_storage_paths",
+        table: "generated-images",
+        errorCode: cleanup.errorCodes[0] ?? "unknown",
       });
     }
   }
@@ -71,7 +95,12 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     });
 
     if (recalcForkError) {
-      console.warn("[threads] recalc_fork_count failed:", recalcForkError);
+      console.warn("[db-operation-failed]", {
+        route: "threads_id_delete",
+        operation: "recalc_fork_count",
+        table: "threads",
+        errorCode: recalcForkError.code,
+      });
     }
   }
 

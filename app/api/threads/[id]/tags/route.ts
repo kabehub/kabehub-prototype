@@ -33,13 +33,22 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (cleanName.length > TAG_NAME_MAX_LENGTH) return finalizeJson({ error: `タグ名は${TAG_NAME_MAX_LENGTH}文字以内にしてください` }, { status: 400 });
 
   // 重複チェック: 同スレッドに同名タグが既にあれば何もせず200で返す
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("thread_tags")
     .select("id")
     .eq("thread_id", params.id)
     .eq("name", cleanName)
     .maybeSingle();
 
+  if (existingError) {
+    console.error("[db-operation-failed]", {
+      route: "threads_id_tags_post",
+      operation: "check_duplicate_tag",
+      table: "thread_tags",
+      errorCode: existingError.code,
+    });
+    return finalizeJson({ error: existingError.message }, { status: 500 });
+  }
   if (existing) return finalizeJson({ duplicate: true }, { status: 200 });
 
   const { data, error } = await supabase
