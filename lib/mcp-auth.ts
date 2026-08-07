@@ -14,7 +14,7 @@ function serviceRoleClient() {
 
 export async function authenticateMcpToken(req: Request): Promise<string | null> {
   const authHeader = req.headers.get('authorization')
-    
+
   if (!authHeader?.startsWith('Bearer ')) return null
 
   const rawToken = authHeader.slice(7).trim()
@@ -29,12 +29,18 @@ export async function authenticateMcpToken(req: Request): Promise<string | null>
     .maybeSingle()
 
   if (error) {
-    console.warn('[mcp-auth] Failed to fetch MCP token:', error.message)
+    console.error('[db-operation-failed]', {
+      route: 'mcp_auth',
+      operation: 'fetch_token',
+      table: 'mcp_tokens',
+      errorCode: error.code,
+    })
     return null
   }
 
   if (!data) return null
 
+  // last_used_at の更新はベストエフォート。失敗しても認証自体は成功として扱う（利用状況の記録に過ぎないため）。
   try {
     const { error: updateError } = await supabase
       .from('mcp_tokens')
@@ -42,10 +48,20 @@ export async function authenticateMcpToken(req: Request): Promise<string | null>
       .eq('id', data.id)
 
     if (updateError) {
-      console.warn('[mcp-auth] Failed to update MCP token last_used_at:', updateError.message)
+      console.warn('[db-operation-failed]', {
+        route: 'mcp_auth',
+        operation: 'update_last_used_at',
+        table: 'mcp_tokens',
+        errorCode: updateError.code,
+      })
     }
   } catch (err) {
-    console.warn('[mcp-auth] Failed to update MCP token last_used_at:', err)
+    console.warn('[db-operation-failed]', {
+      route: 'mcp_auth',
+      operation: 'update_last_used_at',
+      table: 'mcp_tokens',
+      errorCode: err instanceof Error ? err.name : 'unknown',
+    })
   }
 
   return data.user_id
