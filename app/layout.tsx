@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { ToastProvider } from "@/components/Toast";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -42,7 +43,7 @@ export default async function RootLayout({
   })();
 `}} />
       </head>
-      <body>{children}</body>
+      <body><ToastProvider>{children}</ToastProvider></body>
     </html>
   );
 }

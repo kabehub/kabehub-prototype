@@ -12,6 +12,7 @@ import { buildExportContent, ExportOptions } from "@/lib/exportUtils";
 import { TAG_NAME_MAX_LENGTH, normalizeTagName } from "@/lib/validationLimits";
 import PublishConfirmModal from "./PublishConfirmModal";
 import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
+import { useToast } from "@/components/Toast";
 import {
   buildBranchLanes,
   buildChainBlocksByRootAnchor,
@@ -137,6 +138,7 @@ export default function ChatPanel({
   hasMobileSidebarButton = false,
   onMobileSidebarOpen,
 }: ChatPanelProps) {
+  const { showToast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [dotPositions, setDotPositions] = useState<Array<{id: string; topPct: number; role: string}>>([]);
@@ -176,16 +178,13 @@ export default function ChatPanel({
   const [shareGenre, setShareGenre] = useState<string | null>(null); // 👈 追加
   const [selectedParentGenreId, setSelectedParentGenreId] = useState<string | null>(null); // 👈 追加
   const [shareSaving, setShareSaving] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
-  const [pushSaved, setPushSaved] = useState(false);              // ✅ v76: Push完了トースト
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [pendingDefaultTitle, setPendingDefaultTitle] = useState<string | null>(null);
   
   // ★ APIキー管理関連
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [apiKeyDrafts, setApiKeyDrafts] = useState({ anthropic: "", gemini: "", openai: "" });
-  const [apiKeySaved, setApiKeySaved] = useState(false);
   const [showKeyValues, setShowKeyValues] = useState({ anthropic: false, gemini: false, openai: false });
 
   // ★ タグ関連
@@ -194,9 +193,6 @@ export default function ChatPanel({
   const [tagInputValue, setTagInputValue] = useState("");
   const tagInputRef = useRef<HTMLInputElement>(null);
   const tagSubmittingRef = useRef(false);
-  const shareCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pushSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const apiKeySavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ★ エクスポートモーダル関連
   const [exportFormat, setExportFormat] = useState<"txt" | "md" | "md2" | "csv" | null>(null);
@@ -340,21 +336,11 @@ export default function ChatPanel({
       } else {
         localStorage.removeItem("kabehub_openai_key");
       }
-      setApiKeySaved(true);
-      if (apiKeySavedTimerRef.current) clearTimeout(apiKeySavedTimerRef.current);
-      apiKeySavedTimerRef.current = setTimeout(() => setApiKeySaved(false), 2000);
+      showToast("APIキーを保存しました");
     } catch (err) {
       console.error("APIキー保存失敗:", err);
     }
   };
-
-  useEffect(() => {
-    return () => {
-      if (shareCopiedTimerRef.current) clearTimeout(shareCopiedTimerRef.current);
-      if (pushSavedTimerRef.current) clearTimeout(pushSavedTimerRef.current);
-      if (apiKeySavedTimerRef.current) clearTimeout(apiKeySavedTimerRef.current);
-    };
-  }, []);
 
   const handleOpenApiKeys = () => {
     setShowApiKeys(true);
@@ -547,9 +533,7 @@ export default function ChatPanel({
     if (!shareToken) return;
     const url = `${window.location.origin}/share/${shareToken}`;
     navigator.clipboard.writeText(url).then(() => {
-      setShareCopied(true);
-      if (shareCopiedTimerRef.current) clearTimeout(shareCopiedTimerRef.current);
-      shareCopiedTimerRef.current = setTimeout(() => setShareCopied(false), 2000);
+      showToast("共有URLをコピーしました");
     });
   };
 
@@ -567,9 +551,7 @@ const handlePushLatest = async () => {
     if (!res.ok) throw new Error("Push失敗");
     const updated = await res.json();
     onThreadUpdate(thread.id, { shared_at: updated.shared_at ?? null });
-    setPushSaved(true);
-    if (pushSavedTimerRef.current) clearTimeout(pushSavedTimerRef.current);
-    pushSavedTimerRef.current = setTimeout(() => setPushSaved(false), 2000);
+    showToast("最新の会話をPushしました");
   } catch (err) {
     console.error("Push失敗:", err);
   } finally {
@@ -1564,7 +1546,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", fontFamily: "'DM Sans', sans-serif" }}>
               空欄で保存すると削除されます。未入力のキーは .env.local の設定が使われます。
             </div>
-            <button onClick={handleSaveApiKeys} style={{ padding: "5px 16px", borderRadius: "6px", border: "none", background: apiKeySaved ? "#16a34a" : "var(--accent)", color: "white", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.2s" }}>{apiKeySaved ? "✓ 保存しました" : "保存"}</button>
+            <button onClick={handleSaveApiKeys} style={{ padding: "5px 16px", borderRadius: "6px", border: "none", background: "var(--accent)", color: "white", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", transition: "all 0.2s" }}>保存</button>
           </div>
         </div>
       )}
@@ -1771,7 +1753,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                 <span style={{ fontSize: "12px", color: "#15803d", fontFamily: "'JetBrains Mono', monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {typeof window !== "undefined" ? `${window.location.origin}/share/${shareToken}` : `/share/${shareToken}`}
                 </span>
-                <button onClick={handleCopyUrl} style={{ padding: "4px 12px", borderRadius: "6px", border: "none", background: shareCopied ? "#16a34a" : "#dcfce7", color: shareCopied ? "white" : "#15803d", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", flexShrink: 0, transition: "all 0.15s" }}>{shareCopied ? "✓ コピー済み" : "📋 コピー"}</button>
+                <button onClick={handleCopyUrl} style={{ padding: "4px 12px", borderRadius: "6px", border: "none", background: "#dcfce7", color: "#15803d", fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", flexShrink: 0, transition: "all 0.15s" }}>📋 コピー</button>
               </div>
             )}
 {/* ✅ v76: Pushボタン */}
@@ -1786,7 +1768,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                   style={{
                     padding: "6px 14px", borderRadius: "6px",
                     border: "none",
-                    background: pushSaved ? "#16a34a" : "#3b82f6",
+                    background: "#3b82f6",
                     color: "white", fontSize: "12px",
                     fontFamily: "'JetBrains Mono', monospace",
                     cursor: shareSaving ? "default" : "pointer",
@@ -1794,7 +1776,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                     transition: "all 0.2s",
                   }}
                 >
-                  {pushSaved ? "✓ 更新しました" : shareSaving ? "更新中…" : "🚀 最新の会話をPush"}
+                  {shareSaving ? "更新中…" : "🚀 最新の会話をPush"}
                 </button>
               </div>
             )}

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client'
 import { getClientUser } from '@/lib/supabase/client-auth'
 import { generateBulkExportZip } from '@/lib/exportUtils'
 import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
+import { useToast } from '@/components/Toast'
 import { isValidHandleFormat, isAllUpperHandle, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from '@/lib/validationLimits'
 import type { McpToken } from '@/types'
 
@@ -51,6 +52,7 @@ function maskKey(key: string): string {
 }
 
 function SettingsContent() {
+  const { showToast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
   // ③ ?onboarding=true のとき初回オンボーディングモード
@@ -82,8 +84,6 @@ function SettingsContent() {
   const [showOpenaiKey, setShowOpenaiKey] = useState(false)
   const [showIdeogramKey, setShowIdeogramKey] = useState(false)
   const [showOpenrouterKey, setShowOpenrouterKey] = useState(false)
-  const [apiKeySaved, setApiKeySaved] = useState(false)
-
   // モデル選択 state
   const [claudeModel, setClaudeModel] = useState<ModelId>(MODEL_CONFIG.claude.defaultModel)
   const [geminiModel, setGeminiModel] = useState<ModelId>(MODEL_CONFIG.gemini.defaultModel)
@@ -262,10 +262,8 @@ function SettingsContent() {
     saveModel('claude', claudeModel)
     saveModel('gemini', geminiModel)
     saveModel('openai', openaiModel)
-    // トースト表示
-    setApiKeySaved(true)
-    setTimeout(() => setApiKeySaved(false), 2500)
-  }, [claudeKey, geminiKey, openaiKey, ideogramKey, openrouterKey, claudeModel, geminiModel, openaiModel])
+    showToast("APIキー・モデルを保存しました")
+  }, [claudeKey, geminiKey, openaiKey, ideogramKey, openrouterKey, claudeModel, geminiModel, openaiModel, showToast])
 
   const handleBulkExport = async () => {
     setIsExporting(true)
@@ -763,7 +761,7 @@ function SettingsContent() {
               )}
             </div>
 
-            {/* 保存ボタン＋トースト */}
+            {/* 保存ボタン */}
             <div className="flex items-center gap-4 pt-1">
               <button
                 onClick={handleSaveApiKeys}
@@ -771,11 +769,6 @@ function SettingsContent() {
               >
                 APIキー・モデルを保存
               </button>
-              {apiKeySaved && (
-                <span className="text-sm text-green-400 flex items-center gap-1">
-                  ✅ 保存しました
-                </span>
-              )}
             </div>
           </div>
         </section>
