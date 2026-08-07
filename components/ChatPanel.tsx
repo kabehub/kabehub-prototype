@@ -492,6 +492,7 @@ export default function ChatPanel({
 
   // ★ 公開設定を保存
   const handleSaveShare = async (newPublic: boolean, newHideMemos: boolean, newAllowPromptFork: boolean, newGenre?: string | null) => {
+    if (shareSaving) return;
     if (newPublic && thread?.roleplay_mode) {
       alert("なりきりモードのスレッドは公開できません。\nなりきりモードをOFFにしてから公開設定を行ってください。");
       return;
@@ -523,6 +524,11 @@ export default function ChatPanel({
       });
     } catch (err) {
       console.error("公開設定保存失敗:", err);
+      setSharePublic(thread.is_public ?? false);
+      setShareHideMemos(thread.hide_memos ?? false);
+      setShareAllowPromptFork(thread.allow_prompt_fork ?? true);
+      setShareGenre((thread.genre as string | null) ?? null);
+      showToast("公開設定の保存に失敗しました", "error");
     } finally {
       setShareSaving(false);
     }
@@ -1627,7 +1633,10 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
-              <div onClick={() => {
+              <button
+                type="button"
+                disabled={shareSaving}
+                onClick={() => {
                 const next = !sharePublic;
                 if (next && thread) {
                   const t = thread.title ?? "";
@@ -1639,10 +1648,10 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                 // 非公開に戻す場合はモーダル不要
                 setSharePublic(false);
                 handleSaveShare(false, shareHideMemos, shareAllowPromptFork);
-                }} 
-                style={{ width: "40px", height: "22px", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+                }}
+                style={{ width: "40px", height: "22px", border: "none", borderRadius: "11px", background: sharePublic ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: shareSaving ? "not-allowed" : "pointer", opacity: shareSaving ? 0.6 : 1, flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
                 <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: sharePublic ? "translateX(18px)" : "translateX(0)" }} />
-              </div>
+              </button>
               <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
                 {sharePublic ? "🌐 公開中（リンクを知っている人が閲覧可能）" : "🔒 非公開"}
               </span>
@@ -1653,17 +1662,17 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
                 {/* メモ非表示トグル */}
                 <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
-                  <div onClick={() => { const next = !shareHideMemos; setShareHideMemos(next); handleSaveShare(sharePublic, next, shareAllowPromptFork); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareHideMemos ? "#7c3aed" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+                  <button type="button" disabled={shareSaving} onClick={() => { const next = !shareHideMemos; setShareHideMemos(next); handleSaveShare(sharePublic, next, shareAllowPromptFork); }} style={{ width: "40px", height: "22px", border: "none", borderRadius: "11px", background: shareHideMemos ? "#7c3aed" : "#d1d5db", transition: "background 0.2s", cursor: shareSaving ? "not-allowed" : "pointer", opacity: shareSaving ? 0.6 : 1, flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
                     <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareHideMemos ? "translateX(18px)" : "translateX(0)" }} />
-                  </div>
+                  </button>
                   <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>📝 メモを共有ページに表示しない</span>
                 </label>
 
                 {/* システムプロンプトフォークトグル */}
                 <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
-                  <div onClick={() => { const next = !shareAllowPromptFork; setShareAllowPromptFork(next); handleSaveShare(sharePublic, shareHideMemos, next); }} style={{ width: "40px", height: "22px", borderRadius: "11px", background: shareAllowPromptFork ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
+                  <button type="button" disabled={shareSaving} onClick={() => { const next = !shareAllowPromptFork; setShareAllowPromptFork(next); handleSaveShare(sharePublic, shareHideMemos, next); }} style={{ width: "40px", height: "22px", border: "none", borderRadius: "11px", background: shareAllowPromptFork ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: shareSaving ? "not-allowed" : "pointer", opacity: shareSaving ? 0.6 : 1, flexShrink: 0, display: "flex", alignItems: "center", padding: "2px" }}>
                     <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: "white", transition: "transform 0.2s", transform: shareAllowPromptFork ? "translateX(18px)" : "translateX(0)" }} />
-                  </div>
+                  </button>
                   <span style={{ fontSize: "13px", color: "var(--ink)", fontFamily: "'DM Sans', sans-serif" }}>
                     {shareAllowPromptFork ? "🔓 システムプロンプトをフォーク時に引き継ぐ" : "🔒 システムプロンプトを非公開（シークレット）"}
                   </span>
@@ -1680,7 +1689,9 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                       const hasSelectedChild = parent.children.some(c => c.id === shareGenre);
                       return (
                         <button
+                          type="button"
                           key={parent.id}
+                          disabled={shareSaving}
                           onClick={() => {
                             if (isExpanded) {
                               setSelectedParentGenreId(null);
@@ -1690,7 +1701,8 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                             }
                           }}
                           style={{
-                            padding: "4px 10px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+                            padding: "4px 10px", borderRadius: "999px", fontSize: "11px", cursor: shareSaving ? "not-allowed" : "pointer",
+                            opacity: shareSaving ? 0.6 : 1,
                             border: hasSelectedChild ? "1.5px solid #3b82f6" : "1px solid var(--border)",
                             background: hasSelectedChild ? "#3b82f6" : "white",
                             color: hasSelectedChild ? "white" : "var(--ink)",
@@ -1715,13 +1727,16 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
                           {expandedParent.children.map((child) => (
                             <button
+                              type="button"
                               key={child.id}
+                              disabled={shareSaving}
                               onClick={() => {
                                 setShareGenre(child.id);
                                 handleSaveShare(sharePublic, shareHideMemos, shareAllowPromptFork, child.id);
                               }}
                               style={{
-                                padding: "3px 9px", borderRadius: "999px", fontSize: "11px", cursor: "pointer",
+                                padding: "3px 9px", borderRadius: "999px", fontSize: "11px", cursor: shareSaving ? "not-allowed" : "pointer",
+                                opacity: shareSaving ? 0.6 : 1,
                                 border: shareGenre === child.id ? "1.5px solid #3b82f6" : "1px solid var(--border)",
                                 background: shareGenre === child.id ? "#dbeafe" : "white",
                                 color: shareGenre === child.id ? "#1d4ed8" : "var(--ink-muted)",
@@ -1744,10 +1759,12 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                       <div>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", padding: "2px 10px", borderRadius: "999px", background: "#dbeafe", color: "#1d4ed8", border: "1px solid #93c5fd" }}>
                           {parent?.icon} {parent?.label} › {child?.label}
-                          <span
+                          <button
+                            type="button"
+                            disabled={shareSaving}
                             onClick={() => { setShareGenre(null); setSelectedParentGenreId(null); handleSaveShare(sharePublic, shareHideMemos, shareAllowPromptFork, null); }}
-                            style={{ marginLeft: "2px", cursor: "pointer", opacity: 0.6, fontSize: "10px" }}
-                          >✕</span>
+                            style={{ marginLeft: "2px", cursor: shareSaving ? "not-allowed" : "pointer", opacity: shareSaving ? 0.3 : 0.6, fontSize: "10px", background: "none", border: "none", color: "inherit", padding: 0 }}
+                          >✕</button>
                         </span>
                       </div>
                     );

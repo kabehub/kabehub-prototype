@@ -991,11 +991,15 @@ export default function Home() {
 
       if (mode === "branch") {
         // DBで is_active: false に更新（削除しない）
-        await fetch(`/api/threads/${activeThreadId}/messages/${lastAssistant.id}`, {
+        const deactivateRes = await fetch(`/api/threads/${activeThreadId}/messages/${lastAssistant.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ is_active: false, branch_id: branchId }),
         });
+        if (!deactivateRes.ok) {
+          showToast("再生成に失敗しました", "error");
+          return;
+        }
 
         // フロントのstateでも is_active: false に更新（削除しない）
         setMessages(prev =>
@@ -1063,12 +1067,26 @@ export default function Home() {
       }
     } catch (err) {
       console.error("再生成失敗:", err);
+      if (mode === "branch") {
+        showToast("再生成に失敗しました", "error");
+        try {
+          const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+          if (res.ok) {
+            const freshMessages: Message[] = await res.json();
+            setMessages(freshMessages);
+          } else {
+            console.error("再生成失敗後の再同期失敗:", res.status);
+          }
+        } catch (syncErr) {
+          console.error("再生成失敗後の再同期失敗:", syncErr);
+        }
+      }
     } finally {
       setIsLoading(false);
       setStreamingContent("");
       setGithubProgressMessages([]);
     }
-  }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming]);
+  }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming, showToast]);
 
   const handleEditAndRegenerate = useCallback(async (
     baseUserMsg: Message,
@@ -1255,11 +1273,15 @@ export default function Home() {
     if (!activeThreadId) return;
 
     try {
-      await fetch(`/api/threads/${activeThreadId}/messages/restore-branch`, {
+      const restoreRes = await fetch(`/api/threads/${activeThreadId}/messages/restore-branch`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ branchRootId, branchIndex }),
       });
+      if (!restoreRes.ok) {
+        showToast("ブランチの復元に失敗しました", "error");
+        return;
+      }
 
       // DBから最新のmessagesを再取得して表示を更新
       const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
@@ -1269,8 +1291,9 @@ export default function Home() {
       }
     } catch (err) {
       console.error("ブランチ復元失敗:", err);
+      showToast("ブランチの復元に失敗しました", "error");
     }
-  }, [activeThreadId]);
+  }, [activeThreadId, showToast]);
 
   // ── セルフコピペ ──────────────────────────────────────────
   const handleCopyThread = useCallback(async (threadId: string) => {
