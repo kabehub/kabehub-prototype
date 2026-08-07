@@ -713,12 +713,20 @@ const handleToggleRoleplayMode = (next: boolean) => {
   // ★ タグ削除
   const handleDeleteTag = async (tagId: string) => {
     if (!thread) return;
+    const removedTag = tags.find((t) => t.id === tagId);
     setTags((prev) => prev.filter((t) => t.id !== tagId)); // 楽観的更新
-    await fetch(`/api/threads/${thread.id}/tags`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tagId }),
-    });
+    try {
+      const res = await fetch(`/api/threads/${thread.id}/tags`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagId }),
+      });
+      if (!res.ok) throw new Error("タグ削除失敗");
+    } catch (err) {
+      console.error("タグ削除失敗:", err);
+      if (removedTag) setTags((prev) => [...prev, removedTag]);
+      showToast("タグの削除に失敗しました", "error");
+    }
   };
 
   const handleAddNote = async () => {

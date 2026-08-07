@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/formatters";
 import { supabase } from "@/lib/supabase/client";
 import { getClientUser } from "@/lib/supabase/client-auth";
+import { useToast } from "@/components/Toast";
 
 interface AlbumItem {
   id: string;
@@ -249,6 +250,7 @@ function AlbumCard({
 }
 
 export default function AlbumPage() {
+  const { showToast } = useToast();
   const router = useRouter();
   const [items, setItems] = useState<AlbumItem[]>([]);
   const [hasMore, setHasMore] = useState(true);
@@ -335,6 +337,7 @@ export default function AlbumPage() {
         next.delete(item.id);
         return next;
       });
+      showToast("画像の削除に失敗しました", "error");
     }
   };
 
@@ -375,7 +378,7 @@ export default function AlbumPage() {
         failedIds.forEach(id => next.delete(id));
         return next;
       });
-      alert(`${failedIds.length} 件の削除に失敗しました。`);
+      showToast(`${failedIds.length}件の削除に失敗しました`, "error");
     }
 
     setSelectedIds(new Set());

@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
 import OutlinePane from "@/components/OutlinePane";
 import NovelSettingsPane from "@/components/NovelSettingsPane";
+import { useToast } from "@/components/Toast";
 import { supabase } from "@/lib/supabase/client";
 import { getClientUser } from "@/lib/supabase/client-auth";
 import { loadModel, type ModelId, type Provider, type SubmittedAttachedImageFile } from "@/components/ChatInput";
@@ -20,6 +21,7 @@ type NovelSettingsData = {
 };
 
 export default function Home() {
+  const { showToast } = useToast();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [displayThreads, setDisplayThreads] = useState<Thread[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -350,7 +352,8 @@ export default function Home() {
   const handleDeleteThread = useCallback(
     async (id: string) => {
       try {
-        await fetch(`/api/threads/${id}`, { method: "DELETE" });
+        const res = await fetch(`/api/threads/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("スレッド削除失敗");
         if (activeThreadId === id) {
           setActiveThreadId(null);
           setMessages([]);
@@ -361,9 +364,10 @@ export default function Home() {
         await fetchThreads();
       } catch (err) {
         console.error("削除失敗:", err);
+        showToast("スレッドの削除に失敗しました", "error");
       }
     },
-    [activeThreadId, fetchThreads]
+    [activeThreadId, fetchThreads, showToast]
   );
 
   const handleUpdateFolder = useCallback(async (threadId: string, folderName: string | null) => {
@@ -1108,7 +1112,8 @@ export default function Home() {
     setIsLoading(true);
 
     const index = messages.findIndex((m) => m.id === message.id);
-    setMessages(messages.slice(0, index));
+    const snapshot = messages;
+    setMessages(snapshot.slice(0, index));
 
     try {
       const res = await fetch(`/api/threads/${activeThreadId}/messages`, {
@@ -1118,25 +1123,53 @@ export default function Home() {
       });
       if (!res.ok) {
         const restored = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
-        setMessages(await restored.json());
+        if (restored.ok) {
+          setMessages(await restored.json());
+        } else {
+          setMessages(snapshot);
+        }
+        showToast("削除に失敗しました", "error");
       }
     } catch (err) {
       console.error("タイムトラベル削除失敗:", err);
+      try {
+        const restored = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+        if (restored.ok) {
+          setMessages(await restored.json());
+        } else {
+          setMessages(snapshot);
+        }
+      } catch (restoreErr) {
+        console.error("メッセージ復元失敗:", restoreErr);
+        setMessages(snapshot);
+      }
+      showToast("削除に失敗しました", "error");
     } finally {
       setIsLoading(false);
     }
-  }, [activeThreadId, messages]);
+  }, [activeThreadId, messages, showToast]);
 
   // ── メッセージ単体削除 ──────────────────────────────────
   const handleDeleteMessage = useCallback(async (message: Message) => {
     if (!activeThreadId) return;
+    const originalIndex = messages.findIndex((m) => m.id === message.id);
     setMessages((prev) => prev.filter((m) => m.id !== message.id));
     try {
-      await fetch(`/api/threads/${activeThreadId}/messages/${message.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/threads/${activeThreadId}/messages/${message.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("メッセージ削除失敗");
     } catch (err) {
       console.error("メッセージ削除失敗:", err);
+      setMessages((prev) => {
+        if (originalIndex < 0 || prev.some((m) => m.id === message.id)) return prev;
+        return [
+          ...prev.slice(0, originalIndex),
+          message,
+          ...prev.slice(originalIndex),
+        ];
+      });
+      showToast("メッセージの削除に失敗しました", "error");
     }
-  }, [activeThreadId]);
+  }, [activeThreadId, messages, showToast]);
 
   // ── 画像ファイル削除（tombstone）──────────────────────────
   const handleDeleteImage = useCallback(async (message: Message) => {
@@ -1148,7 +1181,9 @@ export default function Home() {
           : m
       )
     );
-    if (imageContextId === message.id) {
+    const wasCurrentImageContext = imageContextId === message.id;
+    const wasPinned = isImagePinned;
+    if (wasCurrentImageContext) {
       setImageContextId(null);
       setIsImagePinned(false);
     }
@@ -1164,25 +1199,36 @@ export default function Home() {
       setMessages((prev) =>
         prev.map((m) => (m.id === message.id ? { ...m, metadata: prevMetadata } : m))
       );
+      if (wasCurrentImageContext) {
+        setImageContextId(message.id);
+        setIsImagePinned(wasPinned);
+      }
+      showToast("画像の削除に失敗しました", "error");
     }
-  }, [imageContextId]);
+  }, [imageContextId, isImagePinned, showToast]);
 
   // ── メッセージをメモ化 ──────────────────────────────────
   const handleMemoizeMessage = useCallback(async (message: Message) => {
     if (!activeThreadId) return;
+    const prevProvider = message.provider;
     setMessages((prev) =>
       prev.map((m) => m.id === message.id ? { ...m, provider: "memo" as const } : m)
     );
     try {
-      await fetch(`/api/threads/${activeThreadId}/messages/${message.id}`, {
+      const res = await fetch(`/api/threads/${activeThreadId}/messages/${message.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: "memo" }),
       });
+      if (!res.ok) throw new Error("メモ化失敗");
     } catch (err) {
       console.error("メモ化失敗:", err);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === message.id ? { ...m, provider: prevProvider } : m))
+      );
+      showToast("メモ化に失敗しました", "error");
     }
-  }, [activeThreadId]);
+  }, [activeThreadId, showToast]);
 
   // ── ブランチ復元 ──────────────────────────────────────────
   const handleRestoreBranch = useCallback(async (branchRootId: string, branchIndex: number) => {
