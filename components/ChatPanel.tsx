@@ -339,6 +339,7 @@ export default function ChatPanel({
       showToast("APIキーを保存しました");
     } catch (err) {
       console.error("APIキー保存失敗:", err);
+      showToast("APIキーの保存に失敗しました", "error");
     }
   };
 
@@ -540,7 +541,7 @@ export default function ChatPanel({
     const url = `${window.location.origin}/share/${shareToken}`;
     navigator.clipboard.writeText(url).then(() => {
       showToast("共有URLをコピーしました");
-    });
+    }).catch(() => showToast("コピーに失敗しました", "error"));
   };
 
   // ✅ v76: Pushボタン — shared_at を現在時刻で更新してスナップショットを更新
@@ -554,12 +555,16 @@ const handlePushLatest = async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shared_at: now }),
     });
-    if (!res.ok) throw new Error("Push失敗");
+    if (!res.ok) {
+      showToast("最新の会話のPushに失敗しました", "error");
+      return;
+    }
     const updated = await res.json();
     onThreadUpdate(thread.id, { shared_at: updated.shared_at ?? null });
     showToast("最新の会話をPushしました");
   } catch (err) {
     console.error("Push失敗:", err);
+    showToast("最新の会話のPushに失敗しました", "error");
   } finally {
     setShareSaving(false);
   }
@@ -578,11 +583,15 @@ const handlePushLatest = async () => {
         title: thread.title || "無題", // Gemini指摘: INSERT時のフォールバック
       }),
     });
-    if (!res.ok) throw new Error("システムプロンプト保存失敗");
+    if (!res.ok) {
+      showToast("システムプロンプトの保存に失敗しました", "error");
+      return;
+    }
     const updated = await res.json();
     onThreadUpdate(thread.id, { system_prompt: updated.system_prompt ?? "" });
   } catch (err) {
     console.error("システムプロンプト保存失敗:", err);
+    showToast("システムプロンプトの保存に失敗しました", "error");
   } finally {
     setSystemPromptSaving(false);
   }
@@ -603,8 +612,8 @@ const handleSaveRoleplay = async (
   newMode: boolean,
   newCharName: string,
   newIconUrl: string | null
-) => {
-  if (!thread) return;
+): Promise<boolean> => {
+  if (!thread) return false;
   setRpSaving(true);
   try {
     const res = await fetch(`/api/threads/${thread.id}`, {
@@ -623,8 +632,11 @@ const handleSaveRoleplay = async (
       rp_char_name: newCharName,
       rp_char_icon_url: newIconUrl,
     });
+    return true;
   } catch (err) {
     console.error("なりきりモード保存失敗:", err);
+    showToast("なりきりモードの保存に失敗しました", "error");
+    return false;
   } finally {
     setRpSaving(false);
   }
@@ -703,7 +715,10 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: clean }),
       });
-      if (!res.ok) throw new Error("タグ追加失敗");
+      if (!res.ok) {
+        showToast("タグの追加に失敗しました", "error");
+        return;
+      }
       const data = await res.json();
       // 重複(duplicate: true)でなければstateに追加
       if (data && !data.duplicate && !data.error && data.id) {
@@ -711,6 +726,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
       }
     } catch (err) {
       console.error("タグ追加失敗:", err);
+      showToast("タグの追加に失敗しました", "error");
     } finally {
       tagSubmittingRef.current = false;
     }
@@ -743,12 +759,16 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: newNoteContent.trim() }),
       });
-      if (!res.ok) throw new Error("メモ追加失敗");
+      if (!res.ok) {
+        showToast("メモの追加に失敗しました", "error");
+        return;
+      }
       const note: ThreadNote = await res.json();
       setNotes((prev) => [...prev, note]);
       setNewNoteContent("");
     } catch (err) {
       console.error("メモ追加失敗:", err);
+      showToast("メモの追加に失敗しました", "error");
     }
   };
 
@@ -760,26 +780,35 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, content: editingNoteContent.trim() }),
       });
-      if (!res.ok) throw new Error("メモ更新失敗");
+      if (!res.ok) {
+        showToast("メモの更新に失敗しました", "error");
+        return;
+      }
       const updated: ThreadNote = await res.json();
       setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
       setEditingNoteId(null);
     } catch (err) {
       console.error("メモ更新失敗:", err);
+      showToast("メモの更新に失敗しました", "error");
     }
   };
 
   const handleDeleteNote = async (id: string) => {
     if (!thread) return;
     try {
-      await fetch(`/api/threads/${thread.id}/notes`, {
+      const res = await fetch(`/api/threads/${thread.id}/notes`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
+      if (!res.ok) {
+        showToast("メモの削除に失敗しました", "error");
+        return;
+      }
       setNotes((prev) => prev.filter((n) => n.id !== id));
     } catch (err) {
       console.error("メモ削除失敗:", err);
+      showToast("メモの削除に失敗しました", "error");
     }
   };
 
@@ -791,25 +820,34 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId, content }),
       });
-      if (!res.ok) throw new Error("メッセージノート追加失敗");
+      if (!res.ok) {
+        showToast("メッセージノートの追加に失敗しました", "error");
+        return;
+      }
       const note: MessageNote = await res.json();
       setMessageNotes((prev) => [...prev, note]);
     } catch (err) {
       console.error("メッセージノート追加失敗:", err);
+      showToast("メッセージノートの追加に失敗しました", "error");
     }
   }, [thread?.id]);
 
   const handleDeleteMessageNote = useCallback(async (noteId: string) => {
     if (!thread) return;
     try {
-      await fetch(`/api/threads/${thread.id}/message-notes`, {
+      const res = await fetch(`/api/threads/${thread.id}/message-notes`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: noteId }),
       });
+      if (!res.ok) {
+        showToast("メッセージノートの削除に失敗しました", "error");
+        return;
+      }
       setMessageNotes((prev) => prev.filter((n) => n.id !== noteId));
     } catch (err) {
       console.error("メッセージノート削除失敗:", err);
+      showToast("メッセージノートの削除に失敗しました", "error");
     }
   }, [thread?.id]);
 
@@ -821,12 +859,16 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: inputValue.trim() }),
       });
-      if (!res.ok) throw new Error("下書き保存失敗");
+      if (!res.ok) {
+        showToast("下書きの保存に失敗しました", "error");
+        return;
+      }
       const draft: Draft = await res.json();
       setDrafts((prev) => [draft, ...prev]);
       onInputChange("");
     } catch (err) {
       console.error("下書き保存失敗:", err);
+      showToast("下書きの保存に失敗しました", "error");
     }
   };
 
@@ -838,14 +880,19 @@ const handleToggleRoleplayMode = (next: boolean) => {
   const handleDeleteDraft = async (id: string) => {
     if (!thread) return;
     try {
-      await fetch(`/api/threads/${thread.id}/drafts`, {
+      const res = await fetch(`/api/threads/${thread.id}/drafts`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
+      if (!res.ok) {
+        showToast("下書きの削除に失敗しました", "error");
+        return;
+      }
       setDrafts((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       console.error("下書き削除失敗:", err);
+      showToast("下書きの削除に失敗しました", "error");
     }
   };
 
@@ -1998,7 +2045,10 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         {/* 保存ボタン */}
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button
-            onClick={() => handleSaveRoleplay(roleplayMode, rpCharNameDraft.trim(), rpCharIconUrl).then(() => setShowRoleplay(false))}
+            onClick={async () => {
+              const saved = await handleSaveRoleplay(roleplayMode, rpCharNameDraft.trim(), rpCharIconUrl);
+              if (saved) setShowRoleplay(false);
+            }}
             disabled={rpSaving}
             style={{
               padding: "7px 20px",
