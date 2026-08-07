@@ -129,21 +129,41 @@ export default function SharePage(props: { params: Promise<{ token: string }> })
     try {
       const { supabase } = await import("@/lib/supabase/client");
       const { user } = await getClientUser(supabase);
-      const { count } = await supabase
+      const { count, error: countError } = await supabase
         .from("likes")
         .select("*", { count: "exact", head: true })
         .eq("thread_id", threadId);
+      if (countError) {
+        console.warn("[share-page-count-failed]", {
+          route: "share-page",
+          operation: "fetch-fork-count",
+          table: "likes",
+          errorCode: countError.code,
+        });
+        return;
+      }
       setLikeCount(count ?? 0);
       if (user) {
-        const { data: myLike } = await supabase
+        const { data: myLike, error: myLikeError } = await supabase
           .from("likes")
           .select("id")
           .eq("thread_id", threadId)
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
+        if (myLikeError) {
+          console.warn("[share-page-mylike-failed]", {
+            route: "share-page",
+            operation: "fetch-my-like",
+            table: "likes",
+            errorCode: myLikeError.code,
+          });
+          return;
+        }
         setLikedByMe(!!myLike);
       }
-    } catch {}
+    } catch {
+      // like情報取得はベストエフォート。失敗時は既定値（0件・未いいね）のまま表示を続ける。
+    }
   };
 
   const handleLike = async () => {
@@ -194,8 +214,13 @@ export default function SharePage(props: { params: Promise<{ token: string }> })
     }
 
     window.location.href = `/?fork=${newThread.id}`;
-  } catch (err) {
-    console.error("フォーク失敗:", err);
+  } catch {
+    console.error("[share-fork-request-failed]", {
+      route: "share-page",
+      operation: "fork-thread",
+      table: "threads",
+      errorCode: "SHARE_FORK_REQUEST_FAILED",
+    });
     alert("フォークに失敗しました");
   } finally {
     setForking(false);

@@ -93,12 +93,33 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
       .insert(newMessages);
 
     if (insertError) {
-      await supabase.from("threads").delete().eq("id", newThread.id);
+      const { error: compensationError } = await supabase
+        .from("threads")
+        .delete()
+        .eq("id", newThread.id);
+      if (compensationError) {
+        console.error("[db-compensation-failed]", {
+          route: "share-fork",
+          operation: "delete-created-thread",
+          table: "threads",
+          errorCode: compensationError.code,
+        });
+      }
       return finalizeJson({ error: "Failed to copy messages" }, { status: 500 });
     }
   }
 
-  await supabase.rpc("increment_fork_count", { p_thread_id: sourceThread.id });
+  const { error: forkCountError } = await supabase.rpc("increment_fork_count", {
+    p_thread_id: sourceThread.id,
+  });
+  if (forkCountError) {
+    console.warn("[fork-count-increment-failed]", {
+      route: "share-fork",
+      operation: "increment-fork-count",
+      table: "threads",
+      errorCode: forkCountError.code,
+    });
+  }
 
   return finalizeJson({
     thread: newThread,

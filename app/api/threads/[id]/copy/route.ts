@@ -72,9 +72,25 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       .insert(newMessages)
 
     if (insertError) {
-      console.error('copy insertError:', insertError)
+      console.error('[db-insert-failed]', {
+        route: 'threads-copy',
+        operation: 'insert-copied-messages',
+        table: 'messages',
+        errorCode: insertError.code,
+      })
       // スレッドだけ作成されてメッセージが入らない中途半端な状態を防ぐ
-      await supabase.from('threads').delete().eq('id', newThread.id)
+      const { error: compensationError } = await supabase
+        .from('threads')
+        .delete()
+        .eq('id', newThread.id)
+      if (compensationError) {
+        console.error('[db-compensation-failed]', {
+          route: 'threads-copy',
+          operation: 'delete-created-thread',
+          table: 'threads',
+          errorCode: compensationError.code,
+        })
+      }
       return finalizeJson({ error: 'Failed to copy messages' }, { status: 500 })
     }
   }

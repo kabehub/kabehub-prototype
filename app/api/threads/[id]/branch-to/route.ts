@@ -129,7 +129,18 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       .insert(newMessages)
 
     if (insertError) {
-      await supabase.from('threads').delete().eq('id', newThread.id)
+      const { error: compensationError } = await supabase
+        .from('threads')
+        .delete()
+        .eq('id', newThread.id)
+      if (compensationError) {
+        console.error('[db-compensation-failed]', {
+          route: 'threads-branch-to',
+          operation: 'delete-created-thread',
+          table: 'threads',
+          errorCode: compensationError.code,
+        })
+      }
       return finalizeJson({ error: 'Failed to copy messages' }, { status: 500 })
     }
   }
