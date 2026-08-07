@@ -336,7 +336,10 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "新しい壁打ち", folder_name: folderName }),
       });
-      if (!res.ok) throw new Error("フォルダ内スレッド作成失敗");
+      if (!res.ok) {
+        showToast("フォルダ内スレッドの作成に失敗しました", "error");
+        return;
+      }
       await fetchThreads();
       setActiveThreadId(id);
       setMessages([]);
@@ -346,8 +349,9 @@ export default function Home() {
       localStorage.setItem("lastActiveThreadId", id);
     } catch (err) {
       console.error("フォルダ内スレッド作成失敗:", err);
+      showToast("フォルダ内スレッドの作成に失敗しました", "error");
     }
-  }, [isTemporary, temporaryMessages, fetchThreads]);
+  }, [isTemporary, temporaryMessages, fetchThreads, showToast]);
 
   const handleDeleteThread = useCallback(
     async (id: string) => {
@@ -639,7 +643,10 @@ export default function Home() {
             attachedImages: attachedImages ?? [],
           }),
         });
-        if (!res.ok) throw new Error("一時送信失敗");
+        if (!res.ok) {
+          showToast("メッセージの送信に失敗しました", "error");
+          return;
+        }
         const { assistantMessage } = await res.json();
         const tempAssistant: Message = {
           ...assistantMessage,
@@ -651,6 +658,7 @@ export default function Home() {
         setMessages((prev) => [...prev, tempAssistant]);
       } catch (err) {
         console.error("一時送信エラー:", err);
+        showToast("メッセージの送信に失敗しました", "error");
       } finally {
         setIsLoading(false);
         setStreamingContent("");
@@ -714,12 +722,13 @@ export default function Home() {
       await fetchThreads();
     } catch (err) {
       console.error("送信エラー:", err);
+      showToast("メッセージの送信に失敗しました", "error");
     } finally {
       setIsLoading(false);
       setStreamingContent("");
       setGithubProgressMessages([]);
     }
-  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming, imageContextId, isImagePinned]);
+  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming, imageContextId, isImagePinned, showToast]);
 
   // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {
@@ -766,15 +775,20 @@ export default function Home() {
           isMemo: true,
         }),
       });
-      if (!res.ok) throw new Error("メモ保存失敗");
+      if (!res.ok) {
+        showToast("メモの送信に失敗しました", "error");
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticMemo.id));
+        return;
+      }
       const { userMessage } = await res.json();
       setMessages((prev) => prev.map((m) => (m.id === optimisticMemo.id ? userMessage : m)));
       await fetchThreads();
     } catch (err) {
       console.error("メモ保存エラー:", err);
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMemo.id));
+      showToast("メモの送信に失敗しました", "error");
     }
-  }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders]);
+  }, [inputValue, activeThreadId, isLoading, isTemporary, messages, fetchThreads, provider, getApiKeyHeaders, showToast]);
 
   const handleSendMemoToAI = useCallback((content: string) => {
     setInputValue((prev) => (prev.trim() ? `${prev}\n\n${content}` : content));
@@ -871,6 +885,7 @@ export default function Home() {
       if (!res.ok || json.error) {
         setMessages(prev => prev.filter(m => m.id !== pendingId))
         console.error('画像生成失敗:', json.error)
+        showToast("画像の生成に失敗しました", "error")
         return
       }
 
@@ -896,10 +911,11 @@ export default function Home() {
     } catch (err) {
       console.error('画像生成エラー:', err)
       setMessages(prev => prev.filter(m => m.id !== 'image-gen-pending'))
+      showToast("画像の生成に失敗しました", "error")
     } finally {
       setIsLoading(false)
     }
-  }, [isLoading, activeThreadId, provider, getApiKeyHeaders, fetchThreads])
+  }, [isLoading, activeThreadId, provider, getApiKeyHeaders, fetchThreads, showToast])
 
   const handleDiscuss = useCallback((messageId: string) => {
     setImageContextId(messageId)
@@ -1093,18 +1109,22 @@ export default function Home() {
       }
 
       const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
-      if (!res.ok) throw new Error("編集再生成失敗");
+      if (!res.ok) {
+        showToast("編集と再生成に失敗しました", "error");
+        return;
+      }
       const freshMessages: Message[] = await res.json();
       setMessages(freshMessages);
       await fetchThreads();
     } catch (err) {
       console.error("編集再生成失敗:", err);
+      showToast("編集と再生成に失敗しました", "error");
     } finally {
       setIsLoading(false);
       setStreamingContent("");
       setGithubProgressMessages([]);
     }
-  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming, fetchThreads]);
+  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming, fetchThreads, showToast]);
 
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
