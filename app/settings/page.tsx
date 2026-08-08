@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { getClientUser } from '@/lib/supabase/client-auth'
 import { generateBulkExportZip } from '@/lib/exportUtils'
+import { LS_ENTER_MODE, type EnterMode } from '@/lib/inputUtils'
 import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
 import { useToast } from '@/components/Toast'
 import { isValidHandleFormat, isAllUpperHandle, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from '@/lib/validationLimits'
@@ -104,7 +105,7 @@ function SettingsContent() {
 
   // UI設定 state
   const [navAlwaysOn, setNavAlwaysOn] = useState(false)
-  const [enterMode, setEnterMode] = useState<'send' | 'newline'>('send')
+  const [enterMode, setEnterMode] = useState<EnterMode>('send')
   const [fontScale, setFontScale] = useState<number>(1)
 
   // ① LocalStorageからAPIキーとモデルを読み込む
@@ -119,7 +120,7 @@ function SettingsContent() {
     setOpenaiModel(loadModel('openai'))
     setNavAlwaysOn(localStorage.getItem('kabehub_nav_expanded_always') === 'true')
     setEnterMode(
-      localStorage.getItem('kabehub_enter_mode') === 'newline' ? 'newline' : 'send'
+      localStorage.getItem(LS_ENTER_MODE) === 'newline' ? 'newline' : 'send'
     )
   }, [])
 
@@ -1064,7 +1065,7 @@ function SettingsContent() {
                   <button
                     key={opt.value}
                     onClick={() => {
-                      localStorage.setItem('kabehub_enter_mode', opt.value)
+                      localStorage.setItem(LS_ENTER_MODE, opt.value)
                       setEnterMode(opt.value)
                     }}
                     className={`px-3 py-2 rounded-lg text-xs border text-left transition-colors ${

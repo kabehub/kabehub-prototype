@@ -10,6 +10,8 @@ import {
   canToggleDeepThinking,
   resolveImageModel,
 } from "@/lib/modelRegistry";
+import { isMobileViewport, loadEnterMode } from "@/lib/inputUtils";
+import type { EnterMode } from "@/lib/inputUtils";
 export type { ClaudeModel, GeminiModel, OpenAIModel, ImageGenModel, ModelId, Provider } from "@/types";
 export { getThinkingSupport } from "@/lib/modelRegistry";
 
@@ -104,19 +106,6 @@ export function isThinkingUnsupported(modelId: ModelId): boolean {
 
 export function canUseDeepThinking(provider: Provider, modelId: ModelId): boolean {
   return provider === "claude" && canToggleDeepThinking(modelId);
-}
-
-const LS_ENTER_MODE = "kabehub_enter_mode" as const;
-type EnterMode = "send" | "newline";
-
-function loadEnterMode(): EnterMode {
-  if (typeof window === "undefined") return "send";
-  return localStorage.getItem(LS_ENTER_MODE) === "newline" ? "newline" : "send";
-}
-
-function isMobileViewport(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(max-width: 767px)").matches;
 }
 
 interface ChatInputProps {

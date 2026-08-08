@@ -31,6 +31,8 @@ import {
   type Provider,
   type SubmittedAttachedImageFile,
 } from "./ChatInput";
+import { isMobileViewport, loadEnterMode } from "@/lib/inputUtils";
+import type { EnterMode } from "@/lib/inputUtils";
 
 interface ChatInputCenteredProps {
   value: string;
@@ -49,19 +51,6 @@ interface ChatInputCenteredProps {
 }
 
 type TextProvider = Extract<Provider, "claude" | "gemini" | "openai">;
-
-const LS_ENTER_MODE = "kabehub_enter_mode" as const;
-type EnterMode = "send" | "newline";
-
-function loadEnterMode(): EnterMode {
-  if (typeof window === "undefined") return "send";
-  return localStorage.getItem(LS_ENTER_MODE) === "newline" ? "newline" : "send";
-}
-
-function isMobileViewport(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(max-width: 767px)").matches;
-}
 
 const TEXT_PROVIDERS: TextProvider[] = ["claude", "gemini", "openai"];
 
