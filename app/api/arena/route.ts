@@ -4,6 +4,7 @@ import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
 import { buildDefaultModels, createModelGuards, getOpenAICapability, OPENAI_RESPONSES_CONFIG, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
+import * as logger from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +91,7 @@ async function ensureArenaThread({
     .maybeSingle();
 
   if (lookupError) {
-    console.error("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "arena",
       operation: "ensure_thread_lookup",
       table: "threads",
@@ -111,7 +112,7 @@ async function ensureArenaThread({
   if (!insertError) return { ok: true, created: true };
 
   if (insertError.code !== "23505") {
-    console.error("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "arena",
       operation: "ensure_thread_insert",
       table: "threads",
@@ -132,7 +133,7 @@ async function ensureArenaThread({
     .maybeSingle();
 
   if (recheckError) {
-    console.error("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "arena",
       operation: "ensure_thread_recheck",
       table: "threads",
@@ -145,7 +146,7 @@ async function ensureArenaThread({
   }
   if (racedThread) return { ok: true, created: false };
 
-  console.error("[db-operation-failed]", {
+  logger.dbOperationFailed({
     route: "arena",
     operation: "ensure_thread_insert_conflict",
     table: "threads",
@@ -175,7 +176,7 @@ async function compensateCreatedArenaThread({
     .eq("user_id", userId);
 
   if (compensationError) {
-    console.error("[db-compensation-failed]", {
+    logger.dbCompensationFailed({
       route: "arena",
       operation,
       table: "threads",
@@ -200,7 +201,7 @@ async function compensateInterventionMessage({
     .eq("user_id", userId);
 
   if (compensationError) {
-    console.error("[db-compensation-failed]", {
+    logger.dbCompensationFailed({
       route: "arena",
       operation: "delete_intervention_after_assistant_insert",
       table: "messages",
@@ -375,7 +376,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
     });
     if (humanInsertError) {
-      console.error("[db-operation-failed]", {
+      logger.dbOperationFailed({
         route: "arena",
         operation: "insert_human_message",
         table: "messages",
@@ -469,7 +470,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
     });
     if (interventionInsertError) {
-      console.error("[db-operation-failed]", {
+      logger.dbOperationFailed({
         route: "arena",
         operation: "insert_intervention_message",
         table: "messages",
@@ -552,7 +553,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (assistantInsertError) {
-    console.error("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "arena",
       operation: "insert_assistant_message",
       table: "messages",

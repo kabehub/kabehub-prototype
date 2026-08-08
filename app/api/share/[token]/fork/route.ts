@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { maskSecretNotation } from "@/lib/stringUtils";
+import * as logger from "@/lib/logger";
 
 export async function POST(req: NextRequest, props: { params: Promise<{ token: string }> }) {
   const params = await props.params;
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
         .delete()
         .eq("id", newThread.id);
       if (compensationError) {
-        console.error("[db-compensation-failed]", {
+        logger.dbCompensationFailed({
           route: "share-fork",
           operation: "delete-created-thread",
           table: "threads",
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
     p_thread_id: sourceThread.id,
   });
   if (forkCountError) {
-    console.warn("[fork-count-increment-failed]", {
+    logger.dbOperationFailedBestEffort({
       route: "share-fork",
       operation: "increment-fork-count",
       table: "threads",

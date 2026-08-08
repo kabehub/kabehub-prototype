@@ -5,6 +5,7 @@ import {
   removeStoragePaths,
 } from "@/lib/supabase/storage-cleanup";
 import { v4 as uuidv4 } from "uuid";
+import * as logger from "@/lib/logger";
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -20,7 +21,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .maybeSingle();
 
   if (threadError) {
-    console.error("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "threads_id_delete",
       operation: "verify_thread_ownership",
       table: "threads",
@@ -52,7 +53,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("is_pinned", false);
 
   if (archiveError) {
-    console.warn("[db-operation-failed]", {
+    logger.dbOperationFailedBestEffort({
       route: "threads_id_delete",
       operation: "archive_lore_embeddings",
       table: "lore_embeddings",
@@ -67,7 +68,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     .eq("user_id", user.id);
 
   if (deleteError) {
-    console.error("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "threads_id_delete",
       operation: "delete_thread",
       table: "threads",
@@ -80,7 +81,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   if (ownedPaths.length > 0) {
     const cleanup = await removeStoragePaths(supabase, ownedPaths);
     if (cleanup.failedCount > 0) {
-      console.warn("[db-operation-failed]", {
+      logger.dbOperationFailedBestEffort({
         route: "threads_id_delete",
         operation: "remove_owned_storage_paths",
         table: "generated-images",
@@ -95,7 +96,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     });
 
     if (recalcForkError) {
-      console.warn("[db-operation-failed]", {
+      logger.dbOperationFailedBestEffort({
         route: "threads_id_delete",
         operation: "recalc_fork_count",
         table: "threads",

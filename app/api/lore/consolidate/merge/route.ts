@@ -7,6 +7,7 @@ import {
   normalizePair,
   validateApprovedPair,
 } from "@/lib/lore/consolidation";
+import * as logger from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
     );
 
     if (rpcError) {
-      console.error("[lore-merge-rpc-failed]", {
+      logger.dbOperationFailed({
         route: "lore-consolidate-merge",
         operation: "merge_user_edited_lore_pair",
         table: "lore_embeddings",

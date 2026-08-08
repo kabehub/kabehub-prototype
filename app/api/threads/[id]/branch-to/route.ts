@@ -8,6 +8,7 @@ import {
   compareMessagesForDisplay,
 } from '@/lib/branching'
 import { Message } from '@/types'
+import * as logger from "@/lib/logger"
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         .delete()
         .eq('id', newThread.id)
       if (compensationError) {
-        console.error('[db-compensation-failed]', {
+        logger.dbCompensationFailed({
           route: 'threads-branch-to',
           operation: 'delete-created-thread',
           table: 'threads',

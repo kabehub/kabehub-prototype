@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
+import * as logger from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   });
 
   if (error) {
-    console.warn("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "threads-messages-restore-branch",
       operation: "restore_message_branch",
       table: "messages",

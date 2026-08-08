@@ -1,4 +1,5 @@
 import { LORE_EMBEDDING_MODEL, LORE_CHAT_MODEL } from "../internalModels";
+import { externalApiFailed } from "../logger";
 
 export class AiProviderRequestError extends Error {
   readonly provider = "openai";
@@ -16,9 +17,9 @@ function providerRequestError(
   status: number | null,
   errorCode: "UPSTREAM_API_ERROR" | "UPSTREAM_REQUEST_FAILED" | "UPSTREAM_RESPONSE_INVALID",
 ): AiProviderRequestError {
-  console.error("[lore/openai] provider API request failed", {
-    provider: "openai",
-    status,
+  externalApiFailed({
+    service: "openai",
+    status: status ?? undefined,
     errorCode,
   });
   return new AiProviderRequestError(status, errorCode);

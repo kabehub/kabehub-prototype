@@ -23,6 +23,7 @@ import {
 } from "@/lib/modelRegistry";
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
+import * as logger from "@/lib/logger";
 
 export const dynamic = 'force-dynamic';
 
@@ -494,7 +495,12 @@ async function saveAssistantMessage(
     } : {}),
   }, { onConflict: "id" });
   if (error) {
-    console.error("[saveAssistantMessage] DB保存失敗:", error);
+    logger.dbOperationFailed({
+      route: "chat",
+      operation: "save-assistant-message",
+      table: "messages",
+      errorCode: error.code,
+    });
     return false;
   }
   return true;
@@ -804,7 +810,7 @@ export async function POST(req: NextRequest) {
 
       if (rpcError) {
         const status = rpcError.code === "42501" ? 403 : rpcError.code === "P0001" ? 400 : 500;
-        console.error("[db-operation-failed]", {
+        logger.dbOperationFailed({
           route: "chat/branch-edit",
           operation: "apply_branch_edit",
           table: "messages",
@@ -842,7 +848,7 @@ export async function POST(req: NextRequest) {
         .order("message_number", { ascending: true });
 
       if (activeMessagesError) {
-        console.error("[db-operation-failed]", {
+        logger.dbOperationFailed({
           route: "chat/branch-edit",
           operation: "load_active_messages",
           table: "messages",
@@ -1084,7 +1090,7 @@ export async function POST(req: NextRequest) {
 
       if (storagePath && !imgMsg?.metadata?.image_deleted) {
         if (!isOwnedStoragePath(storagePath, userId)) {
-          console.warn('[imageContextId] storagePathの所有権検証に失敗したため画像コンテキストをスキップします')
+          logger.securityGuardRejected({ operation: "image-context-storage-path-check" });
         } else {
           const downloaded = await downloadImageAsBase64(supabase, storagePath)
 
@@ -1108,7 +1114,10 @@ export async function POST(req: NextRequest) {
       }
     } catch (err) {
       // ベストエフォート: 失敗しても主処理は継続する。ユーザーへの通知は行わない。
-      console.error('[imageContextId] 画像取得失敗（握りつぶし）:', err)
+      logger.bestEffortFailed({
+        operation: "image-context-fetch",
+        errorType: err instanceof Error ? err.name : "unknown",
+      });
     }
   }
 
@@ -1232,7 +1241,10 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       }
     } catch (err) {
       // ベストエフォート: 失敗しても主処理は継続する。ユーザーへの通知は行わない。
-      console.warn("[rag-memory] skipped:", err);
+      logger.bestEffortFailed({
+        operation: "rag-memory-search",
+        errorType: err instanceof Error ? err.name : "unknown",
+      });
     }
   }
 

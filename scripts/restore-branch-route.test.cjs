@@ -146,22 +146,22 @@ for (const { code, rawMessage, expectedStatus, expectedError } of [
 ]) {
   test(`${code} is mapped to a fixed response and a metadata-only log`, async () => {
     resetRpc({ data: null, error: { code, message: rawMessage } });
-    const warnings = [];
-    const originalWarn = console.warn;
-    console.warn = (...args) => warnings.push(args);
+    const errors = [];
+    const originalError = console.error;
+    console.error = (...args) => errors.push(args);
 
     let response;
     try {
       response = await invoke({ branchRootId: "root-1", branchIndex: 0 });
     } finally {
-      console.warn = originalWarn;
+      console.error = originalError;
     }
 
     assert.equal(response.status, expectedStatus);
     const body = await response.json();
     assert.deepEqual(body, { error: expectedError });
     assert.doesNotMatch(JSON.stringify(body), new RegExp(rawMessage));
-    assert.deepEqual(warnings, [
+    assert.deepEqual(errors, [
       [
         "[db-operation-failed]",
         {
@@ -172,7 +172,7 @@ for (const { code, rawMessage, expectedStatus, expectedError } of [
         },
       ],
     ]);
-    assert.doesNotMatch(JSON.stringify(warnings), new RegExp(rawMessage));
+    assert.doesNotMatch(JSON.stringify(errors), new RegExp(rawMessage));
   });
 }
 

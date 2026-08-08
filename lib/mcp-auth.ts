@@ -4,6 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { hashMcpToken } from './mcp-token-hash'
+import * as logger from "./logger"
 
 function serviceRoleClient() {
   return createClient(
@@ -29,7 +30,7 @@ export async function authenticateMcpToken(req: Request): Promise<string | null>
     .maybeSingle()
 
   if (error) {
-    console.error('[db-operation-failed]', {
+    logger.dbOperationFailed({
       route: 'mcp_auth',
       operation: 'fetch_token',
       table: 'mcp_tokens',
@@ -48,7 +49,7 @@ export async function authenticateMcpToken(req: Request): Promise<string | null>
       .eq('id', data.id)
 
     if (updateError) {
-      console.warn('[db-operation-failed]', {
+      logger.dbOperationFailedBestEffort({
         route: 'mcp_auth',
         operation: 'update_last_used_at',
         table: 'mcp_tokens',
@@ -56,11 +57,11 @@ export async function authenticateMcpToken(req: Request): Promise<string | null>
       })
     }
   } catch (err) {
-    console.warn('[db-operation-failed]', {
+    logger.dbOperationFailedBestEffort({
       route: 'mcp_auth',
       operation: 'update_last_used_at',
       table: 'mcp_tokens',
-      errorCode: err instanceof Error ? err.name : 'unknown',
+      errorType: err instanceof Error ? err.name : 'unknown',
     })
   }
 

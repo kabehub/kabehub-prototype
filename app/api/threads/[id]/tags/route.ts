@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { TAG_NAME_MAX_LENGTH, normalizeTagName } from "@/lib/validationLimits";
+import * as logger from "@/lib/logger";
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .maybeSingle();
 
   if (existingError) {
-    console.error("[db-operation-failed]", {
+    logger.dbOperationFailed({
       route: "threads_id_tags_post",
       operation: "check_duplicate_tag",
       table: "thread_tags",

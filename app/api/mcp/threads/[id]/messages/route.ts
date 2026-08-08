@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateMcpToken, serviceRoleClient } from '@/lib/mcp-auth'
 import { checkMcpLimitResponse } from '@/lib/rate-limit'
+import * as logger from "@/lib/logger"
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     .eq('user_id', userId)
     .maybeSingle()
   if (threadError) {
-    console.error('[db-operation-failed]', {
+    logger.dbOperationFailed({
       route: 'mcp_threads_messages_get',
       operation: 'verify_thread_ownership',
       table: 'threads',
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .eq('user_id', userId)
     .maybeSingle()
   if (threadError) {
-    console.error('[db-operation-failed]', {
+    logger.dbOperationFailed({
       route: 'mcp_threads_messages_post',
       operation: 'verify_thread_ownership',
       table: 'threads',
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .eq('user_id', userId)
 
   if (threadUpdateError) {
-    console.warn('[db-operation-failed]', {
+    logger.dbOperationFailedBestEffort({
       route: 'mcp_threads_messages_post',
       operation: 'update_thread_timestamp',
       table: 'threads',

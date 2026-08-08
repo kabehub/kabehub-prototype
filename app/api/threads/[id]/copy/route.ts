@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { requireRouteUser } from '@/lib/supabase/route-auth'
+import * as logger from "@/lib/logger"
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       .insert(newMessages)
 
     if (insertError) {
-      console.error('[db-insert-failed]', {
+      logger.dbOperationFailed({
         route: 'threads-copy',
         operation: 'insert-copied-messages',
         table: 'messages',
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         .delete()
         .eq('id', newThread.id)
       if (compensationError) {
-        console.error('[db-compensation-failed]', {
+        logger.dbCompensationFailed({
           route: 'threads-copy',
           operation: 'delete-created-thread',
           table: 'threads',
