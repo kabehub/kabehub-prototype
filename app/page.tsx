@@ -1139,6 +1139,21 @@ export default function Home() {
     } catch (err) {
       console.error("編集再生成失敗:", err);
       showToast("編集と再生成に失敗しました", "error");
+      // RPC成功後のpost-commit read失敗等、DB側は更新済みだがUI stateが
+      // 追従していない可能性があるため、DBを正としてmessagesを再GET同期する。
+      // rollbackや旧branchの手動reactivateは行わない（handleRegenerate(branch)の
+      // 既存パターンに準拠）。
+      try {
+        const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+        if (res.ok) {
+          const freshMessages: Message[] = await res.json();
+          setMessages(freshMessages);
+        } else {
+          console.error("編集再生成失敗後の再同期失敗:", res.status);
+        }
+      } catch (syncErr) {
+        console.error("編集再生成失敗後の再同期失敗:", syncErr);
+      }
     } finally {
       setIsLoading(false);
       setStreamingContent("");

@@ -791,161 +791,77 @@ export async function POST(req: NextRequest) {
 
   if (!isRegenerate && !isLightRegenerate && !isTemporary) {
     if (branchEdit?.baseUserMessageId) {
-      // branchEditモード: 旧user以降を inactive化 → 新userを新規insert
-      // 1. baseUserを取得してmessage_numberを確認
-      const { data: baseUser, error: baseUserError } = await supabase
+      const newMessageId = userMessage.id;
+      const { data: rpcResult, error: rpcError } = await supabase
+        .rpc("apply_branch_edit", {
+          p_user_id: userId,
+          p_thread_id: threadId,
+          p_base_user_message_id: branchEdit.baseUserMessageId,
+          p_new_message_id: newMessageId,
+          p_content: userContent,
+        })
+        .single();
+
+      if (rpcError) {
+        const status = rpcError.code === "42501" ? 403 : rpcError.code === "P0001" ? 400 : 500;
+        console.error("[db-operation-failed]", {
+          route: "chat/branch-edit",
+          operation: "apply_branch_edit",
+          table: "messages",
+          errorCode: rpcError.code,
+        });
+        return new Response(JSON.stringify({
+          error: status === 400 ? "Invalid branch edit request" : status === 403 ? "Forbidden" : "Failed to apply branch edit",
+        }), { status, headers: { "Content-Type": "application/json" } });
+      }
+
+      const branchEditResult = rpcResult as {
+        new_branch_root_id: string;
+        new_branch_index: number;
+        new_message_number: number;
+      };
+      branchEditMeta = {
+        branch_root_id: branchEditResult.new_branch_root_id,
+        branch_index: branchEditResult.new_branch_index,
+        parent_id: newMessageId,
+      };
+      const nextMessageNumber = branchEditResult.new_message_number;
+
+      // RPC commit後のpost-commit read（必須ステップ。失敗時はリクエスト自体を失敗させる）。
+      // RPC自身と同一snapshotではなく、SELECT実行時点の最新stateからAI投入用の
+      // branch contextを構築する。RPC成功後にこのSELECTのみ失敗した場合、
+      // DB側のbranch edit（archive・採番・insert）はcommit済みのまま残る。
+      // このケースはフロント側（handleEditAndRegenerate）でmessages再GET同期により対応する。
+      const { data: activeMessages, error: activeMessagesError } = await supabase
         .from("messages")
-        .select("id, message_number, branch_root_id, branch_index, is_active")
-        .eq("id", branchEdit.baseUserMessageId)
+        .select("role, content, provider")
         .eq("thread_id", threadId)
         .eq("user_id", userId)
-        .maybeSingle();
+        .not("is_active", "eq", false)
+        .lt("message_number", nextMessageNumber)
+        .order("message_number", { ascending: true });
 
-      if (baseUserError) {
-        return new Response(JSON.stringify({ error: baseUserError.message }), {
+      if (activeMessagesError) {
+        console.error("[db-operation-failed]", {
+          route: "chat/branch-edit",
+          operation: "load_active_messages",
+          table: "messages",
+          errorCode: activeMessagesError.code,
+        });
+        return new Response(JSON.stringify({ error: "Failed to load branch edit context" }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
       }
 
-      if (!baseUser) {
-        return new Response(JSON.stringify({ error: "baseUserMessage not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      if (baseUser) {
-        if (baseUser.message_number == null) {
-          return new Response(JSON.stringify({ error: "baseUser message_number is missing" }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const branchRootId = baseUser.id;
-
-        // 2. baseUser以降のactive messagesをすべてinactive化
-        // branchEditでは、編集対象メッセージ自身を常に新しい分岐rootにする。
-        // 退避される現在のactive tailは、この新root配下の「元の流れ」なので branch_index=0 に固定する。
-        // 注意: 現行スキーマでは、親分岐と子分岐への二重所属は保持できない
-        // （baseUser自身が既に別rootのbranch_index=1等であった場合、その情報は本UPDATEで上書きされる）。
-        const { error: archiveError } = await supabase
-          .from("messages")
-          .update({
-            is_active: false,
-            branch_root_id: branchRootId,
-            branch_index: 0,
-          })
-          .eq("thread_id", threadId)
-          .eq("user_id", userId)
-          .gte("message_number", baseUser.message_number)
-          .eq("is_active", true);
-
-        if (archiveError) {
-          return new Response(JSON.stringify({ error: archiveError.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        // 3. branch_root_id と branch_index を決定
-        const { data: maxBranchRow, error: maxBranchRowError } = await supabase
-          .from("messages")
-          .select("branch_index")
-          .eq("thread_id", threadId)
-          .eq("user_id", userId)
-          .eq("branch_root_id", branchRootId)
-          .order("branch_index", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (maxBranchRowError) {
-          return new Response(JSON.stringify({ error: maxBranchRowError.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const nextBranchIndex = (maxBranchRow?.branch_index ?? 0) + 1;
-
-        // 4. message_numberを採番
-        const { data: maxNumRow, error: maxNumRowError } = await supabase
-          .from("messages")
-          .select("message_number")
-          .eq("thread_id", threadId)
-          .eq("user_id", userId)
-          .order("message_number", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (maxNumRowError) {
-          return new Response(JSON.stringify({ error: maxNumRowError.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const nextMessageNumber = (maxNumRow?.message_number ?? 0) + 1;
-
-        // 5. 新userメッセージをinsert
-        const insertMessage = {
-          id: userMessage.id,
-          thread_id: threadId,
-          role: "user",
-          content: userContent,
-          provider: "user",
-          user_id: userId,
-          parent_id: baseUser.id,
-          branch_root_id: branchRootId,
-          branch_index: nextBranchIndex,
-          message_number: nextMessageNumber,
-          is_active: true,
-        };
-
-        const { error: insertError } = await supabase
-          .from("messages")
-          .insert(insertMessage)
-          .select();
-
-        if (insertError) {
-          return new Response(JSON.stringify({ error: insertError.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        branchEditMeta = {
-          branch_root_id: branchRootId,
-          branch_index: nextBranchIndex,
-          parent_id: userMessage.id,
-        };
-
-        const { data: activeMessages, error: activeMessagesError } = await supabase
-          .from("messages")
-          .select("role, content, provider")
-          .eq("thread_id", threadId)
-          .eq("user_id", userId)
-          .not("is_active", "eq", false)
-          .lt("message_number", nextMessageNumber)
-          .order("message_number", { ascending: true });
-
-        if (activeMessagesError) {
-          return new Response(JSON.stringify({ error: activeMessagesError.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        branchEditMessagesForApi = [
-          ...(activeMessages ?? []).map((m) => ({
-            role: m.role as string,
-            content: m.content as string,
-            provider: m.provider as string | undefined,
-          })),
-          { role: "user", content: userContent, provider: "user" },
-        ];
-      }
+      branchEditMessagesForApi = [
+        ...(activeMessages ?? []).map((m) => ({
+          role: m.role as string,
+          content: m.content as string,
+          provider: m.provider as string | undefined,
+        })),
+        { role: "user", content: userContent, provider: "user" },
+      ];
     } else {
       const { data: lastActiveMsg, error: lastActiveMsgError } = await supabase
         .from("messages")
