@@ -2,6 +2,7 @@
 import { deleteOwnedMessage } from "@/lib/messages/delete";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
+import { securityGuardRejected } from "@/lib/logger";
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -51,10 +52,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
           return finalizeJson({ error: storageError.message }, { status: 500 });
         }
       } else {
-        console.warn("[delete_image] storagePath is outside user namespace; skipped storage.remove", {
-          messageId: params.id,
-          userId: user.id,
-        });
+        securityGuardRejected({ operation: "delete-image-storage-path-check" });
       }
     }
 

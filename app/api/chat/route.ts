@@ -1304,10 +1304,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       created_at: new Date().toISOString(),
     };
     if (!isTemporary) {
-      const saved = await saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
-      if (!saved) {
-        console.error("[chat] エラーパスでのassistantメッセージ保存に失敗しました", { threadId, assistantMessageId });
-      }
+      await saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
     }
     return new Response(JSON.stringify({ userMessage, assistantMessage }), {
       headers: { "Content-Type": "application/json" },

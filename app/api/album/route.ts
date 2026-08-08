@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
+import { securityGuardRejected } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -43,10 +44,7 @@ export async function GET(req: NextRequest) {
   ).length;
 
   if (skippedCount > 0) {
-    console.warn("[album] skipped storagePaths outside user namespace", {
-      userId: user.id,
-      skippedCount,
-    });
+    securityGuardRejected({ operation: "album-storage-path-check", skippedCount });
   }
 
   const signedUrls: Record<string, string> = {};
