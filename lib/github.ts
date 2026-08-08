@@ -260,7 +260,6 @@ export async function listGithubDirectory(
       },
     }, timeoutMs);
 
-    console.log("[DEBUG][github.ts listGithubDirectory] response status", response.status);
     if (!response.ok) {
       return { error: `ディレクトリ一覧の取得に失敗しました（HTTP ${response.status}）` };
     }

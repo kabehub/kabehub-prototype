@@ -210,7 +210,9 @@ export async function runGithubToolLoop(
     accessToken: params.accessToken,
   });
   toolCallCount += 1;
-  console.log("[DEBUG][Phase1] root listing", { hasError: "error" in rootResult });
+  if (process.env.NODE_ENV === "development") {
+    console.log("[DEBUG][Phase1] root listing", { hasError: "error" in rootResult });
+  }
 
   if ("error" in rootResult) {
     warnings.push(`ルートディレクトリ取得失敗: ${rootResult.error}`);
@@ -284,7 +286,9 @@ export async function runGithubToolLoop(
     exploredFiles.push({ path, sha: undefined, content: result.content });
   }
 
-  console.log("[DEBUG][Phase2] exploredFiles count:", exploredFiles.length);
+  if (process.env.NODE_ENV === "development") {
+    console.log("[DEBUG][Phase2] exploredFiles count:", exploredFiles.length);
+  }
 
   const contextBlock = buildGithubDynamicContext(exploredFiles, params.repo, params.ref, warnings);
   return {

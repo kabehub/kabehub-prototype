@@ -50,12 +50,6 @@ export async function POST(req: NextRequest) {
     embedding = await createEmbedding(openaiKey, message.content);
   } catch (err) {
     const status = err instanceof AiProviderRequestError ? (err.status ?? 502) : 502;
-    console.error("[lore/like] provider API request failed", {
-      provider: "openai",
-      status: err instanceof AiProviderRequestError ? err.status : null,
-      errorCode: err instanceof AiProviderRequestError ? err.errorCode : "UPSTREAM_RESPONSE_INVALID",
-      errorType: err instanceof Error ? err.name : "unknown",
-    });
     return finalizeJson(
       { error: "OpenAI APIへのリクエストに失敗しました", provider: "openai", status },
       { status },

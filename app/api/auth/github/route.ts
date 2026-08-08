@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { createOAuthState, deleteGithubToken } from "@/lib/github-token-store";
+import * as logger from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,12 @@ export async function DELETE(req: NextRequest) {
     await deleteGithubToken(user.id);
     return finalizeJson({ ok: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown";
-    console.error("[github-disconnect] failed:", message);
+    logger.dbOperationFailed({
+      route: "auth-github",
+      operation: "disconnect",
+      table: "user_github_tokens",
+      errorType: err instanceof Error ? err.name : "unknown",
+    });
     return finalizeJson({ error: "GitHub連携の解除に失敗しました" }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 import { isOwnedStoragePath } from '@/lib/storage-path-guard'
 import { getDefaultImageModel, isAllowedImageModel } from '@/lib/modelRegistry'
+import * as logger from '@/lib/logger'
 
 type ImageResult = { imageData: string; mimeType: string }
 type ImageProvider = 'gemini' | 'openai' | 'ideogram' | 'openrouter'
@@ -29,8 +30,8 @@ function handlerError(
 }
 
 function upstreamError(provider: ImageProvider, status: number): HandlerResult {
-  console.error('[image-gen] provider API error', {
-    provider,
+  logger.externalApiFailed({
+    service: logger.toExternalService(provider),
     status,
     errorCode: 'UPSTREAM_API_ERROR',
   })
@@ -294,9 +295,8 @@ export async function POST(req: NextRequest) {
     }
   } catch {
     const failedProvider = provider as ImageProvider
-    console.error('[image-gen] provider API request failed', {
-      provider: failedProvider,
-      status: null,
+    logger.externalApiFailed({
+      service: logger.toExternalService(failedProvider),
       errorCode: 'UPSTREAM_REQUEST_FAILED',
     })
     return finalizeJson(

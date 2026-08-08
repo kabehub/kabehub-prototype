@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { sanitizeReferenceText } from '@/lib/ai-context-blocks'
 import { EXTRACT_SETTINGS_CONFIG } from '@/lib/modelRegistry'
+import * as logger from '@/lib/logger'
 
 // GET /api/extract-settings?thread_id=xxx
 export async function GET(req: NextRequest) {
@@ -56,8 +57,8 @@ export async function POST(req: NextRequest) {
   }
 
   function providerFailure(providerId: 'claude' | 'gemini' | 'openai', providerLabel: string, status: number) {
-    console.error('[extract-settings] provider API error', {
-      provider: providerId,
+    logger.externalApiFailed({
+      service: logger.toExternalService(providerId),
       status,
       errorCode: 'UPSTREAM_API_ERROR',
     })

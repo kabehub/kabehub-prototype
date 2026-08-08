@@ -36,21 +36,18 @@ async function fetchProvider(
   try {
     response = await fetch(url, init);
   } catch {
-    console.error("[arena] provider API request failed", {
-      route: "arena",
-      operation: `request_${provider}_api`,
-      table: "provider_api",
+    logger.externalApiFailed({
+      service: logger.toExternalService(provider),
       errorCode: "UPSTREAM_REQUEST_FAILED",
     });
     throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
   }
 
   if (!response.ok) {
-    console.error("[arena] provider API error", {
-      route: "arena",
-      operation: `request_${provider}_api`,
-      table: "provider_api",
-      errorCode: `UPSTREAM_API_ERROR_${response.status}`,
+    logger.externalApiFailed({
+      service: logger.toExternalService(provider),
+      status: response.status,
+      errorCode: "UPSTREAM_API_ERROR",
     });
     throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
   }
@@ -62,11 +59,10 @@ async function readProviderJson(provider: ArenaProvider, response: Response): Pr
   try {
     return await response.json();
   } catch {
-    console.error("[arena] invalid provider API response", {
-      route: "arena",
-      operation: `parse_${provider}_api_response`,
-      table: "provider_api",
-      errorCode: `UPSTREAM_RESPONSE_INVALID_${response.status}`,
+    logger.externalApiFailed({
+      service: logger.toExternalService(provider),
+      status: response.status,
+      errorCode: "UPSTREAM_RESPONSE_INVALID",
     });
     throw new Error(`${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`);
   }

@@ -63,6 +63,18 @@ type ExternalService =
   | "openrouter"
   | "supabase";
 
+type ExternalApiProvider =
+  | "claude"
+  | "gemini"
+  | "openai"
+  | "ideogram"
+  | "openrouter";
+
+/** provider識別子をログ用の外部サービス名へ変換する */
+export function toExternalService(provider: ExternalApiProvider): ExternalService {
+  return provider === "claude" ? "anthropic" : provider;
+}
+
 // 外部APIログの各フィールドはサービス分類、HTTP status、機械的コード、例外クラス名に限定する。
 type ExternalApiParams = {
   service: ExternalService;

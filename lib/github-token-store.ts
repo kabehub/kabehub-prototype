@@ -1,5 +1,6 @@
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { decryptToken, encryptToken } from "@/lib/github-token-crypto";
+import * as logger from "@/lib/logger";
 
 export async function saveGithubToken(
   userId: string,
@@ -34,7 +35,12 @@ export async function getGithubToken(userId: string): Promise<string | null> {
   if (error) {
     // GitHub文脈注入はチャット本体の補助機能。
     // token storeの一時障害でチャット全体を失敗させないため、明示的に未接続扱いへフォールバックする。
-    console.warn("[github-token-store] getGithubToken DB error:", error.message);
+    logger.dbOperationFailedBestEffort({
+      route: "github-token-store",
+      operation: "get-github-token",
+      table: "user_github_tokens",
+      errorCode: error.code,
+    });
     return null;
   }
 
@@ -82,7 +88,12 @@ export async function createOAuthState(userId: string): Promise<string> {
     .lt("expires_at", cleanupBefore);
 
   if (cleanupError) {
-    console.warn("[github-oauth] cleanup expired states failed:", cleanupError.message);
+    logger.dbOperationFailedBestEffort({
+      route: "github-token-store",
+      operation: "cleanup-expired-oauth-states",
+      table: "github_oauth_states",
+      errorCode: cleanupError.code,
+    });
   }
 
   const state = crypto.randomUUID();
@@ -111,7 +122,12 @@ export async function consumeOAuthState(state: string): Promise<string | null> {
     .maybeSingle();
 
   if (error) {
-    console.warn("[github-oauth] consume state failed:", error.message);
+    logger.dbOperationFailed({
+      route: "github-token-store",
+      operation: "consume-oauth-state",
+      table: "github_oauth_states",
+      errorCode: error.code,
+    });
     return null;
   }
 

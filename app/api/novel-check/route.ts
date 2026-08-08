@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { sanitizeAttributeValue, sanitizeReferenceText } from "@/lib/ai-context-blocks";
 import { isAllowedNovelCheckModel, NOVEL_CHECK_CONFIG } from "@/lib/modelRegistry";
+import * as logger from "@/lib/logger";
 
 export const dynamic = 'force-dynamic';
 
@@ -129,9 +130,9 @@ ${combined}`;
         ));
         controller.close();
       } catch (err) {
-        console.error("[novel-check] provider API request failed", {
-          provider: "gemini",
-          status: upstreamStatus,
+        logger.externalApiFailed({
+          service: logger.toExternalService("gemini"),
+          status: upstreamStatus ?? undefined,
           errorCode: upstreamStatus === null ? "UPSTREAM_REQUEST_FAILED" : "UPSTREAM_API_ERROR",
           errorType: err instanceof Error ? err.name : "unknown",
         });

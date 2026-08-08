@@ -77,8 +77,8 @@ function providerApiError(
   providerLabel: string,
   status: number,
 ): ReportedProviderError {
-  console.error("[chat] provider API error", {
-    provider,
+  logger.externalApiFailed({
+    service: logger.toExternalService(provider),
     status,
     errorCode: "UPSTREAM_API_ERROR",
   });
@@ -91,9 +91,8 @@ function normalizeProviderError(
   error: unknown,
 ): Error {
   if (error instanceof ReportedProviderError) return error;
-  console.error("[chat] provider API request failed", {
-    provider,
-    status: null,
+  logger.externalApiFailed({
+    service: logger.toExternalService(provider),
     errorCode: "UPSTREAM_REQUEST_FAILED",
     errorType: error instanceof Error ? error.name : "unknown",
   });

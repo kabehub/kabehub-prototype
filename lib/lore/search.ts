@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { createEmbedding } from "./openai";
+import * as logger from "../logger";
 
 export interface LoreSearchOptionsV2 {
   query: string;
@@ -24,7 +25,7 @@ export type LoreSearchV2Result = {
 };
 
 // ─── embedding生成（共通化）─────────────────────────────────────────────
-// 失敗時（HTTPエラー・レスポンス構造不正）は console.warn の上で null を返す。
+// 失敗時は下位層（createEmbedding）で externalApiFailed 済みのため、ここでは再ログせず null を返す。
 // AbortError（呼び出し元のタイムアウト・キャンセル）は握りつぶさずそのまま re-throw する。
 // これにより呼び出し元は「embedding生成に失敗した」のか「意図したタイムアウトで中断した」のかを区別できる。
 export async function embedQuery(
@@ -36,8 +37,6 @@ export async function embedQuery(
     return await createEmbedding(openaiKey, query, { signal });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn("[lore] embedding failed:", message);
     return null;
   }
 }
@@ -60,7 +59,12 @@ export async function searchLoreByEmbedding(
     .abortSignal(signal);
 
   if (error) {
-    console.warn("[lore] rpc error:", error.message);
+    logger.dbOperationFailedBestEffort({
+      route: "lore-search",
+      operation: "lore-search-rpc",
+      table: "lore_embeddings",
+      errorCode: error.code,
+    });
     return [];
   }
   return (data ?? []).map((row: { chunk_text: string }) => row.chunk_text);
@@ -94,7 +98,12 @@ export async function searchLoreV2ByEmbedding(
     .abortSignal(signal);
 
   if (error) {
-    console.warn("[loreV2] rpc error:", error.message);
+    logger.dbOperationFailedBestEffort({
+      route: "lore-search",
+      operation: "lore-v2-search-rpc",
+      table: "lore_embeddings",
+      errorCode: error.code,
+    });
     return [];
   }
 
