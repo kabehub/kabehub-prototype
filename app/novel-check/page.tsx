@@ -132,7 +132,7 @@ export default function NovelCheckPage() {
               setIsLoading(false);
             }
           } catch {
-            // 無視
+            // 技術的許容: buffer再構成済みのNDJSON行がJSONとして不正な場合、その行のみ破棄して後続処理を継続する。失敗行の再パースは行わない。
           }
         }
       }

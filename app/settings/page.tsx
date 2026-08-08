@@ -130,7 +130,9 @@ function SettingsContent() {
       if (!isFinite(n)) n = 1;
       n = Math.min(1.5, Math.max(0.8, n));
       setFontScale(n);
-    } catch (e) {}
+    } catch (e) {
+      // 既定値フォールバック: font scale読込失敗時は既定値(1.0)のまま表示する。
+    }
   }, []);
 
   const updateFontScale = (value: number) => {

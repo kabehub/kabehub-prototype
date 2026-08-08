@@ -289,6 +289,7 @@ export default function AlbumPage() {
       setHasMore(data.hasMore);
       pageRef.current = pageNum + 1;
     } catch (err) {
+      // 読み取り専用: 失敗時はitemsとページ位置を更新せず既存表示を維持する。fetchPageが再度起動すれば再取得可能。
       console.error("アルバム取得失敗:", err);
     } finally {
       isLoadingRef.current = false;

@@ -103,6 +103,7 @@ function MessageBubble({
   const regenBtnRef = useRef<HTMLButtonElement>(null);
   const subMenuRef = useRef<HTMLDivElement>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [editRegenOpen, setEditRegenOpen] = useState(false);
   const [editRegenContent, setEditRegenContent] = useState("");
   const [editRegenMode, setEditRegenMode] = useState<"branch" | "light">("branch");
@@ -192,12 +193,24 @@ function MessageBubble({
   useEffect(() => {
     if (!isImageGen || !message.metadata?.storagePath || message.metadata?.image_deleted) return;
     // TODO: 将来的にAPI Route経由の画像配信に変更し、Next.js <Image> のキャッシュを効かせる
+    setImageUrl(null);
+    setImageLoadFailed(false);
+    let cancelled = false;
     supabase.storage
       .from("generated-images")
       .createSignedUrl(message.metadata.storagePath, 3600)
-      .then(({ data }) => {
-        if (data?.signedUrl) setImageUrl(data.signedUrl);
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.signedUrl) {
+          setImageLoadFailed(true);
+          return;
+        }
+        setImageUrl(data.signedUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setImageLoadFailed(true);
       });
+    return () => { cancelled = true; };
   }, [isImageGen, message.metadata?.storagePath, message.metadata?.image_deleted]);
 
   useEffect(() => {
@@ -554,6 +567,8 @@ function MessageBubble({
                       alt={message.content}
                       style={{ maxWidth: "100%", borderRadius: "6px", display: "block" }}
                     />
+                  ) : imageLoadFailed ? (
+                    <div style={{ color: "var(--ink-faint)", fontSize: "13px" }}>🖼️ 画像を読み込めませんでした</div>
                   ) : (
                     <div style={{ color: "var(--ink-faint)", fontSize: "13px" }}>🖼️ 読み込み中...</div>
                   )}

@@ -34,7 +34,7 @@ export default function CalendarPage() {
       const data = await res.json();
       setThreads(data);
     } catch {
-      // noop
+      // 読み取り専用: 失敗時はカレンダーが空表示のまま。月切替で再試行される。
     } finally {
       setLoading(false);
     }

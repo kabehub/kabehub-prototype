@@ -316,7 +316,9 @@ export default function ChatPanel({
         gemini: localStorage.getItem("kabehub_gemini_key") ?? "",
         openai: localStorage.getItem("kabehub_openai_key") ?? "",
       });
-    } catch {}
+    } catch {
+      // 既定値フォールバック: APIキードラフト読込失敗時は空欄のまま表示する。
+    }
   }, []);
 
   const handleSaveApiKeys = () => {
@@ -400,7 +402,9 @@ export default function ChatPanel({
     fetch(`/api/threads/${threadId}/tags`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: ThreadTag[]) => { if (Array.isArray(data)) setTags(data); })
-      .catch(() => {});
+      .catch(() => {
+        // 読み取り専用: タグ取得失敗時は空配列のまま表示する（threadId変更時にclear済みのため）。
+      });
   }, [threadId]);
 
   // タグ入力欄表示時にフォーカス
@@ -417,6 +421,7 @@ export default function ChatPanel({
       const data: ThreadNote[] = await res.json();
       setNotes(data);
     } catch (err) {
+      // 読み取り専用: 取得失敗時はstateを更新しない。スレッド切替直後は空表示、再取得時は既存表示を維持する。
       console.error("メモ取得失敗:", err);
     } finally {
       setNotesLoading(false);
@@ -431,6 +436,7 @@ export default function ChatPanel({
       const data: MessageNote[] = await res.json();
       setMessageNotes(data);
     } catch (err) {
+      // 読み取り専用: 取得失敗時はstateを更新しない。スレッド切替直後は空表示、再取得時は既存表示を維持する。
       console.error("メッセージノート取得失敗:", err);
     }
   }, [threadId]);
@@ -444,6 +450,7 @@ export default function ChatPanel({
       const data: Draft[] = await res.json();
       setDrafts(data);
     } catch (err) {
+      // 読み取り専用: 取得失敗時はstateを更新しない。スレッド切替直後は空表示、再取得時は既存表示を維持する。
       console.error("下書き取得失敗:", err);
     } finally {
       setDraftsLoading(false);

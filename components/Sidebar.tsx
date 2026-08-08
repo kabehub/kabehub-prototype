@@ -3,6 +3,7 @@
 import { Thread } from "@/types";
 import { timeAgo } from "@/lib/formatters";
 import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
+import { useToast } from "@/components/Toast";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 
@@ -592,6 +593,7 @@ export default function Sidebar({
   isCollapsed = false,
   onToggleCollapse,
 }: SidebarProps) {
+  const { showToast } = useToast();
   const collapsed = !isMobileOverlay && isCollapsed;
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<"title" | "message" | "both">("both");
@@ -688,7 +690,7 @@ export default function Sidebar({
     setGithubRepoError(null);
     setFolderSettingsSaving(true);
     try {
-      await fetch("/api/folder-settings", {
+      const res = await fetch("/api/folder-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -700,14 +702,16 @@ export default function Sidebar({
           github_ref: folderSettingsModal.githubRef.trim() || null,
         }),
       });
+      if (!res.ok) throw new Error("フォルダ設定の保存に失敗しました");
       setFolderTypes(prev => ({ ...prev, [folderSettingsModal.folderName]: folderSettingsModal.folderType ?? null }));
       setFolderSettingsModal(null);
     } catch (err) {
       console.error("フォルダ設定保存失敗:", err);
+      showToast("フォルダ設定の保存に失敗しました", "error");
     } finally {
       setFolderSettingsSaving(false);
     }
-  }, [folderSettingsModal]);
+  }, [folderSettingsModal, showToast]);
 
   const handleSearchChange = useCallback((val: string) => {
     setSearchQuery(val);

@@ -39,7 +39,9 @@ export default async function RootLayout({
       if (!isFinite(n)) n = 1;
       n = Math.min(1.5, Math.max(0.8, n));
       document.documentElement.style.setProperty('--font-scale', String(n));
-    } catch (e) {}
+    } catch (e) {
+      // 既定値フォールバック: font scale読込失敗時は既定値(1.0)のまま表示する。
+    }
   })();
 `}} />
       </head>

@@ -135,14 +135,22 @@ export default function NovelSettingsPane({
   };
 
   const fetchLoreChunks = useCallback(async () => {
-    if (!folderName) return;
+    if (!folderName) {
+      setLoreChunks([]);
+      return;
+    }
+    setLoreChunks([]); // fetch開始時点で旧一覧をクリア（folderName切替時に前フォルダのchunkを表示させない）
     try {
       const res = await fetch(`/api/lore/chunks?folder_name=${encodeURIComponent(folderName)}`);
       if (res.ok) {
         const data = await res.json();
         setLoreChunks(data.chunks ?? []);
       }
-    } catch { /* 無視 */ }
+      // 読み取り専用: res.ok===falseの場合は上記の空配列クリアのまま。前フォルダのchunkは表示されない。
+    } catch {
+      // 読み取り専用: 例外時も空配列クリアのまま。前フォルダのchunkは表示されない。
+      // 非同期レース（旧フォルダの取得が新フォルダの取得より遅れて完了するケース）への対策は別スコープとする。
+    }
   }, [folderName]);
 
   useEffect(() => {
@@ -203,7 +211,9 @@ export default function NovelSettingsPane({
     try {
       const res = await fetch(`/api/lore/chunks/${id}`, { method: "DELETE" });
       if (res.ok) setLoreChunks(prev => prev.filter(c => c.id !== id));
-    } catch { /* 無視 */ }
+    } catch {
+      // 非破壊操作: res.ok確認済み。失敗時はloreChunksから削除せず一覧に残すため、そのまま再試行可能。
+    }
   };
 
   useEffect(() => {

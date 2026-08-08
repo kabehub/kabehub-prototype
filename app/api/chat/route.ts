@@ -1092,6 +1092,7 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (err) {
+      // ベストエフォート: 失敗しても主処理は継続する。ユーザーへの通知は行わない。
       if ((err as Error).name === "AbortError") {
         console.warn("[lore] combined search timed out — skipping injection");
       }
@@ -1190,6 +1191,7 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (err) {
+      // ベストエフォート: 失敗しても主処理は継続する。ユーザーへの通知は行わない。
       console.error('[imageContextId] 画像取得失敗（握りつぶし）:', err)
     }
   }
@@ -1280,6 +1282,7 @@ export async function POST(req: NextRequest) {
         console.warn("[github-tool-loop] warnings:", discovery.warnings);
       }
     } catch (err) {
+      // ベストエフォート: 失敗しても主処理は継続する。ユーザーへの通知は行わない。
       if (process.env.NODE_ENV === "development") {
         console.error("[github-tool-loop] error:", err);
       } else {
@@ -1312,6 +1315,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         );
       }
     } catch (err) {
+      // ベストエフォート: 失敗しても主処理は継続する。ユーザーへの通知は行わない。
       console.warn("[rag-memory] skipped:", err);
     }
   }

@@ -178,7 +178,9 @@ export default function Home() {
       if (anthropic) headers["x-anthropic-api-key"] = anthropic;
       if (gemini) headers["x-gemini-api-key"] = gemini;
       if (openai) headers["x-openai-api-key"] = openai;
-    } catch {}
+    } catch {
+      // 既定値フォールバック: APIキー読込失敗時はprovider用headerを付けず、受信Route側のキー未設定時の既存契約に委ねる。
+    }
     return headers;
   }, []);
 

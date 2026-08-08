@@ -78,6 +78,7 @@ function CodeBlock({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
+      // 非破壊操作: 失敗時はcopiedをtrueにしないため、UIが偽の成功を示すことはない。
       console.error("copy failed:", err);
     }
   };
