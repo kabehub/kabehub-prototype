@@ -4,9 +4,13 @@
 
 | 経路 | 発火条件 | 検索関数 | topK | 閾値 | 注入ブロック名 | 実行タイミング |
 |---|---|---|---|---|---|---|
-| ① Lore Book注入 | `loreEnabled`（フォルダの `folder_type === "novel"`）かつ `loreTargetFolder` あり かつ `openaiKey` あり | `searchLoreByEmbedding` | 3 | `match_lore_embeddings` に閾値引数なし・アプリ層から指定不可 | `lore_book` | GitHub Tool Loop前、旧Memoryとembedding共有・並列実行 |
-| ② 旧Memory注入 | 正規表現 `MEMORY_TRIGGER_PATTERN`（11語）が `userContent` にマッチ | `searchLoreV2ByEmbedding` | 5 | 明示指定なし → 関数デフォルト値0.3 | `memory` | GitHub Tool Loop前、①とembedding共有・並列実行 |
-| ③ rule-based RAG注入 | `RAG_TRIGGER_KEYWORDS` 配列（19語）のいずれかが `userContent` に含まれる | `searchLoreV2`（embedding内包） | 4 | 呼び出し側で明示的に `matchThreshold: 0.3` | `rag_memory` | GitHub Tool Loop**後**、①②とは独立してembeddingを再生成 |
+| ① Lore Book注入 | `loreEnabled`（フォルダの `folder_type === "novel"`）かつ `loreTargetFolder` あり かつ `openaiKey` あり | `searchLoreByEmbedding` | `CHAT_LORE_SEARCH_POLICY.loreBook.topK`（3） | `match_lore_embeddings` に閾値引数なし・アプリ層から指定不可 | `lore_book` | GitHub Tool Loop前、旧Memoryとembedding共有・並列実行 |
+| ② 旧Memory注入 | 正規表現 `MEMORY_TRIGGER_PATTERN`（11語）が `userContent` にマッチ | `searchLoreV2ByEmbedding` | `CHAT_LORE_SEARCH_POLICY.memory.topK`（5） | `CHAT_LORE_SEARCH_POLICY.memory.matchThreshold`（0.3）を明示指定 | `memory` | GitHub Tool Loop前、①とembedding共有・並列実行 |
+| ③ rule-based RAG注入 | `RAG_TRIGGER_KEYWORDS` 配列（19語）のいずれかが `userContent` に含まれる | `searchLoreV2`（embedding内包） | `CHAT_LORE_SEARCH_POLICY.rag.topK`（4） | `CHAT_LORE_SEARCH_POLICY.rag.matchThreshold`（0.3）を明示指定 | `rag_memory` | GitHub Tool Loop**後**、①②とは独立してembeddingを再生成 |
+
+topK・閾値・timeoutの実値は `lib/lore/types.ts` の `CHAT_LORE_SEARCH_POLICY` を正本とする（ME-4で集約済み）。本表は概念の対応関係を示す参照であり、値そのものはコード側を参照すること。
+
+①②は `CHAT_LORE_SEARCH_POLICY.combined.timeoutMs`（3000ms）を共有し、③は独立して `CHAT_LORE_SEARCH_POLICY.rag.timeoutMs`（3000ms）を使用する。
 
 ## 要確認③: トリガー語の包含関係
 
@@ -15,14 +19,3 @@
 検索結果がどちらにも存在する場合、類似記憶が `memory` ブロックと `rag_memory` ブロックという異なる形式で二重注入されうる。novelフォルダで②のトリガー語にも一致する発言の場合、①②③**3経路すべての検索が実行され**、各検索に結果があれば3ブロックすべてが注入されうる。
 
 ①②はembeddingを1回生成して共有し、`Promise.all` で並列実行される。一方、③はGitHub Tool Loop後に完全に独立して実行され、embeddingも別途生成される。これはS17設計判断による意図的な未統合であり、統合は別チケット扱いとして今回は変更しない。
-
-## 先送り事項
-
-次の4ファイルにあるローカル `clamp` の重複は、T5引き継ぎ資料でT7送りとされていたが、今回のスコープでは対象外とし、次回以降の課題とする。
-
-```
-app/api/lore/consolidate/candidates/route.ts
-app/api/lore/dreaming-batch/route.ts
-app/api/lore/batch-train/route.ts
-lib/lore/batchTrain.ts
-```
