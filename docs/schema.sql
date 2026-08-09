@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/08/09（H-08：未使用uuid-osspをcanonical schemaから削除）
+-- 最終更新: 2026/08/09（migration_v180_drop_legacy_counter_rpcs.sql反映・DB未適用）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -50,6 +50,7 @@
 -- 2026/08/08、migration_v178_restore_message_branch.sqlをスキーマ正本へ反映（DB未適用、MF-6a対応）。
 -- 2026/08/08、migration_v179_apply_branch_edit.sqlをスキーマ正本へ反映（DB未適用、MF-6b対応）。
 -- 2026/08/09、H-08対応：uuid-ossp依存なし（schema内・本番DB列デフォルト・public関数本体いずれも0件）を確認しcanonical schemaから削除（本番extension自体は未変更）。
+-- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映（DB未適用、H-09対応）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -760,51 +761,6 @@ create policy "いいねは認証ユーザーのみ操作可"
 create policy "いいねは全員閲覧可"
   on likes for select
   using (true);
-
--- 【旧関数・v124で削除予定】±1方式（本番で数日〜1週間の安定稼働確認後、
--- migration_v124_drop_legacy_counter_rpcs.sql で削除する。それまでは
--- app/api/threads/[id]/likes/route.ts からは呼ばれておらず未使用（呼び出し側は
--- recalc_likes_count に統合済み）。DB上の後方互換のためだけに残存
-create or replace function increment_likes_count(p_thread_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  update threads
-  set likes_count = likes_count + 1
-  where id = p_thread_id
-    and exists (
-      select 1 from likes
-      where likes.thread_id = p_thread_id
-        and likes.user_id = auth.uid()
-    );
-end;
-$$;
-
-create or replace function decrement_likes_count(p_thread_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  update threads
-  set likes_count = greatest(likes_count - 1, 0)
-  where id = p_thread_id
-    and exists (
-      select 1 from likes
-      where likes.thread_id = p_thread_id
-        and likes.user_id = auth.uid()
-    );
-end;
-$$;
-
-revoke execute on function increment_likes_count(uuid) from public, anon;
-grant execute on function increment_likes_count(uuid) to authenticated;
-revoke execute on function decrement_likes_count(uuid) from public, anon;
-grant execute on function decrement_likes_count(uuid) to authenticated;
 
 -- ============================================================
 -- カウンター系RPC（v123・T-08・2026/07/06本番適用）
