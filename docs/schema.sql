@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/08/09（migration_v180_drop_legacy_counter_rpcs.sql反映・DB未適用）
+-- 最終更新: 2026/08/09（migration_v180_drop_legacy_counter_rpcs.sql反映・テスト環境/本番DB適用済み）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -50,7 +50,7 @@
 -- 2026/08/08、migration_v178_restore_message_branch.sqlをスキーマ正本へ反映（DB未適用、MF-6a対応）。
 -- 2026/08/08、migration_v179_apply_branch_edit.sqlをスキーマ正本へ反映（DB未適用、MF-6b対応）。
 -- 2026/08/09、H-08対応：uuid-ossp依存なし（schema内・本番DB列デフォルト・public関数本体いずれも0件）を確認しcanonical schemaから削除（本番extension自体は未変更）。
--- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映（DB未適用、H-09対応）。
+-- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映・テスト環境/本番DB適用済み（H-09対応）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
