@@ -1,7 +1,7 @@
 -- migration_v179_apply_branch_edit.sql
 -- MF-6b: chat/route.ts branch edit機能のarchive UPDATE・branch_index採番・
 -- message_number採番・new user INSERTを単一トランザクションRPCへ移す。
--- 適用: 全文レビュー後、テスト環境Supabaseから適用する（現時点では未適用）。
+-- 適用: テスト環境・本番環境ともに適用済み（MH-1時点）。
 -- 契約変更: base message不存在は従来Routeの404からP0001経由の400へ変更する。
 -- handleEditAndRegenerateはres.okのみを判定しており、git grepでもstatus依存はないため実害はない。
 

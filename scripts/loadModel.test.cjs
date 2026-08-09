@@ -94,7 +94,7 @@ assert.equal(MODEL_CONFIG.image_gen.lsKey, "kabehub_image_provider");
 
 // ────────────────────────────────────────────────────────────
 // MODEL_CONFIG スナップショット（全4provider・ID・表示順を固定）
-// registry移行(T3)でMODEL_CONFIGがregistry由来に載せ替わった際、
+// registry移行(T3)は完了済み。本スナップショットは今後のregistry構造変更時に
 // モデルの欠落・順序入れ替わりを検知するための安全網
 // ────────────────────────────────────────────────────────────
 const modelIdsByProvider = Object.fromEntries(

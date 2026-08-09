@@ -1,7 +1,7 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/07/27（v174基準）
-> このファイルはコード（types/index.ts・lib/modelRegistry.ts・lib/pricing.ts・app/api/chat/route.ts・app/api/arena/route.ts・components/ChatInput.tsx）とファイル構成一覧との突き合わせを経て更新。ただし一部ファイルは名称からの推測のみで内容未確認（⚠️マーク箇所）。
+最終更新: 2026/08/09（MH-1完了。ME-5・MB-c/e・H-21節・MG系・MH-3〜MH-6反映後の最終HEAD基準）
+> このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
 
@@ -41,7 +41,8 @@ rmdir /s /q node_modules && npm install && npm run dev
 
 ```bash
 # 作業終了時（必ず実行）
-git add .
+git status --short   # 変更内容を確認
+git add <変更したファイルを個別指定>
 git commit -m "作業内容のメモ"
 git push origin main
 
@@ -58,7 +59,7 @@ git pull origin main
 
 | レイヤー | 技術 |
 |-|-|
-| フロントエンド | Next.js 14 (App Router) + React + Tailwind CSS |
+| フロントエンド | Next.js 16.2.11 (App Router) + React 19.2.8 + Tailwind CSS |
 | DB | Supabase (PostgreSQL) — 法人アカウント admin@kabehub.com |
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
 | AI メイン | Anthropic Claude API（claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
@@ -84,19 +85,19 @@ git pull origin main
 | `app/api/arena/route.ts` | AI闘技場（複数AI同士の議論）のターン管理。**chat/route.tsと異なり非ストリーミング実装**（`await res.json()`で一括取得）。ClaudeのThinking/max_tokens設定は`resolveClaudeRequestOverrides`を共有し、text blockを全件結合する。gpt-5.5-pro用の`/v1/responses`分岐に対応済み |
 | `app/api/explore/route.ts` | 公開スレッド一覧。sort パラメータ（newest/popular/trending）対応 |
 | `app/api/share/[token]/route.ts` | 共有ページ用データ取得。shared_atフィルター（スナップショット型共有）あり。**後方互換に注意** |
-| `app/api/share/[token]/fork/route.ts` | 共有スレッドのフォーク処理 ⚠️内容未確認 |
-| `app/api/threads/route.ts` | スレッド一覧関連 ⚠️内容未確認 |
+| `app/api/share/[token]/fork/route.ts` | POST：共有スレッドのフォーク処理 |
+| `app/api/threads/route.ts` | GET：認証ユーザーのスレッド一覧取得 |
 | `app/api/threads/[id]/route.ts` | スレッドのCRUD。PATCHはupsert方式 |
 | `app/api/threads/[id]/branch-to/route.ts` | 「新しいチャットに分岐」機能（v155） |
 | `app/api/threads/[id]/copy/route.ts` | スレッドコピー・フォーク。roleplay関連フィールドをリセット。v158で500エラー修正済み（`copied_from`→`forked_from_id`） |
 | `app/api/threads/[id]/drafts/route.ts` | 下書き保存 |
 | `app/api/threads/[id]/likes/route.ts` | いいね機能 |
 | `app/api/threads/[id]/message-notes/route.ts` / `notes/route.ts` | メッセージ単位・スレッド単位のメモ |
-| `app/api/threads/[id]/messages/route.ts` / `messages/[messageId]/route.ts` | メッセージ操作 ⚠️内容未確認 |
+| `app/api/threads/[id]/messages/route.ts` / `app/api/threads/[id]/messages/[messageId]/route.ts` | 前者はGET・DELETE、後者はDELETE・PATCHでスレッド内メッセージを操作 |
 | `app/api/threads/[id]/messages/restore-branch/route.ts` | 分岐の復元 |
 | `app/api/threads/[id]/tags/route.ts` | タグ管理 |
 | `app/api/folder-settings/route.ts` | フォルダ単位のシステムプロンプト設定・GitHub連携設定（プロジェクト機能） |
-| `app/api/messages/[id]/route.ts` | メッセージ単体操作 ⚠️内容未確認 |
+| `app/api/messages/[id]/route.ts` | DELETE・PATCHによるメッセージ単体操作（画像tombstone操作を含む） |
 
 ### API Routes（RAG / Memory）
 
@@ -107,8 +108,8 @@ git pull origin main
 | `app/api/lore/bulk-archive/route.ts` | POST・複数記憶を一括アーカイブ（is_pinned保護あり） |
 | `app/api/lore/like/route.ts` | POST・AI発言を「👍 記憶に追加」で liked_ai として保存 |
 | `app/api/lore/batch-train/route.ts` | POST・未学習のuserメッセージをEmbedding化してlore_embeddingsに保存 |
-| `app/api/lore/chunks/route.ts` / `chunks/[id]/route.ts` | Lore chunk関連 ⚠️内容未確認 |
-| `app/api/lore/embed/route.ts` | Embedding生成関連 ⚠️内容未確認 |
+| `app/api/lore/chunks/route.ts` / `app/api/lore/chunks/[id]/route.ts` | 前者はLore chunk一覧取得（GET）、後者は削除（DELETE） |
+| `app/api/lore/embed/route.ts` | POST：既存Embeddingを削除して新しいEmbeddingを生成・保存 |
 | `app/api/lore/update-temporal-status/route.ts` | POST・temporal_status自動更新（SQLベース・LLM不要） |
 | `app/api/lore/consolidate/candidates/route.ts` | GET・類似記憶統合候補一覧（dismiss済み除外） |
 | `app/api/lore/consolidate/dismiss/route.ts` | POST・統合候補ペアを無視登録 |
@@ -123,13 +124,13 @@ git pull origin main
 | ファイル | 役割 |
 |-|-|
 | `app/api/fetch-github/route.ts` | チャット添付用の一時GitHubファイル取得 |
-| `app/api/auth/github/route.ts` | GitHub OAuth開始 ⚠️内容未確認 |
+| `app/api/auth/github/route.ts` | GitHub OAuth開始（GET）・ローカル連携解除（DELETE） |
 | `app/api/auth/github/callback/route.ts` | GitHub OAuthコールバック |
 | `app/api/auth/github/status/route.ts` | GitHub連携状態確認 |
 
 ### API Routes（MCP）
 
-⚠️ **既存資料の「次に実装予定：KabeHub MCPサーバー（Phase 4完了後）」は実態と矛盾している可能性が高い。** 以下のファイルが既に存在するため、MCPサーバーは一定程度実装済みとみられる。次回コード確認時に実装状況・完成度を要確認。
+prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI・`/api/mcp/threads`・`/api/mcp/threads/[id]/messages`のBearer認証API実装済み。別repo `github.com/kabehub/kabehub-mcp`：stdio方式のMCPサーバー実装済み。現行ツールは`create_thread`・`add_message`・`list_threads`の3つ（`src/index.ts`で確認）。npm registryへの公開状態は本項では断定しない。
 
 | ファイル | 役割 |
 |-|-|
@@ -141,14 +142,17 @@ git pull origin main
 
 | ファイル | 役割 |
 |-|-|
-| `app/api/album/route.ts` | アルバム機能 ⚠️内容未確認 |
-| `app/api/calendar/route.ts` | カレンダー機能 ⚠️内容未確認 |
-| `app/api/extract-settings/route.ts` | 設定抽出（おそらくLore Book関連） ⚠️内容未確認 |
+| `app/api/account/route.ts` | DELETE：所有Storage画像を削除後、`delete_current_user` RPCでアカウントを削除 |
+| `app/api/album/route.ts` | GET：生成画像一覧取得・署名URL発行 |
+| `app/api/calendar/route.ts` | GET：指定年月の範囲で認証ユーザーのスレッドを取得 |
+| `app/api/cron/storage-cleanup/route.ts` | GET：Cron Secret認証で孤立Storage候補を抽出し、dry-runまたは削除を実行・記録 |
+| `app/api/csp-report/route.ts` | POST：CSP違反レポートをサイズ・rate limit・URL無害化のうえ記録 |
+| `app/api/extract-settings/route.ts` | 会話から`novel_settings`を抽出・保存（POST）・取得（GET） |
 | `app/api/image-gen/route.ts` | 画像生成（Gemini / OpenAI / Ideogram / Flux） |
-| `app/api/novel-check/route.ts` | 小説整合性チェック機能 ⚠️内容未確認 |
+| `app/api/novel-check/route.ts` | POST：入力検証後、外部AI APIで小説設定との整合性をチェック |
 | `app/api/profile/route.ts` | ユーザープロフィール |
-| `app/api/reports/route.ts` | 通報機能 ⚠️内容未確認 |
-| `app/api/search/route.ts` | 検索機能 ⚠️内容未確認 |
+| `app/api/reports/route.ts` | POST：service role経由で`submit_report` RPCを呼び出して通報を登録 |
+| `app/api/search/route.ts` | GET：所有スレッドのタイトル・メッセージ本文を部分一致検索 |
 | `app/api/stats/route.ts` | 利用統計・料金集計（lib/pricing.ts利用） |
 
 ### Pages
@@ -157,10 +161,11 @@ git pull origin main
 |-|-|
 | `app/page.tsx` | メインチャット画面。サイドバー折り畳み・スマホ判定などの中枢state |
 | `app/[handle]/` (`page.tsx` / `default.tsx` / `ProfilePage.tsx`) | 公開プロフィールページ |
-| `app/album/page.tsx` | アルバム機能 ⚠️内容未確認 |
+| `app/admin/storage-cleanup/page.tsx` | Storage Cleanupの直近実行履歴を表示する認証必須の管理ページ |
+| `app/album/page.tsx` | 生成画像の一覧・選択・削除ページ |
 | `app/arena/page.tsx` | AI闘技場 |
 | `app/arena/[token]/`（`ArenaViewPage.tsx` / `default.tsx` / `page.tsx`） | 闘技場の共有ビュー |
-| `app/calendar/page.tsx` | カレンダー機能 ⚠️内容未確認 |
+| `app/calendar/page.tsx` | 月別スレッドカレンダーページ |
 | `app/explore/page.tsx` | 公開スレッド一覧 |
 | `app/image/page.tsx` | 画像生成ページ |
 | `app/memory/page.tsx` | Memory Summary UI。記憶一覧・フィルタ・検索・ソート・グループ表示・一括アーカイブ・統合候補・Dreaming履歴 |
@@ -182,39 +187,56 @@ git pull origin main
 | `components/MessageBubble.tsx` | 通常モードのメッセージ表示。「👍 記憶に追加」ボタン・編集/上書き再生成モーダル（ドロップダウン方式・v173） |
 | `components/RoleplayBubble.tsx` | なりきりモード用メッセージ表示（LINEライクUI） |
 | `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
-| `components/ArenaTimeline.tsx` | AI闘技場のタイムライン表示 ⚠️内容未確認 |
+| `components/ArenaTimeline.tsx` | provider別Bubble・thinking表示付きのAI闘技場タイムライン |
 | `components/BranchTree.tsx` | 分岐ツリー可視化コンポーネント（Phase B） |
 | `components/ExportModal.tsx` | TXT/MD/CSVエクスポートのUI。出力生成は`lib/exportUtils.ts`を利用 |
 | `components/LegalLayout.tsx` | 利用規約・プライバシーポリシー等の共通レイアウト |
 | `components/NovelSettingsPane.tsx` | 小説プロジェクト設定ペイン |
-| `components/OutlinePane.tsx` | あらすじ・アウトラインペイン ⚠️内容未確認 |
+| `components/OutlinePane.tsx` | あらすじ・アウトラインの開閉ペイン |
 | `components/PublishConfirmModal.tsx` | 公開確認モーダル。なりきりモードのスレッドは公開不可のガードあり |
+| `components/Toast.tsx` | 成功・エラー通知を表示するToast Providerと`useToast` hook |
 
 ### Lib
 
 | ファイル | 役割 |
 |-|-|
-| `lib/supabase/client.ts` | ブラウザ用Supabaseクライアント |
-| `lib/supabase/server.ts` | Server Components用 |
-| `lib/supabase/route-handler.ts` | Route Handler用 |
-| `lib/supabase/download-image.ts` | 画像ダウンロードヘルパー ⚠️内容未確認 |
-| `lib/supabase.ts` | Supabase関連の共通処理 ⚠️内容未確認 |
-| `lib/modelRegistry.ts` | モデル台帳。モデルID・表示情報・利用surface・デフォルト・Thinking対応・料金・許可判定を一元管理。`canToggleDeepThinking`と`resolveClaudeRequestOverrides`も提供 |
-| `lib/pricing.ts` | `getPricing`を`lib/modelRegistry.ts`から再exportする互換ファサード。`calcCost`・`formatUSD`を提供 |
-| `lib/lore.ts` | MemoryKind拡張・LoreSearchResult拡張・`searchLore` / `searchLoreV2` |
-| `lib/loreMemorySelect.ts` | `LORE_MEMORY_SELECT` 定数を共通化 |
-| `lib/branching.ts` | 分岐関連ロジック ⚠️内容未確認 |
+| `lib/ai-context-blocks.ts` | AI参照データの本文・属性値を無害化し、共通の参照ブロックを生成 |
+| `lib/branching.ts` | 表示順・anchor・chain block・現在laneの構築ロジック |
 | `lib/branchTree.ts` | 分岐ツリー構築ロジック（`scripts/branchTree.test.cjs`でテストあり） |
 | `lib/context-window.ts` | `trimContextToWindow`。コンテキストウィンドウのトリミング・キャッシュアンカー算出 |
-| `lib/github.ts` | GitHub連携共通処理・`buildPinnedGithubContext` |
-| `lib/github-token-crypto.ts` | GitHubトークンの暗号化 ⚠️内容未確認 |
+| `lib/csp.ts` | CSPヘッダー生成・違反レポート解析・報告URL無害化 |
+| `lib/exportUtils.ts` | 会話エクスポート生成（`buildExportContent`等）。`components/ChatPanel.tsx`・`app/settings/page.tsx`から利用 |
+| `lib/formatters.ts` | 相対時刻とローカル日時の表示フォーマッター |
+| `lib/genres.ts` | ジャンル階層マスタ（`GENRES`）と子ジャンルID取得ヘルパー（`getChildIds`） |
+| `lib/github-token-crypto.ts` | AES-GCMによるGitHubトークンの暗号化・復号 |
 | `lib/github-token-store.ts` | `getGithubToken`。GitHubトークンの保存・取得 |
 | `lib/github-tool-loop.ts` | `runGithubToolLoop`。AI動的GitHub探索（Phase 4 AI Tool Loop） |
-| `lib/mcp-auth.ts` | MCP用Bearer認証処理 ⚠️内容未確認 |
+| `lib/github.ts` | GitHub連携共通処理・`buildPinnedGithubContext` |
+| `lib/inputUtils.ts` | 送信キー設定の読み込みとモバイルviewport判定の共通helper |
+| `lib/internalModels.ts` | LoreのEmbedding・抽出・統合で使う内部固定モデルID |
+| `lib/logger.ts` | DB・外部API・ベストエフォート・security guard向けの機微情報を許可リスト化した構造化logger |
+| `lib/lore/`（`batchTrain.ts` / `consolidation.ts` / `consolidationLlm.ts` / `dreaming.ts` / `index.ts` / `mappers.ts` / `openai.ts` / `search.ts` / `selects.ts` / `types.ts`） | 記憶抽出・検索・統合・Dreaming・OpenAI呼び出し・型/mapper/select定義一式 |
+| `lib/loreMemorySelect.ts` | `LORE_MEMORY_SELECT` 定数を共通化 |
+| `lib/mcp-auth.ts` | Bearer tokenのhash化・`mcp_tokens`照合・`last_used_at`のベストエフォート更新 |
+| `lib/mcp-token-hash.ts` | MCPトークンをSHA-256でhash化 |
+| `lib/messages/delete.ts` | 所有メッセージ削除、関連Loreのarchive、所有Storage画像の後処理を共通化 |
+| `lib/modelRegistry.ts` | モデル台帳。モデルID・表示情報・利用surface・デフォルト・Thinking対応・料金・許可判定を一元管理。`canToggleDeepThinking`と`resolveClaudeRequestOverrides`も提供 |
+| `lib/pricing.ts` | `getPricing`を`lib/modelRegistry.ts`から再exportする互換ファサード。`calcCost`・`formatUSD`を提供 |
+| `lib/proxy-paths.ts` | `proxy.ts`と対応する認証・公開・MCP・`next`復帰先のパス/メソッド判定 |
 | `lib/rate-limit.ts` | `checkChatRateLimit`。チャットのレート制限 |
-| `lib/stringUtils.ts` | 文字列処理ユーティリティ ⚠️内容未確認 |
-| `lib/genres.ts` | ジャンル階層マスタ（`GENRES`）。親ジャンル・表示名・子ジャンルID取得ヘルパー（`getParentGenre` / `getGenreLabel` / `getChildIds`） |
-| `lib/exportUtils.ts` | 会話エクスポート生成（`buildExportContent`等）。`components/ChatPanel.tsx`・`app/settings/page.tsx`から利用 |
+| `lib/storage-path-guard.ts` | Storageパスが指定ユーザーの名前空間配下にあるか検証 |
+| `lib/stringUtils.ts` | secret notationのmaskとメッセージsummary生成 |
+| `lib/supabase.ts` | browser・Server Components・Route Handler用Supabase helperのbarrel export |
+| `lib/supabase/admin.ts` | Cron・管理バッチ用のservice role Supabaseクライアント生成 |
+| `lib/supabase/client-auth.ts` | browser側の`auth.getUser()`と認証エラー処理を共通化 |
+| `lib/supabase/client.ts` | ブラウザ用Supabaseクライアント |
+| `lib/supabase/download-image.ts` | `generated-images`から画像をdownloadしbase64へ変換 |
+| `lib/supabase/route-auth.ts` | Route Handlerの必須/任意認証とCookie転記つきJSON応答を共通化 |
+| `lib/supabase/route-handler.ts` | Route Handler用Supabaseクライアント |
+| `lib/supabase/server.ts` | Server Components用Supabaseクライアント |
+| `lib/supabase/storage-cleanup.ts` | 所有Storageパス収集・階層一覧取得・batch削除 |
+| `lib/threadResourceCrud.ts` | スレッド配下リソースの認証付きGET・POST・DELETE handler factory |
+| `lib/validationLimits.ts` | handle・tag・Pinned GitHub Files・一括archiveの入力制限と正規化 |
 
 ### Docs
 
@@ -222,8 +244,52 @@ git pull origin main
 |-|-|
 | `docs/schema.sql` | 本番Supabaseと突き合わせたcanonicalスキーマ |
 | `docs/applied/` | 本番適用済み・schema.sqlへ反映済みのマイグレーション履歴。再実行しない（内容は`docs/applied/README.md`参照） |
+| `docs/audit/` | 全体監査レポートと監査対応の検証記録 |
+| `docs/lore-refactoring-notes.md` | Lore検索経路・責務分割・移行判断のリファクタリング記録 |
+| `docs/api-key-flow-inventory.md` | BYOK APIキーの保存・送受信・ログ経路の棚卸し正本 |
+| `docs/storage.sql` | Storage bucket・RLS・孤立オブジェクトcleanup関連のSQL正本 |
+| `docs/audit/mh-5b-db-verification-2026-08-09.md` | MH-5bのDB実環境確認結果とDisposition |
+| `docs/audit/mh-6-npm-audit-2026-08-09.md` | MH-6の依存関係・npm audit再検証記録 |
 
 新しいマイグレーションは `docs/migration_v{n}_{内容}.sql` として追加し、Supabase Dashboard > SQL Editor で手動実行する。適用・schema.sql反映後は `docs/applied/` へ移動する。
+
+### Scripts
+
+監査時7本 → 現在31本（`git ls-files 'scripts/*'`による生成時点の実測）。
+
+| ファイル | 目的 |
+|-|-|
+| `scripts/ai-context-blocks.test.cjs` | AI参照ブロック生成と本文・属性値無害化の回帰テスト |
+| `scripts/api-key-handling.test.cjs` | BYOK APIキーの保存・転送・ログ露出防止を横断検証 |
+| `scripts/apply-branch-edit-route.test.cjs` | branch edit RouteのRPC契約・採番・エラー処理を検証 |
+| `scripts/auth-callback-route.test.cjs` | 認証callbackのcode交換・Cookie・`next`復帰/onboarding分岐を検証 |
+| `scripts/branchTree.test.cjs` | 分岐laneとツリーレイアウト構築を検証 |
+| `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
+| `scripts/csp.test.cjs` | CSPヘッダー・report解析・URL無害化を検証 |
+| `scripts/fetch-github-route.test.cjs` | GitHubファイル取得Routeの認証・取得・失敗契約を検証 |
+| `scripts/formatters.test.cjs` | 相対時刻・日時フォーマットを固定時刻で検証 |
+| `scripts/loadModel.test.cjs` | モデル設定の保存/復元・fallback・registry由来snapshotを検証 |
+| `scripts/logger.test.cjs` | 構造化loggerの許可フィールドと機微情報非出力を検証 |
+| `scripts/lore-dreaming-clean.test.cjs` | Dreamingの記憶cleaning・失敗時fallback・統合処理を検証 |
+| `scripts/lore-openai.test.cjs` | Lore用Embedding/Chat API wrapperのrequest・response・error契約を検証 |
+| `scripts/lore-search-policy.test.cjs` | チャットのLore検索policy定数と利用側の同期を検証 |
+| `scripts/lore.test.cjs` | Loreのmapper・統合・Dreaming・batch train・関連Routeを特性化テスト |
+| `scripts/mcp-token-hash.test.cjs` | MCPトークンのSHA-256 hashを既知ベクトルで検証 |
+| `scripts/message-delete.test.cjs` | 所有メッセージ・関連Lore・Storage画像の削除契約を検証 |
+| `scripts/modelRegistry.test.cjs` | モデル台帳・surface・default・Thinking・料金の整合を検証 |
+| `scripts/novel-check-route.test.cjs` | novel-check Routeの認証・入力検証・外部API呼び出しを検証 |
+| `scripts/optional-route-auth.test.cjs` | 任意認証Routeの匿名/認証済みCookie・DB/RPC契約を検証 |
+| `scripts/pricing.test.cjs` | registry由来料金・費用計算・表示formatを検証 |
+| `scripts/proxy.test.cjs` | `proxy.ts`のmatcher・認証境界・redirect・CSP付与をマトリクス検証 |
+| `scripts/rate-limit.test.cjs` | rate limiter生成・制限判定・fallbackを検証 |
+| `scripts/restore-branch-route.test.cjs` | 分岐復元RouteのRPC呼び出しとエラー契約を検証 |
+| `scripts/route-auth-cookie.test.cjs` | Route認証helperのCookie転記・応答確定を検証 |
+| `scripts/stats-route.test.cjs` | stats Routeの認証・集計・DBエラー応答を検証 |
+| `scripts/storage-cleanup-cron.test.cjs` | Storage cleanup Cronのmode・候補上限・実行記録を検証 |
+| `scripts/storage-cleanup.test.cjs` | Storageパス収集・再帰一覧取得・batch削除を検証 |
+| `scripts/storage-path-guard.test.cjs` | Storageパスの所有namespace検証をテスト |
+| `scripts/testBootstrap.cjs` | Node上でTypeScript/TSXと`@/` aliasを読み込む共通テストbootstrap |
+| `scripts/threadResourceCrud.test.cjs` | スレッド配下リソース共通CRUD handlerの認証・query契約を検証 |
 
 ---
 
@@ -358,7 +424,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ### スマホ対応関連
 
-- スマホ判定ブレークポイントは **768px** で統一。`app/page.tsx` の `matchMedia("(max-width: 767px)")` と `ChatInput.tsx` / `ChatInputCentered.tsx` の `isMobileViewport()` が同じ値を使う。どちらか変更するときは両方変える
+- スマホ判定ブレークポイントは **768px** で統一。`app/page.tsx` の `matchMedia("(max-width: 767px)")` と、`ChatInput.tsx` / `ChatInputCentered.tsx` が共有する`lib/inputUtils.ts`の`isMobileViewport()`を同時に確認する
 - iOS Safari の `matchMedia.addListener` フォールバック（`app/page.tsx`）は削除しないこと（古いiOSで動かなくなる）
 - **iPhone実機での動作は未確認**。サイドバードロワー・ヘッダー・＋ドロップアップ・モデルドロップダウン・会話履歴ドロワー・ソフトキーボード表示時の位置を要確認
 - `isToolMenuOpen`（＋ドロップアップ）と `openModelProvider`（モデルドロップダウン）は排他制御
@@ -366,7 +432,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ### 送信キー設定関連（v163）
 
-- `loadEnterMode()` / `isMobileViewport()` は `ChatInput.tsx` と `ChatInputCentered.tsx` に**同一定義が重複**している。片方だけ変更すると挙動がズレる。将来的には `lib/inputUtils.ts` へ共通化推奨
+- `loadEnterMode()` / `isMobileViewport()` はMH-3で`lib/inputUtils.ts`へ共通化済み。送信キー・モバイル判定を変更するときは共通helperと両入力コンポーネントの利用箇所を確認する
 - LocalStorageキー: `kabehub_enter_mode`（`"send"` または `"newline"`）
 - `MessageBubble.tsx` の editRegen textarea は `enterMode` 設定と独立して Ctrl/Cmd+Enter 固定（意図的な仕様）
 - `app/arena/page.tsx` の人間ターン入力は変更対象外（Enter送信のまま）
@@ -401,9 +467,9 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ### MCP関連
 
-- `/api/mcp/*` はBearer認証のため、middlewareのmatcherに `/api/((?!mcp).*)` が必要
+- `/api/mcp/*` はBearer認証のため、`proxy.ts`の`config.matcher`に `/api/((?!mcp).*)` が必要
 - APIクライアントからは必ず `https://www.kabehub.com` を使う（`kabehub.com` へのリクエストは www. へ307リダイレクトされ、Authorizationヘッダーが消える）
-- ⚠️ 「次に実装予定」に記載のあるMCPサーバーは、`app/api/mcp-tokens/route.ts` `app/api/mcp/threads/route.ts` 等が既に存在するため実装状況の再確認が必要（詳細は主要ファイル表のMCPセクション参照）
+- 現行MCPの確定実装範囲は主要ファイル表のMCP節を正とし、拡張ツールは「MCP拡張ロードマップ」の別トラックとして扱う
 
 ### RAG関連
 
@@ -425,8 +491,8 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ### BYOK APIキー関連（H-21）
 
-- **リスク受容**: APIキーはLocalStorageに平文保存され、同一オリジンでXSSが発生した場合は生キーが読み取られうる。B-05aのCSP強制化（Enforce切替後）により発生確率は下がるが、許可済みスクリプトの侵害等に対する完全な防御ではない。本リスクは受容し、H-21はリスク受容＋H-21Cへの将来移管としてクローズする
-- **CSPの現状**: 現在はReport-Only運用中。Enforce切替はB-05aの別運用タスクであり、APIキー経路修正と混同しない
+- **リスク受容**: APIキーはLocalStorageに平文保存され、同一オリジンでXSSが発生した場合は生キーが読み取られうる。「CSP Enforce切替・運用ロードマップ」のEnforce切替後は発生確率が下がるが、許可済みスクリプトの侵害等に対する完全な防御ではない。本リスクは受容し、H-21はリスク受容＋H-21Cへの将来移管としてクローズする
+- **CSPの現状**: 現在はReport-Only運用中。Enforce切替は「CSP Enforce切替・運用ロードマップ」の別運用タスクであり、APIキー経路修正と混同しない
 - **送受信経路**: `docs/api-key-flow-inventory.md`を正とし、固定件数ではなく横断grep結果に追随して更新する
 - **Gemini外部転送**: KabeHubからGoogle APIへは`x-goog-api-key`を使う。URLクエリ`?key=...`へ戻さない
 - **H-21C（未着手・将来検討）**: BYOK資格情報の任意暗号化同期・複数端末対応。ローカル保存は廃止せずオプトイン同期とし、既存LocalStorageキーは明示操作でのみ移行する。生キーをブラウザへ返すAPIは作らず、登録・置換・削除だけを提供する
@@ -541,12 +607,9 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - **iPhone実機確認未了**: モデルドロップダウン・サイドバードロワー・ヘッダー・＋ドロップアップ・会話履歴ドロワー・サイドバー折り畳みボタンの動作確認
 - `ProfilePage.tsx` の日本語テキストが英語になっている（v112でCodex文字化け対処のため・手動修正要）
 - 画像生成 Tech Debt（sharp圧縮・pg_cron自動削除・⭐Saveボタン・設定ページのデフォルトプロバイダー選択UI）
-- GitHub連携 Pinned Files失敗時のUI通知未実装（現状はconsole.warnのみ）
-- 統合成功後にF5なしで候補リストが消えないケース（fetchConsolidationCandidatesのタイミング問題）
-- `loadEnterMode()` / `isMobileViewport()` が `ChatInput.tsx` と `ChatInputCentered.tsx` に重複定義。`lib/inputUtils.ts` への共通化が望ましい
+- GitHub連携 Pinned Files失敗時のUI通知未実装（現状はconsole.warnのみ）。近接するUI改善ロードマップへ合流
 - Phase Bその3（③''の④''をさらに編集した④'''がツリーに表示されない・原因未調査・優先度低）
 - サイドバー折り畳みの `ResizeObserver` 未実装（幅変化時のtextarea高さ再計算）
-- **【新規・要確認】MCPサーバーの実装状況が資料と食い違っている**（「次に実装予定」に記載があるが、`app/api/mcp-tokens/route.ts` 等が既に存在。詳細未確認）
 
 ---
 
@@ -558,22 +621,20 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - サイドバー折り畳みボタン・アイコンバー
 - 入力欄フッターの左端揃え・背景透過の見た目確認
 
-**PWA対応**
-- `manifest.json` 追加・アイコン整備・`viewport-fit=cover`・`env(safe-area-inset-bottom)` を入力欄 padding に追加
-
-**将来：スマホアプリ化（Capacitor推奨）**
-- Capacitor を最初から導入することで Android/iOS の両対応が共通コードで可能
-- PWA → Android TWA でまず Google Play 配信 → 後から `npx cap add ios` で iOS 追加の順が現実的
-- ⚠️ Capacitor 導入時は Next.js の `output: "export"` が必要。API リクエスト先は `https://kabehub.com` を明示的に指定する
+**個別ロードマップへ移管済み**
+- H-01（CSP Enforce切替）→「CSP Enforce切替・運用ロードマップ」
+- H-23（PWA・Capacitor）→「PWA・Capacitorロードマップ」
+- H-24（pg_bigm検索）→「pg_bigm検索ロードマップ」
+- H-45（MCP拡張ツール）→「MCP拡張ロードマップ」
+- H-46（GitHub側revoke）→「GitHub revokeロードマップ」
 
 **Phase 4 マネタイズ**（最優先・未着手）
 - おまかせプラン（クレジット制・月額500〜1,000円）
 - Stripe連携
 - クレジット残量チェック・上限到達時のセルフプラン誘導UI
 
-**KabeHub MCPサーバー**（Phase 4完了後、と資料上はなっているが実装状況要再確認）
-- `mcp_tokens` テーブル追加・`/settings` にトークン発行UI・`kabehub-mcp` npm公開
-- ⚠️ 上記「既知の課題」参照。ルートファイルが既に存在するため、この項目自体の現状把握が最優先
+**MCP実装状況（H-40確定）**
+- prototype側のBearer認証API/トークン発行UIと、別repoの現行3ツールは実装済みであり「次に実装予定」ではない。`publish_thread`等の拡張は「MCP拡張ロードマップ」として区別する
 
 ---
 
@@ -582,10 +643,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - 口述筆記モード（OpenAI Whisper API）
 - 非同期整合性チェック（OpenAI Responses API Background mode）
 - 世界線ラベルの一意な連番化
-- `visibleMessages` 等の `useMemo` 化（パフォーマンス問題が出た場合に検討）
-- MCP拡張ツール（publish_thread / add_tag / bulk_add_messages）
-- GitHub連携 Pinned Files失敗時のUI通知
-- GitHubトークン disconnect時のGitHub側revoke
 - parseGithubBlobUrlのブランチ制限緩和（現状はmain/master/develop/devのみ）
 - `app/arena/page.tsx` 人間ターン入力の送信キー設定への統一
 

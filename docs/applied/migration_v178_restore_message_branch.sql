@@ -1,6 +1,6 @@
 -- migration_v178_restore_message_branch.sql
 -- MF-6a: 分岐復元の非active化とactive化を単一トランザクションRPCへ移す。
--- 適用: 全文レビュー後、テスト環境Supabaseから適用する（現時点では未適用）。
+-- 適用: テスト環境・本番環境ともに適用済み（MH-1時点）。
 
 begin;
 

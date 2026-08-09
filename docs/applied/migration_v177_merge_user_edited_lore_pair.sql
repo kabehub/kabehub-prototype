@@ -3,7 +3,7 @@
 -- トランザクションRPCへ移す。
 -- consolidate_dreaming_batch系とは異なり、liked_ai / liked_ai_cleanedは
 -- 保護対象に含めない。
--- 適用: 全文レビュー後、テスト環境Supabaseから適用する（現時点では未適用）。
+-- 適用: テスト環境・本番環境ともに適用済み（MH-1時点）。
 
 begin;
 

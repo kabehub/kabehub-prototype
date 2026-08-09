@@ -46,9 +46,9 @@
 --   - migration_v176_dreaming_rpc_and_trigger_cleanup.sql（監査D対応：
 --     updated_atトリガー関数をupdate_updated_at_columnへ統一し、
 --     未使用のDreaming RPCオーバーロード2件を削除）
--- 2026/08/06、migration_v177_merge_user_edited_lore_pair.sqlをスキーマ正本へ反映（DB未適用、MF-3c-DB対応）。
--- 2026/08/08、migration_v178_restore_message_branch.sqlをスキーマ正本へ反映（DB未適用、MF-6a対応）。
--- 2026/08/08、migration_v179_apply_branch_edit.sqlをスキーマ正本へ反映（DB未適用、MF-6b対応）。
+-- 2026/08/06、migration_v177_merge_user_edited_lore_pair.sqlをスキーマ正本へ反映（DB適用済み、MF-3c-DB対応）。
+-- 2026/08/08、migration_v178_restore_message_branch.sqlをスキーマ正本へ反映（DB適用済み、MF-6a対応）。
+-- 2026/08/08、migration_v179_apply_branch_edit.sqlをスキーマ正本へ反映（DB適用済み、MF-6b対応）。
 -- 2026/08/09、H-08対応：uuid-ossp依存なし（schema内・本番DB列デフォルト・public関数本体いずれも0件）を確認しcanonical schemaから削除（本番extension自体は未変更）。
 -- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映・テスト環境/本番DB適用済み（H-09対応）。
 --
