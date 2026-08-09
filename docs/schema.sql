@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/08/08（migration_v178_restore_message_branch.sql反映・DB未適用）
+-- 最終更新: 2026/08/09（H-08：未使用uuid-osspをcanonical schemaから削除）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -49,6 +49,7 @@
 -- 2026/08/06、migration_v177_merge_user_edited_lore_pair.sqlをスキーマ正本へ反映（DB未適用、MF-3c-DB対応）。
 -- 2026/08/08、migration_v178_restore_message_branch.sqlをスキーマ正本へ反映（DB未適用、MF-6a対応）。
 -- 2026/08/08、migration_v179_apply_branch_edit.sqlをスキーマ正本へ反映（DB未適用、MF-6b対応）。
+-- 2026/08/09、H-08対応：uuid-ossp依存なし（schema内・本番DB列デフォルト・public関数本体いずれも0件）を確認しcanonical schemaから削除（本番extension自体は未変更）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -69,7 +70,6 @@
 --     （pgvector純正関数を除く）
 -- ============================================================
 
-create extension if not exists "uuid-ossp";  -- 現状 gen_random_uuid() 主体のため実質未使用の可能性あり（要確認）
 create extension if not exists vector;        -- lore_embeddings.embedding 用（pgvector）
 
 -- ============================================================
