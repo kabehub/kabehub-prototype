@@ -169,7 +169,10 @@ async function persistExtractedMemories(
 }
 
 async function markMessageLearnedBestEffort(supabase: SupabaseClient, userId: string, messageId: string): Promise<void> {
-  // 現行挙動を維持するため意図的に握りつぶしている。将来の改善候補
+  // best-effort契約：lore_embeddingsの永続化成功後にis_learnedを更新する。
+  // このフラグ更新に失敗しても今回のバッチ全体は失敗扱いにしない。
+  // ただしis_learned=falseのまま残るため、後続バッチで再処理される可能性がある。
+  // 失敗ログ・リトライ・重複防止は本チケットでは扱わない。
   await supabase
     .from("messages")
     .update({ is_learned: true })
