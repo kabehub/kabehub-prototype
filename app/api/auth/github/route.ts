@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
-import { createOAuthState, deleteGithubToken } from "@/lib/github-token-store";
+import {
+  createOAuthState,
+  deleteGithubToken,
+  getGithubTokenStrict,
+} from "@/lib/github-token-store";
+import {
+  checkGithubToken,
+  revokeGithubAuthorization,
+} from "@/lib/github-oauth";
 import * as logger from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +37,31 @@ export async function DELETE(req: NextRequest) {
   const auth = await requireRouteUser(req);
   if (!auth.ok) return auth.response;
   const { user, finalizeJson } = auth;
+
+  let accessToken: string | null;
+  try {
+    accessToken = await getGithubTokenStrict(user.id);
+  } catch {
+    return finalizeJson(
+      { error: "GitHub連携の解除に失敗しました" },
+      { status: 500 },
+    );
+  }
+
+  if (accessToken === null) {
+    return finalizeJson({ ok: true });
+  }
+
+  const revokeResult = await revokeGithubAuthorization(accessToken);
+  if (!revokeResult.ok) {
+    const tokenStatus = await checkGithubToken(accessToken);
+    if (tokenStatus !== "invalid") {
+      return finalizeJson(
+        { error: "GitHub連携の解除に失敗しました" },
+        { status: 500 },
+      );
+    }
+  }
 
   try {
     await deleteGithubToken(user.id);

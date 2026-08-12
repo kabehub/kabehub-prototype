@@ -53,6 +53,41 @@ export async function getGithubToken(userId: string): Promise<string | null> {
   }
 }
 
+export async function getGithubTokenStrict(
+  userId: string,
+): Promise<string | null> {
+  const supabase = serviceRoleClient();
+  const { data, error } = await supabase
+    .from("user_github_tokens")
+    .select("access_token")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    logger.dbOperationFailed({
+      route: "github-token-store",
+      operation: "get-github-token-strict",
+      table: "user_github_tokens",
+      errorCode: error.code,
+    });
+    throw new Error(error.message);
+  }
+
+  if (!data) return null;
+
+  try {
+    return await decryptToken(data.access_token);
+  } catch (err) {
+    logger.dbOperationFailed({
+      route: "github-token-store",
+      operation: "decrypt-github-token",
+      table: "user_github_tokens",
+      errorType: err instanceof Error ? err.name : "unknown",
+    });
+    throw err;
+  }
+}
+
 export async function getGithubStatus(
   userId: string,
 ): Promise<{ connected: boolean; github_login: string | null; scope: string | null }> {
