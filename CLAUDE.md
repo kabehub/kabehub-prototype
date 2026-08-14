@@ -63,7 +63,7 @@ git pull origin main
 | DB | Supabase (PostgreSQL) — 法人アカウント admin@kabehub.com |
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
 | AI メイン | Anthropic Claude API（claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
-| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.5-flash-lite） |
+| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.7-flash / gemini-3.5-flash-lite） |
 | AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna）※gpt-5.5-proは`/v1/chat/completions`非対応のため、chat・arena両方で`/v1/responses`へ分岐する |
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |

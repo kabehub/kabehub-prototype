@@ -32,6 +32,7 @@ const expectedLegacyModelConfig = {
       { id: "gemini-3.5-flash", label: "3.5 Flash", badge: "高性能" },
       { id: "gemini-3.1-flash-lite", label: "3.1 Flash Lite", badge: "軽量・爆速" },
       { id: "gemini-3.6-flash", label: "3.6 Flash", badge: "高性能" },
+      { id: "gemini-3.7-flash", label: "3.7 Flash", badge: "高性能" },
       { id: "gemini-3.5-flash-lite", label: "3.5 Flash Lite", badge: "軽量・爆速" },
     ],
     defaultModel: "gemini-2.5-flash",
@@ -241,12 +242,21 @@ assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", intro), { input
 assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", regular), { inputPerMTok: 3, outputPerMTok: 15 });
 assert.equal(registry.getPricing("gemini/gemini-2.5-flash-image"), null);
 assert.deepEqual(registry.getPricing("claude-opus-4-8"), { inputPerMTok: 5, outputPerMTok: 25 });
+assert.deepEqual(registry.getPricing("gemini-3.7-flash", new Date("2026-12-31T23:59:59.999Z")), {
+  inputPerMTok: 0.75,
+  outputPerMTok: 3.75,
+});
+assert.deepEqual(registry.getPricing("gemini-3.7-flash", new Date("2027-01-01T00:00:00.000Z")), {
+  inputPerMTok: 1.5,
+  outputPerMTok: 7.5,
+});
 
 const newModels = [
   ["openai", "gpt-5.6-sol", { inputPerMTok: 5, outputPerMTok: 30 }],
   ["openai", "gpt-5.6-terra", { inputPerMTok: 2.5, outputPerMTok: 15 }],
   ["openai", "gpt-5.6-luna", { inputPerMTok: 1, outputPerMTok: 6 }],
   ["gemini", "gemini-3.6-flash", { inputPerMTok: 1.5, outputPerMTok: 7.5 }],
+  ["gemini", "gemini-3.7-flash", { inputPerMTok: 0.75, outputPerMTok: 3.75 }],
   ["gemini", "gemini-3.5-flash-lite", { inputPerMTok: 0.3, outputPerMTok: 2.5 }],
 ];
 for (const [provider, modelId, pricing] of newModels) {

@@ -92,6 +92,10 @@ export const MODEL_REGISTRY = [
   { kind: "text", id: "gemini-3.5-flash", provider: "gemini", label: "3.5 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 9.00) },
   { kind: "text", id: "gemini-3.1-flash-lite", provider: "gemini", label: "3.1 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.25, 1.50) },
   { kind: "text", id: "gemini-3.6-flash", provider: "gemini", label: "3.6 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 7.50) },
+  { kind: "text", id: "gemini-3.7-flash", provider: "gemini", label: "3.7 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { inputPerMTok: 0.75, outputPerMTok: 3.75, note: "導入価格（〜2026-12-31）" },
+    { from: "2027-01-01T00:00:00.000Z", inputPerMTok: 1.50, outputPerMTok: 7.50 },
+  ] },
   { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
 
   { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
