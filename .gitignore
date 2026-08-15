@@ -9,3 +9,5 @@ build
 .claude/
 tsconfig.tsbuildinfo
 production_schema_backup_before_p0.sql 
+temp_*.txt
+test-execution.log
