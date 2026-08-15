@@ -25,3 +25,9 @@
 | v89_migration.sql | messages.model_id カラム追加 |
 | v141c_migration.sql | Dreaming保護条件変更の適用手順記録（直接再実行するファイルではない） |
 | v175_migration.sql | github_oauth_states への expires_at インデックス追加 |
+| migration_v127_public_threads_view_security_invoker.sql | public_threads_viewへのsecurity_invoker明示（Supabase Security Advisor対応） |
+| migration_v128_public_threads_projection.sql | threadsの列制限なし公開SELECT policy削除・公開データ読み取りのSECURITY DEFINER投影関数経由への統一（B-01対応） |
+| migration_v177_merge_user_edited_lore_pair.sql | ユーザー手動編集Loreマージの単一トランザクションRPC化（MF-3c-DB対応） |
+| migration_v178_restore_message_branch.sql | メッセージ分岐復元の単一トランザクションRPC化（MF-6a対応） |
+| migration_v179_apply_branch_edit.sql | 分岐編集のアーカイブ・採番・新規user message追加の単一トランザクションRPC化（MF-6b対応） |
+| migration_v180_drop_legacy_counter_rpcs.sql | 旧likesカウンターRPC（increment_likes_count / decrement_likes_count）削除（H-09対応） |
