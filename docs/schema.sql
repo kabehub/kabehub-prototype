@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/08/09（migration_v180_drop_legacy_counter_rpcs.sql反映・テスト環境/本番DB適用済み）
+-- 最終更新: 2026/08/15（migration_v181_ai_usage_events.sql反映・本番DB適用済み）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -51,6 +51,7 @@
 -- 2026/08/08、migration_v179_apply_branch_edit.sqlをスキーマ正本へ反映（DB適用済み、MF-6b対応）。
 -- 2026/08/09、H-08対応：uuid-ossp依存なし（schema内・本番DB列デフォルト・public関数本体いずれも0件）を確認しcanonical schemaから削除（本番extension自体は未変更）。
 -- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映・テスト環境/本番DB適用済み（H-09対応）。
+-- 2026/08/15、migration_v181_ai_usage_events.sqlをスキーマ正本へ反映（本番DB適用済み、AI利用コスト計測基盤対応）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1153,6 +1154,49 @@ create policy "novel_settings: delete own"
 create trigger novel_settings_updated_at
   before update on novel_settings
   for each row execute function update_updated_at_column();
+
+-- ============================================================
+-- ai_usage_events テーブル（AI利用コスト計測基盤）
+-- ============================================================
+create table if not exists ai_usage_events (
+  id                          uuid primary key default gen_random_uuid(),
+  user_id                     uuid not null references auth.users(id) on delete cascade,
+  thread_id                   uuid null references threads(id) on delete set null,
+  message_id                  uuid null references messages(id) on delete set null,
+  provider                    text not null,
+  model_id                    text not null,
+  request_type                text not null,
+  input_tokens                integer null,
+  output_tokens               integer null,
+  cache_creation_input_tokens integer null,
+  cache_read_input_tokens     integer null,
+  cache_write_input_tokens    integer null,
+  cached_input_tokens         integer null,
+  image_count                 integer null,
+  estimated_cost_usd          numeric null,
+  cost_source                 text not null,
+  status                      text not null default 'completed',
+  priced_at                   timestamptz not null,
+  created_at                  timestamptz not null default now()
+);
+
+create index if not exists ai_usage_events_user_priced_idx
+  on ai_usage_events (user_id, priced_at);
+
+create index if not exists ai_usage_events_user_model_idx
+  on ai_usage_events (user_id, provider, model_id);
+
+alter table ai_usage_events enable row level security;
+
+drop policy if exists "自分の利用イベントのみ閲覧可" on ai_usage_events;
+create policy "自分の利用イベントのみ閲覧可"
+  on ai_usage_events
+  for select
+  to authenticated
+  using ((select auth.uid()) = user_id);
+
+revoke all on table ai_usage_events from anon, authenticated;
+grant select on table ai_usage_events to authenticated;
 
 -- ============================================================
 -- アカウント削除RPC

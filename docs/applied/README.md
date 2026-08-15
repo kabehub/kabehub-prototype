@@ -31,3 +31,4 @@
 | migration_v178_restore_message_branch.sql | メッセージ分岐復元の単一トランザクションRPC化（MF-6a対応） |
 | migration_v179_apply_branch_edit.sql | 分岐編集のアーカイブ・採番・新規user message追加の単一トランザクションRPC化（MF-6b対応） |
 | migration_v180_drop_legacy_counter_rpcs.sql | 旧likesカウンターRPC（increment_likes_count / decrement_likes_count）削除（H-09対応） |
+| migration_v181_ai_usage_events.sql | AI利用コスト計測基盤（ai_usage_eventsテーブル新設・provider横断のusage/コスト記録） |
