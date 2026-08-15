@@ -3,6 +3,8 @@ import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { sanitizeAttributeValue, sanitizeReferenceText } from "@/lib/ai-context-blocks";
 import { isAllowedNovelCheckModel, NOVEL_CHECK_CONFIG } from "@/lib/modelRegistry";
 import * as logger from "@/lib/logger";
+import { calculateTextUsageCost, recordUsageEvent, type UsageEventStatus } from "@/lib/aiUsage";
+import { serviceRoleClient } from "@/lib/mcp-auth";
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +77,43 @@ ${combined}`;
     generationConfig: { maxOutputTokens: NOVEL_CHECK_CONFIG.maxOutputTokens },
   };
 
+  const usageEventId = crypto.randomUUID();
+  const pricedAt = new Date();
+  const usage = {
+    inputTokens: null as number | null,
+    outputTokens: null as number | null,
+    cacheReadInputTokens: null as number | null,
+  };
+
+  const persistUsage = async (status: UsageEventStatus) => {
+    const cost = calculateTextUsageCost("gemini", modelId, usage, pricedAt);
+    try {
+      await recordUsageEvent(serviceRoleClient(), {
+        id: usageEventId,
+        userId: user.id,
+        threadId: null,
+        messageId: null,
+        provider: "gemini",
+        modelId,
+        requestType: "novel_check",
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheReadInputTokens: usage.cacheReadInputTokens,
+        estimatedCostUsd: cost.estimatedCostUsd,
+        costSource: cost.costSource,
+        status,
+        pricedAt,
+      });
+    } catch (err) {
+      logger.dbOperationFailed({
+        route: "novel-check",
+        operation: "record-usage-event",
+        table: "ai_usage_events",
+        errorType: err instanceof Error ? err.name : "unknown",
+      });
+    }
+  };
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
@@ -87,7 +126,7 @@ ${combined}`;
       try {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
-          { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey }, body: JSON.stringify(body) }
+          { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey }, body: JSON.stringify(body), signal: req.signal }
         );
 
         if (!response.ok) {
@@ -119,17 +158,32 @@ ${combined}`;
                   JSON.stringify({ type: "chunk", text }) + "\n"
                 ));
               }
+              if (parsed.usageMetadata) {
+                const metadata = parsed.usageMetadata;
+                usage.inputTokens = metadata.promptTokenCount ?? null;
+                const candidates = metadata.candidatesTokenCount;
+                const thoughts = metadata.thoughtsTokenCount;
+                usage.outputTokens = candidates == null && thoughts == null
+                  ? null
+                  : (candidates ?? 0) + (thoughts ?? 0);
+                usage.cacheReadInputTokens = metadata.cachedContentTokenCount ?? null;
+              }
             } catch {
               // 技術的許容: buffer再構成済みのSSE data行がJSONとして不正な場合、その行のみ破棄して後続処理を継続する。失敗行の再パースは行わない。
             }
           }
         }
 
+        await persistUsage("completed");
         controller.enqueue(encoder.encode(
           JSON.stringify({ type: "done", aborted: false }) + "\n"
         ));
         controller.close();
       } catch (err) {
+        const status: UsageEventStatus = req.signal.aborted || (err as Error).name === "AbortError"
+          ? "aborted"
+          : "failed";
+        await persistUsage(status);
         logger.externalApiFailed({
           service: logger.toExternalService("gemini"),
           status: upstreamStatus ?? undefined,

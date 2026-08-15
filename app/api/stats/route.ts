@@ -1,5 +1,10 @@
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
+import {
+  aggregateUsageStats,
+  type StatsMessageRow,
+  type StatsUsageEventRow,
+} from "@/lib/usageStats";
 
 export const dynamic = 'force-dynamic';
 
@@ -29,46 +34,33 @@ export async function GET(req: NextRequest) {
 
   const sinceIso = since.toISOString();
 
-  // 将来的にRPC化推奨: 現在は個人ユーザー向けのためJSで集計
-  const { data: messages, error } = await supabase
-    .from("messages")
-    .select("role, provider, model_id, input_tokens, output_tokens, created_at")
-    .eq("user_id", user.id)
-    .gte("created_at", sinceIso)
-    .order("created_at", { ascending: true });
+  // ai_usage_eventsが正本。messages側の埋め込みrelationは、期間境界をまたいだ
+  // eventが対応するmessageをlegacy fallbackで二重計上しないために取得する。
+  const [messageResult, eventResult] = await Promise.all([
+    supabase
+      .from("messages")
+      .select("id, role, provider, model_id, input_tokens, output_tokens, created_at, ai_usage_events(id)")
+      .eq("user_id", user.id)
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("ai_usage_events")
+      .select("id, message_id, provider, model_id, input_tokens, output_tokens, estimated_cost_usd, cost_source, priced_at")
+      .eq("user_id", user.id)
+      .gte("priced_at", sinceIso)
+      .order("priced_at", { ascending: true }),
+  ]);
 
-  if (error) {
-    return finalizeJson({ error: error.message }, { status: 500 });
+  if (messageResult.error) {
+    return finalizeJson({ error: messageResult.error.message }, { status: 500 });
+  }
+  if (eventResult.error) {
+    return finalizeJson({ error: eventResult.error.message }, { status: 500 });
   }
 
-  const rows = messages ?? [];
-
-  // sends: ユーザーが送信したメッセージ数（memoを除く）
-  const sends = rows.filter((r) => r.role === "user" && r.provider !== "memo").length;
-
-  // total_tokens: フロント側で計算させない
-  let totalInput = 0;
-  let totalOutput = 0;
-  for (const r of rows) {
-    if (r.input_tokens) totalInput += r.input_tokens;
-    if (r.output_tokens) totalOutput += r.output_tokens;
-  }
-  const total_tokens = totalInput + totalOutput;
-
-  // by_model: provider/model_id ごとの集計（降順）
-  const modelMap = new Map<string, { count: number; input_tokens: number; output_tokens: number }>();
-  for (const r of rows) {
-    if (r.role !== "assistant") continue;
-    const key = `${r.provider}/${r.model_id ?? "unknown"}`;
-    const cur = modelMap.get(key) ?? { count: 0, input_tokens: 0, output_tokens: 0 };
-    cur.count++;
-    cur.input_tokens += r.input_tokens ?? 0;
-    cur.output_tokens += r.output_tokens ?? 0;
-    modelMap.set(key, cur);
-  }
-  const by_model = Array.from(modelMap.entries())
-    .map(([key, v]) => ({ key, ...v }))
-    .sort((a, b) => b.count - a.count);
+  const rows = (messageResult.data ?? []) as StatsMessageRow[];
+  const events = (eventResult.data ?? []) as StatsUsageEventRow[];
+  const aggregated = aggregateUsageStats(rows, events);
 
   // hourly: today のみ。他periodは空オブジェクト
   const hourly: Record<number, number> = {};
@@ -83,5 +75,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return finalizeJson({ sends, total_tokens, by_model, hourly, since: sinceIso });
+  return finalizeJson({ ...aggregated, hourly, since: sinceIso });
 }

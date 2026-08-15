@@ -9,9 +9,27 @@ globalThis.AsyncLocalStorage =
 let currentUser = null;
 let setRefreshedCookie = false;
 let fetchCallCount = 0;
+let usageUpserts = [];
 
 const originalLoad = Module._load;
 Module._load = function loadWithSupabaseMock(request, parent, isMain) {
+  if (request === "@supabase/supabase-js") {
+    return {
+      createClient() {
+        return {
+          from(table) {
+            assert.equal(table, "ai_usage_events");
+            return {
+              async upsert(payload, options) {
+                usageUpserts.push({ payload, options });
+                return { error: null };
+              },
+            };
+          },
+        };
+      },
+    };
+  }
   if (request === "@supabase/ssr") {
     return {
       createServerClient(_url, _key, options) {
@@ -42,6 +60,7 @@ installAliasResolver();
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
 
 const { NextRequest } = require("next/server");
 const { POST } = require(path.join(
@@ -68,10 +87,15 @@ function resetMocks(options = {}) {
   currentUser = options.user ?? null;
   setRefreshedCookie = options.setRefreshedCookie ?? false;
   fetchCallCount = 0;
+  usageUpserts = [];
   global.fetch = async () => {
     fetchCallCount += 1;
     return new Response(
-      'data: {"candidates":[{"content":{"parts":[{"text":"No issues"}]}}]}\n\n',
+      [
+        'data: {"candidates":[{"content":{"parts":[{"text":"No issues"}]}}]}',
+        'data: {"usageMetadata":{"promptTokenCount":1000,"candidatesTokenCount":100,"thoughtsTokenCount":50,"cachedContentTokenCount":200}}',
+        '',
+      ].join("\n"),
       { status: 200 }
     );
   };
@@ -193,6 +217,16 @@ test("successful SSE preserves headers and overrides cache for refreshed cookies
     { type: "done", aborted: false },
   ]);
   assert.equal(fetchCallCount, 1);
+  assert.equal(usageUpserts.length, 1);
+  const usage = usageUpserts[0];
+  assert.equal(usage.payload.user_id, "user-1");
+  assert.equal(usage.payload.request_type, "novel_check");
+  assert.equal(usage.payload.thread_id, null);
+  assert.equal(usage.payload.input_tokens, 1000);
+  assert.equal(usage.payload.output_tokens, 150);
+  assert.equal(usage.payload.cache_read_input_tokens, 200);
+  assert.equal(usage.payload.cost_source, "computed");
+  assert.deepEqual(usage.options, { onConflict: "id" });
 });
 
 (async () => {

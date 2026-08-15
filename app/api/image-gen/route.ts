@@ -6,12 +6,14 @@ import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 import { isOwnedStoragePath } from '@/lib/storage-path-guard'
 import { getDefaultImageModel, isAllowedImageModel } from '@/lib/modelRegistry'
 import * as logger from '@/lib/logger'
+import { calculateImageUsageCost, recordUsageEvent, type ImageUsage, type UsageEventStatus } from '@/lib/aiUsage'
+import { serviceRoleClient } from '@/lib/mcp-auth'
 
 type ImageResult = { imageData: string; mimeType: string }
 type ImageProvider = 'gemini' | 'openai' | 'ideogram' | 'openrouter'
 type HandlerResult =
-  | { result: ImageResult; error: null }
-  | { result: null; error: string; provider: ImageProvider; status: number }
+  | { result: ImageResult; error: null; modelId: string; usage: ImageUsage; requestAttempted: true }
+  | { result: null; error: string; provider: ImageProvider; status: number; modelId: string | null; requestAttempted: boolean }
 type ImageInput = { base64: string; mimeType: string }
 
 const PROVIDER_LABELS: Record<ImageProvider, string> = {
@@ -25,11 +27,13 @@ function handlerError(
   provider: ImageProvider,
   error: string,
   status: number,
+  modelId: string | null = null,
+  requestAttempted: boolean = false,
 ): HandlerResult {
-  return { result: null, error, provider, status }
+  return { result: null, error, provider, status, modelId, requestAttempted }
 }
 
-function upstreamError(provider: ImageProvider, status: number): HandlerResult {
+function upstreamError(provider: ImageProvider, status: number, modelId: string): HandlerResult {
   logger.externalApiFailed({
     service: logger.toExternalService(provider),
     status,
@@ -39,7 +43,31 @@ function upstreamError(provider: ImageProvider, status: number): HandlerResult {
     provider,
     `${PROVIDER_LABELS[provider]} APIへのリクエストに失敗しました`,
     status,
+    modelId,
+    true,
   )
+}
+
+function modalityTokens(
+  details: unknown,
+  modality: 'TEXT' | 'IMAGE',
+): number | null {
+  if (!Array.isArray(details)) return null
+  const entry = details.find((item) =>
+    typeof item === 'object' &&
+    item !== null &&
+    String((item as { modality?: unknown }).modality ?? '').toUpperCase() === modality
+  ) as { tokenCount?: unknown } | undefined
+  return typeof entry?.tokenCount === 'number' ? entry.tokenCount : null
+}
+
+function finiteNumber(value: unknown): number | null {
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim() !== ''
+      ? Number(value)
+      : Number.NaN
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
 async function handleGemini(req: NextRequest, prompt: string, modelId: string | undefined, imageInput?: ImageInput): Promise<HandlerResult> {
@@ -53,7 +81,7 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
     return handlerError('gemini', '画像生成モデルが設定されていません', 500)
   }
   if (!isAllowedImageModel('gemini', geminiModel)) {
-    return handlerError('gemini', '不正なモデルIDです', 400)
+    return handlerError('gemini', '不正なモデルIDです', 400, geminiModel)
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`
@@ -71,18 +99,24 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
+    signal: req.signal,
   })
 
   if (!res.ok) {
-    return upstreamError('gemini', res.status)
+    return upstreamError('gemini', res.status, geminiModel)
   }
 
   const data = await res.json()
   const parts = data?.candidates?.[0]?.content?.parts ?? []
   const imagePart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData)
   if (!imagePart) {
-    return handlerError('gemini', 'Gemini APIから画像データが返されませんでした', 502)
+    return handlerError('gemini', 'Gemini APIから画像データが返されませんでした', 502, geminiModel, true)
   }
+
+  const usageMetadata = data?.usageMetadata
+  const candidates = usageMetadata?.candidatesTokenCount
+  const thoughts = usageMetadata?.thoughtsTokenCount
+  const textOutputTokens = modalityTokens(usageMetadata?.candidatesTokensDetails, 'TEXT')
 
   return {
     result: {
@@ -90,6 +124,21 @@ async function handleGemini(req: NextRequest, prompt: string, modelId: string | 
       mimeType: imagePart.inlineData.mimeType,
     },
     error: null,
+    modelId: geminiModel,
+    requestAttempted: true,
+    usage: {
+      inputTokens: usageMetadata?.promptTokenCount ?? null,
+      outputTokens: candidates == null && thoughts == null
+        ? null
+        : (candidates ?? 0) + (thoughts ?? 0),
+      textInputTokens: modalityTokens(usageMetadata?.promptTokensDetails, 'TEXT'),
+      imageInputTokens: modalityTokens(usageMetadata?.promptTokensDetails, 'IMAGE'),
+      textOutputTokens: textOutputTokens == null && thoughts == null
+        ? null
+        : (textOutputTokens ?? 0) + (thoughts ?? 0),
+      imageOutputTokens: modalityTokens(usageMetadata?.candidatesTokensDetails, 'IMAGE'),
+      imageCount: 1,
+    },
   }
 }
 
@@ -119,19 +168,48 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
       n: 1,
       size: '1024x1024',
     }),
+    signal: req.signal,
   })
 
   if (!res.ok) {
-    return upstreamError('openai', res.status)
+    return upstreamError('openai', res.status, openaiModel)
   }
 
   const data = await res.json()
   const b64 = data?.data?.[0]?.b64_json
   if (!b64) {
-    return handlerError('openai', 'OpenAI APIから画像データが返されませんでした', 502)
+    return handlerError('openai', 'OpenAI APIから画像データが返されませんでした', 502, openaiModel, true)
   }
 
-  return { result: { imageData: b64, mimeType: 'image/png' }, error: null }
+  // GPT Image 2 の公式リファレンスにはレスポンスusage内訳の完全なschemaが
+  // 掲載されていないため、実運用例のprompt/completion名と従来Images APIの
+  // input/output名の両方を受け付ける。どちらも無ければcostはunavailableになる。
+  const responseUsage = data?.usage
+  const promptDetails = responseUsage?.prompt_tokens_details ?? responseUsage?.input_tokens_details
+  const completionDetails = responseUsage?.completion_tokens_details ?? responseUsage?.output_tokens_details
+  const inputTokens = responseUsage?.prompt_tokens ?? responseUsage?.input_tokens ?? null
+  const outputTokens = responseUsage?.completion_tokens ?? responseUsage?.output_tokens ?? null
+
+  return {
+    result: { imageData: b64, mimeType: 'image/png' },
+    error: null,
+    modelId: openaiModel,
+    requestAttempted: true,
+    usage: {
+      inputTokens,
+      outputTokens,
+      textInputTokens: promptDetails?.text_tokens ?? null,
+      imageInputTokens: promptDetails?.image_tokens ?? null,
+      cachedImageInputTokens:
+        promptDetails?.cached_image_tokens ??
+        promptDetails?.image_cached_tokens ??
+        promptDetails?.cached_tokens ??
+        null,
+      textOutputTokens: completionDetails?.text_tokens ?? null,
+      imageOutputTokens: completionDetails?.image_tokens ?? outputTokens,
+      imageCount: 1,
+    },
+  }
 }
 
 async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: ImageInput): Promise<HandlerResult> {
@@ -162,28 +240,39 @@ async function handleIdeogram(req: NextRequest, prompt: string, imageInput?: Ima
     method: 'POST',
     headers: { 'Api-Key': apiKey },
     body: formData,
+    signal: req.signal,
   })
 
   if (!res.ok) {
-    return upstreamError('ideogram', res.status)
+    return upstreamError('ideogram', res.status, ideogramModel)
   }
 
   const data = await res.json()
   const imageUrl = data?.data?.[0]?.url
   if (!imageUrl) {
-    return handlerError('ideogram', 'Ideogram APIから画像データが返されませんでした', 502)
+    return handlerError('ideogram', 'Ideogram APIから画像データが返されませんでした', 502, ideogramModel, true)
   }
 
-  const imgRes = await fetch(imageUrl)
+  const imgRes = await fetch(imageUrl, { signal: req.signal })
   if (!imgRes.ok) {
-    return upstreamError('ideogram', imgRes.status)
+    return upstreamError('ideogram', imgRes.status, ideogramModel)
   }
 
   const arrayBuffer = await imgRes.arrayBuffer()
   const base64 = Buffer.from(arrayBuffer).toString('base64')
   const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
 
-  return { result: { imageData: base64, mimeType: contentType }, error: null }
+  return {
+    result: { imageData: base64, mimeType: contentType },
+    error: null,
+    modelId: ideogramModel,
+    requestAttempted: true,
+    usage: {
+      inputTokens: null,
+      outputTokens: null,
+      imageCount: 1,
+    },
+  }
 }
 
 async function handleOpenRouter(req: NextRequest, prompt: string): Promise<HandlerResult> {
@@ -208,22 +297,34 @@ async function handleOpenRouter(req: NextRequest, prompt: string): Promise<Handl
       messages: [{ role: 'user', content: prompt }],
       modalities: ['image'],
     }),
+    signal: req.signal,
   })
 
   if (!res.ok) {
-    return upstreamError('openrouter', res.status)
+    return upstreamError('openrouter', res.status, openrouterModel)
   }
 
   const data = await res.json()
   const imageDataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url
   if (!imageDataUrl) {
-    return handlerError('openrouter', 'OpenRouter APIから画像データが返されませんでした', 502)
+    return handlerError('openrouter', 'OpenRouter APIから画像データが返されませんでした', 502, openrouterModel, true)
   }
 
   const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '')
   const mimeType = imageDataUrl.match(/^data:(\w+\/\w+);/)?.[1] ?? 'image/png'
 
-  return { result: { imageData: base64, mimeType }, error: null }
+  return {
+    result: { imageData: base64, mimeType },
+    error: null,
+    modelId: openrouterModel,
+    requestAttempted: true,
+    usage: {
+      inputTokens: data?.usage?.prompt_tokens ?? null,
+      outputTokens: data?.usage?.completion_tokens ?? null,
+      imageCount: 1,
+      providerReportedCostUsd: finiteNumber(data?.usage?.cost),
+    },
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -284,17 +385,71 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (provider !== 'gemini' && provider !== 'openai' && provider !== 'ideogram' && provider !== 'openrouter') {
+    return finalizeJson({ error: '不正なproviderです' }, { status: 400 })
+  }
+  const imageProvider = provider as ImageProvider
+
+  const usageEventId = crypto.randomUUID()
+  const pricedAt = new Date()
+  const requestedModelId = imageProvider === 'gemini'
+    ? modelId ?? getDefaultImageModel('gemini')
+    : getDefaultImageModel(imageProvider)
+  const emptyUsage: ImageUsage = { inputTokens: null, outputTokens: null }
+  const persistImageUsage = async (
+    resolvedModelId: string | null,
+    usage: ImageUsage,
+    status: UsageEventStatus,
+    messageId: string | null,
+  ) => {
+    if (!resolvedModelId) return false
+    const cost = calculateImageUsageCost(resolvedModelId, usage)
+    try {
+      return await recordUsageEvent(serviceRoleClient(), {
+        id: usageEventId,
+        userId,
+        threadId: typeof threadId === 'string' ? threadId : null,
+        messageId,
+        provider: imageProvider,
+        modelId: resolvedModelId,
+        requestType: 'image_gen',
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cachedInputTokens: usage.cachedImageInputTokens ?? null,
+        imageCount: usage.imageCount ?? null,
+        estimatedCostUsd: cost.estimatedCostUsd,
+        costSource: cost.costSource,
+        status,
+        pricedAt,
+      })
+    } catch (err) {
+      logger.dbOperationFailed({
+        route: 'image-gen',
+        operation: 'record-usage-event',
+        table: 'ai_usage_events',
+        errorType: err instanceof Error ? err.name : 'unknown',
+      })
+      return false
+    }
+  }
+
   let handlerResult: HandlerResult
   try {
-    switch (provider) {
+    switch (imageProvider) {
       case 'gemini':     handlerResult = await handleGemini(req, prompt, modelId, imageInput); break
       case 'openai':     handlerResult = await handleOpenAI(req, prompt, imageInput); break
       case 'ideogram':   handlerResult = await handleIdeogram(req, prompt, imageInput); break
       case 'openrouter': handlerResult = await handleOpenRouter(req, prompt); break
       default:           return finalizeJson({ error: '不正なproviderです' }, { status: 400 })
     }
-  } catch {
-    const failedProvider = provider as ImageProvider
+  } catch (err) {
+    const failedProvider = imageProvider
+    await persistImageUsage(
+      typeof requestedModelId === 'string' ? requestedModelId : null,
+      emptyUsage,
+      req.signal.aborted || (err as Error).name === 'AbortError' ? 'aborted' : 'failed',
+      null,
+    )
     logger.externalApiFailed({
       service: logger.toExternalService(failedProvider),
       errorCode: 'UPSTREAM_REQUEST_FAILED',
@@ -310,6 +465,9 @@ export async function POST(req: NextRequest) {
   }
 
   if (handlerResult.error !== null) {
+    if (handlerResult.requestAttempted) {
+      await persistImageUsage(handlerResult.modelId, emptyUsage, 'failed', null)
+    }
     return finalizeJson(
       {
         error: handlerResult.error,
@@ -321,6 +479,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { imageData, mimeType } = handlerResult.result
+  await persistImageUsage(handlerResult.modelId, handlerResult.usage, 'completed', null)
 
   // threadId なし → 従来通り imageData/mimeType のみ返す（認証は先頭で確認済み）
   if (!threadId) {
@@ -349,6 +508,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       role: 'assistant',
       provider: 'image_gen',
+      model_id: handlerResult.modelId,
       content: prompt,
       metadata: {
         storagePath: actualPath,
@@ -365,6 +525,8 @@ export async function POST(req: NextRequest) {
   if (dbError) {
     return finalizeJson({ error: `DB保存失敗: ${dbError.message}` }, { status: 500 })
   }
+
+  await persistImageUsage(handlerResult.modelId, handlerResult.usage, 'completed', message.id)
 
   return finalizeJson({ messageId: message.id, storagePath: actualPath, imageData, mimeType })
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { calcCost, formatUSD, getPricing } from "@/lib/pricing";
+import { formatUSD } from "@/lib/pricing";
 
 type Period = "today" | "week" | "month" | "all";
 
@@ -11,11 +11,17 @@ interface ModelStat {
   count: number;
   input_tokens: number | null;
   output_tokens: number | null;
+  cost: number | null;
+  priced_count: number;
+  unpriced_count: number;
 }
 
 interface StatsData {
   sends: number;
   total_tokens: number;
+  cost: number | null;
+  priced_count: number;
+  unpriced_count: number;
   by_model: ModelStat[];
   hourly: Record<number, number>;
   since: string;
@@ -86,20 +92,6 @@ export default function StatsPage() {
 
   // 時間帯グラフの最大値
   const maxHourly = data ? Math.max(...Object.values(data.hourly), 1) : 1;
-
-  const estimatedTotalCost: number | null = useMemo(() => {
-    if (!data) return null;
-    let total = 0;
-    let hasAny = false;
-    for (const row of data.by_model) {
-      const cost = calcCost(row.input_tokens, row.output_tokens, row.key);
-      if (cost !== null) {
-        total += cost;
-        hasAny = true;
-      }
-    }
-    return hasAny ? total : null;
-  }, [data]);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--page-bg, #f9f9f7)", fontFamily: "'DM Sans', sans-serif" }}>
@@ -200,15 +192,19 @@ export default function StatsPage() {
                   EST. COST
                 </div>
                 <div style={{ fontSize: "32px", fontWeight: 700, color: "var(--ink, #1a1a1a)", lineHeight: 1 }}>
-                  {estimatedTotalCost !== null ? formatUSD(estimatedTotalCost) : "—"}
+                  {data.cost !== null ? formatUSD(data.cost) : "—"}
                 </div>
                 <div style={{ fontSize: "12px", color: "var(--ink-muted, #888)", marginTop: "4px" }}>
-                  推定コスト
+                  {data.unpriced_count > 0 && data.priced_count > 0
+                    ? "推定コスト（一部未計測）"
+                    : data.unpriced_count > 0
+                      ? "推定コスト（未計測）"
+                      : "推定コスト"}
                 </div>
                 <div style={{ fontSize: "10px", color: "var(--ink-faint, #bbb)", marginTop: "3px" }}>
-                  {estimatedTotalCost !== null
-                    ? "※ トークン記録済み分のみ"
-                    : "トークンデータなし（v92以前）"}
+                  {data.unpriced_count > 0
+                    ? `※ ${data.unpriced_count}件は料金を取得できませんでした`
+                    : "※ provider応答の実利用量から集計"}
                 </div>
               </div>
             </div>
@@ -335,15 +331,10 @@ export default function StatsPage() {
                           {formatK(m.output_tokens ?? 0)}
                         </td>
                         <td style={{ padding: "12px 24px 12px 16px", textAlign: "right", color: "var(--ink, #1a1a1a)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px" }}>
-                          {(() => {
-                            const cost = calcCost(m.input_tokens, m.output_tokens, m.key);
-                            const pricing = getPricing(m.key);
-                            return (
-                              <span title={pricing ? `$${pricing.inputPerMTok}/in · $${pricing.outputPerMTok}/out per MTok` : "単価不明"}>
-                                {cost !== null ? formatUSD(cost) : "—"}
-                              </span>
-                            );
-                          })()}
+                          <span title={m.unpriced_count > 0 ? `${m.unpriced_count}件は未計測` : "API側で計算済み"}>
+                            {m.cost !== null ? formatUSD(m.cost) : "—"}
+                            {m.unpriced_count > 0 && m.cost !== null ? " *" : ""}
+                          </span>
                         </td>
                       </tr>
                     ))}

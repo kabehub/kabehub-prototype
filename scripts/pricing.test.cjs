@@ -17,17 +17,17 @@ const { getPricing, calcCost, formatUSD } = require("../lib/pricing.ts");
 // ────────────────────────────────────────────────────────────
 // 完全一致
 // ────────────────────────────────────────────────────────────
-assert.deepEqual(getPricing("gpt-4o"), { inputPerMTok: 2.5, outputPerMTok: 10.0 });
+assert.deepEqual(getPricing("gpt-4o"), { inputPerMTok: 2.5, cachedInputPerMTok: 1.25, outputPerMTok: 10.0 });
 assert.deepEqual(getPricing("gemini-2.5-pro"), { inputPerMTok: 1.25, outputPerMTok: 10.0 });
 assert.deepEqual(getPricing("claude-opus-5"), { inputPerMTok: 5.0, outputPerMTok: 25.0 });
-assert.deepEqual(getPricing("ideogram-v3"), { inputPerMTok: 0, outputPerMTok: 0.08 });
-assert.deepEqual(getPricing("black-forest-labs/flux.2-pro"), { inputPerMTok: 0, outputPerMTok: 0.055 });
+assert.equal(getPricing("ideogram-v3"), null);
+assert.equal(getPricing("black-forest-labs/flux.2-pro"), null);
 
 // ────────────────────────────────────────────────────────────
 // 前方一致・長いキー優先
 // ────────────────────────────────────────────────────────────
 // "gpt-5.4-mini" (0.75/4.50) vs "gpt-5.4" (2.50/15.00) → 長い方が勝つ
-assert.deepEqual(getPricing("gpt-5.4-mini-preview"), { inputPerMTok: 0.75, outputPerMTok: 4.5 });
+assert.deepEqual(getPricing("gpt-5.4-mini-preview"), { inputPerMTok: 0.75, cachedInputPerMTok: 0.075, outputPerMTok: 4.5 });
 // "gpt-5-mini" (0.25/2.00) vs "gpt-5" (1.25/10.00) → 長い方が勝つ
 assert.deepEqual(getPricing("gpt-5-mini-2026"), { inputPerMTok: 0.25, outputPerMTok: 2.0 });
 // "gpt-5.4-nano" (0.20/1.25) vs "gpt-5.4" vs "gpt-5" の三つ巴 → 最長が勝つ
@@ -44,7 +44,7 @@ assert.deepEqual(getPricing("claude-haiku-3.5-turbo"), { inputPerMTok: 0.8, outp
 // prefix正規化（gemini/ openai/ claude/ の除去＋小文字化）
 // ────────────────────────────────────────────────────────────
 assert.deepEqual(getPricing("gemini/gemini-2.5-flash"), { inputPerMTok: 0.3, outputPerMTok: 2.5 });
-assert.deepEqual(getPricing("openai/gpt-5.4-mini"), { inputPerMTok: 0.75, outputPerMTok: 4.5 });
+assert.deepEqual(getPricing("openai/gpt-5.4-mini"), { inputPerMTok: 0.75, cachedInputPerMTok: 0.075, outputPerMTok: 4.5 });
 assert.deepEqual(getPricing("claude/claude-sonnet-4-6"), { inputPerMTok: 3.0, outputPerMTok: 15.0 });
 // prefixが小文字である限り、続く部分の大文字は正しく小文字化される
 assert.deepEqual(getPricing("openai/GPT-4O-MINI"), { inputPerMTok: 0.15, outputPerMTok: 0.6 });
@@ -89,6 +89,14 @@ assert.equal(calcCost(100, 100, "unknown-model-xyz"), null); // pricing不明
 // "openai/" 除去 → "gpt-5.4-mini-preview" → 前方一致で "gpt-5.4-mini"（$0.75/$4.50）が
 // "gpt-5.4"（$2.50/$15.00）より優先される → (1*0.75)+(1*4.50) = 5.25
 assert.equal(calcCost(1_000_000, 1_000_000, "openai/gpt-5.4-mini-preview"), 5.25);
+assert.equal(
+  calcCost(1_000_000, 1_000_000, "gpt-5.6-terra", new Date("2026-07-29T23:59:59.000Z")),
+  17.5,
+);
+assert.equal(
+  calcCost(1_000_000, 1_000_000, "gpt-5.6-terra", new Date("2026-07-30T00:00:00.000Z")),
+  14,
+);
 
 // ────────────────────────────────────────────────────────────
 // formatUSD

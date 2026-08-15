@@ -1,6 +1,7 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions"; // ✅ v62: Vercel環境でレスポンス後もDB保存を保証
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
+import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
 import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
@@ -24,12 +25,27 @@ import {
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
 import * as logger from "@/lib/logger";
+import {
+  calculateTextUsageCost,
+  recordUsageEvent,
+  type UsageEventStatus,
+} from "@/lib/aiUsage";
+import { serviceRoleClient } from "@/lib/mcp-auth";
 
 export const dynamic = 'force-dynamic';
 
 type ChatMessage = { role: string; content: string; provider?: string; model_id?: string | null; is_active?: boolean };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
-type UsageData = { input_tokens: number | null; output_tokens: number | null };
+type UsageData = {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  normal_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+  cache_write_input_tokens?: number | null;
+  cached_input_tokens?: number | null;
+  aborted?: boolean;
+};
 type BranchMeta = { branch_root_id: string; branch_index: number; parent_id: string };
 type ChatProvider = "claude" | "gemini" | "openai";
 
@@ -220,12 +236,16 @@ function streamClaude(
 
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
+        let cacheCreationInputTokens: number | null = null;
+        let cacheReadInputTokens: number | null = null;
         try {
           await pumpSSE(response, (parsed) => {
             // ✅ v62: キャッシュ統計ログ（message_start + message_delta 両方拾う）
             if (parsed.type === "message_start") {
               const u = parsed.message?.usage ?? {};
               inputTokens = u.input_tokens ?? null;
+              cacheCreationInputTokens = u.cache_creation_input_tokens ?? null;
+              cacheReadInputTokens = u.cache_read_input_tokens ?? null;
               if (process.env.NODE_ENV === "development") {
                 console.log("[Cache input]", {
                   input_tokens:                u.input_tokens                   ?? 0,
@@ -258,11 +278,22 @@ function streamClaude(
               }
             }
           });
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          onUsage?.({
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cache_creation_input_tokens: cacheCreationInputTokens,
+            cache_read_input_tokens: cacheReadInputTokens,
+          });
           controller.close();
         } catch (err) {
           // AbortErrorはキャンセル扱い（エラーとして伝播させない）
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          onUsage?.({
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cache_creation_input_tokens: cacheCreationInputTokens,
+            cache_read_input_tokens: cacheReadInputTokens,
+            aborted: (err as Error).name === "AbortError",
+          });
           if ((err as Error).name !== "AbortError") {
             controller.error(normalizeProviderError("claude", "Claude", err));
           } else {
@@ -271,6 +302,11 @@ function streamClaude(
         }
       } catch (err) {
         // fetch失敗など外側のエラー
+        onUsage?.({
+          input_tokens: null,
+          output_tokens: null,
+          aborted: (err as Error).name === "AbortError",
+        });
         if ((err as Error).name !== "AbortError") {
           controller.error(normalizeProviderError("claude", "Claude", err));
         } else {
@@ -321,6 +357,7 @@ function streamGemini(
 
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
+        let cacheReadInputTokens: number | null = null;
         try {
           await pumpSSE(response, (parsed) => {
             // ✅ S19 #15: 複数partsに対応（従来はparts[0]のみでテキスト欠落の恐れがあった）
@@ -330,14 +367,35 @@ function streamGemini(
               : "";
             if (text) controller.enqueue(text);
             if (parsed.usageMetadata) {
-              inputTokens = parsed.usageMetadata.promptTokenCount ?? null;
-              outputTokens = parsed.usageMetadata.candidatesTokenCount ?? null;
+              const usage = parsed.usageMetadata;
+              inputTokens = usage.promptTokenCount ?? null;
+              const candidates = usage.candidatesTokenCount;
+              const thoughts = usage.thoughtsTokenCount;
+              outputTokens = candidates == null && thoughts == null
+                ? null
+                : (candidates ?? 0) + (thoughts ?? 0);
+              cacheReadInputTokens = usage.cachedContentTokenCount ?? null;
             }
           });
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          onUsage?.({
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            normal_input_tokens: inputTokens == null
+              ? null
+              : Math.max(0, inputTokens - (cacheReadInputTokens ?? 0)),
+            cache_read_input_tokens: cacheReadInputTokens,
+          });
           controller.close();
         } catch (err) {
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          onUsage?.({
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            normal_input_tokens: inputTokens == null
+              ? null
+              : Math.max(0, inputTokens - (cacheReadInputTokens ?? 0)),
+            cache_read_input_tokens: cacheReadInputTokens,
+            aborted: (err as Error).name === "AbortError",
+          });
           if ((err as Error).name !== "AbortError") {
             controller.error(normalizeProviderError("gemini", "Gemini", err));
           } else {
@@ -345,6 +403,11 @@ function streamGemini(
           }
         }
       } catch (err) {
+        onUsage?.({
+          input_tokens: null,
+          output_tokens: null,
+          aborted: (err as Error).name === "AbortError",
+        });
         if ((err as Error).name !== "AbortError") {
           controller.error(normalizeProviderError("gemini", "Gemini", err));
         } else {
@@ -408,6 +471,8 @@ function streamOpenAI(
           onUsage?.({
             input_tokens: data.usage?.input_tokens ?? null,
             output_tokens: data.usage?.output_tokens ?? null,
+            cached_input_tokens: data.usage?.input_tokens_details?.cached_tokens ?? null,
+            cache_write_input_tokens: data.usage?.input_tokens_details?.cache_write_tokens ?? null,
           });
           if (text) controller.enqueue(text);
           controller.close();
@@ -427,6 +492,8 @@ function streamOpenAI(
 
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
+        let cachedInputTokens: number | null = null;
+        let cacheWriteInputTokens: number | null = null;
         try {
           await pumpSSE(response, (parsed) => {
             const text = parsed.choices?.[0]?.delta?.content;
@@ -435,15 +502,45 @@ function streamOpenAI(
               const usage = parsed.usage;
               inputTokens = usage.prompt_tokens ?? null;
               outputTokens = usage.completion_tokens ?? null;
-              const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
-              const normalTokens = (usage?.prompt_tokens ?? 0) - cachedTokens;
-              console.log("[OpenAI Cache]", { cached: cachedTokens, normal: normalTokens, total: usage?.prompt_tokens });
+              cachedInputTokens = usage?.prompt_tokens_details?.cached_tokens ?? null;
+              cacheWriteInputTokens = usage?.prompt_tokens_details?.cache_write_tokens ?? null;
+              const normalTokens = Math.max(
+                0,
+                (usage?.prompt_tokens ?? 0) -
+                  (cachedInputTokens ?? 0) -
+                  (cacheWriteInputTokens ?? 0),
+              );
+              if (process.env.NODE_ENV === "development") {
+                console.log("[OpenAI Cache]", {
+                  cached: cachedInputTokens ?? 0,
+                  cacheWrite: cacheWriteInputTokens ?? 0,
+                  normal: normalTokens,
+                  total: usage?.prompt_tokens,
+                });
+              }
             }
           });
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          onUsage?.({
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            normal_input_tokens: inputTokens == null
+              ? null
+              : Math.max(0, inputTokens - (cachedInputTokens ?? 0) - (cacheWriteInputTokens ?? 0)),
+            cached_input_tokens: cachedInputTokens,
+            cache_write_input_tokens: cacheWriteInputTokens,
+          });
           controller.close();
         } catch (err) {
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          onUsage?.({
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            normal_input_tokens: inputTokens == null
+              ? null
+              : Math.max(0, inputTokens - (cachedInputTokens ?? 0) - (cacheWriteInputTokens ?? 0)),
+            cached_input_tokens: cachedInputTokens,
+            cache_write_input_tokens: cacheWriteInputTokens,
+            aborted: (err as Error).name === "AbortError",
+          });
           if ((err as Error).name !== "AbortError") {
             controller.error(normalizeProviderError("openai", "OpenAI", err));
           } else {
@@ -451,6 +548,11 @@ function streamOpenAI(
           }
         }
       } catch (err) {
+        onUsage?.({
+          input_tokens: null,
+          output_tokens: null,
+          aborted: (err as Error).name === "AbortError",
+        });
         if ((err as Error).name !== "AbortError") {
           controller.error(normalizeProviderError("openai", "OpenAI", err));
         } else {
@@ -507,17 +609,12 @@ async function saveAssistantMessage(
 
 // ─── POST ───────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  // このダミーresは createRouteHandlerSupabaseClient の型要件を満たすためのもの。
-  // middleware.ts の matcher（"/api/((?!mcp|share|auth/github/callback).*)"）上、
-  // /api/chat はmiddleware対象に含まれており、セッション更新Cookie（Set-Cookie）は
-  // middleware側のres.cookies.set()経由で最終レスポンスに反映される。
-  // そのため、ここでのダミーresへのCookie書き込みが破棄されても実害はない。
-  const res = new Response();
-  const supabase = createRouteHandlerSupabaseClient(req, res as never);
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeResponse } = auth;
   const userId = user.id;
+  const chatResponse = (body?: BodyInit | null, init?: ResponseInit): NextResponse =>
+    finalizeResponse(new NextResponse(body, init));
 
   let requestBody: {
     threadId?: unknown;
@@ -541,7 +638,7 @@ export async function POST(req: NextRequest) {
   try {
     requestBody = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "リクエストの形式が不正です" }), {
+    return chatResponse(JSON.stringify({ error: "リクエストの形式が不正です" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
@@ -558,28 +655,28 @@ export async function POST(req: NextRequest) {
   const hasImageContext = typeof imageContextId === "string" && imageContextId.length > 0;
 
   if (typeof userContent !== "string") {
-    return new Response(JSON.stringify({ error: "メッセージ内容が不正です" }), {
+    return chatResponse(JSON.stringify({ error: "メッセージ内容が不正です" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
   if (!hasText && !hasAttachedImage && !hasImageContext) {
-    return new Response(JSON.stringify({ error: "メッセージ内容が空です" }), {
+    return chatResponse(JSON.stringify({ error: "メッセージ内容が空です" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
   if (!isTemporary && (typeof threadId !== "string" || threadId.length === 0)) {
-    return new Response(JSON.stringify({ error: "threadIdが不正です" }), {
+    return chatResponse(JSON.stringify({ error: "threadIdが不正です" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
   if (provider !== "claude" && provider !== "gemini" && provider !== "openai") {
-    return new Response(JSON.stringify({ error: "未対応のプロバイダーです" }), {
+    return chatResponse(JSON.stringify({ error: "未対応のプロバイダーです" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
@@ -589,7 +686,7 @@ export async function POST(req: NextRequest) {
   if (!isTemporary && !isMemo) {
     const rl = await checkChatRateLimit(userId);
     if (!rl.allowed) {
-      return new Response(
+      return chatResponse(
         JSON.stringify({
           error: "リクエストが多すぎます。少し待ってから再度お試しください。",
           retryAfter: Math.ceil((rl.resetAt - Date.now()) / 1000),
@@ -633,7 +730,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (threadError) {
-      return new Response(JSON.stringify({ error: threadError.message }), {
+      return chatResponse(JSON.stringify({ error: threadError.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
@@ -647,7 +744,7 @@ export async function POST(req: NextRequest) {
       );
 
       if (threadUpsertError) {
-        return new Response(JSON.stringify({ error: threadUpsertError.message }), {
+        return chatResponse(JSON.stringify({ error: threadUpsertError.message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
@@ -661,14 +758,14 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (confirmedThreadError) {
-        return new Response(JSON.stringify({ error: confirmedThreadError.message }), {
+        return chatResponse(JSON.stringify({ error: confirmedThreadError.message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
       }
 
       if (!confirmedThread) {
-        return new Response(JSON.stringify({ error: "スレッドが見つかりません" }), {
+        return chatResponse(JSON.stringify({ error: "スレッドが見つかりません" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },
         });
@@ -683,7 +780,7 @@ export async function POST(req: NextRequest) {
         .from('folder_settings').select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
         .eq('user_id', userId).eq('folder_name', thread.folder_name).maybeSingle();
       if (folderSettingError) {
-        return new Response(JSON.stringify({ error: folderSettingError.message }), {
+        return chatResponse(JSON.stringify({ error: folderSettingError.message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
@@ -718,14 +815,14 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (targetAssistantError) {
-      return new Response(JSON.stringify({ error: targetAssistantError.message }), {
+      return chatResponse(JSON.stringify({ error: targetAssistantError.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     if (!targetAssistant) {
-      return new Response(JSON.stringify({ error: "target assistant message not found" }), {
+      return chatResponse(JSON.stringify({ error: "target assistant message not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
       });
@@ -746,14 +843,14 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (targetUserError) {
-        return new Response(JSON.stringify({ error: targetUserError.message }), {
+        return chatResponse(JSON.stringify({ error: targetUserError.message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
       }
 
       if (!targetUser) {
-        return new Response(JSON.stringify({ error: "target user message not found" }), {
+        return chatResponse(JSON.stringify({ error: "target user message not found" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },
         });
@@ -772,7 +869,7 @@ export async function POST(req: NextRequest) {
       .eq("role", "user");
 
     if (userUpdateError) {
-      return new Response(JSON.stringify({ error: userUpdateError.message }), {
+      return chatResponse(JSON.stringify({ error: userUpdateError.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
@@ -815,7 +912,7 @@ export async function POST(req: NextRequest) {
           table: "messages",
           errorCode: rpcError.code,
         });
-        return new Response(JSON.stringify({
+        return chatResponse(JSON.stringify({
           error: status === 400 ? "Invalid branch edit request" : status === 403 ? "Forbidden" : "Failed to apply branch edit",
         }), { status, headers: { "Content-Type": "application/json" } });
       }
@@ -853,7 +950,7 @@ export async function POST(req: NextRequest) {
           table: "messages",
           errorCode: activeMessagesError.code,
         });
-        return new Response(JSON.stringify({ error: "Failed to load branch edit context" }), {
+        return chatResponse(JSON.stringify({ error: "Failed to load branch edit context" }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
@@ -879,7 +976,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (lastActiveMsgError) {
-        return new Response(JSON.stringify({ error: lastActiveMsgError.message }), {
+        return chatResponse(JSON.stringify({ error: lastActiveMsgError.message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
@@ -907,7 +1004,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (insertError) {
-        return new Response(JSON.stringify({ error: insertError.message }), {
+        return chatResponse(JSON.stringify({ error: insertError.message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
@@ -917,7 +1014,7 @@ export async function POST(req: NextRequest) {
 
   // メモモードはストリーミング不要
   if (isMemo) {
-    return new Response(JSON.stringify({ userMessage }), {
+    return chatResponse(JSON.stringify({ userMessage }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1127,7 +1224,58 @@ export async function POST(req: NextRequest) {
 
   // ✅ v92: ストリーム完了後にトークン数を回収するためのref
   const usageRef: UsageData = { input_tokens: null, output_tokens: null };
-  const handleUsage = (u: UsageData) => { usageRef.input_tokens = u.input_tokens; usageRef.output_tokens = u.output_tokens; };
+  const handleUsage = (u: UsageData) => { Object.assign(usageRef, u); };
+  let usageEventId: string | null = null;
+  let pricedAt: Date | null = null;
+
+  const beginUsageEvent = () => {
+    usageEventId = crypto.randomUUID();
+    pricedAt = new Date();
+  };
+
+  const recordChatUsage = async (
+    status: UsageEventStatus,
+    messageId: string | null,
+  ): Promise<boolean> => {
+    if (!usageEventId || !pricedAt) return true;
+    const cost = calculateTextUsageCost(usedProvider, resolvedModelId, {
+      inputTokens: usageRef.input_tokens,
+      outputTokens: usageRef.output_tokens,
+      cacheCreationInputTokens: usageRef.cache_creation_input_tokens,
+      cacheReadInputTokens: usageRef.cache_read_input_tokens,
+      cacheWriteInputTokens: usageRef.cache_write_input_tokens,
+      cachedInputTokens: usageRef.cached_input_tokens,
+    }, pricedAt);
+    try {
+      return await recordUsageEvent(serviceRoleClient(), {
+        id: usageEventId,
+        userId,
+        threadId: isTemporary ? null : threadId as string,
+        messageId: isTemporary ? null : messageId,
+        provider: usedProvider,
+        modelId: resolvedModelId,
+        requestType: "chat",
+        inputTokens: usageRef.input_tokens,
+        outputTokens: usageRef.output_tokens,
+        cacheCreationInputTokens: usageRef.cache_creation_input_tokens,
+        cacheReadInputTokens: usageRef.cache_read_input_tokens,
+        cacheWriteInputTokens: usageRef.cache_write_input_tokens,
+        cachedInputTokens: usageRef.cached_input_tokens,
+        estimatedCostUsd: cost.estimatedCostUsd,
+        costSource: cost.costSource,
+        status,
+        pricedAt,
+      });
+    } catch (err) {
+      logger.dbOperationFailed({
+        route: "chat",
+        operation: "record-usage-event",
+        table: "ai_usage_events",
+        errorType: err instanceof Error ? err.name : "unknown",
+      });
+      return false;
+    }
+  };
 
   const labelNote = "\n\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。";
   const stableSystemPrompt = resolvedSystemPrompt
@@ -1271,30 +1419,33 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
   try {
     if (provider === "gemini") {
       if (!isGeminiModel(resolvedModelId)) {
-        return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
+        return chatResponse(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
       }
       if (!geminiKey) throw new Error("GeminiのAPIキーが設定されていません。");
+      beginUsageEvent();
       aiStream = streamGemini(geminiKey, finalMessagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else if (provider === "claude") {
       if (!isClaudeModel(resolvedModelId)) {
-        return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
+        return chatResponse(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
+      beginUsageEvent();
       aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, manualThinkingEnabled, trimResult.cacheAnchorIndex);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {
-        return new Response(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
+        return chatResponse(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
       }
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
+      beginUsageEvent();
       aiStream = streamOpenAI(openaiKey, finalMessagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
@@ -1315,15 +1466,22 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       created_at: new Date().toISOString(),
     };
     if (!isTemporary) {
-      await saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta);
+      const [messageSaved] = await Promise.all([
+        saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta),
+        recordChatUsage("failed", null),
+      ]);
+      if (messageSaved) await recordChatUsage("failed", assistantMessageId);
+    } else {
+      await recordChatUsage("failed", null);
     }
-    return new Response(JSON.stringify({ userMessage, assistantMessage }), {
+    return chatResponse(JSON.stringify({ userMessage, assistantMessage }), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
   if (isTemporary) {
     let content = "";
+    let usageStatus: UsageEventStatus = "completed";
     const reader = aiStream.getReader();
 
     try {
@@ -1343,11 +1501,20 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
         }
       }
     } catch (err) {
+      usageStatus = req.signal.aborted || (err as Error).name === "AbortError"
+        ? "aborted"
+        : "failed";
       const msg = err instanceof Error ? err.message : "不明なエラー";
       content = `\n\n（エラー: ${msg}）`;
     } finally {
       reader.releaseLock();
     }
+
+    if (usageStatus === "completed" && (usageRef.aborted || req.signal.aborted)) {
+      usageStatus = "aborted";
+    }
+
+    await recordChatUsage(usageStatus, null);
 
     const assistantMessage = {
       id: assistantMessageId,
@@ -1358,7 +1525,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       created_at: new Date().toISOString(),
     };
 
-    return new Response(JSON.stringify({ userMessage, assistantMessage }), {
+    return chatResponse(JSON.stringify({ userMessage, assistantMessage }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1421,21 +1588,26 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
 
   // ✅ v64修正: DB保存ヘルパー。保存成功=true / 失敗=false を返す
   // dbSavedは保存「成功」時のみtrueにする（失敗を隠蔽しない）
-  const saveToDb = async (aborted: boolean, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
+  const saveToDb = async (status: UsageEventStatus, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
     if (isTemporary) return true;
-    const restoredLightAssistant = isLightRegenerate && aborted ? originalLightAssistant : null;
+    const restoredLightAssistant = isLightRegenerate && status !== "completed" ? originalLightAssistant : null;
     const contentToSave = restoredLightAssistant
       ? restoredLightAssistant.content
       : stripLegacyAssistantLabelPrefix(accumulatedText);
     const modelIdToSave = restoredLightAssistant
       ? restoredLightAssistant.model_id
       : resolvedModelId;
-    return await saveAssistantMessage(
-      supabaseClient, threadId as string, userId, contentToSave, usedProvider,
-      assistantMessageId, modelIdToSave,
-      usageRef.input_tokens, usageRef.output_tokens,
-      branchEditMeta,
-    );
+    const [messageSaved] = await Promise.all([
+      saveAssistantMessage(
+        supabaseClient, threadId as string, userId, contentToSave, usedProvider,
+        assistantMessageId, modelIdToSave,
+        usageRef.input_tokens, usageRef.output_tokens,
+        branchEditMeta,
+      ),
+      recordChatUsage(status, null),
+    ]);
+    if (messageSaved) await recordChatUsage(status, assistantMessageId);
+    return messageSaved;
   };
 
   const readable = aiStream.pipeThrough(outputStream);
@@ -1474,10 +1646,16 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
           controller.enqueue(encoder.encode(value));
         }
         // ✅ v64修正: 保存成功時のみdbSaved=true（失敗してもtrueにしない）
-        dbSaved = await saveToDb(false, supabase);
+        dbSaved = await saveToDb(
+          isAborted || usageRef.aborted || req.signal.aborted ? "aborted" : "completed",
+          supabase,
+        );
       } catch (err) {
         isAborted = true;
-        dbSaved = await saveToDb(true, supabase);
+        const usageStatus: UsageEventStatus = req.signal.aborted || (err as Error).name === "AbortError"
+          ? "aborted"
+          : "failed";
+        dbSaved = await saveToDb(usageStatus, supabase);
         if ((err as Error).name === "AbortError") {
           // Esc キャンセル: 中断通知
           controller.enqueue(
@@ -1561,7 +1739,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
     }
   })());
 
-  return new Response(wrappedStream, {
+  return chatResponse(wrappedStream, {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache",

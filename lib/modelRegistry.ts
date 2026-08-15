@@ -6,15 +6,38 @@ export type ImageApiProvider = "openai" | "gemini" | "ideogram" | "openrouter";
 export type ModelStatus = "active" | "hidden" | "deprecated" | "retired";
 export type ModelId = string;
 
-export type ModelPricing = {
+export type PriceTier = {
+  promptTokensAbove?: number;
   inputPerMTok: number;
+  cachedInputPerMTok?: number;
   outputPerMTok: number;
 };
 
-export type PricingRule = ModelPricing & {
+export type PricingEpoch = {
   from?: string;
   note?: string;
+  tiers: readonly PriceTier[];
 };
+
+export type TextPricing = readonly PricingEpoch[];
+export type ModelPricing = PriceTier;
+
+export type ImagePricing =
+  | {
+      kind: "token_modalities";
+      textInputPerMTok?: number;
+      imageInputPerMTok?: number;
+      cachedImageInputPerMTok?: number;
+      textOutputPerMTok?: number;
+      imageOutputPerMTok?: number;
+    }
+  | { kind: "per_image"; usdPerImage: number }
+  | { kind: "provider_reported" };
+
+export const CLAUDE_CACHE_WRITE_MULTIPLIER = 1.25;
+export const CLAUDE_CACHE_READ_MULTIPLIER = 0.1;
+export const OPENAI_CACHE_WRITE_MULTIPLIER = 1.25;
+export const GEMINI_CACHE_READ_MULTIPLIER = 0.1;
 
 type ModelSurface = { chat: boolean; arena: boolean };
 type ThinkingConfig =
@@ -40,13 +63,16 @@ type TextModelBase = {
   status: ModelStatus;
   surfaces: ModelSurface;
   thinking: ThinkingConfig;
-  pricing: PricingRule[];
+  pricing: TextPricing;
   features?: { novelCheck?: NovelCheckFeature };
 };
 
-export type OpenAICapability =
+type OpenAICacheCapability = { supportsCacheWrite?: boolean };
+
+export type OpenAICapability = OpenAICacheCapability & (
   | { api: "chat_completions"; tokenParam: "max_tokens" | "max_completion_tokens" }
-  | { api: "responses" };
+  | { api: "responses" }
+);
 
 type ClaudeTextModelDef = TextModelBase & { provider: "claude" };
 type GeminiTextModelDef = TextModelBase & { provider: "gemini" };
@@ -63,21 +89,25 @@ export type ImageModelDef = {
   badge: string;
   status: ModelStatus;
   img2img: boolean;
-  pricing: PricingRule[];
+  imagePricing: ImagePricing;
   imagePage?: ImagePageMetadata;
 };
 
 export type ModelDef = TextModelDef | ImageModelDef;
 
-const price = (inputPerMTok: number, outputPerMTok: number): PricingRule[] => [
-  { inputPerMTok, outputPerMTok },
+const price = (
+  inputPerMTok: number,
+  outputPerMTok: number,
+  cachedInputPerMTok?: number,
+): TextPricing => [
+  { tiers: [{ inputPerMTok, outputPerMTok, ...(cachedInputPerMTok !== undefined ? { cachedInputPerMTok } : {}) }] },
 ];
 
 export const MODEL_REGISTRY = [
   { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00) },
   { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5はAdaptive Thinkingが標準で有効です" }, pricing: [
-    { inputPerMTok: 2.00, outputPerMTok: 10.00, note: "導入価格" },
-    { from: "2026-09-01T00:00:00.000Z", inputPerMTok: 3.00, outputPerMTok: 15.00 },
+    { note: "導入価格", tiers: [{ inputPerMTok: 2.00, outputPerMTok: 10.00 }] },
+    { from: "2026-09-01T00:00:00.000Z", tiers: [{ inputPerMTok: 3.00, outputPerMTok: 15.00 }] },
   ] },
   { kind: "text", id: "claude-opus-5", provider: "claude", label: "Opus 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Opus 5はAdaptive Thinkingが標準で有効です" }, pricing: price(5.00, 25.00) },
   { kind: "text", id: "claude-opus-4-8", provider: "claude", label: "Opus 4.8", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
@@ -88,34 +118,45 @@ export const MODEL_REGISTRY = [
   { kind: "text", id: "claude-haiku-4-5-20251001", provider: "claude", label: "Haiku 4.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(1.00, 5.00) },
 
   { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50), features: { novelCheck: { label: "2.5 Flash", estimatedInputPerMTok: 0.075 } } },
-  { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.25, 10.00), features: { novelCheck: { label: "2.5 Pro", estimatedInputPerMTok: 1.25 } } },
+  { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { tiers: [
+      { inputPerMTok: 1.25, outputPerMTok: 10.00 },
+      { promptTokensAbove: 200_000, inputPerMTok: 2.50, outputPerMTok: 15.00 },
+    ] },
+  ], features: { novelCheck: { label: "2.5 Pro", estimatedInputPerMTok: 1.25 } } },
   { kind: "text", id: "gemini-3.5-flash", provider: "gemini", label: "3.5 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 9.00) },
   { kind: "text", id: "gemini-3.1-flash-lite", provider: "gemini", label: "3.1 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.25, 1.50) },
   { kind: "text", id: "gemini-3.6-flash", provider: "gemini", label: "3.6 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
-    { inputPerMTok: 0.75, outputPerMTok: 3.75, note: "導入価格（〜2026-12-31）" },
-    { from: "2027-01-01T00:00:00.000Z", inputPerMTok: 1.50, outputPerMTok: 7.50 },
+    { note: "導入価格（〜2026-12-31）", tiers: [{ inputPerMTok: 0.75, outputPerMTok: 3.75 }] },
+    { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
   ] },
   { kind: "text", id: "gemini-3.7-flash", provider: "gemini", label: "3.7 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
-    { inputPerMTok: 0.75, outputPerMTok: 3.75, note: "導入価格（〜2026-12-31）" },
-    { from: "2027-01-01T00:00:00.000Z", inputPerMTok: 1.50, outputPerMTok: 7.50 },
+    { note: "導入価格（〜2026-12-31）", tiers: [{ inputPerMTok: 0.75, outputPerMTok: 3.75 }] },
+    { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
   ] },
   { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
 
-  { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
-  { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
-  { kind: "text", id: "gpt-5.4", provider: "openai", label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
-  { kind: "text", id: "gpt-5.5", provider: "openai", label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00, 1.25), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
+  { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50, 0.075), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.4", provider: "openai", label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00, 0.25), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.5", provider: "openai", label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00, 0.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
   { kind: "text", id: "gpt-5.5-pro", provider: "openai", label: "GPT-5.5 Pro", badge: "最上位", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(30.00, 180.00), openai: { api: "responses" } },
-  { kind: "text", id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
-  { kind: "text", id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
-  { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.00, 6.00), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00, 0.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
+  { kind: "text", id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { tiers: [{ inputPerMTok: 2.50, cachedInputPerMTok: 0.25, outputPerMTok: 15.00 }] },
+    { from: "2026-07-30T00:00:00.000Z", tiers: [{ inputPerMTok: 2.00, cachedInputPerMTok: 0.20, outputPerMTok: 12.00 }] },
+  ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
+  { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { tiers: [{ inputPerMTok: 1.00, cachedInputPerMTok: 0.10, outputPerMTok: 6.00 }] },
+    { from: "2026-07-30T00:00:00.000Z", tiers: [{ inputPerMTok: 0.20, cachedInputPerMTok: 0.02, outputPerMTok: 1.20 }] },
+  ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
 
-  { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2", badge: "OpenAI", status: "active", img2img: false, pricing: [] },
-  { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, pricing: [], imagePage: { label: "2.5 Flash Image", badge: "既存" } },
-  { kind: "image", id: "ideogram-v3", provider: "image_gen", apiProvider: "ideogram", label: "Ideogram V3", badge: "Ideogram", status: "active", img2img: true, pricing: price(0, 0.08) },
-  { kind: "image", id: "black-forest-labs/flux.2-pro", provider: "image_gen", apiProvider: "openrouter", label: "Flux 2 Pro", badge: "OpenRouter", status: "active", img2img: false, pricing: price(0, 0.055) },
-  { kind: "image", id: "gemini-3.1-flash-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(0.50, 60.00), imagePage: { label: "3.1 Flash Image", badge: "新" } },
-  { kind: "image", id: "gemini-3-pro-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, pricing: price(2.00, 120.00), imagePage: { label: "3 Pro Image", badge: "高性能" } },
+  { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2", badge: "OpenAI", status: "active", img2img: false, imagePricing: { kind: "token_modalities", textInputPerMTok: 5.00, imageInputPerMTok: 8.00, cachedImageInputPerMTok: 2.00, imageOutputPerMTok: 30.00 } },
+  { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, imagePricing: { kind: "token_modalities", textInputPerMTok: 0.30, imageInputPerMTok: 0.30, textOutputPerMTok: 2.50, imageOutputPerMTok: 30.00 }, imagePage: { label: "2.5 Flash Image", badge: "既存" } },
+  { kind: "image", id: "ideogram-v3", provider: "image_gen", apiProvider: "ideogram", label: "Ideogram V3", badge: "Ideogram", status: "active", img2img: true, imagePricing: { kind: "per_image", usdPerImage: 0.03 } },
+  { kind: "image", id: "black-forest-labs/flux.2-pro", provider: "image_gen", apiProvider: "openrouter", label: "Flux 2 Pro", badge: "OpenRouter", status: "active", img2img: false, imagePricing: { kind: "provider_reported" } },
+  { kind: "image", id: "gemini-3.1-flash-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, imagePricing: { kind: "token_modalities", textInputPerMTok: 0.50, imageInputPerMTok: 0.50, textOutputPerMTok: 3.00, imageOutputPerMTok: 60.00 }, imagePage: { label: "3.1 Flash Image", badge: "新" } },
+  { kind: "image", id: "gemini-3-pro-image", provider: "image_gen", apiProvider: "gemini", label: "(UI非表示)", badge: "—", status: "hidden", img2img: true, imagePricing: { kind: "token_modalities", textInputPerMTok: 2.00, imageInputPerMTok: 2.00, textOutputPerMTok: 12.00, imageOutputPerMTok: 120.00 }, imagePage: { label: "3 Pro Image", badge: "高性能" } },
 ] as const satisfies readonly ModelDef[];
 
 // Responses API呼び出し時の出力上限。Chat・Arena共通（同一モデル・同一エンドポイントのため同一概念として統合）
@@ -162,22 +203,44 @@ export function normalizeModelId(modelId: string): string {
   return modelId.replace(/^(gemini|openai|claude)\//, "").toLowerCase();
 }
 
-function resolvePricingRules(rules: readonly PricingRule[], now: Date): ModelPricing | null {
-  const applicable = rules.filter((rule) => !rule.from || now >= new Date(rule.from));
-  const rule = applicable[applicable.length - 1];
-  return rule ? { inputPerMTok: rule.inputPerMTok, outputPerMTok: rule.outputPerMTok } : null;
+function resolvePricingEpochs(
+  epochs: TextPricing,
+  at: Date,
+  promptTokens?: number,
+): PriceTier | null {
+  const applicable = epochs.filter((epoch) => !epoch.from || at >= new Date(epoch.from));
+  const epoch = applicable.reduce<PricingEpoch | null>((latest, candidate) => {
+    if (!latest) return candidate;
+    const latestTime = latest.from ? new Date(latest.from).getTime() : Number.NEGATIVE_INFINITY;
+    const candidateTime = candidate.from ? new Date(candidate.from).getTime() : Number.NEGATIVE_INFINITY;
+    return candidateTime >= latestTime ? candidate : latest;
+  }, null);
+  if (!epoch) return null;
+
+  const baseTier = epoch.tiers.find((tier) => tier.promptTokensAbove === undefined) ?? null;
+  if (promptTokens === undefined) return baseTier;
+  return epoch.tiers.reduce<PriceTier | null>((selected, tier) => {
+    if (tier.promptTokensAbove === undefined || promptTokens <= tier.promptTokensAbove) {
+      return selected;
+    }
+    if (selected?.promptTokensAbove !== undefined && selected.promptTokensAbove > tier.promptTokensAbove) {
+      return selected;
+    }
+    return tier;
+  }, baseTier);
 }
 
-export function getPricing(modelId: string, now: Date = new Date()): ModelPricing | null {
+export function getPricing(modelId: string, at: Date = new Date(), promptTokens?: number): PriceTier | null {
   const normalized = normalizeModelId(modelId);
   const exactModel = MODEL_REGISTRY.find((model) => model.id === normalized);
   if (exactModel) {
-    if (exactModel.pricing.length === 0) return null;
-    return resolvePricingRules(exactModel.pricing, now);
+    if (exactModel.kind === "image") return null;
+    return resolvePricingEpochs(exactModel.pricing, at, promptTokens);
   }
 
-  type Candidate = { key: string; source: "registry" | "legacy"; pricing: readonly PricingRule[] | ModelPricing };
+  type Candidate = { key: string; source: "registry" | "legacy"; pricing: TextPricing | ModelPricing };
   const registryCandidates: Candidate[] = MODEL_REGISTRY
+    .filter((model): model is Extract<(typeof MODEL_REGISTRY)[number], { kind: "text" }> => model.kind === "text")
     .filter((model) => model.pricing.length > 0)
     .map((model) => ({ key: model.id, source: "registry" as const, pricing: model.pricing }));
   const legacyCandidates: Candidate[] = Object.entries(LEGACY_PRICING)
@@ -188,7 +251,7 @@ export function getPricing(modelId: string, now: Date = new Date()): ModelPricin
   const winner = matched[0];
   if (!winner) return null;
   return Array.isArray(winner.pricing)
-    ? resolvePricingRules(winner.pricing as readonly PricingRule[], now)
+    ? resolvePricingEpochs(winner.pricing as TextPricing, at, promptTokens)
     : winner.pricing as ModelPricing;
 }
 
@@ -354,6 +417,21 @@ export function getOpenAICapability(modelId: RegistryOpenAIModel): OpenAICapabil
     throw new Error(`OpenAI capability is missing for model: ${modelId}`);
   }
   return model.openai;
+}
+
+export function supportsOpenAICacheWrite(modelId: string): boolean {
+  const normalized = normalizeModelId(modelId);
+  const model = MODEL_REGISTRY.find(
+    (candidate): candidate is OpenAIRegistryModel =>
+      candidate.kind === "text" &&
+      candidate.provider === "openai" &&
+      candidate.id === normalized
+  );
+  return Boolean(
+    model &&
+    "supportsCacheWrite" in model.openai &&
+    model.openai.supportsCacheWrite === true
+  );
 }
 
 type TextModelByProvider = {

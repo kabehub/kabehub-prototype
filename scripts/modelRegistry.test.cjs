@@ -117,6 +117,25 @@ for (const modelId of ["gemini-3.1-flash-image", "gemini-3-pro-image"]) {
 for (const apiProvider of ["openai", "gemini", "ideogram", "openrouter"]) {
   assert.ok(registry.getDefaultImageModel(apiProvider), apiProvider);
 }
+assert.deepEqual(registry.resolveImageModel("gpt-image-2").imagePricing, {
+  kind: "token_modalities",
+  textInputPerMTok: 5,
+  imageInputPerMTok: 8,
+  cachedImageInputPerMTok: 2,
+  imageOutputPerMTok: 30,
+});
+assert.deepEqual(registry.resolveImageModel("ideogram-v3").imagePricing, {
+  kind: "per_image",
+  usdPerImage: 0.03,
+});
+assert.deepEqual(registry.resolveImageModel("black-forest-labs/flux.2-pro").imagePricing, {
+  kind: "provider_reported",
+});
+assert.equal(registry.supportsOpenAICacheWrite("gpt-5.6-sol"), true);
+assert.equal(registry.supportsOpenAICacheWrite("gpt-5.6-terra"), true);
+assert.equal(registry.supportsOpenAICacheWrite("gpt-5.6-luna"), true);
+assert.equal(registry.supportsOpenAICacheWrite("gpt-5.5"), false);
+assert.equal(registry.supportsOpenAICacheWrite("gpt-5.5-pro"), false);
 
 const expectedNovelCheckModels = [
   { id: "gemini-2.5-flash", label: "2.5 Flash", estimatedInputPerMTok: 0.075 },
@@ -159,6 +178,10 @@ for (const model of registry.MODEL_REGISTRY) {
 assert.deepEqual(registry.getOpenAICapability("gpt-4o"), { api: "chat_completions", tokenParam: "max_tokens" });
 assert.deepEqual(registry.getOpenAICapability("gpt-5.4-mini"), { api: "chat_completions", tokenParam: "max_completion_tokens" });
 assert.deepEqual(registry.getOpenAICapability("gpt-5.5-pro"), { api: "responses" });
+assert.deepEqual(registry.getPricing("gpt-5.5-pro"), {
+  inputPerMTok: 30,
+  outputPerMTok: 180,
+});
 
 // fail-fast
 assert.throws(() => registry.getOpenAICapability("unknown-model"), /OpenAI capability is missing/);
@@ -259,10 +282,43 @@ assert.deepEqual(registry.getPricing("gemini-3.7-flash", new Date("2027-01-01T00
   outputPerMTok: 7.5,
 });
 
+assert.deepEqual(registry.getPricing("gemini-2.5-pro", new Date("2026-08-15T00:00:00.000Z"), 200_000), {
+  inputPerMTok: 1.25,
+  outputPerMTok: 10,
+});
+assert.deepEqual(registry.getPricing("gemini-2.5-pro", new Date("2026-08-15T00:00:00.000Z"), 200_001), {
+  promptTokensAbove: 200_000,
+  inputPerMTok: 2.5,
+  outputPerMTok: 15,
+});
+
+const openAIEpochBefore = new Date("2026-07-29T23:59:59.000Z");
+const openAIEpochAt = new Date("2026-07-30T00:00:00.000Z");
+assert.deepEqual(registry.getPricing("gpt-5.6-terra", openAIEpochBefore), {
+  inputPerMTok: 2.5,
+  cachedInputPerMTok: 0.25,
+  outputPerMTok: 15,
+});
+assert.deepEqual(registry.getPricing("gpt-5.6-terra", openAIEpochAt), {
+  inputPerMTok: 2,
+  cachedInputPerMTok: 0.2,
+  outputPerMTok: 12,
+});
+assert.deepEqual(registry.getPricing("gpt-5.6-luna", openAIEpochBefore), {
+  inputPerMTok: 1,
+  cachedInputPerMTok: 0.1,
+  outputPerMTok: 6,
+});
+assert.deepEqual(registry.getPricing("gpt-5.6-luna", openAIEpochAt), {
+  inputPerMTok: 0.2,
+  cachedInputPerMTok: 0.02,
+  outputPerMTok: 1.2,
+});
+
 const newModels = [
-  ["openai", "gpt-5.6-sol", { inputPerMTok: 5, outputPerMTok: 30 }],
-  ["openai", "gpt-5.6-terra", { inputPerMTok: 2.5, outputPerMTok: 15 }],
-  ["openai", "gpt-5.6-luna", { inputPerMTok: 1, outputPerMTok: 6 }],
+  ["openai", "gpt-5.6-sol", { inputPerMTok: 5, cachedInputPerMTok: 0.5, outputPerMTok: 30 }],
+  ["openai", "gpt-5.6-terra", { inputPerMTok: 2, cachedInputPerMTok: 0.2, outputPerMTok: 12 }],
+  ["openai", "gpt-5.6-luna", { inputPerMTok: 0.2, cachedInputPerMTok: 0.02, outputPerMTok: 1.2 }],
   ["gemini", "gemini-3.7-flash", { inputPerMTok: 0.75, outputPerMTok: 3.75 }],
   ["gemini", "gemini-3.5-flash-lite", { inputPerMTok: 0.3, outputPerMTok: 2.5 }],
 ];

@@ -14,10 +14,11 @@ export { getPricing };
 export function calcCost(
   inputTokens: number | null,
   outputTokens: number | null,
-  modelId: string
+  modelId: string,
+  at: Date = new Date(),
 ): number | null {
   if (inputTokens == null || outputTokens == null) return null;
-  const pricing = getPricing(modelId);
+  const pricing = getPricing(modelId, at, inputTokens);
   if (!pricing) return null;
   return (
     (inputTokens  / 1_000_000) * pricing.inputPerMTok +
