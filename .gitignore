@@ -7,7 +7,6 @@ build
 .env.local.*.bak
 .vercel/
 .claude/
-tsconfig.tsbuildinfo
-production_schema_backup_before_p0.sql 
+tsconfig.tsbuildinfo 
 temp_*.txt
 test-execution.log
