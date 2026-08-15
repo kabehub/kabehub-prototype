@@ -10,3 +10,4 @@ build
 tsconfig.tsbuildinfo 
 temp_*.txt
 test-execution.log
+app/test-login/
