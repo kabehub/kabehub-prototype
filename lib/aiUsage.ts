@@ -11,7 +11,7 @@ import {
 import * as logger from "@/lib/logger";
 
 export type UsageProvider = "claude" | "gemini" | "openai" | "ideogram" | "openrouter";
-export type UsageRequestType = "chat" | "image_gen" | "novel_check";
+export type UsageRequestType = "chat" | "image_gen" | "novel_check" | "arena";
 export type UsageCostSource = "computed" | "provider_reported" | "unavailable";
 export type UsageEventStatus = "completed" | "aborted" | "failed";
 

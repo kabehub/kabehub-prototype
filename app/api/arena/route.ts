@@ -4,6 +4,8 @@ import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
 import { buildDefaultModels, createModelGuards, getOpenAICapability, OPENAI_RESPONSES_CONFIG, resolveClaudeRequestOverrides } from "@/lib/modelRegistry";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
+import { calculateTextUsageCost, recordUsageEvent, type TextUsage, type UsageProvider } from "@/lib/aiUsage";
+import { serviceRoleClient } from "@/lib/mcp-auth";
 import * as logger from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -206,7 +208,7 @@ async function compensateInterventionMessage({
   }
 }
 
-async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: ClaudeModel): Promise<string> {
+async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: ClaudeModel): Promise<{ text: string; usage: TextUsage }> {
   const body: Record<string, unknown> = {
     model: modelId,
     ...resolveClaudeRequestOverrides(modelId, false),
@@ -219,8 +221,14 @@ async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt:
     body: JSON.stringify(body),
   });
   const data = await readProviderJson("claude", res);
+  const usage: TextUsage = {
+    inputTokens: data.usage?.input_tokens ?? null,
+    outputTokens: data.usage?.output_tokens ?? null,
+    cacheCreationInputTokens: data.usage?.cache_creation_input_tokens ?? null,
+    cacheReadInputTokens: data.usage?.cache_read_input_tokens ?? null,
+  };
   if (data.stop_reason === "refusal") {
-    return "（AIの安全基準により、この内容には回答できませんでした）";
+    return { text: "（AIの安全基準により、この内容には回答できませんでした）", usage };
   }
   const text = Array.isArray(data.content)
     ? data.content
@@ -228,10 +236,10 @@ async function callClaude(apiKey: string, messages: ChatMessage[], systemPrompt:
         .map((b: { text?: string }) => b.text ?? "")
         .join("")
     : "";
-  return text || "（応答の取得に失敗しました）";
+  return { text: text || "（応答の取得に失敗しました）", usage };
 }
 
-async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: GeminiModel): Promise<string> {
+async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: GeminiModel): Promise<{ text: string; usage: TextUsage }> {
   const contents = messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
@@ -255,10 +263,22 @@ async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt:
         .map((part: { text?: string }) => part.text ?? "")
         .join("")
     : "";
-  return text || "（応答の取得に失敗しました）";
+  const usageMetadata = data.usageMetadata;
+  const candidatesTokenCount = usageMetadata?.candidatesTokenCount;
+  const thoughtsTokenCount = usageMetadata?.thoughtsTokenCount;
+  return {
+    text: text || "（応答の取得に失敗しました）",
+    usage: {
+      inputTokens: usageMetadata?.promptTokenCount ?? null,
+      outputTokens: candidatesTokenCount == null && thoughtsTokenCount == null
+        ? null
+        : (candidatesTokenCount ?? 0) + (thoughtsTokenCount ?? 0),
+      cacheReadInputTokens: usageMetadata?.cachedContentTokenCount ?? null,
+    },
+  };
 }
 
-async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: OpenAIModel): Promise<string> {
+async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt: string | undefined, modelId: OpenAIModel): Promise<{ text: string; usage: TextUsage }> {
   const msgs: { role: string; content: string }[] = [];
   if (systemPrompt?.trim()) msgs.push({ role: "system", content: systemPrompt.trim() });
   msgs.push(...messages.map((m) => ({ role: m.role, content: m.content })));
@@ -276,7 +296,15 @@ async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt:
       .filter((content: { type: string }) => content.type === "output_text")
       .map((content: { text: string }) => content.text)
       .join("") ?? "";
-    return text || "（応答の取得に失敗しました）";
+    return {
+      text: text || "（応答の取得に失敗しました）",
+      usage: {
+        inputTokens: data.usage?.input_tokens ?? null,
+        outputTokens: data.usage?.output_tokens ?? null,
+        cachedInputTokens: data.usage?.input_tokens_details?.cached_tokens ?? null,
+        cacheWriteInputTokens: data.usage?.input_tokens_details?.cache_write_tokens ?? null,
+      },
+    };
   }
 
   const res = await fetchProvider("openai", "https://api.openai.com/v1/chat/completions", {
@@ -285,7 +313,15 @@ async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt:
     body: JSON.stringify({ model: modelId, messages: msgs }),
   });
   const data = await readProviderJson("openai", res);
-  return data.choices?.[0]?.message?.content ?? "（応答の取得に失敗しました）";
+  return {
+    text: data.choices?.[0]?.message?.content ?? "（応答の取得に失敗しました）",
+    usage: {
+      inputTokens: data.usage?.prompt_tokens ?? null,
+      outputTokens: data.usage?.completion_tokens ?? null,
+      cachedInputTokens: data.usage?.prompt_tokens_details?.cached_tokens ?? null,
+      cacheWriteInputTokens: data.usage?.prompt_tokens_details?.cache_write_tokens ?? null,
+    },
+  };
 }
 
 async function callAI(
@@ -294,12 +330,12 @@ async function callAI(
   systemPrompt: string,
   keys: { anthropic?: string; gemini?: string; openai?: string },
   modelId?: ModelId
-): Promise<string> {
+): Promise<{ text: string; usage: TextUsage; modelId: string }> {
   const resolvedModelId = modelId ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.claude;
   if (provider === "claude") {
     if (!isClaudeModel(resolvedModelId)) throw new Error(`Invalid modelId "${resolvedModelId}" for provider "${provider}"`);
     if (!keys.anthropic) throw new Error("ClaudeのAPIキーが設定されていません。");
-    return callClaude(keys.anthropic, messages, systemPrompt, resolvedModelId);
+    return { ...await callClaude(keys.anthropic, messages, systemPrompt, resolvedModelId), modelId: resolvedModelId };
   } else if (provider === "gemini") {
     if (!isGeminiModel(resolvedModelId)) throw new Error(`Invalid modelId "${resolvedModelId}" for provider "${provider}"`);
     if (!keys.gemini) throw new Error("GeminiのAPIキーが設定されていません。");
@@ -307,11 +343,11 @@ async function callAI(
     if (geminiMessages.length > 0 && geminiMessages[geminiMessages.length - 1].role === "assistant") {
       geminiMessages.push({ role: "user", content: "続けてください。あなたの意見を述べてください。" });
     }
-    return callGemini(keys.gemini, geminiMessages, systemPrompt, resolvedModelId);
+    return { ...await callGemini(keys.gemini, geminiMessages, systemPrompt, resolvedModelId), modelId: resolvedModelId };
   } else if (provider === "openai") {
     if (!isOpenAIModel(resolvedModelId)) throw new Error(`Invalid modelId "${resolvedModelId}" for provider "${provider}"`);
     if (!keys.openai) throw new Error("OpenAIのAPIキーが設定されていません。");
-    return callOpenAI(keys.openai, messages, systemPrompt, resolvedModelId);
+    return { ...await callOpenAI(keys.openai, messages, systemPrompt, resolvedModelId), modelId: resolvedModelId };
   }
   throw new Error(`未対応のプロバイダーです: ${provider}`);
 }
@@ -523,12 +559,20 @@ export async function POST(req: NextRequest) {
     `ルール：相手の言葉尻を捕らえたり、同じフレーズをオウム返しにしたりするのは避けてください。常に新しい視点や例え話を用いて、論理的に相手を追い詰めてください。`,
   ].filter(Boolean).join("\n");
 
-  let content = "";
+  const usageEventId = crypto.randomUUID();
+  const pricedAt = new Date();
+  let text = "";
+  let usage: TextUsage | null = null;
+  let usedModelId: string | null = null;
   try {
-    content = await callAI(currentProvider ?? "", contextMessages, fullSystemPrompt, keys, modelId);
+    const result = await callAI(currentProvider ?? "", contextMessages, fullSystemPrompt, keys, modelId);
+    text = result.text;
+    usage = result.usage;
+    usedModelId = result.modelId;
   } catch (err) {
-    content = `（エラー: ${err instanceof Error ? err.message : "不明なエラー"}）\n※右上の「🔑 APIキー」ボタンから設定を確認してください。`;
+    text = `（エラー: ${err instanceof Error ? err.message : "不明なエラー"}）\n※右上の「🔑 APIキー」ボタンから設定を確認してください。`;
   }
+  const content = text;
 
   const assistantMessage = {
     id: uuidv4(),
@@ -547,6 +591,39 @@ export async function POST(req: NextRequest) {
     provider: assistantMessage.provider,
     user_id: userId,
   });
+
+  if (usage && usedModelId) {
+    const provider = (currentProvider ?? "claude") as Extract<UsageProvider, ArenaProvider>;
+    const cost = calculateTextUsageCost(provider, usedModelId, usage, pricedAt);
+    try {
+      await recordUsageEvent(serviceRoleClient(), {
+        id: usageEventId,
+        userId,
+        threadId,
+        messageId: assistantInsertError ? null : assistantMessage.id,
+        provider,
+        modelId: usedModelId,
+        requestType: "arena",
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheCreationInputTokens: usage.cacheCreationInputTokens ?? null,
+        cacheReadInputTokens: usage.cacheReadInputTokens ?? null,
+        cacheWriteInputTokens: usage.cacheWriteInputTokens ?? null,
+        cachedInputTokens: usage.cachedInputTokens ?? null,
+        estimatedCostUsd: cost.estimatedCostUsd,
+        costSource: cost.costSource,
+        status: "completed",
+        pricedAt,
+      });
+    } catch (err) {
+      logger.dbOperationFailed({
+        route: "arena",
+        operation: "record-usage-event",
+        table: "ai_usage_events",
+        errorType: err instanceof Error ? err.name : "unknown",
+      });
+    }
+  }
 
   if (assistantInsertError) {
     logger.dbOperationFailed({

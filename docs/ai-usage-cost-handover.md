@@ -1,11 +1,18 @@
 # AI利用コスト計測基盤 引き継ぎ
 
-最終確認日: 2026-08-15
+最終確認日: 2026-08-16
 
 ## 別課題
 
-- Arena: Claude / Gemini / OpenAI のいずれも現状は実token usageを保存していない。`ai_usage_events`への記録は、Arenaの各非ストリーミングprovider応答からusageを新規収集する別課題として扱う。
 - Managed Plan（Phase 4）: `ai_usage_events`をクレジット消費の正本候補として利用できるが、残高・予約・確定・返却を含む消費ロジックは本対応に含めない。
+
+## v182 Arena usage収集（完了）
+
+- `app/api/arena/route.ts`のClaude / Gemini / OpenAI（Chat Completions・Responses API）応答から実token usageを収集し、v181の`calculateTextUsageCost()` / `recordUsageEvent()`を再利用して`request_type = 'arena'`で記録するようにした。
+- provider呼び出し直前にusage event IDと`priced_at`を固定し、実際に解決されたmodel IDを記録する。provider成功時だけ記録し、assistant message INSERT失敗時もusage記録をスキップせず`message_id = null`とする。
+- `serviceRoleClient()`の評価を含むusage記録全体をbest-effort化し、失敗時もArenaの200レスポンスと`saved`真偽を変えない。
+- `scripts/arena-usage.test.cjs`を追加し、provider別usage fixture、assistant保存成功・失敗、provider失敗、service-role client例外の10ケースを確認済み。
+- 2026-08-16にtest環境でClaude Haiku 4.5を実呼び出しし、正常系で`input_tokens = 356` / `output_tokens = 102`かつassistant message ID一致、assistant INSERT失敗系で`message_id = null`かつ`input_tokens = 346` / `output_tokens = 76`を確認した。APIキーなしのcatch系ではusage件数が増えないことも確認済み。検証用の一時ユーザーと紐づく行は確認後に削除した。
 
 ## 実API確認の状態
 
@@ -15,9 +22,7 @@
 
 ## DB・実機確認
 
-この作業環境にはPostgres接続情報、Supabase Management API、利用可能なログイン済みブラウザが無いため、test / productionへのmigration適用とログイン必須の実機確認は未実施。
-
-適用対象は `docs/migration_v181_ai_usage_events.sql`。ファイル内のpreflight → migration本体 → postflightの順で、test環境で確認後にproductionへ適用する。適用・canonical schema反映後は既存運用どおり `docs/applied/` へ移動する。
+v181 migrationはtest / productionへ適用済みで、`docs/schema.sql`への反映と`docs/applied/migration_v181_ai_usage_events.sql`への移動も完了している。Arenaの実機確認結果は上記「v182 Arena usage収集（完了）」を参照。
 
 test環境では次を確認する。
 
@@ -29,6 +34,5 @@ test環境では次を確認する。
 
 ## ローカル検証の既存ブロッカー
 
-- `npx tsc --noEmit`と`npm run build`は、作業開始前から未追跡だったルート直下の`temp_check.tsx`が存在しない相対moduleを6件importしているため、TypeScript段階で停止する。`temp_check.tsx`だけを除いた一時tsconfigでは型検査成功、`npm run build`もWebpackコンパイルまでは成功済み。ユーザー作業物のため削除・変更していない。
-- `scripts/*.test.cjs`は33本中32本成功。作業開始前から存在する`scripts/lore.test.cjs`のみ、テスト変換がroute内に存在しない`normalizeTags`をexportしようとして`ReferenceError`になる。今回の変更対象外のため修正していない。
-- 検証で更新された`tsconfig.tsbuildinfo`はリポジトリ版へ復元済み。作業開始前から変更・未追跡だった監査文書、`next-env.d.ts`、`tsconfig.json`、`app/test-login/`、`temp_*`は今回の差分に含めていない。
+- `npx tsc --noEmit`は成功済み。
+- `scripts/*.test.cjs`は35本中34本成功。既存の`scripts/lore.test.cjs`のみ、テスト変換がroute内に存在しない`normalizeTags`をexportしようとして`ReferenceError`になる。今回の変更対象外のため修正していない。
