@@ -2343,6 +2343,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           <div
             style={{
               background: "transparent",
+              paddingBottom: "env(safe-area-inset-bottom)",
             }}
           >
             <div style={footerInnerStyle}>
