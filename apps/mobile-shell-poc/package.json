@@ -1,0 +1,20 @@
+{
+  "name": "@kabehub/mobile-shell-poc",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Disposable Capacitor native shell smoke-test PoC for KabeHub",
+  "scripts": {
+    "cap": "cap"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/ios": "8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

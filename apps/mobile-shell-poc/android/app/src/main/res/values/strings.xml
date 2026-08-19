@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KabeHub</string>
+    <string name="title_activity_main">KabeHub</string>
+    <string name="package_name">com.kabehub.app</string>
+    <string name="custom_url_scheme">com.kabehub.app</string>
+</resources>
