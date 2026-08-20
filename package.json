@@ -2,6 +2,10 @@
   "name": "ai-editor",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/mobile",
+    "packages/shared"
+  ],
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",

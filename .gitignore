@@ -11,3 +11,12 @@ tsconfig.tsbuildinfo
 temp_*.txt
 test-execution.log
 app/test-login/
+
+# Task 3 workspace build artifacts
+/apps/mobile/next-env.d.ts
+/apps/mobile/.next/
+/apps/mobile/node_modules/
+/apps/mobile/tsconfig.tsbuildinfo
+/packages/shared/.next/
+/packages/shared/node_modules/
+/packages/shared/tsconfig.tsbuildinfo
