@@ -13,6 +13,7 @@ import { TAG_NAME_MAX_LENGTH, normalizeTagName } from "@/lib/validationLimits";
 import PublishConfirmModal from "./PublishConfirmModal";
 import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
 import { useToast } from "@/components/Toast";
+import type { ApiKeyStore } from "@kabehub/shared";
 import {
   buildBranchLanes,
   buildChainBlocksByRootAnchor,
@@ -29,6 +30,7 @@ const EMPTY_STRING_ARRAY: string[] = [];
 
 // ✅ v26更新: searchMatchIndex / onMatchNavigate / onClearSearch 追加
 interface ChatPanelProps {
+  apiKeyStore: ApiKeyStore;
   thread: Thread | null;
   messages: Message[];
   displayName?: string | null;
@@ -90,6 +92,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({
+  apiKeyStore,
   thread,
   messages,
   displayName,
@@ -308,36 +311,41 @@ export default function ChatPanel({
     return () => { ignore = true }
   }, [thread?.folder_name])
 
-  // APIキーをLocalStorageから読み込む
+  // APIキーをstorageから読み込む
   useEffect(() => {
-    try {
-      setApiKeyDrafts({
-        anthropic: localStorage.getItem("kabehub_anthropic_key") ?? "",
-        gemini: localStorage.getItem("kabehub_gemini_key") ?? "",
-        openai: localStorage.getItem("kabehub_openai_key") ?? "",
-      });
-    } catch {
-      // 既定値フォールバック: APIキードラフト読込失敗時は空欄のまま表示する。
-    }
-  }, []);
+    const loadApiKeys = async () => {
+      try {
+        const [anthropic, gemini, openai] = await Promise.all([
+          apiKeyStore.getKey("claude"),
+          apiKeyStore.getKey("gemini"),
+          apiKeyStore.getKey("openai"),
+        ]);
+        setApiKeyDrafts({
+          anthropic: anthropic ?? "",
+          gemini: gemini ?? "",
+          openai: openai ?? "",
+        });
+      } catch {
+        // 既定値フォールバック: APIキードラフト読込失敗時は空欄のまま表示する。
+      }
+    };
+    void loadApiKeys();
+  }, [apiKeyStore]);
 
-  const handleSaveApiKeys = () => {
+  const handleSaveApiKeys = async () => {
     try {
-      if (apiKeyDrafts.anthropic.trim()) {
-        localStorage.setItem("kabehub_anthropic_key", apiKeyDrafts.anthropic.trim());
-      } else {
-        localStorage.removeItem("kabehub_anthropic_key");
-      }
-      if (apiKeyDrafts.gemini.trim()) {
-        localStorage.setItem("kabehub_gemini_key", apiKeyDrafts.gemini.trim());
-      } else {
-        localStorage.removeItem("kabehub_gemini_key");
-      }
-      if (apiKeyDrafts.openai.trim()) {
-        localStorage.setItem("kabehub_openai_key", apiKeyDrafts.openai.trim());
-      } else {
-        localStorage.removeItem("kabehub_openai_key");
-      }
+      await Promise.all(
+        ([
+          ["claude", apiKeyDrafts.anthropic],
+          ["gemini", apiKeyDrafts.gemini],
+          ["openai", apiKeyDrafts.openai],
+        ] as const).map(([keyProvider, draft]) => {
+          const value = draft.trim();
+          return value
+            ? apiKeyStore.setKey(keyProvider, value)
+            : apiKeyStore.removeKey(keyProvider);
+        })
+      );
       showToast("APIキーを保存しました");
     } catch (err) {
       console.error("APIキー保存失敗:", err);
@@ -2219,6 +2227,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       />
     ) : (
       <MessageBubble
+        apiKeyStore={apiKeyStore}
         message={msg}
         isLast={activeIdx === lastAssistantIndex}
         isLoading={isLoading}

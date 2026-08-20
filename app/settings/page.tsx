@@ -9,6 +9,9 @@ import { LS_ENTER_MODE, type EnterMode } from '@/lib/inputUtils'
 import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
 import { useToast } from '@/components/Toast'
 import { isValidHandleFormat, isAllUpperHandle, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from '@/lib/validationLimits'
+import { webApiClient } from '@/lib/api-client'
+import { webApiKeyStore } from '@/lib/apiKeyStore'
+import { buildApiKeyHeaders } from '@kabehub/shared'
 import type { McpToken } from '@/types'
 
 type Profile = {
@@ -25,15 +28,6 @@ type GithubStatus = {
   github_login: string | null
   scope: string | null
 }
-
-// ① APIキーのLocalStorageキー名（壁打ち画面と統一）
-const LS_KEYS = {
-  claude:     'kabehub_anthropic_key',
-  gemini:     'kabehub_gemini_key',
-  openai:     'kabehub_openai_key',
-  ideogram:   'kabehub_ideogram_key',
-  openrouter: 'kabehub_openrouter_key',
-} as const
 
 function validateHandle(value: string): string | null {
   if (!value) return '入力してください'
@@ -108,13 +102,23 @@ function SettingsContent() {
   const [enterMode, setEnterMode] = useState<EnterMode>('send')
   const [fontScale, setFontScale] = useState<number>(1)
 
-  // ① LocalStorageからAPIキーとモデルを読み込む
+  // ① storageからAPIキーとモデルを読み込む
   useEffect(() => {
-    setClaudeKey(localStorage.getItem(LS_KEYS.claude) ?? '')
-    setGeminiKey(localStorage.getItem(LS_KEYS.gemini) ?? '')
-    setOpenaiKey(localStorage.getItem(LS_KEYS.openai) ?? '')
-    setIdeogramKey(localStorage.getItem(LS_KEYS.ideogram) ?? '')
-    setOpenrouterKey(localStorage.getItem(LS_KEYS.openrouter) ?? '')
+    const loadApiKeys = async () => {
+      const [claude, gemini, openai, ideogram, openrouter] = await Promise.all([
+        webApiKeyStore.getKey('claude'),
+        webApiKeyStore.getKey('gemini'),
+        webApiKeyStore.getKey('openai'),
+        webApiKeyStore.getKey('ideogram'),
+        webApiKeyStore.getKey('openrouter'),
+      ])
+      setClaudeKey(claude ?? '')
+      setGeminiKey(gemini ?? '')
+      setOpenaiKey(openai ?? '')
+      setIdeogramKey(ideogram ?? '')
+      setOpenrouterKey(openrouter ?? '')
+    }
+    void loadApiKeys()
     setClaudeModel(loadModel('claude'))
     setGeminiModel(loadModel('gemini'))
     setOpenaiModel(loadModel('openai'))
@@ -234,33 +238,22 @@ function SettingsContent() {
     setTimeout(() => setTokenCopied(false), 2000)
   }
 
-  // ① APIキーとモデルを保存（LocalStorage）
-  const handleSaveApiKeys = useCallback(() => {
-    if (claudeKey.trim()) {
-      localStorage.setItem(LS_KEYS.claude, claudeKey.trim())
-    } else {
-      localStorage.removeItem(LS_KEYS.claude)
-    }
-    if (geminiKey.trim()) {
-      localStorage.setItem(LS_KEYS.gemini, geminiKey.trim())
-    } else {
-      localStorage.removeItem(LS_KEYS.gemini)
-    }
-    if (openaiKey.trim()) {
-      localStorage.setItem(LS_KEYS.openai, openaiKey.trim())
-    } else {
-      localStorage.removeItem(LS_KEYS.openai)
-    }
-    if (ideogramKey.trim()) {
-      localStorage.setItem(LS_KEYS.ideogram, ideogramKey.trim())
-    } else {
-      localStorage.removeItem(LS_KEYS.ideogram)
-    }
-    if (openrouterKey.trim()) {
-      localStorage.setItem(LS_KEYS.openrouter, openrouterKey.trim())
-    } else {
-      localStorage.removeItem(LS_KEYS.openrouter)
-    }
+  // ① APIキーとモデルを保存
+  const handleSaveApiKeys = useCallback(async () => {
+    await Promise.all(
+      ([
+        ['claude', claudeKey],
+        ['gemini', geminiKey],
+        ['openai', openaiKey],
+        ['ideogram', ideogramKey],
+        ['openrouter', openrouterKey],
+      ] as const).map(([provider, draft]) => {
+        const value = draft.trim()
+        return value
+          ? webApiKeyStore.setKey(provider, value)
+          : webApiKeyStore.removeKey(provider)
+      })
+    )
     // モデルも保存
     saveModel('claude', claudeModel)
     saveModel('gemini', geminiModel)
@@ -355,11 +348,12 @@ function SettingsContent() {
     setIsBatchTraining(true)
     setBatchTrainResult(null)
     try {
-      const res = await fetch('/api/lore/batch-train', {
+      const apiKeyHeaders = await buildApiKeyHeaders(webApiKeyStore, ['openai'])
+      const res = await webApiClient.request('/api/lore/batch-train', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-openai-api-key': openaiKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify({ limit: 5 }),
       })

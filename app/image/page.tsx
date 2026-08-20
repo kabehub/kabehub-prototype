@@ -8,13 +8,9 @@ import {
   IMAGE_PAGE_CONFIG,
   type RegistryImagePageModel,
 } from '@/lib/modelRegistry'
-
-const LS_KEYS = {
-  gemini:     'kabehub_gemini_key',
-  openai:     'kabehub_openai_key',
-  ideogram:   'kabehub_ideogram_key',
-  openrouter: 'kabehub_openrouter_key',
-} as const
+import { webApiClient } from '@/lib/api-client'
+import { webApiKeyStore } from '@/lib/apiKeyStore'
+import { API_KEY_HEADER_NAMES, buildApiKeyHeaders } from '@kabehub/shared'
 
 type Provider = 'gemini' | 'openai' | 'ideogram' | 'openrouter'
 
@@ -23,13 +19,6 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   openai:     '⬡ OpenAI',
   ideogram:   '◈ Ideogram',
   openrouter: '⬡ Flux 2 Pro',
-}
-
-const HEADER_KEYS: Record<Provider, string> = {
-  gemini:     'x-gemini-api-key',
-  openai:     'x-openai-api-key',
-  ideogram:   'x-ideogram-api-key',
-  openrouter: 'x-openrouter-api-key',
 }
 
 const GEMINI_IMAGE_MODELS = getImagePageModels('gemini')
@@ -62,8 +51,8 @@ export default function ImageGenPage() {
   const handleGenerate = async () => {
     setError(null)
 
-    const apiKey = localStorage.getItem(LS_KEYS[provider]) ?? ''
-    if (!apiKey) {
+    const apiKeyHeaders = await buildApiKeyHeaders(webApiKeyStore, [provider])
+    if (!apiKeyHeaders[API_KEY_HEADER_NAMES[provider]]) {
       setError(`${PROVIDER_LABELS[provider]} の APIキーが設定されていません。設定ページで登録してください。`)
       return
     }
@@ -83,12 +72,9 @@ export default function ImageGenPage() {
     setIsLoading(true)
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      headers[HEADER_KEYS[provider]] = apiKey
-
-      const res = await fetch('/api/image-gen', {
+      const res = await webApiClient.request('/api/image-gen', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json', ...apiKeyHeaders },
         body: JSON.stringify({ provider, prompt, modelId }),
       })
 

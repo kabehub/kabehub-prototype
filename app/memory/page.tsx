@@ -9,6 +9,9 @@ import type { ConsolidationCandidate } from "@/lib/lore/mappers";
 import type { LoreMemoryRow } from "@/lib/lore/types";
 import { DREAMING_DEFAULTS, BATCH_TRAIN_UI_REQUEST_LIMIT } from "@/lib/lore/types";
 import { BULK_ARCHIVE_MAX_ITEMS } from "@/lib/validationLimits";
+import { webApiClient } from "@/lib/api-client";
+import { webApiKeyStore } from "@/lib/apiKeyStore";
+import { API_KEY_HEADER_NAMES, buildApiKeyHeaders } from "@kabehub/shared";
 
 type TemporalStatusUpdateResult = {
   pastCount: number;
@@ -60,6 +63,11 @@ const TEMPORAL_STATUS_OPTIONS = [
   { value: "uncertain", label: "要確認" },
 ];
 
+async function getOpenAiApiKeyHeaders(): Promise<Record<string, string> | null> {
+  const headers = await buildApiKeyHeaders(webApiKeyStore, ["openai"]);
+  return headers[API_KEY_HEADER_NAMES.openai] ? headers : null;
+}
+
 interface MemoryCardProps {
   card: LoreMemoryCard;
   onUpdate: (updated: LoreMemoryCard) => void;
@@ -109,17 +117,21 @@ function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCar
   const patchCard = async (patchBody: Record<string, unknown>) => {
     setSaving(true);
     try {
-      const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-      if (patchBody.action === "update_text" && !openaiKey) {
-        alert("OpenAI APIキーが設定されていません。");
-        return;
+      let apiKeyHeaders: Record<string, string> = {};
+      if (patchBody.action === "update_text") {
+        const headers = await getOpenAiApiKeyHeaders();
+        if (!headers) {
+          alert("OpenAI APIキーが設定されていません。");
+          return;
+        }
+        apiKeyHeaders = headers;
       }
 
-      const res = await fetch(`/api/lore/${card.id}`, {
+      const res = await webApiClient.request(`/api/lore/${card.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          ...(patchBody.action === "update_text" ? { "x-openai-api-key": openaiKey } : {}),
+          ...apiKeyHeaders,
         },
         body: JSON.stringify(patchBody),
       });
@@ -525,19 +537,19 @@ function NewMemoryForm({ onCreate, onCancel }: NewMemoryFormProps) {
       return;
     }
 
-    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-    if (!openaiKey) {
+    const apiKeyHeaders = await getOpenAiApiKeyHeaders();
+    if (!apiKeyHeaders) {
       alert("OpenAI APIキーが設定されていません。");
       return;
     }
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/lore", {
+      const res = await webApiClient.request("/api/lore", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify({ chunkText: trimmedText, memoryKind, temporalStatus }),
       });
@@ -766,8 +778,8 @@ export default function MemoryPage() {
   }, [sortedCards]);
 
   const handleBatchTrain = async () => {
-    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-    if (!openaiKey) {
+    const apiKeyHeaders = await getOpenAiApiKeyHeaders();
+    if (!apiKeyHeaders) {
       setError("OpenAI APIキーが設定されていません。");
       return;
     }
@@ -776,11 +788,11 @@ export default function MemoryPage() {
     setError(null);
     setBatchTrainMessage(null);
     try {
-      const res = await fetch("/api/lore/batch-train", {
+      const res = await webApiClient.request("/api/lore/batch-train", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify({ limit: BATCH_TRAIN_UI_REQUEST_LIMIT }),
       });
@@ -822,8 +834,8 @@ export default function MemoryPage() {
   };
 
   const handleDreamingBatch = async () => {
-    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-    if (!openaiKey) {
+    const apiKeyHeaders = await getOpenAiApiKeyHeaders();
+    if (!apiKeyHeaders) {
       setError("OpenAI APIキーが設定されていません。");
       return;
     }
@@ -833,11 +845,11 @@ export default function MemoryPage() {
     setDreamingBatchResult(null);
 
     try {
-      const res = await fetch("/api/lore/dreaming-batch", {
+      const res = await webApiClient.request("/api/lore/dreaming-batch", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify(DREAMING_DEFAULTS),
       });
@@ -876,8 +888,8 @@ export default function MemoryPage() {
   };
 
   const handlePreviewMerge = async (candidate: ConsolidationCandidate) => {
-    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-    if (!openaiKey) {
+    const apiKeyHeaders = await getOpenAiApiKeyHeaders();
+    if (!apiKeyHeaders) {
       setError("OpenAI APIキーが設定されていません。");
       return;
     }
@@ -887,11 +899,11 @@ export default function MemoryPage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/lore/consolidate/preview", {
+      const res = await webApiClient.request("/api/lore/consolidate/preview", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify({ idA: candidate.idA, idB: candidate.idB }),
       });
@@ -929,8 +941,8 @@ export default function MemoryPage() {
       return;
     }
 
-    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-    if (!openaiKey) {
+    const apiKeyHeaders = await getOpenAiApiKeyHeaders();
+    if (!apiKeyHeaders) {
       setError("OpenAI APIキーが設定されていません。");
       return;
     }
@@ -939,11 +951,11 @@ export default function MemoryPage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/lore/consolidate/merge", {
+      const res = await webApiClient.request("/api/lore/consolidate/merge", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify({
           idA: previewCandidate.idA,

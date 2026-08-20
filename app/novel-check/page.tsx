@@ -4,6 +4,9 @@ import { useEffect, useRef, useState, useCallback, type CSSProperties } from "re
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import { formatUSD } from "@/lib/pricing";
 import { getNovelCheckModels, NOVEL_CHECK_CONFIG } from "@/lib/modelRegistry";
+import { webApiClient } from "@/lib/api-client";
+import { webApiKeyStore } from "@/lib/apiKeyStore";
+import { buildApiKeyHeaders } from "@kabehub/shared";
 
 interface NovelFile {
   name: string;
@@ -48,7 +51,7 @@ export default function NovelCheckPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setGeminiKey(localStorage.getItem("kabehub_gemini_key"));
+    void webApiKeyStore.getKey("gemini").then(setGeminiKey);
   }, []);
 
   const totalChars = files.reduce((sum, f) => sum + f.content.length, 0);
@@ -97,9 +100,10 @@ export default function NovelCheckPage() {
     setMetaInfo(null);
 
     try {
-      const res = await fetch("/api/novel-check", {
+      const apiKeyHeaders = await buildApiKeyHeaders(webApiKeyStore, ["gemini"]);
+      const res = await webApiClient.request("/api/novel-check", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-gemini-api-key": geminiKey },
+        headers: { "Content-Type": "application/json", ...apiKeyHeaders },
         body: JSON.stringify({ texts: files, modelId: selectedModel, checkItems }),
       });
 

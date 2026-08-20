@@ -11,6 +11,9 @@ import {
   PROVIDER_COLORS,
   Provider,
 } from "@/components/ArenaTimeline";
+import { webApiClient } from "@/lib/api-client";
+import { webApiKeyStore } from "@/lib/apiKeyStore";
+import { buildApiKeyHeaders } from "@kabehub/shared";
 
 // ── 型定義 ──────────────────────────────────────────────────────
 
@@ -44,15 +47,13 @@ type ArenaTurnResult = {
 
 // ── ユーティリティ ───────────────────────────────────────────────
 
-function getApiKeyHeaders(): Record<string, string> {
+async function getApiKeyHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   try {
-    const anthropic = localStorage.getItem("kabehub_anthropic_key");
-    const gemini = localStorage.getItem("kabehub_gemini_key");
-    const openai = localStorage.getItem("kabehub_openai_key");
-    if (anthropic) headers["x-anthropic-api-key"] = anthropic;
-    if (gemini) headers["x-gemini-api-key"] = gemini;
-    if (openai) headers["x-openai-api-key"] = openai;
+    Object.assign(
+      headers,
+      await buildApiKeyHeaders(webApiKeyStore, ["claude", "gemini", "openai"])
+    );
   } catch {
     // 既定値フォールバック: APIキー読込失敗時はprovider用headerを付けず、受信Route側のキー未設定時の既存契約に委ねる。
   }
@@ -166,9 +167,9 @@ export default function ArenaPage() {
       setThinkingLabel(`${selfLabel} (AI${pIdx + 1})`);
       setThinkingIsAi1(isAi1Position);
 
-      const res = await fetch("/api/arena", {
+      const res = await webApiClient.request("/api/arena", {
         method: "POST",
-        headers: getApiKeyHeaders(),
+        headers: await getApiKeyHeaders(),
         body: JSON.stringify({
           threadId,
           history: currentMessages.slice(-10).map((m) => ({
@@ -316,9 +317,9 @@ export default function ArenaPage() {
     const content = `[Human (${label})] ${humanInputText.trim()}`;
 
     try {
-      const res = await fetch("/api/arena", {
+      const res = await webApiClient.request("/api/arena", {
         method: "POST",
-        headers: getApiKeyHeaders(),
+        headers: await getApiKeyHeaders(),
         body: JSON.stringify({
           mode: "saveHumanMessage",
           threadId,
@@ -381,9 +382,9 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
   } catch {
     // RLSエラーの場合のフォールバック: /api/arena 経由で削除
     try {
-      const res2 = await fetch("/api/arena", {
+      const res2 = await webApiClient.request("/api/arena", {
         method: "POST",
-        headers: getApiKeyHeaders(),
+        headers: await getApiKeyHeaders(),
         body: JSON.stringify({
           mode: "timeTravel",
           threadId,

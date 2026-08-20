@@ -15,3 +15,14 @@
 // タスク9で実コードに置き換わっても消さず、smoke testとしてどこかに残すか、
 // 別のsmoke test手段へ移行してから削除すること。
 export const SHARED_PACKAGE_MARKER = "kabehub-shared-workspace-skeleton";
+
+export type { ApiClient } from "./platform/apiClient";
+export type { AccessTokenProvider } from "./platform/accessToken";
+export {
+  API_KEY_HEADER_NAMES,
+  buildApiKeyHeaders,
+  type ApiKeyProvider,
+  type ApiKeyStore,
+} from "./platform/apiKeyStore";
+export type { SecureStorageAdapter } from "./platform/secureStorage";
+export type { ExternalBrowser } from "./platform/externalBrowser";

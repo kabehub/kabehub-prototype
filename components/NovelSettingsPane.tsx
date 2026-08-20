@@ -1,6 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { webApiClient } from "@/lib/api-client";
+import {
+  API_KEY_HEADER_NAMES,
+  buildApiKeyHeaders,
+  type ApiKeyStore,
+} from "@kabehub/shared";
 
 type NovelSettingsData = {
   characters: { name: string; role: string; faction: string; status: string; notes: string }[];
@@ -21,6 +27,7 @@ function splitIntoChunks(text: string, chunkSize = 400, overlap = 80): string[] 
 }
 
 interface NovelSettingsPaneProps {
+  apiKeyStore: ApiKeyStore;
   threadId: string | null;
   threadTitle?: string;
   folderName?: string | null;
@@ -32,6 +39,7 @@ interface NovelSettingsPaneProps {
 }
 
 export default function NovelSettingsPane({
+  apiKeyStore,
   threadId,
   threadTitle,
   folderName,
@@ -159,17 +167,17 @@ export default function NovelSettingsPane({
 
   const handleEmbed = async (text: string) => {
     if (!folderName || !text.trim()) return;
-    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-    if (!openaiKey) {
+    const apiKeyHeaders = await buildApiKeyHeaders(apiKeyStore, ["openai"]);
+    if (!apiKeyHeaders[API_KEY_HEADER_NAMES.openai]) {
       alert("OpenAI APIキーが設定されていません。右上の「🔑 APIキー」から設定してください。");
       return;
     }
     setIsEmbedding(true);
     try {
       const chunks = splitIntoChunks(text).map(t => ({ text: t }));
-      const res = await fetch("/api/lore/embed", {
+      const res = await webApiClient.request("/api/lore/embed", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-openai-api-key": openaiKey },
+        headers: { "Content-Type": "application/json", ...apiKeyHeaders },
         body: JSON.stringify({ folderName, chunks }),
       });
       if (!res.ok) {

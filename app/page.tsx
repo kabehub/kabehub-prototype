@@ -12,6 +12,13 @@ import { supabase } from "@/lib/supabase/client";
 import { getClientUser } from "@/lib/supabase/client-auth";
 import { loadModel, type ModelId, type Provider, type SubmittedAttachedImageFile } from "@/components/ChatInput";
 import { getDefaultImageModel, type ImageApiProvider } from "@/lib/modelRegistry";
+import { webApiClient } from "@/lib/api-client";
+import { webApiKeyStore } from "@/lib/apiKeyStore";
+import {
+  API_KEY_HEADER_NAMES,
+  buildApiKeyHeaders,
+  type ApiKeyProvider,
+} from "@kabehub/shared";
 import type { User } from "@supabase/supabase-js";
 
 type NovelSettingsData = {
@@ -19,6 +26,14 @@ type NovelSettingsData = {
   factions: { name: string; description: string; members: string[] }[];
   glossary: { term: string; description: string }[];
 };
+
+const API_KEY_PROVIDERS: readonly ApiKeyProvider[] = [
+  "claude",
+  "gemini",
+  "openai",
+  "ideogram",
+  "openrouter",
+];
 
 export default function Home() {
   const { showToast } = useToast();
@@ -168,16 +183,14 @@ export default function Home() {
     window.location.href = "/login";
   }, []);
 
-  // ── LocalStorageからAPIキーを読み込む ─────────────────────
-  const getApiKeyHeaders = useCallback((): Record<string, string> => {
+  // ── APIキーheaderを組み立てる ─────────────────────────────
+  const getApiKeyHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     try {
-      const anthropic = localStorage.getItem("kabehub_anthropic_key");
-      const gemini = localStorage.getItem("kabehub_gemini_key");
-      const openai = localStorage.getItem("kabehub_openai_key");
-      if (anthropic) headers["x-anthropic-api-key"] = anthropic;
-      if (gemini) headers["x-gemini-api-key"] = gemini;
-      if (openai) headers["x-openai-api-key"] = openai;
+      Object.assign(
+        headers,
+        await buildApiKeyHeaders(webApiKeyStore, API_KEY_PROVIDERS)
+      );
     } catch {
       // 既定値フォールバック: APIキー読込失敗時はprovider用headerを付けず、受信Route側のキー未設定時の既存契約に委ねる。
     }
@@ -436,9 +449,9 @@ export default function Home() {
         }
 
         for (const msg of temporaryMessages) {
-          await fetch("/api/chat", {
+          await webApiClient.request("/api/chat", {
             method: "POST",
-            headers: getApiKeyHeaders(),
+            headers: await getApiKeyHeaders(),
             body: JSON.stringify({
               threadId: activeThreadId,
               messages: [],
@@ -471,7 +484,7 @@ export default function Home() {
   // ─── ストリーミング受信ヘルパー ──────────────────────────────────────────
   // 返り値: { userMessage, assistantMessage } or throws
   const fetchWithStreaming = useCallback(async (
-    url: string,
+    url: `/api/${string}`,
     headers: Record<string, string>,
     body: string,
     onChunk: (text: string) => void,
@@ -484,7 +497,7 @@ export default function Home() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    const res = await fetch(url, {
+    const res = await webApiClient.request(url, {
       method: "POST",
       headers,
       body,
@@ -631,9 +644,9 @@ export default function Home() {
       setMessages((prev) => [...prev, userMsg]);
 
       try {
-        const res = await fetch("/api/chat", {
+        const res = await webApiClient.request("/api/chat", {
           method: "POST",
-          headers: getApiKeyHeaders(),
+          headers: await getApiKeyHeaders(),
           body: JSON.stringify({
             threadId: null,
             messages: allMessages.map(m => ({ role: m.role, content: m.content, provider: m.provider })),
@@ -673,7 +686,7 @@ export default function Home() {
     try {
       const { userMessage, assistantMessage, aborted, thinkingContent } = await fetchWithStreaming(
         "/api/chat",
-        getApiKeyHeaders(),
+        await getApiKeyHeaders(),
         JSON.stringify({
           threadId: resolvedThreadId,
           messages: messages
@@ -766,9 +779,9 @@ export default function Home() {
 
     setMessages((prev) => [...prev, optimisticMemo]);
     try {
-      const res = await fetch("/api/chat", {
+      const res = await webApiClient.request("/api/chat", {
         method: "POST",
-        headers: getApiKeyHeaders(),
+        headers: await getApiKeyHeaders(),
         body: JSON.stringify({
           threadId: resolvedThreadId,
           messages: [...messages.map(m => ({ role: m.role, content: m.content, provider: m.provider }))],
@@ -825,17 +838,13 @@ export default function Home() {
 
     setIsLoading(true)
 
-    const headers: Record<string, string> = {
-      ...getApiKeyHeaders(),
-      'x-ideogram-api-key': localStorage.getItem('kabehub_ideogram_key') ?? '',
-      'x-openrouter-api-key': localStorage.getItem('kabehub_openrouter_key') ?? '',
-    }
+    const headers = await getApiKeyHeaders()
 
     try {
       // ユーザー入力ログをDBに保存
-      const memoRes = await fetch('/api/chat', {
+      const memoRes = await webApiClient.request('/api/chat', {
         method: 'POST',
-        headers: getApiKeyHeaders(),
+        headers: await getApiKeyHeaders(),
         body: JSON.stringify({
           threadId: resolvedThreadId,
           messages: [],
@@ -863,7 +872,7 @@ export default function Home() {
       setMessages(prev => [...prev, pendingMessage])
 
       // 画像生成API呼び出し
-      const res = await fetch('/api/image-gen', {
+      const res = await webApiClient.request('/api/image-gen', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -1015,7 +1024,7 @@ export default function Home() {
 
       const { assistantMessage, aborted } = await fetchWithStreaming(
         "/api/chat",
-        getApiKeyHeaders(),
+        await getApiKeyHeaders(),
         JSON.stringify({
           threadId: activeThreadId,
           messages: newMessages
@@ -1102,7 +1111,7 @@ export default function Home() {
     try {
       const { assistantMessage, aborted, thinkingContent } = await fetchWithStreaming(
         "/api/chat",
-        getApiKeyHeaders(),
+        await getApiKeyHeaders(),
         JSON.stringify({
           threadId: activeThreadId,
           userContent: editedContent,
@@ -1347,8 +1356,8 @@ export default function Home() {
   // ── Novel設定抽出 ──────────────────────────────────────────
   const handleExtractSettings = async () => {
     if (isExtracting || !activeThreadId) return;
-    const anthropicKey = localStorage.getItem("kabehub_anthropic_key") ?? "";
-    if (!anthropicKey) {
+    const apiKeyHeaders = await buildApiKeyHeaders(webApiKeyStore, ["claude"]);
+    if (!apiKeyHeaders[API_KEY_HEADER_NAMES.claude]) {
       alert("AnthropicのAPIキーを設定してください（ヘッダーの「🔑 APIキー」から設定できます）");
       return;
     }
@@ -1356,11 +1365,11 @@ export default function Home() {
     setIsNovelPaneOpen(true);
     setIsOutlineOpen(false);
     try {
-      const res = await fetch("/api/extract-settings", {
+      const res = await webApiClient.request("/api/extract-settings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-anthropic-api-key": anthropicKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify({
           threadId: activeThreadId,
@@ -1464,6 +1473,7 @@ export default function Home() {
         />
       )}
       <ChatPanel
+        apiKeyStore={webApiKeyStore}
         thread={activeThread}
         messages={messages}
         displayName={displayName}
@@ -1525,6 +1535,7 @@ export default function Home() {
         }}
       />
       <NovelSettingsPane
+        apiKeyStore={webApiKeyStore}
         threadId={activeThreadId}
         threadTitle={threads.find(t => t.id === activeThreadId)?.title ?? undefined}
         folderName={threads.find(t => t.id === activeThreadId)?.folder_name ?? null}

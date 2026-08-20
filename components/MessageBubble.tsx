@@ -5,8 +5,15 @@ import { Message, MessageNote } from "@/types";
 import { MODEL_CONFIG, loadModel } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { webApiClient } from "@/lib/api-client";
+import {
+  API_KEY_HEADER_NAMES,
+  buildApiKeyHeaders,
+  type ApiKeyStore,
+} from "@kabehub/shared";
 
 interface MessageBubbleProps {
+  apiKeyStore: ApiKeyStore;
   message: Message;
   isLast?: boolean;
   isLoading?: boolean;
@@ -46,6 +53,7 @@ interface MessageBubbleProps {
 }
 
 function MessageBubble({
+  apiKeyStore,
   message,
   isLast,
   isLoading,
@@ -308,18 +316,18 @@ function MessageBubble({
 
   const handleLike = async () => {
     if (likeStatus !== "idle") return;
-    const openaiKey = localStorage.getItem("kabehub_openai_key") ?? "";
-    if (!openaiKey) {
+    const apiKeyHeaders = await buildApiKeyHeaders(apiKeyStore, ["openai"]);
+    if (!apiKeyHeaders[API_KEY_HEADER_NAMES.openai]) {
       alert("OpenAI APIキーが設定されていません。");
       return;
     }
     setLikeStatus("loading");
     try {
-      const res = await fetch("/api/lore/like", {
+      const res = await webApiClient.request("/api/lore/like", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-api-key": openaiKey,
+          ...apiKeyHeaders,
         },
         body: JSON.stringify({ messageId: message.id }),
       });
