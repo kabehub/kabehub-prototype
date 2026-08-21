@@ -1,11 +1,48 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient, type User } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { API_KEY_HEADER_NAMES } from "@kabehub/shared";
 import { buildCspHeaderValue } from "@/lib/csp";
 import {
+  isBearerCapableApi,
+  isCorsEligibleApi,
   isMcpBearerApi,
   isProtectedRedirectPath,
   isPublicShareReadApi,
+  parseBearerAuthorization,
 } from "@/lib/proxy-paths";
+
+const ALLOWED_CORS_ORIGINS = new Set([
+  "capacitor://localhost",
+  "https://localhost",
+]);
+
+const CORS_ALLOW_HEADERS = [
+  "Authorization",
+  "Content-Type",
+  ...Object.values(API_KEY_HEADER_NAMES),
+].join(", ");
+
+export function appendVaryOrigin(headers: Headers): void {
+  const current = headers.get("Vary");
+  if (!current) {
+    headers.set("Vary", "Origin");
+    return;
+  }
+
+  const values = current
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (
+    values.some(
+      (value) => value === "*" || value.toLowerCase() === "origin"
+    )
+  ) {
+    return;
+  }
+  headers.set("Vary", [...values, "Origin"].join(", "));
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 let supabaseHttpOrigin = "";
@@ -78,6 +115,14 @@ function shouldRunSupabaseSessionCheck(
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const requestOrigin = req.headers.get("origin");
+  const corsMethod =
+    req.method === "OPTIONS"
+      ? (req.headers.get("access-control-request-method") ?? "").toUpperCase()
+      : req.method;
+  const corsEligible = isCorsEligibleApi(pathname, corsMethod);
+  const corsOriginAllowed =
+    requestOrigin !== null && ALLOWED_CORS_ORIGINS.has(requestOrigin);
 
   const isPrefetch =
     req.headers.get("next-router-prefetch") !== null ||
@@ -127,42 +172,99 @@ export async function proxy(req: NextRequest) {
     return target;
   };
 
+  const applyCors = (target: NextResponse) => {
+    if (!corsEligible || !requestOrigin) return target;
+    appendVaryOrigin(target.headers);
+    if (corsOriginAllowed) {
+      target.headers.set("Access-Control-Allow-Origin", requestOrigin);
+    }
+    return target;
+  };
+
+  const finalizeResponse = (target: NextResponse) =>
+    applyCors(applyCsp(target));
+
+  if (req.method === "OPTIONS" && corsEligible && corsOriginAllowed) {
+    const preflight = new NextResponse(null, { status: 204 });
+    preflight.headers.set("Access-Control-Allow-Methods", corsMethod);
+    preflight.headers.set("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS);
+    return finalizeResponse(preflight);
+  }
+
   const shouldRunSessionCheck = shouldRunSupabaseSessionCheck(
     pathname,
     req.method
   );
 
   if (!shouldRunSessionCheck) {
-    return applyCsp(res);
+    return finalizeResponse(res);
   }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            res.cookies.set(name, value, options);
-          });
-        },
-      },
-    }
+  const bearerCredential = parseBearerAuthorization(
+    req.headers.get("authorization")
   );
+  const bearerToken = bearerCredential.present
+    ? bearerCredential.token
+    : null;
+  const authMode: "bearer" | "cookie" | "none" =
+    pathname.startsWith("/api/") && bearerCredential.present
+      ? bearerToken && isBearerCapableApi(pathname, req.method)
+        ? "bearer"
+        : "none"
+      : "cookie";
 
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  let user: User | null = null;
+  let authFailed = false;
+
+  if (authMode === "cookie") {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return req.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              res.cookies.set(name, value, options);
+            });
+          },
+        },
+      }
+    );
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+    authFailed = Boolean(result.error || !user);
+  } else if (authMode === "bearer") {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+      }
+    );
+    const result = await supabase.auth.getUser(bearerToken!);
+    user = result.data.user;
+    authFailed = Boolean(result.error || !user);
+  } else {
+    authFailed = true;
+  }
 
   const finalizeWithCookies = (target: NextResponse) => {
     res.cookies.getAll().forEach((cookie) => {
       target.cookies.set(cookie);
     });
-    return applyCsp(target);
+    return finalizeResponse(target);
   };
 
   const redirectWithCookies = (url: URL) => {
@@ -183,8 +285,8 @@ export async function proxy(req: NextRequest) {
   };
 
   if (
-    (authError || !user) &&
-    !isPublicOptionalAuthApi(pathname) &&
+    authFailed &&
+    !(authMode === "cookie" && isPublicOptionalAuthApi(pathname)) &&
     !isLoginPage(pathname)
   ) {
     if (pathname.startsWith("/api/")) {
@@ -195,11 +297,11 @@ export async function proxy(req: NextRequest) {
     return redirectWithCookies(loginUrl);
   }
 
-  if (!authError && user && isLoginPage(pathname)) {
+  if (!authFailed && user && isLoginPage(pathname)) {
     return redirectWithCookies(new URL("/", req.url));
   }
 
-  return applyCsp(res);
+  return finalizeResponse(res);
 }
 
 export const config = {
@@ -224,6 +326,6 @@ export const config = {
     "/image",
     "/novel-check",
     "/threads/:id/tree",
-    "/api/((?!mcp(?:/|$)|reports(?:/|$)|auth/github/callback(?:/|$)|cron/storage-cleanup(?:/|$)|csp-report(?:/|$)).*)",
+    "/api/((?!mcp(?:/|$)|auth/github/callback(?:/|$)|cron/storage-cleanup(?:/|$)|csp-report(?:/|$)).*)",
   ],
 };

@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
   const reporterIp = forwardedFor ? forwardedFor.split(",")[0].trim() : "unknown";
 
   // ログイン中ユーザーのIDを取得（未ログインはnull）
-  const { user, finalizeJson } = await getOptionalRouteUser(req);
+  const auth = await getOptionalRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, finalizeJson } = auth;
   const reporterUserId = user?.id ?? null;
 
   // SECURITY DEFINER RPC経由でinsert（service_role専用）

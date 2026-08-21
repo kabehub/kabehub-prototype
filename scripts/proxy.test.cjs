@@ -10,6 +10,10 @@ let currentUser = null;
 let currentAuthError = null;
 let sessionCheckCount = 0;
 let setRefreshedCookie = false;
+let bearerUser = null;
+let bearerAuthError = null;
+let bearerGetUserTokens = [];
+let bearerClientOptions = [];
 
 const originalLoad = Module._load;
 Module._load = function loadWithSupabaseMock(request, parent, isMain) {
@@ -39,6 +43,32 @@ Module._load = function loadWithSupabaseMock(request, parent, isMain) {
       },
     };
   }
+  if (request === "@supabase/supabase-js") {
+    return {
+      createClient(_url, _key, options) {
+        bearerClientOptions.push(options);
+        return {
+          auth: {
+            async getUser(token) {
+              bearerGetUserTokens.push(token);
+              return {
+                data: { user: bearerUser },
+                error: bearerAuthError,
+              };
+            },
+          },
+        };
+      },
+    };
+  }
+  if (request === "@kabehub/shared") {
+    return originalLoad.call(
+      this,
+      path.join(__dirname, "..", "packages", "shared", "src", "index.ts"),
+      parent,
+      isMain
+    );
+  }
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -55,12 +85,19 @@ const {
   unstable_doesMiddlewareMatch: doesProxyMatch,
 } = require("next/experimental/testing/server");
 const {
+  appendVaryOrigin,
+  config,
+  proxy,
+} = require(path.join(__dirname, "..", "proxy.ts"));
+const {
+  API_KEY_HEADER_NAMES,
+} = require("@kabehub/shared");
+const {
   isMcpBearerApi,
   isProtectedPagePath,
   isProtectedRedirectPath,
   isPublicShareReadApi,
 } = require(path.join(__dirname, "..", "lib", "proxy-paths.ts"));
-const { config, proxy } = require(path.join(__dirname, "..", "proxy.ts"));
 
 const pendingTests = [];
 const protectedPagePaths = [
@@ -102,6 +139,10 @@ async function invoke(pathname, options = {}) {
   currentAuthError = options.authError ?? null;
   sessionCheckCount = 0;
   setRefreshedCookie = options.setRefreshedCookie ?? false;
+  bearerUser = options.bearerUser ?? null;
+  bearerAuthError = options.bearerAuthError ?? null;
+  bearerGetUserTokens = [];
+  bearerClientOptions = [];
   const request = new NextRequest(`https://www.kabehub.com${pathname}`, {
     method: options.method ?? "GET",
     headers: options.headers,
@@ -129,6 +170,158 @@ async function assertJsonUnauthorized(response) {
   );
   assert.deepEqual(await response.json(), { error: "Unauthorized" });
 }
+
+function assertAllowedCors(response, origin = "capacitor://localhost") {
+  assert.equal(response.headers.get("access-control-allow-origin"), origin);
+  assert.equal(
+    response.headers.has("access-control-allow-credentials"),
+    false
+  );
+  const varyValues = (response.headers.get("vary") ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase());
+  assert.equal(varyValues.filter((value) => value === "origin").length, 1);
+}
+
+test("CORS preflight short-circuits before auth with shared BYOK headers", async () => {
+  const result = await invoke("/api/chat", {
+    method: "OPTIONS",
+    headers: {
+      origin: "capacitor://localhost",
+      "access-control-request-method": "POST",
+      "access-control-request-headers": "authorization, content-type",
+    },
+  });
+
+  assert.equal(result.response.status, 204);
+  assert.equal(result.sessionCheckCount, 0);
+  assert.deepEqual(bearerGetUserTokens, []);
+  assertAllowedCors(result.response);
+  assert.equal(result.response.headers.get("access-control-allow-methods"), "POST");
+  assert.equal(
+    result.response.headers.get("access-control-allow-headers"),
+    [
+      "Authorization",
+      "Content-Type",
+      ...Object.values(API_KEY_HEADER_NAMES),
+    ].join(", ")
+  );
+});
+
+test("chat pass-through carries CORS headers for the downstream SSE response", async () => {
+  const result = await invoke("/api/chat", {
+    method: "POST",
+    user: { id: "cookie-user" },
+    headers: { origin: "https://localhost" },
+  });
+
+  assert.equal(result.response.status, 200);
+  assertAllowedCors(result.response, "https://localhost");
+  console.log(
+    `chat CORS raw header: Access-Control-Allow-Origin: ${result.response.headers.get("access-control-allow-origin")}`
+  );
+});
+
+test("valid Supabase Bearer authenticates without reading Cookie auth", async () => {
+  const result = await invoke("/api/chat", {
+    method: "POST",
+    user: { id: "cookie-user" },
+    bearerUser: { id: "bearer-user" },
+    headers: {
+      authorization: "Bearer valid-jwt",
+      cookie: "sb-access-token=valid-cookie",
+      origin: "capacitor://localhost",
+    },
+  });
+
+  assert.equal(result.response.status, 200);
+  assert.equal(result.sessionCheckCount, 0);
+  assert.deepEqual(bearerGetUserTokens, ["valid-jwt"]);
+  assert.equal(
+    bearerClientOptions[0].global.headers.Authorization,
+    "Bearer valid-jwt"
+  );
+  assertAllowedCors(result.response);
+});
+
+test("invalid Bearer never falls back to a valid Cookie", async () => {
+  const result = await invoke("/api/chat", {
+    method: "POST",
+    user: { id: "cookie-user" },
+    bearerAuthError: { message: "invalid bearer" },
+    headers: {
+      authorization: "Bearer invalid-jwt",
+      cookie: "sb-access-token=valid-cookie",
+      origin: "capacitor://localhost",
+    },
+  });
+
+  assert.equal(result.sessionCheckCount, 0);
+  assert.deepEqual(bearerGetUserTokens, ["invalid-jwt"]);
+  await assertJsonUnauthorized(result.response);
+  assertAllowedCors(result.response);
+});
+
+test("empty Bearer never falls back to a valid Cookie", async () => {
+  const result = await invoke("/api/chat", {
+    method: "POST",
+    user: { id: "cookie-user" },
+    headers: {
+      authorization: "Bearer   ",
+      cookie: "sb-access-token=valid-cookie",
+    },
+  });
+
+  assert.equal(result.sessionCheckCount, 0);
+  assert.deepEqual(bearerGetUserTokens, []);
+  await assertJsonUnauthorized(result.response);
+});
+
+test("reports now matches proxy, skips Cookie pre-auth, and receives CORS", async () => {
+  assert.equal(matches("/api/reports"), true);
+  const result = await invoke("/api/reports", {
+    method: "POST",
+    headers: { origin: "capacitor://localhost" },
+  });
+
+  assert.equal(result.sessionCheckCount, 0);
+  assert.equal(result.response.status, 200);
+  assertAllowedCors(result.response);
+});
+
+test("internal and MCP routes never receive CORS headers", async () => {
+  for (const { pathname, method } of [
+    { pathname: "/api/mcp/threads", method: "GET" },
+    { pathname: "/api/cron/storage-cleanup", method: "GET" },
+    { pathname: "/api/csp-report", method: "POST" },
+    { pathname: "/api/auth/github/callback", method: "GET" },
+  ]) {
+    const result = await invoke(pathname, {
+      method,
+      headers: { origin: "capacitor://localhost" },
+    });
+    assert.equal(
+      result.response.headers.has("access-control-allow-origin"),
+      false,
+      `${method} ${pathname}: ACAO`
+    );
+    assert.equal(
+      result.response.headers.has("vary"),
+      false,
+      `${method} ${pathname}: Vary`
+    );
+  }
+});
+
+test("Vary Origin de-duplicates case-insensitively", () => {
+  const headers = new Headers({ Vary: "Accept-Encoding, oRiGiN" });
+  appendVaryOrigin(headers);
+  assert.equal(headers.get("vary"), "Accept-Encoding, oRiGiN");
+
+  const missing = new Headers({ Vary: "Accept-Encoding" });
+  appendVaryOrigin(missing);
+  assert.equal(missing.get("vary"), "Accept-Encoding, Origin");
+});
 
 test("MCP Bearer API uses a segment boundary", () => {
   assert.equal(isMcpBearerApi("/api/mcp"), true);

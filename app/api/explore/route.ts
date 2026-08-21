@@ -44,7 +44,9 @@ function parseSortCursor(cursor: string | null): SortCursor | null {
 }
 
 export async function GET(req: NextRequest) {
-  const { user, supabase, finalizeJson } = await getOptionalRouteUser(req);
+  const auth = await getOptionalRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
 
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q")?.trim() ?? "";

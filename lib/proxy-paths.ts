@@ -5,7 +5,7 @@
  * （変数・String.raw 不可、ビルド時に静的解析される）、本ファイルから
  * 生成することはできない。したがって matcher と本ファイルは物理的に
  * 二重定義であり、両者の対応関係（境界整合性）は
- * scripts/proxy.test.cjs のマトリクステストで保証する。
+ * scripts/proxy.test.cjs と scripts/proxy-paths.test.cjs のテストで保証する。
  * どちらか一方を変更したら必ず両方とテストを更新すること。
  *
  * matcher が「proxy() 自体を起動するか」を決めるのに対し、
@@ -14,6 +14,118 @@
  * /api/share/[token] の公開GETのように、matcherは通す（true）が
  * セッション確認はしない（false）という非対称な組み合わせが意図的に存在する。
  */
+
+export type ApiAuthClassification = "bearer" | "public" | "mcp" | "internal";
+
+interface ApiAuthRule {
+  pattern: RegExp;
+  methods: readonly string[];
+  classification: ApiAuthClassification;
+}
+
+/**
+ * app/api 配下で明示 export されている全 route×method の認証分類。
+ * 未登録・重複・未exportメソッドは classifyApi() が null に倒す。
+ */
+export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
+  { pattern: /^\/api\/account\/?$/, methods: ["DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/album\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/arena\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/auth\/github\/callback\/?$/, methods: ["GET"], classification: "internal" },
+  { pattern: /^\/api\/auth\/github\/?$/, methods: ["GET", "DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/auth\/github\/status\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/calendar\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/chat\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/cron\/storage-cleanup\/?$/, methods: ["GET"], classification: "internal" },
+  { pattern: /^\/api\/csp-report\/?$/, methods: ["POST"], classification: "internal" },
+  { pattern: /^\/api\/explore\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/extract-settings\/?$/, methods: ["GET", "POST"], classification: "bearer" },
+  { pattern: /^\/api\/fetch-github\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/folder-settings\/?$/, methods: ["GET", "POST"], classification: "bearer" },
+  { pattern: /^\/api\/image-gen\/?$/, methods: ["POST"], classification: "bearer" },
+  {
+    pattern:
+      /^\/api\/lore\/(?!(?:batch-train|bulk-archive|chunks|consolidate|dreaming-batch|embed|like|update-temporal-status)(?:\/|$))[^/]+\/?$/,
+    methods: ["PATCH"],
+    classification: "bearer",
+  },
+  { pattern: /^\/api\/lore\/batch-train\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/bulk-archive\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/chunks\/[^/]+\/?$/, methods: ["DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/chunks\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/consolidate\/candidates\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/consolidate\/dismiss\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/consolidate\/merge\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/consolidate\/preview\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/dreaming-batch\/history\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/dreaming-batch\/rollback\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/dreaming-batch\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/embed\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/like\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/?$/, methods: ["GET", "POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/update-temporal-status\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/mcp-tokens\/?$/, methods: ["GET", "POST", "DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/mcp\/threads\/[^/]+\/messages\/?$/, methods: ["GET", "POST"], classification: "mcp" },
+  { pattern: /^\/api\/mcp\/threads\/?$/, methods: ["GET", "POST"], classification: "mcp" },
+  { pattern: /^\/api\/messages\/[^/]+\/?$/, methods: ["DELETE", "PATCH"], classification: "bearer" },
+  { pattern: /^\/api\/novel-check\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/profile\/?$/, methods: ["GET", "POST"], classification: "bearer" },
+  { pattern: /^\/api\/reports\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/search\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/share\/[^/]+\/fork\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/share\/[^/]+\/?$/, methods: ["GET"], classification: "public" },
+  { pattern: /^\/api\/stats\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/branch-to\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/copy\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/drafts\/?$/, methods: ["GET", "POST", "DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/likes\/?$/, methods: ["POST", "DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/message-notes\/?$/, methods: ["GET", "POST", "DELETE"], classification: "bearer" },
+  {
+    pattern: /^\/api\/threads\/[^/]+\/messages\/(?!(?:restore-branch)(?:\/|$))[^/]+\/?$/,
+    methods: ["DELETE", "PATCH"],
+    classification: "bearer",
+  },
+  { pattern: /^\/api\/threads\/[^/]+\/messages\/restore-branch\/?$/, methods: ["PATCH"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/messages\/?$/, methods: ["GET", "DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/notes\/?$/, methods: ["GET", "POST", "DELETE", "PATCH"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/?$/, methods: ["DELETE", "PATCH"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/[^/]+\/tags\/?$/, methods: ["GET", "POST", "DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/threads\/?$/, methods: ["GET"], classification: "bearer" },
+];
+
+export function classifyApi(
+  pathname: string,
+  method: string
+): ApiAuthClassification | null {
+  const matches = API_AUTH_CLASSIFICATIONS.filter(
+    (rule) => rule.pattern.test(pathname) && rule.methods.includes(method)
+  );
+  return matches.length === 1 ? matches[0].classification : null;
+}
+
+export function isBearerCapableApi(pathname: string, method: string): boolean {
+  return classifyApi(pathname, method) === "bearer";
+}
+
+/** route×method単位でMobile cross-origin fetchの可否を判定する。 */
+export function isCorsEligibleApi(pathname: string, method: string): boolean {
+  const classification = classifyApi(pathname, method);
+  return classification === "bearer" || classification === "public";
+}
+
+export type BearerCredential =
+  | { present: false }
+  | { present: true; token: string | null };
+
+export function parseBearerAuthorization(
+  header: string | null
+): BearerCredential {
+  if (!header) return { present: false };
+  const match = header.match(/^Bearer(?:\s+(.*))?$/i);
+  if (!match) return { present: false };
+  const token = match[1]?.trim() || null;
+  return { present: true, token };
+}
 
 const PROTECTED_STATIC_PAGES = new Set([
   "/stats",

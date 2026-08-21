@@ -14,6 +14,14 @@ let normalFromCalls = [];
 let reportRpcResult = { data: null, error: null };
 let reportRpcCalls = [];
 let exploreServiceRoleCalls = 0;
+let serverClientCreateCount = 0;
+let lastServerClient = null;
+let bearerUser = null;
+let bearerAuthError = null;
+let bearerClientCreateCount = 0;
+let bearerClientOptions = [];
+let bearerGetUserTokens = [];
+let bearerDbCalls = [];
 
 function createQuery(table) {
   const query = {
@@ -60,7 +68,8 @@ Module._load = function loadWithMocks(request, parent, isMain) {
   if (request === "@supabase/ssr") {
     return {
       createServerClient(_url, _key, options) {
-        return {
+        serverClientCreateCount += 1;
+        const client = {
           auth: {
             async getUser() {
               if (setRefreshedCookie) {
@@ -83,13 +92,49 @@ Module._load = function loadWithMocks(request, parent, isMain) {
             return createQuery(table);
           },
         };
+        lastServerClient = client;
+        return client;
       },
     };
   }
 
   if (request === "@supabase/supabase-js") {
     return {
-      createClient() {
+      createClient(_url, _key, options) {
+        if (options?.global?.headers?.Authorization) {
+          bearerClientCreateCount += 1;
+          bearerClientOptions.push(options);
+          return {
+            auth: {
+              async getUser(token) {
+                bearerGetUserTokens.push(token);
+                return {
+                  data: { user: bearerUser },
+                  error: bearerAuthError,
+                };
+              },
+            },
+            from(table) {
+              const query = {
+                select(columns) {
+                  bearerDbCalls.push({ operation: "select", table, columns });
+                  return query;
+                },
+                insert(values) {
+                  bearerDbCalls.push({ operation: "insert", table, values });
+                  return query;
+                },
+                then(onFulfilled, onRejected) {
+                  return Promise.resolve({
+                    data: [{ user_id: bearerUser?.id ?? null }],
+                    error: null,
+                  }).then(onFulfilled, onRejected);
+                },
+              };
+              return query;
+            },
+          };
+        }
         return {
           async rpc(name, args) {
             reportRpcCalls.push({ name, args });
@@ -162,6 +207,14 @@ function resetMocks(options = {}) {
   reportRpcResult = options.reportRpcResult ?? { data: null, error: null };
   reportRpcCalls = [];
   exploreServiceRoleCalls = 0;
+  serverClientCreateCount = 0;
+  lastServerClient = null;
+  bearerUser = options.bearerUser ?? null;
+  bearerAuthError = options.bearerAuthError ?? null;
+  bearerClientCreateCount = 0;
+  bearerClientOptions = [];
+  bearerGetUserTokens = [];
+  bearerDbCalls = [];
 }
 
 function requestFor(pathname, init) {
@@ -191,9 +244,15 @@ test("requireRouteUser retains its 401 and cookie finalization contract", async 
 test("getOptionalRouteUser returns null for an unauthenticated request", async () => {
   resetMocks();
 
-  const auth = await getOptionalRouteUser(requestFor("/api/test"));
+  const auth = await getOptionalRouteUser(
+    requestFor("/api/reports", { method: "POST" })
+  );
 
+  assert.equal(auth.ok, true);
+  if (!auth.ok) assert.fail("Cookie optional-auth should stay anonymous");
   assert.equal(auth.user, null);
+  assert.equal(serverClientCreateCount, 1);
+  assert.equal(auth.supabase, lastServerClient);
 });
 
 test("getOptionalRouteUser ignores data.user when Supabase returns an auth error", async () => {
@@ -218,6 +277,117 @@ test("getOptionalRouteUser finalizeJson preserves refreshed cookies", async () =
 
   assert.deepEqual(await response.json(), { ok: true });
   assertRefreshedCookie(response);
+});
+
+test("Bearer auth returns its RLS client for SELECT and INSERT", async () => {
+  resetMocks({ bearerUser: { id: "bearer-user" } });
+  const auth = await requireRouteUser(
+    requestFor("/api/chat", {
+      method: "POST",
+      headers: { authorization: "Bearer valid-jwt" },
+    })
+  );
+
+  assert.equal(auth.ok, true);
+  if (!auth.ok) assert.fail("Bearer authentication should succeed");
+  const selectResult = await auth.supabase.from("threads").select("id");
+  const insertResult = await auth.supabase
+    .from("threads")
+    .insert({ user_id: auth.user.id });
+
+  assert.deepEqual(selectResult, {
+    data: [{ user_id: "bearer-user" }],
+    error: null,
+  });
+  assert.deepEqual(insertResult, {
+    data: [{ user_id: "bearer-user" }],
+    error: null,
+  });
+  assert.equal(serverClientCreateCount, 0);
+  assert.equal(bearerClientCreateCount, 1);
+  assert.deepEqual(bearerGetUserTokens, ["valid-jwt"]);
+  assert.equal(
+    bearerClientOptions[0].global.headers.Authorization,
+    "Bearer valid-jwt"
+  );
+  assert.deepEqual(bearerDbCalls, [
+    { operation: "select", table: "threads", columns: "id" },
+    {
+      operation: "insert",
+      table: "threads",
+      values: { user_id: "bearer-user" },
+    },
+  ]);
+});
+
+test("invalid Bearer does not fall back to a valid Cookie", async () => {
+  resetMocks({
+    user: { id: "cookie-user" },
+    bearerAuthError: { message: "invalid bearer" },
+  });
+  const auth = await requireRouteUser(
+    requestFor("/api/chat", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer invalid-jwt",
+        cookie: "sb-access-token=valid-cookie",
+      },
+    })
+  );
+
+  assert.equal(auth.ok, false);
+  if (auth.ok) assert.fail("invalid Bearer should fail");
+  assert.equal(auth.response.status, 401);
+  assert.equal(serverClientCreateCount, 0);
+  assert.equal(bearerClientCreateCount, 1);
+  assert.deepEqual(bearerGetUserTokens, ["invalid-jwt"]);
+});
+
+test("empty Bearer does not create a client or fall back to Cookie", async () => {
+  resetMocks({ user: { id: "cookie-user" } });
+  const auth = await requireRouteUser(
+    requestFor("/api/chat", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer   ",
+        cookie: "sb-access-token=valid-cookie",
+      },
+    })
+  );
+
+  assert.equal(auth.ok, false);
+  if (auth.ok) assert.fail("empty Bearer should fail");
+  assert.equal(auth.response.status, 401);
+  assert.equal(serverClientCreateCount, 0);
+  assert.equal(bearerClientCreateCount, 0);
+});
+
+test("optional routes explicitly return 401 for invalid Bearer", async () => {
+  resetMocks({ bearerAuthError: { message: "invalid bearer" } });
+  const exploreResponse = await explore.GET(
+    requestFor("/api/explore", {
+      method: "GET",
+      headers: { authorization: "Bearer invalid-jwt" },
+    })
+  );
+
+  assert.equal(exploreResponse.status, 401);
+  assert.deepEqual(normalFromCalls, []);
+
+  resetMocks({ bearerAuthError: { message: "invalid bearer" } });
+  const reportsResponse = await reports.POST(
+    requestFor("/api/reports", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer invalid-jwt",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ threadId: "thread-1", reason: "spam" }),
+    })
+  );
+
+  assert.equal(reportsResponse.status, 401);
+  assert.deepEqual(reportRpcCalls, []);
 });
 
 test("reports submits null reporter user id for an anonymous request", async () => {
