@@ -6,6 +6,8 @@
     "build": "next build --turbopack"
   },
   "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/core": "8.5.0",
     "@kabehub/shared": "*",
     "next": "16.3.0",
     "react": "^19.2.8",
@@ -13,5 +15,8 @@
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.0"
   }
 }
