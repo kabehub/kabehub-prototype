@@ -20,3 +20,6 @@ app/test-login/
 /packages/shared/.next/
 /packages/shared/node_modules/
 /packages/shared/tsconfig.tsbuildinfo
+
+# Task 6: nested Android IDE project (machine-specific JDK/SDK paths)
+/apps/mobile/android/.idea/
