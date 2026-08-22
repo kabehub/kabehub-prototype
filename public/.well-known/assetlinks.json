@@ -4,7 +4,9 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.kabehub.app",
-      "sha256_cert_fingerprints": []
+      "sha256_cert_fingerprints": [
+        "95:61:D6:6D:1A:FE:E1:7F:A3:F9:86:78:97:10:88:15:0F:16:F2:F5:8A:4E:6D:EA:CD:F4:AC:C8:E9:95:7C:50"
+      ]
     }
   }
 ]
