@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "next build --turbopack"
+    "build": "next build --turbopack",
+    "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",
