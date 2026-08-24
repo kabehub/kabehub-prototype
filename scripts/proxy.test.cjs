@@ -295,6 +295,7 @@ test("internal and MCP routes never receive CORS headers", async () => {
     { pathname: "/api/cron/storage-cleanup", method: "GET" },
     { pathname: "/api/csp-report", method: "POST" },
     { pathname: "/api/auth/github/callback", method: "GET" },
+    { pathname: "/api/auth/github/mobile-callback", method: "GET" },
   ]) {
     const result = await invoke(pathname, {
       method,
@@ -779,6 +780,28 @@ test("GitHub callback matcher and session-check exclusions share a path boundary
   const protectedResult = await invoke(lookalike);
   assert.equal(protectedResult.sessionCheckCount, 1);
   await assertJsonUnauthorized(protectedResult.response);
+});
+
+test("GitHub mobile callback excludes only the exact path and trailing slash", async () => {
+  for (const pathname of [
+    "/api/auth/github/mobile-callback",
+    "/api/auth/github/mobile-callback/",
+  ]) {
+    assert.equal(matches(pathname), false);
+    const result = await invoke(pathname);
+    assert.equal(result.sessionCheckCount, 0);
+    assert.equal(result.response.status, 200);
+  }
+
+  for (const pathname of [
+    "/api/auth/github/mobile-callback-evil",
+    "/api/auth/github/mobile-callback/x",
+  ]) {
+    assert.equal(matches(pathname), true);
+    const result = await invoke(pathname);
+    assert.equal(result.sessionCheckCount, 1);
+    await assertJsonUnauthorized(result.response);
+  }
 });
 
 test("newly protected MCP token operations and share fork return JSON 401", async () => {

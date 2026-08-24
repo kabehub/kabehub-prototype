@@ -16,21 +16,29 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const auth = await requireRouteUser(req);
   if (!auth.ok) return auth.response;
-  const { user, finalizeResponse } = auth;
+  const { authMode, user, finalizeJson, finalizeResponse } = auth;
+
+  const redirectUri =
+    authMode === "bearer"
+      ? process.env.GITHUB_MOBILE_REDIRECT_URI!
+      : process.env.GITHUB_REDIRECT_URI!;
 
   const state = await createOAuthState(user.id);
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID!,
-    redirect_uri: process.env.GITHUB_REDIRECT_URI!,
+    redirect_uri: redirectUri,
     scope: "repo",
     state,
   });
 
-  return finalizeResponse(
-    NextResponse.redirect(
-      `https://github.com/login/oauth/authorize?${params.toString()}`,
-    ),
-  );
+  const authorizeUrl =
+    `https://github.com/login/oauth/authorize?${params.toString()}`;
+
+  if (authMode === "bearer") {
+    return finalizeJson({ url: authorizeUrl });
+  }
+
+  return finalizeResponse(NextResponse.redirect(authorizeUrl, 302));
 }
 
 export async function DELETE(req: NextRequest) {

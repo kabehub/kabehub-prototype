@@ -129,6 +129,25 @@ test("classification helpers are fail-closed and keep auth modes separate", () =
   assert.equal(isCorsEligibleApi("/api/mcp/threads", "GET"), false);
 });
 
+test("GitHub mobile callback classification has an exact path boundary", () => {
+  assert.equal(
+    classifyApi("/api/auth/github/mobile-callback", "GET"),
+    "internal"
+  );
+  assert.equal(
+    classifyApi("/api/auth/github/mobile-callback/", "GET"),
+    "internal"
+  );
+  assert.equal(
+    classifyApi("/api/auth/github/mobile-callback-evil", "GET"),
+    null
+  );
+  assert.equal(
+    classifyApi("/api/auth/github/mobile-callback/x", "GET"),
+    null
+  );
+});
+
 test("Bearer parser distinguishes absent, empty, and populated credentials", () => {
   assert.deepEqual(parseBearerAuthorization(null), { present: false });
   assert.deepEqual(parseBearerAuthorization("Basic value"), { present: false });

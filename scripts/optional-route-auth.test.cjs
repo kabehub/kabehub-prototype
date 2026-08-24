@@ -241,6 +241,16 @@ test("requireRouteUser retains its 401 and cookie finalization contract", async 
   assertRefreshedCookie(auth.response);
 });
 
+test("requireRouteUser exposes Cookie auth mode only on success", async () => {
+  resetMocks({ user: { id: "cookie-user" } });
+
+  const auth = await requireRouteUser(requestFor("/api/test"));
+
+  assert.equal(auth.ok, true);
+  if (!auth.ok) assert.fail("Cookie authentication should succeed");
+  assert.equal(auth.authMode, "cookie");
+});
+
 test("getOptionalRouteUser returns null for an unauthenticated request", async () => {
   resetMocks();
 
@@ -251,6 +261,7 @@ test("getOptionalRouteUser returns null for an unauthenticated request", async (
   assert.equal(auth.ok, true);
   if (!auth.ok) assert.fail("Cookie optional-auth should stay anonymous");
   assert.equal(auth.user, null);
+  assert.equal(Object.hasOwn(auth, "authMode"), false);
   assert.equal(serverClientCreateCount, 1);
   assert.equal(auth.supabase, lastServerClient);
 });
@@ -290,6 +301,7 @@ test("Bearer auth returns its RLS client for SELECT and INSERT", async () => {
 
   assert.equal(auth.ok, true);
   if (!auth.ok) assert.fail("Bearer authentication should succeed");
+  assert.equal(auth.authMode, "bearer");
   const selectResult = await auth.supabase.from("threads").select("id");
   const insertResult = await auth.supabase
     .from("threads")

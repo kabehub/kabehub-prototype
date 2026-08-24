@@ -32,6 +32,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/album\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/arena\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/auth\/github\/callback\/?$/, methods: ["GET"], classification: "internal" },
+  { pattern: /^\/api\/auth\/github\/mobile-callback\/?$/, methods: ["GET"], classification: "internal" },
   { pattern: /^\/api\/auth\/github\/?$/, methods: ["GET", "DELETE"], classification: "bearer" },
   { pattern: /^\/api\/auth\/github\/status\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/calendar\/?$/, methods: ["GET"], classification: "bearer" },

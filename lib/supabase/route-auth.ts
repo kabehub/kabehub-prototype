@@ -120,6 +120,7 @@ export async function requireRouteUser(req: NextRequest): Promise<
       ok: true;
       user: User;
       supabase: SupabaseClient;
+      authMode: "cookie" | "bearer";
       finalizeJson: (body: unknown, init?: ResponseInit) => NextResponse;
       finalizeResponse: <T extends NextResponse>(response: T) => T;
     }
@@ -141,6 +142,7 @@ export async function requireRouteUser(req: NextRequest): Promise<
     ok: true,
     user: auth.user,
     supabase: auth.supabase,
+    authMode: auth.authMode,
     finalizeJson,
     finalizeResponse,
   };
