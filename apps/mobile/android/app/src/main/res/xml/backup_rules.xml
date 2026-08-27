@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Secure Storage also contains Supabase auth entries; exclude the entire file. -->
+    <exclude
+        domain="sharedpref"
+        path="WSSecureStorageSharedPreferences.xml" />
+</full-backup-content>

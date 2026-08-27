@@ -2,6 +2,7 @@
 
 - 監査対象base SHA: `05ba12daa8334f0a2e710ce53fcc1463e4d12a38`
 - 静的監査日: 2026-07-25
+- Mobile Task12追補日: 2026-08-27
 - 対象: Anthropic（Claude）、Google（Gemini）、OpenAI、Ideogram、OpenRouterのBYOK APIキー
 - 対象外: GitHub OAuthアクセストークン、KabeHub MCPトークン、Supabase service role keyなど、AIプロバイダーのBYOKではない資格情報
 
@@ -17,6 +18,8 @@ git grep -n -E "apiKey|anthropicKey|geminiKey|openaiKey|ideogramKey|openrouterKe
 行番号は変更でずれるため主キーにせず、ファイルパスと関数／コンポーネント名で記録する。
 
 ## 1. 保存場所とブラウザ内の読取
+
+### Web
 
 | ファイル・関数／コンポーネント | 方向 | プロバイダー | LocalStorageキー | 用途 |
 |---|---|---|---|---|
@@ -40,10 +43,23 @@ LocalStorageキーは次の5種であり、名称は変更していない。
 | Ideogram | `kabehub_ideogram_key` |
 | OpenRouter | `kabehub_openrouter_key` |
 
+### Mobile
+
+| ファイル・関数／コンポーネント | 方向 | プロバイダー | Secure Storageキー | 用途 |
+|---|---|---|---|---|
+| `apps/mobile/lib/apiKeyStore.ts` / `mobileApiKeyStore` | 読取・保存・削除 | 5種すべて | `kabehub_apikey_{provider}` | `secureStorageAdapter`を通じてAndroid Keystore裏付けのSecure Storageへ保存する。未設定時の読取は`null`、ストレージ異常は呼び出し元へ伝播する |
+| `apps/mobile/app/settings/page.tsx` / `MobileSettingsPage` | 読取・保存・削除 | 5種すべて | 上記5キー | `Promise.allSettled()`でproviderごとに独立して読み書きする。ユーザーが編集して`dirty`になったproviderだけを保存・削除対象にする |
+| `apps/mobile/app/page.tsx` / `handleChatTest` | 読取・内部送信 | Anthropic | `kabehub_apikey_claude` | `buildApiKeyHeaders(mobileApiKeyStore, ["claude"])`でheaderを生成し、既存の`https://www.kabehub.com/api/chat`へ送信する |
+
+MobileのSecure Storageプラグインは暗号文を`WSSecureStorageSharedPreferences.xml`へ保存し、暗号鍵をAndroid Keystoreで管理する。このSharedPreferencesはAndroid Auto Backupのcloud-backupとdevice-transferからファイル単位で除外する。Supabase認証セッションも同じSecure Storageに入るため、同時にバックアップ対象外となる。
+
+Web/Mobileのどちらでも、BYOK APIキーをKabeHubのアプリケーションDBへ永続保存せず、アプリケーションログへ意図的に記録しない契約は共通である。
+
 ## 2. クライアントからKabeHubへの内部送信
 
 | 送信元・関数 | 送信先 | 送信ヘッダー | 備考 |
 |---|---|---|---|
+| `apps/mobile/app/page.tsx` / `handleChatTest` | `https://www.kabehub.com/api/chat` | `x-anthropic-api-key` | signed-in時のClaude疎通確認。Secure Storageから読み、`buildApiKeyHeaders`が設定済みキーだけをheaderへ変換する |
 | `app/page.tsx` / `getApiKeyHeaders`を使うchat送信・再生成・一時会話保存 | `/api/chat` | `x-anthropic-api-key`、`x-gemini-api-key`、`x-openai-api-key` | 設定済みの3キーを付与し、Routeが選択プロバイダーとLore用途に必要なキーを使用する |
 | `app/arena/page.tsx` / `runOneTurn` | `/api/arena` | 上記3ヘッダー | 設定済みキーを付与し、現在の対戦者プロバイダーのキーだけを外部転送する |
 | `app/page.tsx` / `handleExtractSettings` | `/api/extract-settings` | `x-anthropic-api-key` | 現行UIはAnthropicのみを送る。Route自体はGemini/OpenAIヘッダーも受信可能 |
@@ -112,4 +128,6 @@ Geminiの外部転送にはURLクエリ`?key=...`を使わない。`chat`、`nov
 
 ## 6. 残存リスク
 
-APIキーはLocalStorageに平文保存される。現在CSPはReport-Only運用中であり、同一オリジンでXSSが成立した場合に生キーを読み取られうるリスクは残る。保存方式変更とCSP Enforce切替は本対応のスコープ外であり、H-21のリスク受容および将来チケットH-21Cとして管理する。
+WebではAPIキーがLocalStorageに平文保存される。現在CSPはReport-Only運用中であり、同一オリジンでXSSが成立した場合に生キーを読み取られうるリスクは残る。Webの保存方式変更とCSP Enforce切替は本対応のスコープ外であり、H-21のリスク受容および将来チケットH-21Cとして管理する。
+
+MobileではAndroid Keystore裏付けのSecure Storageを使うが、複数端末間の暗号化同期やサーバー側KMS/Vault連携は行わない。これは将来チケットH-21Cの対象である。

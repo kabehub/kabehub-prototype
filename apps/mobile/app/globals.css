@@ -8,6 +8,177 @@ html, body {
   padding: 0;
 }
 
+.mobile-page {
+  min-height: 100vh;
+  padding: calc(32px + env(safe-area-inset-top, 0px)) 16px
+    calc(32px + env(safe-area-inset-bottom, 0px));
+  background: #111827;
+  color: #f9fafb;
+  font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+}
+
+.mobile-card {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 24px;
+  border: 1px solid #374151;
+  border-radius: 16px;
+  background: #1f2937;
+}
+
+.mobile-card h1 {
+  margin: 0 0 16px;
+  font-size: 26px;
+}
+
+.mobile-card a {
+  color: #fb923c;
+}
+
+.mobile-card button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #ea580c;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mobile-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mobile-card pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.mobile-heading-row,
+.api-key-field-heading,
+.api-key-input-row,
+.mobile-save-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-heading-row {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.mobile-heading-row h1 {
+  margin-bottom: 0;
+}
+
+.mobile-eyebrow,
+.mobile-muted,
+.api-key-mask,
+.mobile-dirty,
+.mobile-error,
+.mobile-save-row p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mobile-eyebrow,
+.mobile-muted,
+.api-key-mask {
+  color: #9ca3af;
+}
+
+.mobile-muted {
+  margin-bottom: 24px;
+}
+
+.mobile-error {
+  color: #fca5a5;
+}
+
+.mobile-dirty {
+  color: #fdba74;
+}
+
+.api-key-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.api-key-field {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #374151;
+  border-radius: 12px;
+  background: #111827;
+}
+
+.api-key-field-heading {
+  justify-content: space-between;
+}
+
+.api-key-field-heading label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.api-key-status {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #374151;
+  color: #d1d5db;
+  font-size: 11px;
+}
+
+.api-key-status-loaded {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.api-key-status-error {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+
+.api-key-input-row input {
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #4b5563;
+  border-radius: 10px;
+  background: #030712;
+  color: #f9fafb;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.mobile-card .secondary-button {
+  border: 1px solid #4b5563;
+  background: transparent;
+  color: #d1d5db;
+}
+
+.mobile-save-row {
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .mobile-card {
+    padding: 18px;
+  }
+
+  .mobile-heading-row {
+    align-items: flex-start;
+  }
+}
+
 /* ============================================
    Legal Pages (利用規約・PP・特商法)   
    ============================================ */

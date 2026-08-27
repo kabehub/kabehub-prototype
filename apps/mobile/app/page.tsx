@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { buildApiKeyHeaders } from "@kabehub/shared";
 
 import { mobileAccessTokenProvider } from "../lib/accessTokenProvider";
 import { createMobileApiClient } from "../lib/api-client";
+import { mobileApiKeyStore } from "../lib/apiKeyStore";
 import { startGoogleSignIn } from "../lib/auth/oauth";
 import { supabase } from "../lib/supabase/client";
 
@@ -60,13 +63,19 @@ export default function HomePage() {
     setChatTestResult("実行中...");
 
     try {
+      const apiKeyHeaders = await buildApiKeyHeaders(mobileApiKeyStore, [
+        "claude",
+      ]);
       const res = await apiClient.request("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...apiKeyHeaders,
+        },
         body: JSON.stringify({
           threadId: null,
           messages: [],
-          userContent: "task8 verification",
+          userContent: "task12 mobile BYOK verification",
           provider: "claude",
           isTemporary: true,
         }),
@@ -87,26 +96,32 @@ export default function HomePage() {
   }
 
   return (
-    <main>
-      <h1>KabeHub Mobile (Task8 検証用)</h1>
+    <main className="mobile-page">
+      <div className="mobile-card">
+        <h1>KabeHub Mobile</h1>
 
-      {state.kind === "loading" && <p>確認中...</p>}
-      {state.kind === "signedOut" && (
-        <button onClick={handleSignIn}>Googleでサインイン</button>
-      )}
-      {state.kind === "signedIn" && (
-        <p>ログイン済み: {state.session.user.email}</p>
-      )}
-      {state.kind === "error" && (
-        <p style={{ color: "red" }}>検証エラー: {state.message}</p>
-      )}
+        {state.kind === "loading" && <p>確認中...</p>}
+        {state.kind === "signedOut" && (
+          <button onClick={handleSignIn}>Googleでサインイン</button>
+        )}
+        {state.kind === "signedIn" && (
+          <p>ログイン済み: {state.session.user.email}</p>
+        )}
+        {state.kind === "error" && (
+          <p className="mobile-error">検証エラー: {state.message}</p>
+        )}
 
-      {(state.kind === "signedOut" || state.kind === "signedIn") && (
-        <div>
-          <button onClick={handleChatTest}>/api/chat テスト実行</button>
-          {chatTestResult && <pre>{chatTestResult}</pre>}
-        </div>
-      )}
+        <p>
+          <Link href="/settings">APIキー設定へ</Link>
+        </p>
+
+        {state.kind === "signedIn" && (
+          <div>
+            <button onClick={handleChatTest}>Claude AI応答テスト</button>
+            {chatTestResult && <pre>{chatTestResult}</pre>}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

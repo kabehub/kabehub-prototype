@@ -1,16 +1,21 @@
-import type { ApiKeyStore } from "@kabehub/shared";
+import type { ApiKeyProvider, ApiKeyStore } from "@kabehub/shared";
 
-const NOT_IMPLEMENTED_MESSAGE =
-  "mobileApiKeyStore is not implemented until Task12";
+import { secureStorageAdapter } from "./secureStorage";
+
+const STORAGE_KEY_PREFIX = "kabehub_apikey_";
+
+function storageKey(provider: ApiKeyProvider): string {
+  return `${STORAGE_KEY_PREFIX}${provider}`;
+}
 
 export const mobileApiKeyStore: ApiKeyStore = {
-  async getKey() {
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+  async getKey(provider) {
+    return secureStorageAdapter.getItem(storageKey(provider));
   },
-  async setKey() {
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+  async setKey(provider, value) {
+    await secureStorageAdapter.setItem(storageKey(provider), value);
   },
-  async removeKey() {
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+  async removeKey(provider) {
+    await secureStorageAdapter.removeItem(storageKey(provider));
   },
 };
