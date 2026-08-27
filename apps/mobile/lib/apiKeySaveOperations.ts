@@ -29,10 +29,12 @@ export function buildApiKeySaveOperations(
 
     if (!field.dirty) continue;
 
+    const trimmedValue = field.value.trim();
+
     operations.push(
-      field.value === ""
+      trimmedValue === ""
         ? { provider, kind: "remove" }
-        : { provider, kind: "set", value: field.value }
+        : { provider, kind: "set", value: trimmedValue }
     );
   }
 

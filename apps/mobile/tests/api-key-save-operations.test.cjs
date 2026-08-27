@@ -84,6 +84,24 @@ test("clearing an edited loaded value generates remove", () => {
   assert.deepEqual(operations, [{ provider: "openai", kind: "remove" }]);
 });
 
+test("a dirty whitespace-only value generates remove", () => {
+  const operations = buildApiKeySaveOperations(
+    fields({ openai: field({ value: "   ", dirty: true }) })
+  );
+
+  assert.deepEqual(operations, [{ provider: "openai", kind: "remove" }]);
+});
+
+test("a dirty value with surrounding whitespace generates set with the trimmed value", () => {
+  const operations = buildApiKeySaveOperations(
+    fields({ openai: field({ value: "  sk-xxxx  ", dirty: true }) })
+  );
+
+  assert.deepEqual(operations, [
+    { provider: "openai", kind: "set", value: "sk-xxxx" },
+  ]);
+});
+
 test("an unedited missing value generates no operation", () => {
   const operations = buildApiKeySaveOperations(
     fields({ ideogram: field({ status: "missing", dirty: false }) })
