@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build --turbopack",
+    "postbuild": "node scripts/fix-csp-position.mjs",
     "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
