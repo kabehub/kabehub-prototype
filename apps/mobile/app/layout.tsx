@@ -7,7 +7,7 @@ import "./globals.css";
 const contentSecurityPolicy = [
   "default-src 'self';",
   "script-src 'self' 'unsafe-inline';",
-  "style-src 'self' 'unsafe-inline';",
+  "style-src 'self';",
   "img-src 'self' data:;",
   "connect-src 'self' https://www.kabehub.com https://lfrdzrdmrxmqqwmxmyxx.supabase.co;",
   "font-src 'self';",
