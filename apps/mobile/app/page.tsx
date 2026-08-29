@@ -115,6 +115,12 @@ export default function HomePage() {
           <Link href="/settings">APIキー設定へ</Link>
         </p>
 
+        <nav aria-label="法的情報">
+          <p><Link href="/terms">利用規約</Link></p>
+          <p><Link href="/privacy">プライバシーポリシー</Link></p>
+          <p><Link href="/legal">特定商取引法に基づく表記</Link></p>
+        </nav>
+
         {state.kind === "signedIn" && (
           <div>
             <button onClick={handleChatTest}>Claude AI応答テスト</button>
