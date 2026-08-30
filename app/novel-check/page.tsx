@@ -171,14 +171,14 @@ export default function NovelCheckPage() {
       await fetch("/api/chat", {
         method: "POST",
         headers: sharedHeaders,
-        body: JSON.stringify({ threadId, messages: [], userContent: metaContent, provider: "memo", isMemo: true, isTemporary: false }),
+        body: JSON.stringify({ threadId, messages: [], userContent: metaContent, provider: "gemini", isMemo: true, isTemporary: false }),
       });
 
       // AI結果をメモとして保存
       await fetch("/api/chat", {
         method: "POST",
         headers: sharedHeaders,
-        body: JSON.stringify({ threadId, messages: [], userContent: result, provider: "memo", isMemo: true, isTemporary: false }),
+        body: JSON.stringify({ threadId, messages: [], userContent: result, provider: "gemini", isMemo: true, isTemporary: false }),
       });
 
       window.location.href = `/?thread=${threadId}`;
