@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <LegalLayout title="利用規約" updatedAt="2026年4月9日">
+    <LegalLayout title="利用規約" updatedAt="2026年8月30日">
       <section>
         <h2>第1条（適用）</h2>
         <p>
@@ -51,7 +51,7 @@ export default function TermsPage() {
       <section>
         <h2>第6条（APIキーの管理）</h2>
         <p>
-          セルフプランを利用するユーザーは、各AIプロバイダー（Anthropic・Google・OpenAI・Ideogram・OpenRouter）のAPIキーをご自身のブラウザのLocalStorageに保存します。AI機能のご利用時には、選択したAIプロバイダーへのリクエスト中継のため当社サーバーへ一時的に送信されますが、当社はAPIキーをKabeHubのアプリケーションデータベースへ永続保存しません。APIキーの漏洩・不正利用についての責任はユーザー自身が負うものとします。
+          セルフプランを利用するユーザーは、各AIプロバイダー（Anthropic・Google・OpenAI・Ideogram・OpenRouter）のAPIキーを、ご利用の環境に応じた方法で保存します。ブラウザ版ではブラウザのLocalStorageに、モバイルアプリでは端末内の保護された保存領域に、それぞれ保存されます。現在のモバイルアプリでは、APIキーをOSのバックアップ・端末移行の対象から除外しています。そのため、機種変更等の際にはAPIキーの再登録が必要になる場合があります。AI機能のご利用時には、選択したAIプロバイダーへのリクエスト中継のため当社サーバーへ一時的に送信されますが、当社はAPIキーをKabeHubのアプリケーションデータベースへ永続保存しません。APIキーの漏洩・不正利用についての責任はユーザー自身が負うものとします。
         </p>
       </section>
 

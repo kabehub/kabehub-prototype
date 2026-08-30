@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <LegalLayout title="プライバシーポリシー" updatedAt="2026年4月9日">
+    <LegalLayout title="プライバシーポリシー" updatedAt="2026年8月30日">
       <section>
         <h2>1. 事業者情報</h2>
         <p>
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
       <section>
         <h2>4. APIキーの取り扱い</h2>
         <p>
-          セルフプランをご利用のユーザーがAIプロバイダー（Anthropic・Google・OpenAI・Ideogram・OpenRouter）のAPIキーを設定する場合、当該APIキーはユーザー自身のブラウザのLocalStorageに保存されます。AI機能のご利用時には、選択したAIプロバイダーへのリクエスト中継のため当社サーバーへ一時的に送信されますが、当社はAPIキーをKabeHubのアプリケーションデータベースへ永続保存せず、意図的にログへ記録しません。APIキーの管理はユーザーの責任において行ってください。
+          セルフプランをご利用のユーザーがAIプロバイダー（Anthropic・Google・OpenAI・Ideogram・OpenRouter）のAPIキーを設定する場合、当該APIキーはご利用の環境に応じて保存されます。ブラウザ版ではユーザー自身のブラウザのLocalStorageに、モバイルアプリでは端末内の保護された保存領域に、それぞれ保存されます。現在のモバイルアプリでは、APIキーをOSのバックアップ・端末移行の対象から除外しています。そのため、機種変更等の際にはAPIキーの再登録が必要になる場合があります。AI機能のご利用時には、選択したAIプロバイダーへのリクエスト中継のため当社サーバーへ一時的に送信されますが、当社はAPIキーをKabeHubのアプリケーションデータベースへ永続保存せず、意図的にログへ記録しません。APIキーの管理はユーザーの責任において行ってください。
         </p>
       </section>
 
@@ -81,9 +81,9 @@ export default function PrivacyPage() {
       </section>
 
       <section>
-        <h2>6. CookieおよびLocalStorageの利用</h2>
+        <h2>6. Cookie・端末内保存領域の利用</h2>
         <p>
-          本サービスでは、ログイン状態の維持のためにCookieを使用します。また、APIキーや設定情報の保存にブラウザのLocalStorageを使用します。ブラウザの設定によりCookieを無効にすることができますが、その場合、本サービスの一部機能が正常に動作しない場合があります。
+          ブラウザ版では、ログイン状態の維持のためにCookieを使用し、APIキーや設定情報の保存にLocalStorageを使用します。モバイルアプリでは、認証セッションおよびAPIキーを端末内の保護された保存領域に保存します。ブラウザ版では、ブラウザの設定によりCookieを無効にすることができますが、その場合、本サービスの一部機能が正常に動作しない場合があります。
         </p>
       </section>
 
