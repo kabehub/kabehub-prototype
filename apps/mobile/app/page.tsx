@@ -122,10 +122,15 @@ export default function HomePage() {
         </nav>
 
         {state.kind === "signedIn" && (
-          <div>
-            <button onClick={handleChatTest}>Claude AI応答テスト</button>
-            {chatTestResult && <pre>{chatTestResult}</pre>}
-          </div>
+          <>
+            <nav aria-label="機能">
+              <p><Link href="/novel-check">整合性チェック</Link></p>
+            </nav>
+            <div>
+              <button onClick={handleChatTest}>Claude AI応答テスト</button>
+              {chatTestResult && <pre>{chatTestResult}</pre>}
+            </div>
+          </>
         )}
       </div>
     </main>
