@@ -23,3 +23,24 @@ export interface Message {
     image_deleted?: boolean;   // 削除済みトゥームストーンフラグ
   };
 }
+
+export interface LoreMemoryCard {
+  id: string;
+  chunkText: string;
+  tags: string[];
+  memoryKind: string;
+  temporalStatus: string;
+  importanceScore: number;
+  confidenceScore: number;
+  sourceThreadId: string | null;
+  sourceMessageId: string | null;
+  sourceMessageNumber: number | null;
+  isPinned: boolean;
+  isArchived: boolean;
+  extractionVersion: string | null;
+  lastConfirmedAt: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  eventTime: string | null;
+  createdAt: string;
+}

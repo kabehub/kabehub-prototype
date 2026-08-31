@@ -133,3 +133,7 @@ export {
   computeTreeLayout,
 } from "./branchTree";
 export { calcCost, formatUSD } from "./pricing";
+export type { LoreMemoryCard } from "./types";
+export { pairKey } from "./lore/consolidation";
+export { toMemoryCard, memoryNeedsReview, type ConsolidationCandidate } from "./lore/mappers";
+export { DREAMING_DEFAULTS, BATCH_TRAIN_UI_REQUEST_LIMIT, type LoreMemoryRow } from "./lore/types";
