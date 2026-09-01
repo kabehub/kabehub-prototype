@@ -125,6 +125,7 @@ export default function HomePage() {
           <>
             <nav aria-label="機能">
               <p><Link href="/novel-check">整合性チェック</Link></p>
+              <p><Link href="/memory">AI記憶</Link></p>
             </nav>
             <div>
               <button onClick={handleChatTest}>Claude AI応答テスト</button>
