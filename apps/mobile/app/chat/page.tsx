@@ -804,6 +804,59 @@ function ChatWorkspace({ session }: { session: Session }) {
     ]
   );
 
+  const handleTrimFrom = useCallback(
+    async (message: Message) => {
+      if (!activeThreadId) return;
+      setIsLoading(true);
+
+      const index = messages.findIndex((item) => item.id === message.id);
+      if (index < 0) {
+        setIsLoading(false);
+        return;
+      }
+      const snapshot = messages;
+      setMessages(snapshot.slice(0, index));
+
+      try {
+        const res = await apiClient.request(
+          `/api/threads/${activeThreadId}/messages`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fromCreatedAt: message.created_at }),
+          }
+        );
+        if (!res.ok) {
+          const restored = await apiClient.request(
+            `/api/threads/${activeThreadId}/messages`,
+            { cache: "no-store" }
+          );
+          if (restored.ok) {
+            setMessages(await restored.json());
+          } else {
+            setMessages(snapshot);
+          }
+          showToast("削除に失敗しました", "error");
+        }
+      } catch {
+        try {
+          const restored = await apiClient.request(
+            `/api/threads/${activeThreadId}/messages`,
+            { cache: "no-store" }
+          );
+          if (restored.ok) setMessages(await restored.json());
+          else setMessages(snapshot);
+        } catch {
+          setMessages(snapshot);
+        }
+        showToast("削除に失敗しました", "error");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [activeThreadId, messages, showToast]
+  );
+
   const handleCopyThread = useCallback(
     async (threadId: string) => {
       try {
@@ -880,6 +933,7 @@ function ChatWorkspace({ session }: { session: Session }) {
         onProviderChange={setProvider}
         onTitleUpdate={handleTitleUpdate}
         onRegenerate={handleRegenerate}
+        onTrimFrom={handleTrimFrom}
         onCopyThread={handleCopyThread}
         searchMatchIds={searchMatchIds}
         searchMatchIndex={searchMatchIndex}
