@@ -860,7 +860,10 @@ function ChatWorkspace({ session }: { session: Session }) {
             user={session.user}
             onLogout={handleLogout}
             onUpdateFolder={handleUpdateFolder}
-            onNewThreadInFolder={handleNewThreadInFolder}
+            onNewThreadInFolder={async (folderName) => {
+              await handleNewThreadInFolder(folderName);
+              setIsSidebarOpen(false);
+            }}
             isMobileOverlay
           />
         </>
