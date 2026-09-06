@@ -60,6 +60,7 @@ export interface ChatPanelProps {
     assistantMessage?: Message,
     modelId?: string
   ) => void;
+  onTrimFrom: (message: Message) => void;
   onCopyThread: (threadId: string) => void | Promise<void>;
   searchMatchIds?: string[];
   searchMatchIndex?: number;
@@ -85,6 +86,7 @@ export default function ChatPanel({
   onProviderChange,
   onTitleUpdate,
   onRegenerate,
+  onTrimFrom,
   onCopyThread,
   searchMatchIds = EMPTY_STRING_ARRAY,
   searchMatchIndex = 0,
@@ -559,6 +561,7 @@ export default function ChatPanel({
                       isLoading={isLoading}
                       provider={provider}
                       onRegenerate={onRegenerate}
+                      onTrimFrom={onTrimFrom}
                       isHighlighted={isHighlighted}
                       isActiveMatch={isActiveMatch}
                       activeFlashKey={
@@ -573,6 +576,7 @@ export default function ChatPanel({
                       isLoading={isLoading}
                       provider={provider}
                       onRegenerate={onRegenerate}
+                      onTrimFrom={onTrimFrom}
                       isHighlighted={isHighlighted}
                       isActiveMatch={isActiveMatch}
                       activeFlashKey={
