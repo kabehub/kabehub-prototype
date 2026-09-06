@@ -106,7 +106,7 @@ export {
   buildDefaultModels,
   createModelGuards,
 } from "./modelRegistry";
-export type { Message } from "./types";
+export type { Message, Thread, ThreadTag } from "./types";
 export type { ChainBlock, BranchLane } from "./branching";
 export {
   getOrderNo,
