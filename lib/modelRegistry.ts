@@ -68,9 +68,10 @@ type TextModelBase = {
 };
 
 type OpenAICacheCapability = { supportsCacheWrite?: boolean };
+type ChatCompletionsReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
 export type OpenAICapability = OpenAICacheCapability & (
-  | { api: "chat_completions"; tokenParam: "max_tokens" | "max_completion_tokens" }
+  | { api: "chat_completions"; tokenParam: "max_tokens" | "max_completion_tokens"; reasoningEffort?: ChatCompletionsReasoningEffort }
   | { api: "responses" }
 );
 
@@ -105,6 +106,7 @@ const price = (
 
 export const MODEL_REGISTRY = [
   { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00) },
+  { kind: "text", id: "claude-fable-5-1", provider: "claude", label: "Fable 5.1", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5.1はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00, 0.25) },
   { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5はAdaptive Thinkingが標準で有効です" }, pricing: [
     { note: "導入価格", tiers: [{ inputPerMTok: 2.00, outputPerMTok: 10.00 }] },
     { from: "2026-09-01T00:00:00.000Z", tiers: [{ inputPerMTok: 3.00, outputPerMTok: 15.00 }] },
@@ -134,6 +136,10 @@ export const MODEL_REGISTRY = [
     { note: "導入価格（〜2026-12-31）", tiers: [{ inputPerMTok: 0.75, outputPerMTok: 3.75 }] },
     { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
   ] },
+  { kind: "text", id: "gemini-3.8-flash", provider: "gemini", label: "3.8 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { note: "導入価格（〜2026-12-31）", tiers: [{ inputPerMTok: 0.75, outputPerMTok: 3.75 }] },
+    { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
+  ] },
   { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
 
   { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00, 1.25), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
@@ -150,6 +156,12 @@ export const MODEL_REGISTRY = [
     { tiers: [{ inputPerMTok: 1.00, cachedInputPerMTok: 0.10, outputPerMTok: 6.00 }] },
     { from: "2026-07-30T00:00:00.000Z", tiers: [{ inputPerMTok: 0.20, cachedInputPerMTok: 0.02, outputPerMTok: 1.20 }] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
+  { kind: "text", id: "gpt-6-astra", provider: "openai", label: "GPT-6 Astra", badge: "最高性能", status: "active", surfaces: { chat: true, arena: false }, thinking: { control: "unsupported" }, pricing: [
+    { tiers: [
+      { inputPerMTok: 10.00, cachedInputPerMTok: 1.00, outputPerMTok: 50.00 },
+      { promptTokensAbove: 272_000, inputPerMTok: 20.00, cachedInputPerMTok: 2.00, outputPerMTok: 75.00 },
+    ] },
+  ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", reasoningEffort: "medium", supportsCacheWrite: true } },
 
   { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2", badge: "OpenAI", status: "active", img2img: false, imagePricing: { kind: "token_modalities", textInputPerMTok: 5.00, imageInputPerMTok: 8.00, cachedImageInputPerMTok: 2.00, imageOutputPerMTok: 30.00 } },
   { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, imagePricing: { kind: "token_modalities", textInputPerMTok: 0.30, imageInputPerMTok: 0.30, textOutputPerMTok: 2.50, imageOutputPerMTok: 30.00 }, imagePage: { label: "2.5 Flash Image", badge: "既存" } },

@@ -5,6 +5,7 @@ installTsLoader({ jsx: true });
 installAliasResolver();
 
 const registry = require("../lib/modelRegistry.ts");
+const sharedRegistry = require("../packages/shared/src/modelRegistry.ts");
 const legacyPricing = require("../lib/pricing.ts");
 
 const expectedLegacyModelConfig = {
@@ -12,6 +13,7 @@ const expectedLegacyModelConfig = {
     label: "Claude",
     models: [
       { id: "claude-fable-5", label: "Fable 5", badge: "最高精度" },
+      { id: "claude-fable-5-1", label: "Fable 5.1", badge: "最高精度" },
       { id: "claude-sonnet-5", label: "Sonnet 5", badge: "新標準" },
       { id: "claude-opus-5", label: "Opus 5", badge: "最高精度" },
       { id: "claude-opus-4-8", label: "Opus 4.8", badge: "高精度" },
@@ -33,6 +35,7 @@ const expectedLegacyModelConfig = {
       { id: "gemini-3.1-flash-lite", label: "3.1 Flash Lite", badge: "軽量・爆速" },
       { id: "gemini-3.6-flash", label: "3.6 Flash", badge: "高性能" },
       { id: "gemini-3.7-flash", label: "3.7 Flash", badge: "高性能" },
+      { id: "gemini-3.8-flash", label: "3.8 Flash", badge: "高性能" },
       { id: "gemini-3.5-flash-lite", label: "3.5 Flash Lite", badge: "軽量・爆速" },
     ],
     defaultModel: "gemini-2.5-flash",
@@ -49,6 +52,7 @@ const expectedLegacyModelConfig = {
       { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", badge: "最高精度" },
       { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", badge: "高性能" },
       { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", badge: "軽量・爆速" },
+      { id: "gpt-6-astra", label: "GPT-6 Astra", badge: "最高性能" },
     ],
     defaultModel: "gpt-5.4-mini",
     lsKey: "kabehub_openai_model",
@@ -67,6 +71,11 @@ const expectedLegacyModelConfig = {
 };
 
 assert.deepEqual(registry.buildLegacyModelConfig(), expectedLegacyModelConfig);
+assert.deepEqual(
+  registry.MODEL_REGISTRY,
+  sharedRegistry.MODEL_REGISTRY,
+  "lib and shared MODEL_REGISTRY must stay identical"
+);
 
 const representativeIds = [
   "gpt-4o", "gemini-2.5-pro", "ideogram-v3", "black-forest-labs/flux.2-pro",
@@ -134,6 +143,7 @@ assert.deepEqual(registry.resolveImageModel("black-forest-labs/flux.2-pro").imag
 assert.equal(registry.supportsOpenAICacheWrite("gpt-5.6-sol"), true);
 assert.equal(registry.supportsOpenAICacheWrite("gpt-5.6-terra"), true);
 assert.equal(registry.supportsOpenAICacheWrite("gpt-5.6-luna"), true);
+assert.equal(registry.supportsOpenAICacheWrite("gpt-6-astra"), true);
 assert.equal(registry.supportsOpenAICacheWrite("gpt-5.5"), false);
 assert.equal(registry.supportsOpenAICacheWrite("gpt-5.5-pro"), false);
 
@@ -178,6 +188,12 @@ for (const model of registry.MODEL_REGISTRY) {
 assert.deepEqual(registry.getOpenAICapability("gpt-4o"), { api: "chat_completions", tokenParam: "max_tokens" });
 assert.deepEqual(registry.getOpenAICapability("gpt-5.4-mini"), { api: "chat_completions", tokenParam: "max_completion_tokens" });
 assert.deepEqual(registry.getOpenAICapability("gpt-5.5-pro"), { api: "responses" });
+assert.deepEqual(registry.getOpenAICapability("gpt-6-astra"), {
+  api: "chat_completions",
+  tokenParam: "max_completion_tokens",
+  reasoningEffort: "medium",
+  supportsCacheWrite: true,
+});
 assert.deepEqual(registry.getPricing("gpt-5.5-pro"), {
   inputPerMTok: 30,
   outputPerMTok: 180,
@@ -213,7 +229,7 @@ assert.equal(registry.PROVIDER_CONFIG.claude.uiDefaultModelId, "claude-sonnet-5"
 assert.equal(registry.PROVIDER_CONFIG.claude.chatFallbackModelId, "claude-sonnet-5");
 assert.equal(registry.PROVIDER_CONFIG.claude.arenaFallbackModelId, "claude-sonnet-5");
 
-for (const modelId of ["claude-opus-5", "claude-sonnet-5", "claude-fable-5"]) {
+for (const modelId of ["claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-fable-5-1"]) {
   assert.deepEqual(
     registry.resolveClaudeRequestOverrides(modelId, false),
     { max_tokens: 16000 },
@@ -281,6 +297,14 @@ assert.deepEqual(registry.getPricing("gemini-3.7-flash", new Date("2027-01-01T00
   inputPerMTok: 1.5,
   outputPerMTok: 7.5,
 });
+assert.deepEqual(registry.getPricing("gemini-3.8-flash", new Date("2026-12-31T23:59:59.999Z")), {
+  inputPerMTok: 0.75,
+  outputPerMTok: 3.75,
+});
+assert.deepEqual(registry.getPricing("gemini-3.8-flash", new Date("2027-01-01T00:00:00.000Z")), {
+  inputPerMTok: 1.5,
+  outputPerMTok: 7.5,
+});
 
 assert.deepEqual(registry.getPricing("gemini-2.5-pro", new Date("2026-08-15T00:00:00.000Z"), 200_000), {
   inputPerMTok: 1.25,
@@ -314,6 +338,26 @@ assert.deepEqual(registry.getPricing("gpt-5.6-luna", openAIEpochAt), {
   cachedInputPerMTok: 0.02,
   outputPerMTok: 1.2,
 });
+assert.deepEqual(registry.getPricing("gpt-6-astra", new Date("2026-08-15T00:00:00.000Z"), 272_000), {
+  inputPerMTok: 10,
+  cachedInputPerMTok: 1,
+  outputPerMTok: 50,
+});
+assert.deepEqual(registry.getPricing("gpt-6-astra", new Date("2026-08-15T00:00:00.000Z"), 272_001), {
+  promptTokensAbove: 272_000,
+  inputPerMTok: 20,
+  cachedInputPerMTok: 2,
+  outputPerMTok: 75,
+});
+
+for (const { provider, modelId, chat, arena } of [
+  { provider: "claude", modelId: "claude-fable-5-1", chat: true, arena: true },
+  { provider: "gemini", modelId: "gemini-3.8-flash", chat: true, arena: true },
+  { provider: "openai", modelId: "gpt-6-astra", chat: true, arena: false },
+]) {
+  assert.equal(registry.isAllowedModel(provider, modelId, "chat"), chat, `${modelId}/chat`);
+  assert.equal(registry.isAllowedModel(provider, modelId, "arena"), arena, `${modelId}/arena`);
+}
 
 const newModels = [
   ["openai", "gpt-5.6-sol", { inputPerMTok: 5, cachedInputPerMTok: 0.5, outputPerMTok: 30 }],

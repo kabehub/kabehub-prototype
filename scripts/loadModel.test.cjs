@@ -107,6 +107,7 @@ const modelIdsByProvider = Object.fromEntries(
 assert.deepEqual(modelIdsByProvider, {
   claude: [
     "claude-fable-5",
+    "claude-fable-5-1",
     "claude-sonnet-5",
     "claude-opus-5",
     "claude-opus-4-8",
@@ -116,8 +117,8 @@ assert.deepEqual(modelIdsByProvider, {
     "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
   ],
-  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"],
-  openai: ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"],
+  openai: ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra"],
   image_gen: [
     "gpt-image-2",
     "gemini-2.5-flash-image",
@@ -131,10 +132,11 @@ assert.deepEqual(modelIdsByProvider, {
 // ────────────────────────────────────────────────────────────
 assert.deepEqual(
   [...THINKING_UNSUPPORTED_MODELS].sort(),
-  ["claude-fable-5", "claude-opus-5", "claude-sonnet-5"].sort()
+  ["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5"].sort()
 );
 assert.equal(isThinkingUnsupported("claude-haiku-4-5-20251001"), false);
 assert.equal(isThinkingUnsupported("claude-fable-5"), true);
+assert.equal(isThinkingUnsupported("claude-fable-5-1"), true);
 assert.equal(isThinkingUnsupported("claude-opus-5"), true);
 assert.equal(isThinkingUnsupported("claude-sonnet-5"), true);
 assert.equal(isThinkingUnsupported("claude-opus-4-8"), false);
@@ -143,6 +145,7 @@ assert.equal(isThinkingUnsupported("claude-sonnet-4-5"), false);
 assert.equal(canUseDeepThinking("claude", "claude-opus-4-8"), true);
 assert.equal(canUseDeepThinking("claude", "claude-sonnet-5"), false); // Adaptive Thinking標準搭載のため手動トグル不要
 assert.equal(canUseDeepThinking("claude", "claude-fable-5"), false);
+assert.equal(canUseDeepThinking("claude", "claude-fable-5-1"), false);
 assert.equal(canUseDeepThinking("claude", "claude-opus-5"), false);
 assert.equal(canUseDeepThinking("claude", "claude-haiku-4-5-20251001"), true);
 assert.equal(canUseDeepThinking("gemini", "claude-opus-4-8"), false); // provider不一致（claude以外は常にfalse）

@@ -103,7 +103,7 @@ export function calculateTextUsageCost(
     );
     cost += perMTok(
       Math.max(0, usage.cacheReadInputTokens ?? 0),
-      tier.inputPerMTok * CLAUDE_CACHE_READ_MULTIPLIER,
+      tier.cachedInputPerMTok ?? (tier.inputPerMTok * CLAUDE_CACHE_READ_MULTIPLIER),
     );
   } else if (provider === "gemini") {
     const cachedTokens = Math.max(0, usage.cacheReadInputTokens ?? 0);

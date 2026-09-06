@@ -26,6 +26,22 @@ const claude = calculateTextUsageCost("claude", "claude-sonnet-4-5", {
 assert.equal(claude.costSource, "computed");
 approx(claude.estimatedCostUsd, 22.05, "claude cache cost");
 
+const fable51CacheRead = calculateTextUsageCost("claude", "claude-fable-5-1", {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadInputTokens: 1_000_000,
+}, pricedAt);
+assert.equal(fable51CacheRead.costSource, "computed");
+approx(fable51CacheRead.estimatedCostUsd, 0.25, "claude model-specific cache read cost");
+
+const legacyClaudeCacheRead = calculateTextUsageCost("claude", "claude-fable-5", {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadInputTokens: 1_000_000,
+}, pricedAt);
+assert.equal(legacyClaudeCacheRead.costSource, "computed");
+approx(legacyClaudeCacheRead.estimatedCostUsd, 1, "claude fallback cache read multiplier");
+
 // OpenAI response fixture: prompt_tokens_details.{cached_tokens,cache_write_tokens}.
 const openai = calculateTextUsageCost("openai", "gpt-5.6-terra", {
   inputTokens: 1_000_000,

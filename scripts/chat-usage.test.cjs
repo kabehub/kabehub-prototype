@@ -139,6 +139,32 @@ function sse(lines) {
       cached_input_tokens: 200,
       cache_write_input_tokens: 100,
     });
+
+    let astraRequestBody = null;
+    global.fetch = async (_url, init) => {
+      astraRequestBody = JSON.parse(init.body);
+      return sse([{ choices: [{ delta: { content: "Astra" } }] }]);
+    };
+    assert.equal(await consume(streamOpenAI(
+      "key",
+      [{ role: "user", content: "hello" }],
+      undefined,
+      "gpt-6-astra",
+    )), "Astra");
+    assert.equal(astraRequestBody.reasoning_effort, "medium");
+
+    let existingModelRequestBody = null;
+    global.fetch = async (_url, init) => {
+      existingModelRequestBody = JSON.parse(init.body);
+      return sse([{ choices: [{ delta: { content: "Mini" } }] }]);
+    };
+    assert.equal(await consume(streamOpenAI(
+      "key",
+      [{ role: "user", content: "hello" }],
+      undefined,
+      "gpt-5.4-mini",
+    )), "Mini");
+    assert.equal(Object.hasOwn(existingModelRequestBody, "reasoning_effort"), false);
   } finally {
     global.fetch = originalFetch;
   }
