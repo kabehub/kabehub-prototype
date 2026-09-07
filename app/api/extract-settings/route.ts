@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model: EXTRACT_SETTINGS_CONFIG.claude,
           max_tokens: 4096,
+          thinking: { type: "disabled" },
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
         }),

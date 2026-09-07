@@ -210,6 +210,11 @@ assert.equal(registry.CHAT_OPENAI_CONFIG.maxOutputTokens, 8192);
 assert.equal(registry.MODEL_REGISTRY.find(m => m.id === registry.EXTRACT_SETTINGS_CONFIG.claude && m.kind === "text" && m.provider === "claude")?.status, "active");
 assert.equal(registry.MODEL_REGISTRY.find(m => m.id === registry.EXTRACT_SETTINGS_CONFIG.gemini && m.kind === "text" && m.provider === "gemini")?.status, "active");
 assert.equal(registry.MODEL_REGISTRY.find(m => m.id === registry.EXTRACT_SETTINGS_CONFIG.openai && m.kind === "text" && m.provider === "openai")?.status, "active");
+assert.deepEqual(
+  registry.EXTRACT_SETTINGS_CONFIG,
+  sharedRegistry.EXTRACT_SETTINGS_CONFIG,
+  "lib and shared EXTRACT_SETTINGS_CONFIG must stay identical"
+);
 
 for (const model of registry.MODEL_REGISTRY) {
   // 画像モデルはchat surfaceを持たず、この不変条件の対象外。
