@@ -79,6 +79,8 @@ export async function chatCompleteMini(
       },
       body: JSON.stringify({
         model: LORE_CHAT_MODEL,
+        reasoning_effort: "none",
+        max_completion_tokens: 2000,
         ...(opts?.jsonMode ? { response_format: { type: "json_object" } } : {}),
         messages: [
           { role: "system", content: systemPrompt },

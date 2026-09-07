@@ -37,7 +37,10 @@ async function rejectsMessage(promise, message) {
     assert.equal(call[0], "https://api.openai.com/v1/embeddings");
     assert.equal(call[1].method, "POST");
     assert.equal(call[1].headers.Authorization, "Bearer secret");
-    assert.equal(JSON.parse(call[1].body).model, "text-embedding-3-small");
+    assert.deepEqual(JSON.parse(call[1].body), {
+      model: "text-embedding-3-small",
+      input: "input text",
+    });
   });
 
   await test("createEmbedding passes AbortSignal by reference", async () => {
@@ -75,7 +78,10 @@ async function rejectsMessage(promise, message) {
       return response(true, { choices: [{ message: { content: "ok" } }] });
     };
     await chatCompleteMini("key", "system", "user");
-    assert.equal(body.model, "gpt-4o-mini");
+    assert.equal(body.model, "gpt-5.6-luna");
+    assert.equal(body.reasoning_effort, "none");
+    assert.equal(body.max_completion_tokens, 2000);
+    assert.equal(Object.hasOwn(body, "max_tokens"), false);
     assert.equal(Object.hasOwn(body, "response_format"), false);
   });
 
@@ -86,6 +92,9 @@ async function rejectsMessage(promise, message) {
       return response(true, { choices: [{ message: { content: "{}" } }] });
     };
     await chatCompleteMini("key", "system", "user", { jsonMode: true });
+    assert.equal(body.reasoning_effort, "none");
+    assert.equal(body.max_completion_tokens, 2000);
+    assert.equal(Object.hasOwn(body, "max_tokens"), false);
     assert.deepEqual(body.response_format, { type: "json_object" });
   });
 
