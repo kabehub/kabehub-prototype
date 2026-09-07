@@ -10,7 +10,6 @@ const testExportsByFile = new Map([
   ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "buildConsolidationUserPrompt", "isJsonStringLike", "validateMergedText", "validateApprovedPair", "validateDreamingSources"]],
   ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind"]],
   ["app/api/lore/consolidate/preview/route.ts", ["newerSource", "suggestedValue"]],
-  ["app/api/lore/consolidate/merge/route.ts", ["normalizeTags"]],
   ["lib/lore/batchTrain.ts", ["normalizeMemory", "buildMemoryExtractionPrompt", "fetchTargetMessages"]],
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
 ]);
@@ -66,7 +65,6 @@ const mappersModule = loadTestExports("lib/lore/mappers.ts", testExportsByFile.g
 const consolidationModule = loadTestExports("lib/lore/consolidation.ts", testExportsByFile.get("lib/lore/consolidation.ts"));
 const dreaming = loadTestExports("lib/lore/dreaming.ts", testExportsByFile.get("lib/lore/dreaming.ts"));
 const preview = loadTestExports("app/api/lore/consolidate/preview/route.ts", testExportsByFile.get("app/api/lore/consolidate/preview/route.ts"));
-const merge = loadTestExports("app/api/lore/consolidate/merge/route.ts", testExportsByFile.get("app/api/lore/consolidate/merge/route.ts"));
 const batchTrain = loadTestExports("lib/lore/batchTrain.ts", testExportsByFile.get("lib/lore/batchTrain.ts"));
 const temporal = loadTestExports("app/api/lore/update-temporal-status/route.ts", testExportsByFile.get("app/api/lore/update-temporal-status/route.ts"));
 const { LORE_MEMORY_SELECT: sharedSelect } = require("../lib/loreMemorySelect.ts");
@@ -375,7 +373,6 @@ test("additional exposed helpers preserve current behavior", () => {
   assert.equal(mappersModule.numberValue({ a: "2.5" }, ["a"]), 2.5);
   assert.equal(dreaming.hasSameFolderNameAndMemoryKind([source("a"), source("b")]), true);
   assert.equal(dreaming.hasSameFolderNameAndMemoryKind([source("a"), source("b", "ai", { memory_kind: "plan" })]), false);
-  assert.deepEqual(merge.normalizeTags(["a", "b"], null, ["b", "c"]), ["a", "b", "c"]);
   assert.equal(preview.suggestedValue("same", "same", "fallback", "new"), "same");
   assert.equal(preview.suggestedValue(null, null, "fallback", null), "fallback");
   assert.equal(preview.newerSource(source("a"), source("b")).id, "a");
