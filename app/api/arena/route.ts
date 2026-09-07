@@ -10,7 +10,7 @@ import * as logger from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
-type ChatMessage = { role: string; content: string; provider?: string };
+type ChatMessage = { role: string; content: string; provider?: string; playerIndex?: number };
 type ArenaProvider = "claude" | "gemini" | "openai";
 type EnsureArenaThreadResult =
   | { ok: true; created: boolean }
@@ -310,7 +310,11 @@ async function callOpenAI(apiKey: string, messages: ChatMessage[], systemPrompt:
   const res = await fetchProvider("openai", "https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: modelId, messages: msgs }),
+    body: JSON.stringify({
+      model: modelId,
+      ...(capability.reasoningEffort !== undefined ? { reasoning_effort: capability.reasoningEffort } : {}),
+      messages: msgs,
+    }),
   });
   const data = await readProviderJson("openai", res);
   return {
@@ -364,6 +368,7 @@ export async function POST(req: NextRequest) {
     content?: string;
     history?: ChatMessage[];
     currentProvider?: string;
+    currentPlayerIndex?: number;
     currentPrompt?: string;
     opponentLabel?: string;
     selfLabel?: string;
@@ -444,6 +449,7 @@ export async function POST(req: NextRequest) {
     threadId,
     history,
     currentProvider,
+    currentPlayerIndex,
     currentPrompt,
     opponentLabel,
     selfLabel,
@@ -533,7 +539,12 @@ export async function POST(req: NextRequest) {
       if (m.role === "user") {
         contextMessages.push({ role: "user", content: m.content });
       } else {
-        const isSelf = m.provider === currentProvider;
+        const validPlayerIndex = (value: unknown): value is number =>
+          Number.isInteger(value) && typeof value === "number" && value >= 0 && value <= 2;
+        const hasPlayerIndex = validPlayerIndex(currentPlayerIndex) && validPlayerIndex(m.playerIndex);
+        const isSelf = hasPlayerIndex
+          ? m.playerIndex === currentPlayerIndex
+          : m.provider === currentProvider;
         const label = isSelf ? "自分" : "相手";
         contextMessages.push({ role: "assistant", content: `[${label}の発言] ${m.content}` });
       }
@@ -580,16 +591,19 @@ export async function POST(req: NextRequest) {
     role: "assistant" as const,
     content,
     provider: (currentProvider ?? "claude") as "claude" | "gemini" | "openai",
+    model_id: usedModelId,
+    user_id: userId,
     created_at: new Date().toISOString(),
   };
 
   const { error: assistantInsertError } = await supabase.from("messages").insert({
     id: assistantMessage.id,
-    thread_id: threadId,
+    thread_id: assistantMessage.thread_id,
     role: assistantMessage.role,
     content: assistantMessage.content,
     provider: assistantMessage.provider,
-    user_id: userId,
+    model_id: assistantMessage.model_id,
+    user_id: assistantMessage.user_id,
   });
 
   if (usage && usedModelId) {

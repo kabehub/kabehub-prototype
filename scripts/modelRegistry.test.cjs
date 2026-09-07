@@ -353,7 +353,7 @@ assert.deepEqual(registry.getPricing("gpt-6-astra", new Date("2026-08-15T00:00:0
 for (const { provider, modelId, chat, arena } of [
   { provider: "claude", modelId: "claude-fable-5-1", chat: true, arena: true },
   { provider: "gemini", modelId: "gemini-3.8-flash", chat: true, arena: true },
-  { provider: "openai", modelId: "gpt-6-astra", chat: true, arena: false },
+  { provider: "openai", modelId: "gpt-6-astra", chat: true, arena: true },
 ]) {
   assert.equal(registry.isAllowedModel(provider, modelId, "chat"), chat, `${modelId}/chat`);
   assert.equal(registry.isAllowedModel(provider, modelId, "arena"), arena, `${modelId}/arena`);
@@ -400,3 +400,27 @@ for (const surface of ["chat", "arena"]) {
 }
 
 console.log("modelRegistry tests passed");
+
+const sharedRoot = require("../packages/shared/src/index.ts");
+for (const provider of ["claude", "gemini", "openai"]) {
+  const expected = registry.MODEL_REGISTRY
+    .filter(model => model.kind === "text" && model.provider === provider && model.status === "active" && model.surfaces.arena)
+    .map(({ id, label, badge }) => ({ id, label, badge }));
+  for (const source of [registry, sharedRegistry, sharedRoot]) {
+    assert.deepEqual(source.getArenaModels(provider), expected);
+    assert.ok(source.getArenaModels(provider).some(model => model.id === source.getDefaultModel(provider, "arena")));
+    assert.equal(source.isAllowedModel("openai", "gpt-6-astra", "arena"), true);
+  }
+}
+// Prove filtering independently of the currently enabled models.
+const fixture = { kind: "text", id: "arena-filter-fixture", provider: "claude", label: "Fixture", badge: "", status: "active", surfaces: { chat: true, arena: false } };
+registry.MODEL_REGISTRY.push(fixture);
+try {
+  assert.ok(!registry.getArenaModels("claude").some(model => model.id === fixture.id));
+  fixture.surfaces.arena = true;
+  assert.ok(registry.getArenaModels("claude").some(model => model.id === fixture.id));
+  for (const status of ["hidden", "deprecated", "retired"]) {
+    fixture.status = status;
+    assert.ok(!registry.getArenaModels("claude").some(model => model.id === fixture.id));
+  }
+} finally { registry.MODEL_REGISTRY.pop(); }

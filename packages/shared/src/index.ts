@@ -88,6 +88,7 @@ export {
   getPricing,
   buildLegacyModelConfig,
   getDefaultModel,
+  getArenaModels,
   isAllowedModel,
   NOVEL_CHECK_CONFIG,
   getNovelCheckModels,

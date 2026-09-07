@@ -4,6 +4,14 @@ import type { Message } from "@kabehub/shared";
 
 import MarkdownRenderer from "./MarkdownRenderer";
 
+import { MODEL_REGISTRY } from "@kabehub/shared";
+
+export function getArenaMessageLabel(message: Message, providerLabel: string): string {
+  if (!message.model_id) return providerLabel;
+  const modelLabel = MODEL_REGISTRY.find((model) => model.id === message.model_id)?.label ?? message.model_id;
+  return providerLabel + " / " + modelLabel;
+}
+
 export type Provider = "claude" | "gemini" | "openai" | "human";
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
@@ -36,6 +44,7 @@ export function ArenaBubble({
   aiMessageIndex,
   ai3Label,
   playerCount = 2,
+  playerIndex,
 }: {
   message: Message;
   ai1Label: string;
@@ -43,6 +52,7 @@ export function ArenaBubble({
   aiMessageIndex: number;
   ai3Label?: string;
   playerCount?: number;
+  playerIndex?: number;
 }) {
   const isUser = message.role === "user";
   const isIntervention = isUser && !message.content.startsWith("[Human");
@@ -58,26 +68,24 @@ export function ArenaBubble({
     );
   }
 
-  const playerIndex = aiMessageIndex >= 0 ? aiMessageIndex % playerCount : 0;
+  const legacyPlayerIndex = aiMessageIndex >= 0 ? aiMessageIndex % playerCount : 0;
+  const resolvedPlayerIndex = playerIndex ?? legacyPlayerIndex;
 
   if (isUser) {
     const displayContent = message.content.replace(/^\[Human[^\]]*\]\s*/, "");
     return (
       <div className="arena-message-row">
         <div className="arena-message-bubble arena-human-bubble arena-provider-human">
-          <div className="arena-message-label">👤 あなた (AI{playerIndex + 1})</div>
+          <div className="arena-message-label">👤 あなた (AI{resolvedPlayerIndex + 1})</div>
           <MarkdownRenderer content={displayContent} />
         </div>
       </div>
     );
   }
 
-  const labelTexts = [
-    `${ai1Label} (AI1)`,
-    `${ai2Label} (AI2)`,
-    `${ai3Label ?? "AI3"} (AI3)`,
-  ];
-  const label = labelTexts[playerIndex] ?? labelTexts[0];
+  const providerLabels = [ai1Label, ai2Label, ai3Label ?? "AI3"];
+  const providerLabel = providerLabels[resolvedPlayerIndex] ?? ai1Label;
+  const label = getArenaMessageLabel(message, providerLabel) + ` (AI${resolvedPlayerIndex + 1})`;
   const providerClass = isProvider(message.provider)
     ? PROVIDER_CLASS_NAMES[message.provider]
     : "arena-provider-neutral";

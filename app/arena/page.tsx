@@ -1,11 +1,13 @@
 "use client";
 
+import { getArenaModels, getDefaultModel, type ModelId } from "@/lib/modelRegistry";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Message } from "@/types";
 import {
   ArenaBubble,
   ArenaThinking,
+  getArenaMessageLabel,
   ArenaMeta,
   PROVIDER_LABELS,
   PROVIDER_COLORS,
@@ -17,18 +19,24 @@ import { buildApiKeyHeaders } from "@kabehub/shared";
 
 // ── 型定義 ──────────────────────────────────────────────────────
 
+type ArenaMessage = Message & { arenaPlayerIndex?: number };
+
 interface PlayerConfig {
   provider: Provider;
+  modelId?: ModelId;
   prompt: string;
 }
 
 interface ArenaConfig {
   ai1Provider: Provider;
+  ai1ModelId?: ModelId;
   ai1Prompt: string;
   ai2Provider: Provider;
+  ai2ModelId?: ModelId;
   ai2Prompt: string;
   ai3Enabled: boolean;
   ai3Provider: Provider;
+  ai3ModelId?: ModelId;
   ai3Prompt: string;
   topic: string;
   turnCount: number;
@@ -41,7 +49,7 @@ interface QueueItem {
 }
 
 type ArenaTurnResult = {
-  message: Message;
+  message: ArenaMessage;
   saved: boolean;
 };
 
@@ -77,18 +85,21 @@ export default function ArenaPage() {
 
   const [config, setConfig] = useState<ArenaConfig>({
     ai1Provider: "claude",
+    ai1ModelId: getDefaultModel("claude", "arena"),
     ai1Prompt: "",
     ai2Provider: "gemini",
+    ai2ModelId: getDefaultModel("gemini", "arena"),
     ai2Prompt: "",
     ai3Enabled: false,
     ai3Provider: "openai",
+    ai3ModelId: getDefaultModel("openai", "arena"),
     ai3Prompt: "",
     topic: "",
     turnCount: 2,
   });
 
   const [threadId] = useState(() => uuidv4());
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ArenaMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [thinkingLabel, setThinkingLabel] = useState<string | null>(null);
   const [thinkingIsAi1, setThinkingIsAi1] = useState(true);
@@ -97,7 +108,7 @@ export default function ArenaPage() {
   const [showIntervention, setShowIntervention] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [humanInputText, setHumanInputText] = useState("");
-  const [unsavedResult, setUnsavedResult] = useState<Message | null>(null);
+  const [unsavedResult, setUnsavedResult] = useState<ArenaMessage | null>(null);
 
   // actionQueue方式のstate
   const [actionQueue, setActionQueue] = useState<QueueItem[]>([]);
@@ -113,7 +124,7 @@ export default function ArenaPage() {
   const [isSharing, setIsSharing] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const messagesRef = useRef<Message[]>(messages);
+  const messagesRef = useRef<ArenaMessage[]>(messages);
   const isFirstRun = messages.length === 0;
 
   // messagesの最新値をrefで追跡（useEffect内での参照用）
@@ -128,17 +139,17 @@ export default function ArenaPage() {
   // ── players配列（useMemoで安定化） ────────────────────────────
   const players = useMemo((): PlayerConfig[] => {
     const list: PlayerConfig[] = [
-      { provider: config.ai1Provider, prompt: config.ai1Prompt },
-      { provider: config.ai2Provider, prompt: config.ai2Prompt },
+      { provider: config.ai1Provider, modelId: config.ai1ModelId, prompt: config.ai1Prompt },
+      { provider: config.ai2Provider, modelId: config.ai2ModelId, prompt: config.ai2Prompt },
     ];
     if (config.ai3Enabled) {
-      list.push({ provider: config.ai3Provider, prompt: config.ai3Prompt });
+      list.push({ provider: config.ai3Provider, modelId: config.ai3ModelId, prompt: config.ai3Prompt });
     }
     return list;
   }, [
-    config.ai1Provider, config.ai1Prompt,
-    config.ai2Provider, config.ai2Prompt,
-    config.ai3Enabled, config.ai3Provider, config.ai3Prompt,
+    config.ai1Provider, config.ai1Prompt, config.ai1ModelId,
+    config.ai2Provider, config.ai2Prompt, config.ai2ModelId,
+    config.ai3Enabled, config.ai3Provider, config.ai3Prompt, config.ai3ModelId,
   ]);
 
   const playerLabels = useMemo(
@@ -148,12 +159,12 @@ export default function ArenaPage() {
 
   const ai1Label = playerLabels[0] ?? "AI1";
   const ai2Label = playerLabels[1] ?? "AI2";
-  const ai3Label = playerLabels[2];
+  const ai3Label = PROVIDER_LABELS[config.ai3Provider];
 
   // ── 1ターン実行（API呼び出し） ────────────────────────────────
   const runOneTurn = useCallback(
     async (
-      currentMessages: Message[],
+      currentMessages: ArenaMessage[],
       player: PlayerConfig,
       pIdx: number,
       isVeryFirst: boolean,
@@ -176,8 +187,11 @@ export default function ArenaPage() {
             role: m.role,
             content: m.content,
             provider: m.provider,
+            playerIndex: m.arenaPlayerIndex,
           })),
           currentProvider: player.provider,
+          modelId: player.modelId,
+          currentPlayerIndex: pIdx,
           currentPrompt: player.prompt,
           selfLabel,
           opponentLabel,
@@ -192,7 +206,7 @@ export default function ArenaPage() {
       if (!data.message || typeof data.saved !== "boolean") {
         throw new Error("arena API response error");
       }
-      return { message: data.message, saved: data.saved };
+      return { message: { ...data.message, arenaPlayerIndex: pIdx }, saved: data.saved };
     },
     [threadId, playerLabels]
   );
@@ -332,7 +346,7 @@ export default function ArenaPage() {
         throw new Error("人間メッセージのDB保存に失敗しました");
       }
 
-      const newMsg = data.message;
+      const newMsg: ArenaMessage = { ...data.message, arenaPlayerIndex: pIdx };
 
       setMessages((prev) => {
         const updated = [...prev, newMsg];
@@ -434,7 +448,7 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
         continue;
       }
       if (isHumanTakeover) {
-        const pIdx = totalIdx % players.length;
+        const pIdx = msg.arenaPlayerIndex ?? totalIdx % players.length;
         const displayContent = msg.content.replace(/^\[Human[^\]]*\]\s*/, "");
         lines.push("> [!QUESTION] You");
         lines.push("> [Human (AI" + (pIdx + 1) + ")] " + displayContent.trim().split("\n").join("\n> "));
@@ -443,9 +457,9 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
         continue;
       }
       if (isAiMsg) {
-        const pIdx = totalIdx % players.length;
+        const pIdx = msg.arenaPlayerIndex ?? totalIdx % players.length;
         const labelMap = [ai1Label, ai2Label, ai3Label ?? "AI3"];
-        const provLabel = labelMap[pIdx] ?? ai1Label;
+        const provLabel = getArenaMessageLabel(msg, labelMap[pIdx] ?? ai1Label);
         lines.push("> [!NOTE] " + provLabel);
         lines.push("> " + msg.content.trim().split("\n").join("\n> "));
         lines.push("");
@@ -560,6 +574,7 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             {(["ai1", "ai2"] as const).map((key, idx) => {
               const providerKey = `${key}Provider` as "ai1Provider" | "ai2Provider";
+              const modelKey = `${key}ModelId` as "ai1ModelId" | "ai2ModelId";
               const promptKey = `${key}Prompt` as "ai1Prompt" | "ai2Prompt";
               const prov = config[providerKey];
               const color = prov === "human" ? PROVIDER_COLORS["human"] : PROVIDER_COLORS[prov];
@@ -570,7 +585,7 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
                   </div>
                   <select
                     value={prov}
-                    onChange={(e) => setConfig((c) => ({ ...c, [providerKey]: e.target.value as Provider }))}
+                    onChange={(e) => setConfig((c) => ({ ...c, [providerKey]: e.target.value as Provider, [modelKey]: e.target.value === "human" ? undefined : getDefaultModel(e.target.value as Exclude<Provider, "human">, "arena") }))}
                     style={{ padding: "6px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", color: color.text, background: "white", cursor: "pointer", outline: "none" }}
                   >
                     <option value="claude">Claude</option>
@@ -578,6 +593,18 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
                     <option value="openai">ChatGPT</option>
                     <option value="human">👤 ユーザー（自分）</option>
                   </select>
+                  {prov !== "human" && (
+                    <select
+                      aria-label={`AI ${idx + 1}のモデル`}
+                      value={config[modelKey]}
+                      onChange={(e) => setConfig((c) => ({ ...c, [modelKey]: e.target.value }))}
+                      style={{ width: "100%", padding: "6px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "13px", background: "white" }}
+                    >
+                      {getArenaModels(prov).map((model) => (
+                        <option key={model.id} value={model.id}>{model.label} / {model.badge}</option>
+                      ))}
+                    </select>
+                  )}
                   {prov !== "human" && (
                     <textarea
                       value={config[promptKey]}
@@ -621,7 +648,7 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
                   </div>
                   <select
                     value={prov}
-                    onChange={(e) => setConfig((c) => ({ ...c, ai3Provider: e.target.value as Provider }))}
+                    onChange={(e) => setConfig((c) => ({ ...c, ai3Provider: e.target.value as Provider, ai3ModelId: e.target.value === "human" ? undefined : getDefaultModel(e.target.value as Exclude<Provider, "human">, "arena") }))}
                     style={{ padding: "6px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "13px", fontFamily: "'JetBrains Mono', monospace", color: color.text, background: "white", cursor: "pointer", outline: "none" }}
                   >
                     <option value="claude">Claude</option>
@@ -629,6 +656,18 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
                     <option value="openai">ChatGPT</option>
                     <option value="human">👤 ユーザー（自分）</option>
                   </select>
+                  {prov !== "human" && (
+                    <select
+                      aria-label="AI 3のモデル"
+                      value={config.ai3ModelId}
+                      onChange={(e) => setConfig((c) => ({ ...c, ai3ModelId: e.target.value }))}
+                      style={{ width: "100%", padding: "6px 10px", border: `1px solid ${color.border}`, borderRadius: "6px", fontSize: "13px", background: "white" }}
+                    >
+                      {getArenaModels(prov).map((model) => (
+                        <option key={model.id} value={model.id}>{model.label} / {model.badge}</option>
+                      ))}
+                    </select>
+                  )}
                   {prov !== "human" && (
                     <textarea
                       value={config.ai3Prompt}
@@ -814,6 +853,7 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
             >
               <ArenaBubble
                 message={msg}
+                playerIndex={msg.arenaPlayerIndex}
                 ai1Label={ai1Label}
                 ai2Label={ai2Label}
                 ai3Label={ai3Label}

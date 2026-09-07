@@ -5,6 +5,14 @@ import { Message } from "@/types";
 
 // ── 型定義 ──────────────────────────────────────────────────────
 
+import { MODEL_REGISTRY } from "@/lib/modelRegistry";
+
+export function getArenaMessageLabel(message: Message, providerLabel: string): string {
+  if (!message.model_id) return providerLabel;
+  const modelLabel = MODEL_REGISTRY.find((model) => model.id === message.model_id)?.label ?? message.model_id;
+  return providerLabel + " / " + modelLabel;
+}
+
 export type Provider = "claude" | "gemini" | "openai" | "human";
 
 export interface ArenaMeta {
@@ -39,6 +47,7 @@ export function ArenaBubble({
   aiMessageIndex,
   ai3Label,
   playerCount = 2,
+  playerIndex,
 }: {
   message: Message;
   ai1Label: string;
@@ -46,6 +55,7 @@ export function ArenaBubble({
   aiMessageIndex: number;
   ai3Label?: string;
   playerCount?: number;
+  playerIndex?: number;
 }) {
   const isUser = message.role === "user";
   const isIntervention = isUser && !message.content.startsWith("[Human");
@@ -57,7 +67,8 @@ export function ArenaBubble({
       : null;
 
   // playerIndex: ラベル判定用（0=AI1, 1=AI2, 2=AI3）
-  const playerIndex = aiMessageIndex >= 0 ? aiMessageIndex % playerCount : 0;
+  const legacyPlayerIndex = aiMessageIndex >= 0 ? aiMessageIndex % playerCount : 0;
+  const resolvedPlayerIndex = playerIndex ?? legacyPlayerIndex;
 
   // 表示位置: 発言順の偶奇で右左を交互に（2人でも3人でも同じリズム）
   // ── 神の介入（中央表示）
@@ -125,7 +136,7 @@ export function ArenaBubble({
           }}
         >
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#888888", marginBottom: "6px", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>
-            👤 あなた (AI{playerIndex + 1})
+            👤 あなた (AI{resolvedPlayerIndex + 1})
           </div>
           <MarkdownRenderer content={displayContent} />
         </div>
@@ -134,12 +145,9 @@ export function ArenaBubble({
   }
 
   // ── AI発言
-  const labelTexts = [
-    `${ai1Label} (AI1)`,
-    `${ai2Label} (AI2)`,
-    `${ai3Label ?? "AI3"} (AI3)`,
-  ];
-  const label = labelTexts[playerIndex] ?? labelTexts[0];
+  const providerLabels = [ai1Label, ai2Label, ai3Label ?? "AI3"];
+  const providerLabel = providerLabels[resolvedPlayerIndex] ?? ai1Label;
+  const label = getArenaMessageLabel(message, providerLabel) + ` (AI${resolvedPlayerIndex + 1})`;
 
   return (
     <div

@@ -156,7 +156,7 @@ export const MODEL_REGISTRY = [
     { tiers: [{ inputPerMTok: 1.00, cachedInputPerMTok: 0.10, outputPerMTok: 6.00 }] },
     { from: "2026-07-30T00:00:00.000Z", tiers: [{ inputPerMTok: 0.20, cachedInputPerMTok: 0.02, outputPerMTok: 1.20 }] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
-  { kind: "text", id: "gpt-6-astra", provider: "openai", label: "GPT-6 Astra", badge: "最高性能", status: "active", surfaces: { chat: true, arena: false }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gpt-6-astra", provider: "openai", label: "GPT-6 Astra", badge: "最高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [
       { inputPerMTok: 10.00, cachedInputPerMTok: 1.00, outputPerMTok: 50.00 },
       { promptTokensAbove: 272_000, inputPerMTok: 20.00, cachedInputPerMTok: 2.00, outputPerMTok: 75.00 },
@@ -265,6 +265,17 @@ export function getPricing(modelId: string, at: Date = new Date(), promptTokens?
   return Array.isArray(winner.pricing)
     ? resolvePricingEpochs(winner.pricing as TextPricing, at, promptTokens)
     : winner.pricing as ModelPricing;
+}
+
+export function getArenaModels(provider: TextProvider) {
+  return MODEL_REGISTRY
+    .filter((model): model is Extract<typeof MODEL_REGISTRY[number], { kind: "text" }> =>
+      model.kind === "text" &&
+      model.provider === provider &&
+      model.status === "active" &&
+      model.surfaces.arena
+    )
+    .map(({ id, label, badge }) => ({ id, label, badge }));
 }
 
 export function buildLegacyModelConfig() {

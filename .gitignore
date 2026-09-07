@@ -23,3 +23,5 @@ app/test-login/
 
 # Task 6: nested Android IDE project (machine-specific JDK/SDK paths)
 /apps/mobile/android/.idea/
+
+apps/mobile/.idea/

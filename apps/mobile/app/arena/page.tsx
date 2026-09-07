@@ -2,11 +2,13 @@
 
 import { buildApiKeyHeaders, type Message } from "@kabehub/shared";
 import Link from "next/link";
+import { getArenaModels, getDefaultModel, type ModelId } from "@kabehub/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ArenaBubble,
   ArenaThinking,
+  getArenaMessageLabel,
   PROVIDER_CLASS_NAMES,
   PROVIDER_LABELS,
   type Provider,
@@ -16,18 +18,24 @@ import { createMobileApiClient } from "../../lib/api-client";
 import { mobileApiKeyStore } from "../../lib/apiKeyStore";
 import { supabase } from "../../lib/supabase/client";
 
+type ArenaMessage = Message & { arenaPlayerIndex?: number };
+
 interface PlayerConfig {
   provider: Provider;
+  modelId?: ModelId;
   prompt: string;
 }
 
 interface ArenaConfig {
   ai1Provider: Provider;
+  ai1ModelId?: ModelId;
   ai1Prompt: string;
   ai2Provider: Provider;
+  ai2ModelId?: ModelId;
   ai2Prompt: string;
   ai3Enabled: boolean;
   ai3Provider: Provider;
+  ai3ModelId?: ModelId;
   ai3Prompt: string;
   topic: string;
   turnCount: number;
@@ -40,7 +48,7 @@ interface QueueItem {
 }
 
 type ArenaTurnResult = {
-  message: Message;
+  message: ArenaMessage;
   saved: boolean;
 };
 
@@ -78,17 +86,20 @@ export default function ArenaPage() {
   const [phase, setPhase] = useState<"setup" | "arena">("setup");
   const [config, setConfig] = useState<ArenaConfig>({
     ai1Provider: "claude",
+    ai1ModelId: getDefaultModel("claude", "arena"),
     ai1Prompt: "",
     ai2Provider: "gemini",
+    ai2ModelId: getDefaultModel("gemini", "arena"),
     ai2Prompt: "",
     ai3Enabled: false,
     ai3Provider: "openai",
+    ai3ModelId: getDefaultModel("openai", "arena"),
     ai3Prompt: "",
     topic: "",
     turnCount: 2,
   });
   const [threadId] = useState(() => crypto.randomUUID());
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ArenaMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [thinkingLabel, setThinkingLabel] = useState<string | null>(null);
   const [thinkingIsAi1, setThinkingIsAi1] = useState(true);
@@ -97,7 +108,7 @@ export default function ArenaPage() {
   const [showIntervention, setShowIntervention] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [humanInputText, setHumanInputText] = useState("");
-  const [unsavedResult, setUnsavedResult] = useState<Message | null>(null);
+  const [unsavedResult, setUnsavedResult] = useState<ArenaMessage | null>(null);
   const [actionQueue, setActionQueue] = useState<QueueItem[]>([]);
   const [waitingForHuman, setWaitingForHuman] = useState<number | null>(null);
   const [isContinuousTakeover, setIsContinuousTakeover] = useState<number | null>(
@@ -105,7 +116,7 @@ export default function ArenaPage() {
   );
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const messagesRef = useRef<Message[]>(messages);
+  const messagesRef = useRef<ArenaMessage[]>(messages);
   const isFirstRun = messages.length === 0;
 
   useEffect(() => {
@@ -145,21 +156,21 @@ export default function ArenaPage() {
 
   const players = useMemo((): PlayerConfig[] => {
     const list: PlayerConfig[] = [
-      { provider: config.ai1Provider, prompt: config.ai1Prompt },
-      { provider: config.ai2Provider, prompt: config.ai2Prompt },
+      { provider: config.ai1Provider, modelId: config.ai1ModelId, prompt: config.ai1Prompt },
+      { provider: config.ai2Provider, modelId: config.ai2ModelId, prompt: config.ai2Prompt },
     ];
     if (config.ai3Enabled) {
-      list.push({ provider: config.ai3Provider, prompt: config.ai3Prompt });
+      list.push({ provider: config.ai3Provider, modelId: config.ai3ModelId, prompt: config.ai3Prompt });
     }
     return list;
   }, [
     config.ai1Provider,
-    config.ai1Prompt,
+    config.ai1Prompt, config.ai1ModelId,
     config.ai2Provider,
-    config.ai2Prompt,
+    config.ai2Prompt, config.ai2ModelId,
     config.ai3Enabled,
     config.ai3Provider,
-    config.ai3Prompt,
+    config.ai3Prompt, config.ai3ModelId,
   ]);
 
   const playerLabels = useMemo(
@@ -168,11 +179,11 @@ export default function ArenaPage() {
   );
   const ai1Label = playerLabels[0] ?? "AI1";
   const ai2Label = playerLabels[1] ?? "AI2";
-  const ai3Label = playerLabels[2];
+  const ai3Label = PROVIDER_LABELS[config.ai3Provider];
 
   const runOneTurn = useCallback(
     async (
-      currentMessages: Message[],
+      currentMessages: ArenaMessage[],
       player: PlayerConfig,
       playerIndex: number,
       isVeryFirst: boolean,
@@ -200,8 +211,11 @@ export default function ArenaPage() {
             role: message.role,
             content: message.content,
             provider: message.provider,
+            playerIndex: message.arenaPlayerIndex,
           })),
           currentProvider: player.provider,
+          modelId: player.modelId,
+          currentPlayerIndex: playerIndex,
           currentPrompt: player.prompt,
           selfLabel,
           opponentLabel,
@@ -216,7 +230,7 @@ export default function ArenaPage() {
       if (!data.message || typeof data.saved !== "boolean") {
         throw new Error("arena API response error");
       }
-      return { message: data.message, saved: data.saved };
+      return { message: { ...data.message, arenaPlayerIndex: playerIndex }, saved: data.saved };
     },
     [authState, playerLabels, threadId]
   );
@@ -389,8 +403,9 @@ export default function ArenaPage() {
         throw new Error("人間メッセージのDB保存に失敗しました");
       }
 
+      const newMsg: ArenaMessage = { ...data.message, arenaPlayerIndex: playerIndex };
       setMessages((previous) => {
-        const updated = [...previous, data.message as Message];
+        const updated = [...previous, newMsg];
         messagesRef.current = updated;
         return updated;
       });
@@ -541,7 +556,7 @@ export default function ArenaPage() {
         continue;
       }
       if (isHumanTakeover) {
-        const playerIndex = totalIndex % players.length;
+        const playerIndex = message.arenaPlayerIndex ?? totalIndex % players.length;
         const displayContent = message.content.replace(
           /^\[Human[^\]]*\]\s*/,
           ""
@@ -558,9 +573,9 @@ export default function ArenaPage() {
         continue;
       }
       if (isAiMessage) {
-        const playerIndex = totalIndex % players.length;
+        const playerIndex = message.arenaPlayerIndex ?? totalIndex % players.length;
         const labels = [ai1Label, ai2Label, ai3Label ?? "AI3"];
-        const providerLabel = labels[playerIndex] ?? ai1Label;
+        const providerLabel = getArenaMessageLabel(message, labels[playerIndex] ?? ai1Label);
         lines.push(
           "> [!NOTE] " + providerLabel,
           "> " + message.content.trim().split("\n").join("\n> "),
@@ -607,11 +622,13 @@ export default function ArenaPage() {
       {
         key: "ai1" as const,
         providerKey: "ai1Provider" as const,
+        modelKey: "ai1ModelId" as const,
         promptKey: "ai1Prompt" as const,
       },
       {
         key: "ai2" as const,
         providerKey: "ai2Provider" as const,
+        modelKey: "ai2ModelId" as const,
         promptKey: "ai2Prompt" as const,
       },
     ];
@@ -660,6 +677,7 @@ export default function ArenaPage() {
                       setConfig((current) => ({
                         ...current,
                         [entry.providerKey]: event.target.value as Provider,
+                        [entry.modelKey]: event.target.value === "human" ? undefined : getDefaultModel(event.target.value as Exclude<Provider, "human">, "arena"),
                       }))
                     }
                   >
@@ -668,6 +686,18 @@ export default function ArenaPage() {
                     <option value="openai">ChatGPT</option>
                     <option value="human">👤 ユーザー（自分）</option>
                   </select>
+                  {provider !== "human" && (
+                    <select
+                      className="arena-provider-select"
+                      aria-label={`AI ${index + 1}のモデル`}
+                      value={config[entry.modelKey]}
+                      onChange={(event) => setConfig((current) => ({ ...current, [entry.modelKey]: event.target.value }))}
+                    >
+                      {getArenaModels(provider).map((model) => (
+                        <option key={model.id} value={model.id}>{model.label} / {model.badge}</option>
+                      ))}
+                    </select>
+                  )}
                   {provider !== "human" ? (
                     <textarea
                       className="arena-provider-prompt"
@@ -723,6 +753,7 @@ export default function ArenaPage() {
                     setConfig((current) => ({
                       ...current,
                       ai3Provider: event.target.value as Provider,
+                      ai3ModelId: event.target.value === "human" ? undefined : getDefaultModel(event.target.value as Exclude<Provider, "human">, "arena"),
                     }))
                   }
                 >
@@ -731,7 +762,19 @@ export default function ArenaPage() {
                   <option value="openai">ChatGPT</option>
                   <option value="human">👤 ユーザー（自分）</option>
                 </select>
-                {config.ai3Provider !== "human" ? (
+                {config.ai3Provider !== "human" && (
+                    <select
+                      className="arena-provider-select"
+                      aria-label="AI 3のモデル"
+                      value={config.ai3ModelId}
+                      onChange={(event) => setConfig((current) => ({ ...current, ai3ModelId: event.target.value }))}
+                    >
+                      {getArenaModels(config.ai3Provider).map((model) => (
+                        <option key={model.id} value={model.id}>{model.label} / {model.badge}</option>
+                      ))}
+                    </select>
+                  )}
+                  {config.ai3Provider !== "human" ? (
                   <textarea
                     className="arena-provider-prompt"
                     value={config.ai3Prompt}
@@ -942,6 +985,7 @@ export default function ArenaPage() {
               <div className="arena-message-item" key={message.id}>
                 <ArenaBubble
                   message={message}
+                  playerIndex={message.arenaPlayerIndex}
                   ai1Label={ai1Label}
                   ai2Label={ai2Label}
                   ai3Label={ai3Label}

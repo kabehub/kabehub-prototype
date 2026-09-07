@@ -404,6 +404,74 @@ test("serviceRoleClient failure preserves saved false and HTTP 200", async () =>
   assert.ok(dbLogs.some((entry) => entry.operation === "insert_assistant_message"));
 });
 
+
+test("model IDs agree in INSERT, response and usage for explicit and default models", async () => {
+  for (const modelId of ["claude-fable-5-1", "claude-sonnet-5", undefined]) {
+    resetScenario();
+    let sent;
+    global.fetch = async (_url, init) => { sent = JSON.parse(init.body); return jsonResponse(claudeFixture()); };
+    const response = await invokeArena(requestBody({ modelId }), { "x-anthropic-api-key": "key" });
+    const body = await response.json();
+    assert.equal(body.saved, true);
+    assert.equal(body.message.model_id, sent.model);
+    assert.equal(insertedMessages[0].model_id, sent.model);
+    assert.equal(recordCalls[0].params.modelId, sent.model);
+  }
+});
+
+test("provider failures persist null model_id", async () => {
+  resetScenario();
+  global.fetch = async () => { throw new Error("network failure"); };
+  const response = await invokeArena(requestBody(), { "x-anthropic-api-key": "key" });
+  const body = await response.json();
+  assert.equal(body.saved, true);
+  assert.equal(body.message.model_id, null);
+  assert.equal(insertedMessages[0].model_id, null);
+  assert.equal(recordCalls.length, 0);
+});
+
+test("same-provider opponents use slots; missing or invalid slots use provider fallback", async () => {
+  for (const [currentPlayerIndex, historyIndex, provider, self] of [
+    [0, 0, "claude", true], [0, 1, "claude", false],
+    [1, 0, "claude", false], [1, 1, "claude", true],
+    [2, 2, "gemini", true], [0, 2, "claude", false],
+    [undefined, undefined, "claude", true], [undefined, undefined, "gemini", false],
+    [undefined, 1, "claude", true], [0, undefined, "claude", true],
+    [-1, 1, "claude", true], [3, 1, "claude", true],
+    [0, -1, "claude", true], [0, 3, "claude", true],
+    [0, 0.5, "claude", true], ["0", 1, "claude", true],
+    [0, "1", "claude", true], [null, 1, "claude", true],
+  ]) {
+    resetScenario();
+    let sent;
+    global.fetch = async (_url, init) => { sent = JSON.parse(init.body); return jsonResponse(claudeFixture()); };
+    await invokeArena(requestBody({
+      modelId: currentPlayerIndex === 0 ? "claude-fable-5-1" : "claude-sonnet-5",
+      currentPlayerIndex,
+      history: [{ role: "assistant", content: "history", provider, playerIndex: historyIndex }],
+    }), { "x-anthropic-api-key": "key" });
+    assert.equal(sent.messages[0].content, (self ? "[自分の発言] " : "[相手の発言] ") + "history");
+  }
+});
+
+test("gpt-6-astra arena request sends medium reasoning and consistent model IDs", async () => {
+  resetScenario();
+  let sent;
+  global.fetch = async (url, init) => {
+    assert.equal(url, "https://api.openai.com/v1/chat/completions");
+    sent = JSON.parse(init.body);
+    return jsonResponse({ choices: [{ message: { content: "Astra response" } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
+  };
+  const response = await invokeArena(requestBody({ currentProvider: "openai", modelId: "gpt-6-astra" }), { "x-openai-api-key": "key" });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(sent.reasoning_effort, "medium");
+  assert.equal(sent.model, "gpt-6-astra");
+  assert.equal(body.message.model_id, sent.model);
+  assert.equal(insertedMessages[0].model_id, sent.model);
+  assert.equal(recordCalls[0].params.modelId, sent.model);
+});
+
 (async () => {
   for (const { name, fn } of pendingTests) {
     try {
