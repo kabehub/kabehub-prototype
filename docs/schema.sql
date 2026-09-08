@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/08/15（migration_v181_ai_usage_events.sql反映・本番DB適用済み）
+-- 最終更新: 2026/09/08（migration_v182_project_memory_phase_a.sql反映・テスト環境DB適用済み）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -52,6 +52,7 @@
 -- 2026/08/09、H-08対応：uuid-ossp依存なし（schema内・本番DB列デフォルト・public関数本体いずれも0件）を確認しcanonical schemaから削除（本番extension自体は未変更）。
 -- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映・テスト環境/本番DB適用済み（H-09対応）。
 -- 2026/08/15、migration_v181_ai_usage_events.sqlをスキーマ正本へ反映（本番DB適用済み、AI利用コスト計測基盤対応）。
+-- 2026/09/08、migration_v182_project_memory_phase_a.sqlをスキーマ正本へ反映（テスト環境DB適用済み、Project Memory Manager Phase A対応）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -133,6 +134,96 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ============================================================
+-- projects テーブル（Project Memory Manager）
+-- ============================================================
+create table if not exists projects (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  name       text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint projects_user_name_unique unique (user_id, name)
+);
+
+alter table projects enable row level security;
+
+create policy "projects: select own"
+  on projects for select
+  using (auth.uid() = user_id);
+
+create policy "projects: insert own"
+  on projects for insert
+  with check (auth.uid() = user_id);
+
+revoke all on table projects from anon, authenticated;
+grant select, insert on table projects to authenticated;
+
+-- ============================================================
+-- project_memory_topics テーブル
+-- ============================================================
+create table if not exists project_memory_topics (
+  id         uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  topic_key  text not null,
+  content_md text not null default '',
+  revision   integer not null default 1,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint project_memory_topics_revision_positive check (revision >= 1),
+  constraint project_memory_topics_project_topic_unique unique (project_id, topic_key)
+);
+
+alter table project_memory_topics enable row level security;
+
+create policy "project_memory_topics: select own"
+  on project_memory_topics for select
+  using (
+    exists (
+      select 1 from projects p
+      where p.id = project_memory_topics.project_id
+        and p.user_id = auth.uid()
+    )
+  );
+
+revoke all on table project_memory_topics from anon, authenticated;
+grant select on table project_memory_topics to authenticated;
+
+-- ============================================================
+-- project_memory_revisions テーブル
+-- ============================================================
+create table if not exists project_memory_revisions (
+  id          uuid primary key default gen_random_uuid(),
+  topic_id    uuid not null references project_memory_topics(id) on delete cascade,
+  revision    integer not null,
+  content_md  text not null,
+  edit_kind   text not null,
+  source_refs jsonb not null default '[]'::jsonb,
+  created_at  timestamptz not null default now(),
+  constraint project_memory_revisions_edit_kind_check
+    check (edit_kind in ('partial', 'full')),
+  constraint project_memory_revisions_revision_positive check (revision >= 1),
+  constraint project_memory_revisions_source_refs_is_array
+    check (jsonb_typeof(source_refs) = 'array'),
+  constraint project_memory_revisions_topic_revision_unique unique (topic_id, revision)
+);
+
+alter table project_memory_revisions enable row level security;
+
+create policy "project_memory_revisions: select own"
+  on project_memory_revisions for select
+  using (
+    exists (
+      select 1 from project_memory_topics t
+      join projects p on p.id = t.project_id
+      where t.id = project_memory_revisions.topic_id
+        and p.user_id = auth.uid()
+    )
+  );
+
+revoke all on table project_memory_revisions from anon, authenticated;
+grant select on table project_memory_revisions to authenticated;
+
+-- ============================================================
 -- threads テーブル
 -- ============================================================
 create table if not exists threads (
@@ -155,20 +246,54 @@ create table if not exists threads (
   roleplay_mode     boolean default false,
   rp_char_name      text,
   rp_char_icon_url  text,
-  shared_at         timestamptz
+  shared_at         timestamptz,
+  project_id        uuid references projects(id)
 );
 
 create index if not exists idx_threads_user_id on threads(user_id);
 create index if not exists idx_threads_is_public on threads(is_public) where is_public = true;
 create index if not exists idx_threads_share_token on threads(share_token) where share_token is not null;
 create index if not exists threads_likes_id_idx on threads(likes_count desc, id desc);
+create index if not exists idx_threads_project on threads(project_id);
 
 alter table threads enable row level security;
 
-create policy "Users can manage own threads"
-  on threads for all
+create policy "threads: select own"
+  on threads for select
+  using (auth.uid() = user_id);
+
+create policy "threads: insert own"
+  on threads for insert
+  with check (
+    auth.uid() = user_id
+    and (
+      project_id is null
+      or exists (
+        select 1 from projects p
+        where p.id = threads.project_id
+          and p.user_id = auth.uid()
+      )
+    )
+  );
+
+create policy "threads: update own"
+  on threads for update
   using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and (
+      project_id is null
+      or exists (
+        select 1 from projects p
+        where p.id = threads.project_id
+          and p.user_id = auth.uid()
+      )
+    )
+  );
+
+create policy "threads: delete own"
+  on threads for delete
+  using (auth.uid() = user_id);
 
 -- 2026/07/19 B-01対応：列制限なしの公開SELECT policyを削除。
 -- 公開スレッドの読み取りは public_threads_view（get_public_threads_projection()経由）に一本化した。
@@ -950,15 +1075,50 @@ create table if not exists folder_settings (
   pinned_github_files   jsonb default '[]'::jsonb,      -- GitHub連携フェーズ4
   github_repo           text default null,               -- "owner/repo" 形式
   github_ref            text default null,               -- ブランチ/タグ/SHA
+  project_id            uuid references projects(id),
   unique (user_id, folder_name)
 );
 
+create index if not exists idx_folder_settings_project on folder_settings(project_id);
+
 alter table folder_settings enable row level security;
 
-create policy "自分のフォルダ設定のみ操作可"
-  on folder_settings for all
+create policy "folder_settings: select own"
+  on folder_settings for select
+  using (auth.uid() = user_id);
+
+create policy "folder_settings: insert own"
+  on folder_settings for insert
+  with check (
+    auth.uid() = user_id
+    and (
+      project_id is null
+      or exists (
+        select 1 from projects p
+        where p.id = folder_settings.project_id
+          and p.user_id = auth.uid()
+      )
+    )
+  );
+
+create policy "folder_settings: update own"
+  on folder_settings for update
   using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and (
+      project_id is null
+      or exists (
+        select 1 from projects p
+        where p.id = folder_settings.project_id
+          and p.user_id = auth.uid()
+      )
+    )
+  );
+
+create policy "folder_settings: delete own"
+  on folder_settings for delete
+  using (auth.uid() = user_id);
 
 comment on column folder_settings.pinned_github_files
   is 'Pinned GitHub file URLs. Array of strings. Max 5 items.';
@@ -976,6 +1136,14 @@ begin
   return new;
 end;
 $$;
+
+create trigger projects_updated_at
+  before update on projects
+  for each row execute function update_updated_at_column();
+
+create trigger project_memory_topics_updated_at
+  before update on project_memory_topics
+  for each row execute function update_updated_at_column();
 
 create trigger folder_settings_updated_at
   before update on folder_settings
@@ -1066,7 +1234,8 @@ create table if not exists lore_embeddings (
   extraction_version     text default 'temporal_v1',
   metadata               jsonb default '{}'::jsonb,
   is_manually_corrected  boolean not null default false,
-  updated_at             timestamptz
+  updated_at             timestamptz,
+  project_id             uuid references projects(id)
 );
 
 create index if not exists idx_lore_embeddings_memory_kind on lore_embeddings(memory_kind);
@@ -1075,6 +1244,7 @@ create index if not exists idx_lore_embeddings_source_thread_id on lore_embeddin
 create index if not exists idx_lore_embeddings_tags on lore_embeddings using gin(tags);
 create index if not exists idx_lore_embeddings_temporal_status on lore_embeddings(temporal_status);
 create index if not exists idx_lore_embeddings_user_folder on lore_embeddings(user_id, folder_name);
+create index if not exists idx_lore_embeddings_project on lore_embeddings(project_id);
 
 alter table lore_embeddings enable row level security;
 
@@ -1084,11 +1254,32 @@ create policy "lore_embeddings: select own"
 
 create policy "lore_embeddings: insert own"
   on lore_embeddings for insert
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and (
+      project_id is null
+      or exists (
+        select 1 from projects p
+        where p.id = lore_embeddings.project_id
+          and p.user_id = auth.uid()
+      )
+    )
+  );
 
 create policy "lore_embeddings: update own"
   on lore_embeddings for update
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and (
+      project_id is null
+      or exists (
+        select 1 from projects p
+        where p.id = lore_embeddings.project_id
+          and p.user_id = auth.uid()
+      )
+    )
+  );
 
 create policy "lore_embeddings: delete own"
   on lore_embeddings for delete
