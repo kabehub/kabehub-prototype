@@ -35,3 +35,4 @@
 | migration_v181_ai_usage_events.sql | AI利用コスト計測基盤（ai_usage_eventsテーブル新設・provider横断のusage/コスト記録） |
 | migration_v182_project_memory_phase_a.sql | Project Memory Manager Phase A（projects／project_memory_topics／project_memory_revisions新設・既存3テーブルへのproject_id追加・cross-user紐付け防止RLS） |
 | migration_v183_project_memory_phase_b_backfill.sql | Project Memory Manager Phase B（既存4テーブルのfolder_nameからprojectsを作成・既存3テーブルのproject_idをbackfill） |
+| migration_v184_project_memory_topic_rpcs.sql | Project Memory Topic RPC新設（create/update、SECURITY DEFINER、EXECUTE権限authenticated限定）。test環境・本番環境ともに適用済み（コミットdeb2d77、DDL・RPC本体） |

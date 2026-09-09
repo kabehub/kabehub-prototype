@@ -224,6 +224,181 @@ revoke all on table project_memory_revisions from anon, authenticated;
 grant select on table project_memory_revisions to authenticated;
 
 -- ============================================================
+-- create_project_memory_topic
+-- ============================================================
+create or replace function public.create_project_memory_topic(
+  p_user_id uuid,
+  p_project_id uuid,
+  p_topic_key text,
+  p_content_md text default '',
+  p_source_refs jsonb default '[]'::jsonb
+)
+returns table(topic_id uuid, revision int, content_md text, created_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_topic_key text;
+  v_topic_id uuid;
+  v_created_at timestamptz;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  v_topic_key := btrim(coalesce(p_topic_key, ''));
+  if v_topic_key = '' then
+    raise exception 'topic_key is required' using errcode = 'P0001';
+  end if;
+
+  if p_source_refs is null or jsonb_typeof(p_source_refs) is distinct from 'array' then
+    raise exception 'source_refs must be a jsonb array' using errcode = 'P0001';
+  end if;
+
+  -- SECURITY DEFINERは関数所有者権限で実行されるため実質RLSをバイパスする。
+  -- 所有権はここで明示チェックする。
+  perform 1 from public.projects p
+  where p.id = p_project_id and p.user_id = p_user_id;
+  if not found then
+    raise exception 'project not found' using errcode = 'P0001';
+  end if;
+
+  insert into public.project_memory_topics as t (project_id, topic_key, content_md, revision)
+  values (p_project_id, v_topic_key, coalesce(p_content_md, ''), 1)
+  on conflict (project_id, topic_key) do nothing
+  returning t.id, t.created_at into v_topic_id, v_created_at;
+
+  if not found then
+    raise exception 'topic already exists' using errcode = 'P0001';
+  end if;
+
+  insert into public.project_memory_revisions (topic_id, revision, content_md, edit_kind, source_refs)
+  values (v_topic_id, 1, coalesce(p_content_md, ''), 'full', p_source_refs);
+
+  return query select v_topic_id, 1, coalesce(p_content_md, ''), v_created_at;
+end;
+$$;
+
+revoke execute on function public.create_project_memory_topic(uuid, uuid, text, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.create_project_memory_topic(uuid, uuid, text, text, jsonb)
+  to authenticated;
+
+-- ============================================================
+-- update_project_memory_topic
+-- ============================================================
+create or replace function public.update_project_memory_topic(
+  p_user_id uuid,
+  p_topic_id uuid,
+  p_expected_revision int,
+  p_edit_kind text,                    -- 'full' | 'partial'
+  p_new_content_md text default null,  -- full編集時に必須
+  p_old_text text default null,        -- partial編集時に必須
+  p_new_text text default null,        -- partial編集時に必須
+  p_source_refs jsonb default '[]'::jsonb
+)
+returns table(revision int, content_md text, updated_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_topic record;
+  v_new_content text;
+  v_next_revision int;
+  v_updated_at timestamptz;
+  v_first_pos int;
+  v_second_pos int;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  if p_expected_revision is null or p_expected_revision < 1 then
+    raise exception 'expected_revision must be a positive integer' using errcode = 'P0001';
+  end if;
+
+  if p_edit_kind is null or p_edit_kind not in ('full', 'partial') then
+    raise exception 'edit_kind must be full or partial' using errcode = 'P0001';
+  end if;
+
+  if p_source_refs is null or jsonb_typeof(p_source_refs) is distinct from 'array' then
+    raise exception 'source_refs must be a jsonb array' using errcode = 'P0001';
+  end if;
+
+  -- 対象topic行をロック＋所有権確認（SECURITY DEFINERで実質RLSがバイパスされる
+  -- ため、projectsとのJOINで所有権を明示チェックする）
+  select t.content_md, t.revision
+  into v_topic
+  from public.project_memory_topics t
+  join public.projects p on p.id = t.project_id
+  where t.id = p_topic_id and p.user_id = p_user_id
+  for update of t;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  if v_topic.revision <> p_expected_revision then
+    raise exception 'revision conflict' using errcode = 'P0001';
+  end if;
+
+  if p_edit_kind = 'full' then
+    if p_new_content_md is null then
+      raise exception 'new_content_md is required for full edit' using errcode = 'P0001';
+    end if;
+    v_new_content := p_new_content_md;
+  else
+    if p_old_text is null or p_old_text = '' or p_new_text is null then
+      raise exception 'old_text and new_text are required for partial edit' using errcode = 'P0001';
+    end if;
+
+    -- 開始位置ベースの一意性判定（strpos方式）。
+    -- 空contentでも自然に0を返すため、char_length差分方式で起きていた
+    -- 「空contentへのpartial編集がold_text not foundを検出できない」
+    -- 回帰バグを構造的に防ぐ。
+    v_first_pos := strpos(v_topic.content_md, p_old_text);
+
+    if v_first_pos = 0 then
+      raise exception 'old_text not found' using errcode = 'P0001';
+    end if;
+
+    v_second_pos := strpos(
+      substring(v_topic.content_md from v_first_pos + 1),
+      p_old_text
+    );
+
+    if v_second_pos > 0 then
+      raise exception 'old_text not unique' using errcode = 'P0001';
+    end if;
+
+    v_new_content := replace(v_topic.content_md, p_old_text, p_new_text);
+  end if;
+
+  v_next_revision := v_topic.revision + 1;
+
+  -- updated_atは project_memory_topics_updated_at トリガー（Phase Aで作成済み）
+  -- に一元化するため、ここでは明示SETしない。
+  update public.project_memory_topics as t
+  set content_md = v_new_content,
+      revision = v_next_revision
+  where t.id = p_topic_id
+  returning t.updated_at into v_updated_at;
+
+  insert into public.project_memory_revisions (topic_id, revision, content_md, edit_kind, source_refs)
+  values (p_topic_id, v_next_revision, v_new_content, p_edit_kind, p_source_refs);
+
+  return query select v_next_revision, v_new_content, v_updated_at;
+end;
+$$;
+
+revoke execute on function public.update_project_memory_topic(uuid, uuid, int, text, text, text, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.update_project_memory_topic(uuid, uuid, int, text, text, text, text, jsonb)
+  to authenticated;
+
+-- ============================================================
 -- threads テーブル
 -- ============================================================
 create table if not exists threads (
