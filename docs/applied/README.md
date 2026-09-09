@@ -1,7 +1,8 @@
 # 適用済みマイグレーション
 
-このフォルダのファイルは、すべて `docs/schema.sql` に統合済みです。
-新規セルフホスト環境では実行不要です。
+このフォルダに含まれるスキーマ変更は、すべて `docs/schema.sql` に統合済みです。
+データbackfillなど、`docs/schema.sql`への統合対象がない適用履歴も保管しています。
+新規セルフホスト環境では個別に実行する必要はありません。
 
 保管しているのは変更履歴の参照用のみです。誤って再実行しないでください。
 
@@ -33,3 +34,4 @@
 | migration_v180_drop_legacy_counter_rpcs.sql | 旧likesカウンターRPC（increment_likes_count / decrement_likes_count）削除（H-09対応） |
 | migration_v181_ai_usage_events.sql | AI利用コスト計測基盤（ai_usage_eventsテーブル新設・provider横断のusage/コスト記録） |
 | migration_v182_project_memory_phase_a.sql | Project Memory Manager Phase A（projects／project_memory_topics／project_memory_revisions新設・既存3テーブルへのproject_id追加・cross-user紐付け防止RLS） |
+| migration_v183_project_memory_phase_b_backfill.sql | Project Memory Manager Phase B（既存4テーブルのfolder_nameからprojectsを作成・既存3テーブルのproject_idをbackfill） |
