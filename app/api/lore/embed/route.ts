@@ -17,6 +17,17 @@ export async function POST(req: NextRequest) {
     return finalizeJson({ error: "folderName and chunks are required" }, { status: 400 });
   }
 
+  const { data: projectId, error: projectError } = await supabase.rpc(
+    "get_or_create_project",
+    {
+      p_user_id: user.id,
+      p_name: folderName,
+    },
+  );
+  if (projectError) {
+    return finalizeJson({ error: projectError.message }, { status: 500 });
+  }
+
   const embeddedChunks: { chunkText: string; embedding: number[] }[] = [];
   for (const chunk of chunks) {
     const chunkText = chunk.text as string;
@@ -44,6 +55,7 @@ export async function POST(req: NextRequest) {
       embeddedChunks.map(({ chunkText, embedding }) => ({
         user_id: user.id,
         folder_name: folderName,
+        project_id: projectId,
         chunk_text: chunkText,
         embedding,
       })),

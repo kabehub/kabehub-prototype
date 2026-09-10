@@ -80,6 +80,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       user_id: user.id,
       system_prompt: sourceThread.system_prompt,
       folder_name: sourceThread.folder_name,
+      project_id: sourceThread.project_id,
       forked_from_id: sourceThread.id,
       roleplay_mode: false,
       rp_char_name: null,

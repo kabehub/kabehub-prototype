@@ -36,3 +36,4 @@
 | migration_v182_project_memory_phase_a.sql | Project Memory Manager Phase A（projects／project_memory_topics／project_memory_revisions新設・既存3テーブルへのproject_id追加・cross-user紐付け防止RLS） |
 | migration_v183_project_memory_phase_b_backfill.sql | Project Memory Manager Phase B（既存4テーブルのfolder_nameからprojectsを作成・既存3テーブルのproject_idをbackfill） |
 | migration_v184_project_memory_topic_rpcs.sql | Project Memory Topic RPC新設（create/update、SECURITY DEFINER、EXECUTE権限authenticated限定）。test環境・本番環境ともに適用済み（コミットdeb2d77、DDL・RPC本体） |
+| migration_v185_get_or_create_project.sql | Project Memory Manager Phase C（get_or_create_project RPC新設、Dreaming／ユーザー編集Lore統合でproject_id伝播）。test環境へ適用し、Phase C検証スクリプトで確認するためのmigration |

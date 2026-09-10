@@ -76,12 +76,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const { data: projectId, error: projectError } = await supabase.rpc(
+    'get_or_create_project',
+    {
+      p_user_id: user.id,
+      p_name: folder_name,
+    }
+  )
+
+  if (projectError) {
+    return finalizeJson({ error: projectError.message }, { status: 500 })
+  }
+
   const { error } = await supabase
     .from('folder_settings')
     .upsert(
       {
         user_id: user.id,
         folder_name,
+        project_id: projectId,
         system_prompt: system_prompt ?? null,
         folder_type: folder_type ?? null,
         ...(pinned_github_files !== undefined

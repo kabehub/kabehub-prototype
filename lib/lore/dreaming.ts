@@ -91,7 +91,7 @@ async function cleanLikedAiRecords(
 ): Promise<CleanResult> {
   const { data: records, error: recordsError } = await supabase
     .from("lore_embeddings")
-    .select("id, chunk_text, folder_name, memory_kind, temporal_status, importance_score, confidence_score, tags, source_message_id, source_thread_id, metadata")
+    .select("id, chunk_text, folder_name, project_id, memory_kind, temporal_status, importance_score, confidence_score, tags, source_message_id, source_thread_id, metadata")
     .eq("user_id", userId)
     .eq("extraction_version", "liked_ai")
     .eq("is_archived", false)
@@ -125,6 +125,7 @@ async function cleanLikedAiRecords(
         .insert({
           user_id: userId,
           folder_name: record.folder_name,
+          project_id: record.project_id,
           chunk_text: cleanedText,
           embedding,
           source_type: "liked_ai",

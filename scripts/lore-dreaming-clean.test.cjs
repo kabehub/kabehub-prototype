@@ -36,6 +36,7 @@ const sourceRows = [
     id: "source-a",
     user_id: userId,
     folder_name: "folder",
+    project_id: "project-1",
     chunk_text: "古い記憶",
     tags: [],
     memory_kind: "fact",
@@ -52,6 +53,7 @@ const sourceRows = [
     id: "source-b",
     user_id: userId,
     folder_name: "folder",
+    project_id: "project-1",
     chunk_text: "新しい記憶",
     tags: [],
     memory_kind: "fact",
@@ -110,6 +112,7 @@ function createSupabaseMock(cleanSelectResult) {
         },
         limit() {
           assert.match(selectedColumns, /source_message_id/);
+          assert.match(selectedColumns, /project_id/);
           trace.cleanSelectCalls++;
           return Promise.resolve(cleanSelectResult);
         },
@@ -218,6 +221,7 @@ const tests = [
         id: "liked-good",
         chunk_text: "成功するAI発言",
         folder_name: "folder",
+        project_id: "project-1",
         memory_kind: "idea",
         temporal_status: "current",
         importance_score: 0.8,
@@ -231,6 +235,7 @@ const tests = [
         id: "liked-bad",
         chunk_text: "失敗するAI発言",
         folder_name: "folder",
+        project_id: "project-1",
         memory_kind: "idea",
         temporal_status: "current",
         importance_score: 0.8,
@@ -251,6 +256,7 @@ const tests = [
     assert.equal(result.cleanFailed, 1);
     assert.equal(result.cleanError, null);
     assert.equal(trace.inserted.length, 1);
+    assert.equal(trace.inserted[0].project_id, "project-1");
     assert.equal(trace.updated.length, 1);
     assert.deepEqual(trace.updated[0], {
       is_archived: true,

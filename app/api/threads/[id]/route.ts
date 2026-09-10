@@ -122,7 +122,24 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (body.is_public !== undefined) updates.is_public = body.is_public;
   if (body.hide_memos !== undefined) updates.hide_memos = body.hide_memos;
   if (body.allow_prompt_fork !== undefined) updates.allow_prompt_fork = body.allow_prompt_fork;
-  if (body.folder_name !== undefined) updates.folder_name = body.folder_name;
+  if (body.folder_name !== undefined) {
+    updates.folder_name = body.folder_name;
+    if (body.folder_name === null) {
+      updates.project_id = null;
+    } else {
+      const { data: projectId, error: projectError } = await supabase.rpc(
+        "get_or_create_project",
+        {
+          p_user_id: user.id,
+          p_name: body.folder_name,
+        },
+      );
+      if (projectError) {
+        return finalizeJson({ error: projectError.message }, { status: 500 });
+      }
+      updates.project_id = projectId;
+    }
+  }
   if (body.share_token !== undefined) updates.share_token = body.share_token;
   if (body.metadata !== undefined) updates.metadata = body.metadata;
   if (body.genre !== undefined) updates.genre = body.genre;

@@ -157,6 +157,52 @@ create policy "projects: insert own"
 
 revoke all on table projects from anon, authenticated;
 grant select, insert on table projects to authenticated;
+grant select, insert on table public.projects to service_role;
+
+-- folder_nameからprojectを冪等に解決（Web/mobileとMCPの共通write経路）
+create or replace function public.get_or_create_project(
+  p_user_id uuid,
+  p_name text
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_project_id uuid;
+begin
+  if p_user_id is null then
+    raise exception 'p_user_id is required' using errcode = 'P0001';
+  end if;
+
+  -- SupabaseはJWTのroleに応じてPostgres roleを切り替える。
+  -- service_role（MCP経由）はサーバー側で認証済みのp_user_idを信頼し、
+  -- authenticated（通常Web/mobile）はauth.uid()との一致を必須にする。
+  if current_user <> 'service_role' and auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  if p_name is null or btrim(p_name) = '' then
+    raise exception 'name is required' using errcode = 'P0001';
+  end if;
+
+  insert into public.projects (user_id, name)
+  values (p_user_id, p_name)
+  on conflict (user_id, name) do nothing;
+
+  select id into v_project_id
+  from public.projects
+  where user_id = p_user_id and name = p_name;
+
+  return v_project_id;
+end;
+$$;
+
+revoke execute on function public.get_or_create_project(uuid, text)
+  from public, anon, authenticated;
+grant execute on function public.get_or_create_project(uuid, text)
+  to authenticated, service_role;
 
 -- ============================================================
 -- project_memory_topics テーブル
@@ -1884,6 +1930,7 @@ declare
   v_source_b      public.lore_embeddings%rowtype;
   v_found_count   integer := 0;
   v_folder_name   text;
+  v_project_id    uuid;
   v_tags          text[];
   v_new_id        uuid;
   v_updated_count integer;
@@ -1945,8 +1992,10 @@ begin
   if coalesce(v_source_a.created_at, '-infinity'::timestamptz)
       >= coalesce(v_source_b.created_at, '-infinity'::timestamptz) then
     v_folder_name := v_source_a.folder_name;
+    v_project_id := v_source_a.project_id;
   else
     v_folder_name := v_source_b.folder_name;
+    v_project_id := v_source_b.project_id;
   end if;
 
   -- normalizeTagsと同じく、sourceA、sourceBの順で最初に現れたタグを残す。
@@ -1968,6 +2017,7 @@ begin
   insert into public.lore_embeddings (
     user_id,
     folder_name,
+    project_id,
     chunk_text,
     embedding,
     memory_kind,
@@ -1984,6 +2034,7 @@ begin
   ) values (
     p_user_id,
     v_folder_name,
+    v_project_id,
     p_merged_text,
     p_embedding,
     coalesce(p_memory_kind, v_source_a.memory_kind),
@@ -2240,9 +2291,13 @@ returns uuid
 language plpgsql
 as $$
 declare
-  new_id        uuid;
-  updated_count int;
-  v_tags        text[];
+  new_id             uuid;
+  updated_count      int;
+  v_tags             text[];
+  v_project_id_a     uuid;
+  v_project_id_b     uuid;
+  v_folder_name_a    text;
+  v_folder_name_b    text;
 begin
   if exists (
     select 1 from lore_embeddings
@@ -2267,16 +2322,36 @@ begin
   where id in (p_lore_id_a, p_lore_id_b)
   order by id
   for update;
+
+  select project_id, folder_name
+  into v_project_id_a, v_folder_name_a
+  from lore_embeddings
+  where id = p_lore_id_a;
+
+  select project_id, folder_name
+  into v_project_id_b, v_folder_name_b
+  from lore_embeddings
+  where id = p_lore_id_b;
+
+  if v_project_id_a is distinct from v_project_id_b
+     or v_folder_name_a is distinct from v_folder_name_b then
+    raise exception 'source records belong to different projects' using errcode = 'P0001';
+  end if;
+
+  if p_folder_name is distinct from v_folder_name_a then
+    raise exception 'p_folder_name does not match source records' using errcode = 'P0001';
+  end if;
+
   insert into lore_embeddings (
     user_id, chunk_text, embedding, memory_kind,
     temporal_status, extraction_version, source_type,
     source_thread_id, source_message_id, source_message_number,
-    folder_name, tags, importance_score, confidence_score
+    folder_name, project_id, tags, importance_score, confidence_score
   ) values (
     p_user_id, p_merged_text, p_embedding, p_memory_kind,
     p_temporal_status, 'dreaming_batch', 'consolidation',
     null, null, null,
-    p_folder_name, v_tags, p_importance, p_confidence
+    v_folder_name_a, v_project_id_a, v_tags, p_importance, p_confidence
   ) returning id into new_id;
   update lore_embeddings
   set is_archived = true, superseded_by = new_id
@@ -2312,6 +2387,8 @@ declare
   v_all_tags      text[] := '{}';
   v_source_count  integer;
   v_found_count   integer := 0;
+  v_project_id    uuid;
+  v_folder_name   text;
 begin
   if p_user_id is null or auth.uid() is distinct from p_user_id then
     raise exception 'Unauthorized' using errcode = '42501';
@@ -2323,7 +2400,8 @@ begin
       using errcode = 'P0001';
   end if;
   for v_source in
-    select id, is_pinned, extraction_version, is_archived, superseded_by, tags
+    select id, is_pinned, extraction_version, is_archived, superseded_by, tags,
+           project_id, folder_name
     from public.lore_embeddings
     where id = any(p_source_ids)
       and user_id = p_user_id
@@ -2331,6 +2409,13 @@ begin
     for update
   loop
     v_found_count := v_found_count + 1;
+    if v_found_count = 1 then
+      v_project_id := v_source.project_id;
+      v_folder_name := v_source.folder_name;
+    elsif v_source.project_id is distinct from v_project_id
+       or v_source.folder_name is distinct from v_folder_name then
+      raise exception 'source records belong to different projects' using errcode = 'P0001';
+    end if;
     if v_source.is_pinned then
       raise exception 'source % is pinned', v_source.id using errcode = 'P0001';
     end if;
@@ -2350,17 +2435,20 @@ begin
     raise exception 'expected % sources but found %', v_source_count, v_found_count
       using errcode = 'P0001';
   end if;
+  if p_folder_name is distinct from v_folder_name then
+    raise exception 'p_folder_name does not match source records' using errcode = 'P0001';
+  end if;
   select coalesce(array_agg(distinct tag), '{}')
   into v_tags
   from unnest(v_all_tags) as tag;
   insert into public.lore_embeddings (
     user_id, chunk_text, embedding, memory_kind, temporal_status,
-    folder_name, tags, importance_score, confidence_score,
+    folder_name, project_id, tags, importance_score, confidence_score,
     extraction_version, source_type, is_archived, is_pinned,
     source_thread_id, source_message_id, source_message_number
   ) values (
     p_user_id, p_merged_text, p_embedding, p_memory_kind, p_temporal_status,
-    p_folder_name, v_tags, p_importance, p_confidence,
+    v_folder_name, v_project_id, v_tags, p_importance, p_confidence,
     'dreaming_batch', 'consolidation', false, false,
     null, null, null
   )

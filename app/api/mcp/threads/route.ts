@@ -41,6 +41,16 @@ export async function POST(req: NextRequest) {
   const genre: string | null = body.genre ?? null
 
   const supabase = serviceRoleClient()
+  let projectId: string | null = null
+  if (folderName !== null) {
+    const { data, error } = await supabase.rpc('get_or_create_project', {
+      p_user_id: userId,
+      p_name: folderName,
+    })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    projectId = data
+  }
+
   const { data, error } = await supabase
     .from('threads')
     .insert({
@@ -48,6 +58,7 @@ export async function POST(req: NextRequest) {
       title,
       system_prompt: systemPrompt,
       folder_name: folderName,
+      project_id: projectId,
       genre,
     })
     .select('id, title, created_at, updated_at')

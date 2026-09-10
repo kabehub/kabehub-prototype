@@ -13,6 +13,7 @@ export const CONSOLIDATION_SOURCE_SELECT = [
   "id",
   "user_id",
   "folder_name",
+  "project_id",
   "chunk_text",
   "tags",
   "memory_kind",
@@ -30,6 +31,7 @@ export type ConsolidationSourceRow = {
   id: string;
   user_id: string;
   folder_name: string | null;
+  project_id: string | null;
   chunk_text: string;
   tags: string[] | null;
   memory_kind: string | null;
@@ -124,7 +126,9 @@ export function validateDreamingSources(
   if (invalid) return null;
   const first = validSources[0];
   const mismatched = validSources.some((row) =>
-    row.folder_name !== first.folder_name || row.memory_kind !== first.memory_kind
+    row.folder_name !== first.folder_name ||
+    row.project_id !== first.project_id ||
+    row.memory_kind !== first.memory_kind
   );
   if (mismatched) return null;
 

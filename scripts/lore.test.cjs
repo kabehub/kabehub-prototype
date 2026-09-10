@@ -135,7 +135,7 @@ test("normalizeCandidate copies intentionally disagree on identical ids", () => 
 
 function source(id, extractionVersion = "ai", overrides = {}) {
   return {
-    id, user_id: "user", chunk_text: id, folder_name: "folder", memory_kind: "fact",
+    id, user_id: "user", chunk_text: id, folder_name: "folder", project_id: "project", memory_kind: "fact",
     is_archived: false, superseded_by: null, is_pinned: false,
     extraction_version: extractionVersion, created_at: `2025-01-0${id === "a" ? 2 : 1}T00:00:00Z`,
     ...overrides,
@@ -158,6 +158,7 @@ test("dreaming rejects four protected variants and mismatched folder/kind", () =
     assert.equal(consolidationModule.validateDreamingSources([source("a", version), source("b")], "user", ["a", "b"]), null);
   }
   assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { folder_name: "other" })], "user", ["a", "b"]), null);
+  assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { project_id: "other" })], "user", ["a", "b"]), null);
   assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { memory_kind: "plan" })], "user", ["a", "b"]), null);
   assert.ok(consolidationModule.validateDreamingSources([source("a"), source("b")], "user", ["a", "b"]));
 });
