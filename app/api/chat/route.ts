@@ -5,7 +5,12 @@ import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
 import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
-import { embedQuery, searchLoreByEmbedding, searchLoreV2ByEmbedding, searchLoreV2 } from "@/lib/lore";
+import {
+  embedQuery,
+  searchLoreByEmbeddingForProject,
+  searchLoreV2ByEmbeddingForProject,
+  searchLoreV2ForProject,
+} from "@/lib/lore";
 import { CHAT_LORE_SEARCH_POLICY } from "@/lib/lore/types";
 import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
@@ -720,8 +725,10 @@ export async function POST(req: NextRequest) {
 
   // フォルダのシステムプロンプトを解決
   let resolvedSystemPrompt: string | undefined = systemPrompt || undefined;
-  let loreTargetFolder: string | null = null;
+  let loreTargetProjectId: string | null = null;
   let currentFolderName: string | null = null;
+  let currentProjectId: string | null = null;
+  let isInvariantBroken = false;
   let loreEnabled = false;
   let pinnedGithubFiles: string[] = [];
   let githubRepo: string | null = null;
@@ -731,7 +738,7 @@ export async function POST(req: NextRequest) {
   if (!isTemporary) {
     let { data: thread, error: threadError } = await supabase
       .from('threads')
-      .select('folder_name, user_id')
+      .select('folder_name, project_id, user_id')
       .eq('id', threadId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -759,7 +766,7 @@ export async function POST(req: NextRequest) {
 
       const { data: confirmedThread, error: confirmedThreadError } = await supabase
         .from('threads')
-        .select('folder_name, user_id')
+        .select('folder_name, project_id, user_id')
         .eq('id', threadId)
         .eq('user_id', userId)
         .maybeSingle();
@@ -782,10 +789,21 @@ export async function POST(req: NextRequest) {
     }
 
     currentFolderName = thread?.folder_name ?? null;
-    if (thread?.folder_name) {
+    currentProjectId = thread?.project_id ?? null;
+    const hasFolder = currentFolderName != null;
+    const hasProject = currentProjectId != null;
+    isInvariantBroken = hasFolder !== hasProject;
+
+    if (isInvariantBroken) {
+      logger.bestEffortFailed({
+        operation: "project-memory-invariant-broken",
+      });
+    }
+
+    if (!isInvariantBroken && currentProjectId !== null) {
       const { data: folderSetting, error: folderSettingError } = await supabase
         .from('folder_settings').select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
-        .eq('user_id', userId).eq('folder_name', thread.folder_name).maybeSingle();
+        .eq('user_id', userId).eq('project_id', currentProjectId).maybeSingle();
       if (folderSettingError) {
         return chatResponse(JSON.stringify({ error: folderSettingError.message }), {
           status: 500,
@@ -801,7 +819,7 @@ export async function POST(req: NextRequest) {
         resolvedSystemPrompt = folderSetting?.system_prompt ?? undefined;
       }
       if (folderSetting?.folder_type === "novel") {
-        loreTargetFolder = thread.folder_name;
+        loreTargetProjectId = currentProjectId;
         loreEnabled = true;
       }
     }
@@ -1040,14 +1058,14 @@ export async function POST(req: NextRequest) {
   }
   let dynamicSystemText: string | undefined = undefined;
 
-  // NOTE: This combined search covers Lore Book injection and legacy Memory injection only.
-  // The later rule-based RAG memory context (shouldSearchRagMemory, after GitHub Tool Loop)
-  // runs independently and is intentionally left unchanged. See S17.
-  const wantsLoreBook = loreEnabled && !!openaiKey && !!loreTargetFolder;
+  // NOTE: This combined search covers Lore Book injection and legacy Memory injection.
+  // The later rule-based RAG memory context also uses the same project invariant guard.
+  const wantsLoreBook = !isInvariantBroken && loreEnabled && !!openaiKey && !!loreTargetProjectId;
   const MEMORY_TRIGGER_PATTERN = /前に|以前|覚えて|記憶|方針|決定|このプロジェクト|続き|KabeHub|RAG|メモリ/;
   const wantsMemorySearch =
     !isTemporary &&
     !isMemo &&
+    !isInvariantBroken &&
     !!openaiKey &&
     MEMORY_TRIGGER_PATTERN.test(userContent);
 
@@ -1062,22 +1080,20 @@ export async function POST(req: NextRequest) {
       const embedding = await embedQuery(openaiKey!, userContent, combinedController.signal);
 
       if (embedding) {
-        // 旧Memory注入のfolderNameは、以前は memThread再取得で memThread?.folder_name ?? "" を渡していたが、
-        // POST前半で所有権確認済みの currentFolderName を再利用する形に変更（追加DBクエリを削減）。
-        // 併せて "" ではなく null を渡す形に統一した（RAG memory contextの currentFolderName ?? null と揃えた）。
-        // 未分類スレッドでは、folder_name が null の記憶のみを検索する（他フォルダの記憶は検索しない）。
+        // POST前半で所有権確認済みのproject_idを再利用する。
+        // 未分類スレッドでは、project_idがnullの記憶のみを検索する。
         const [loreChunks, memoryResults] = await Promise.all([
           wantsLoreBook
-            ? searchLoreByEmbedding(supabase, embedding, {
-                folderName: loreTargetFolder!,
+            ? searchLoreByEmbeddingForProject(supabase, embedding, {
+                projectId: loreTargetProjectId!,
                 userId,
                 topK: CHAT_LORE_SEARCH_POLICY.loreBook.topK,
                 signal: combinedController.signal,
               })
             : Promise.resolve([] as string[]),
           wantsMemorySearch
-            ? searchLoreV2ByEmbedding(supabase, embedding, {
-                folderName: currentFolderName ?? null,
+            ? searchLoreV2ByEmbeddingForProject(supabase, embedding, {
+                projectId: currentProjectId,
                 userId,
                 topK: CHAT_LORE_SEARCH_POLICY.memory.topK,
                 matchThreshold: CHAT_LORE_SEARCH_POLICY.memory.matchThreshold,
@@ -1373,12 +1389,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ── RAG memory context（rule-based MVP）─────────────────────
-  if (openaiKey && shouldSearchRagMemory(userContent)) {
+  if (!isInvariantBroken && openaiKey && shouldSearchRagMemory(userContent)) {
     try {
-      const ragFolderName = currentFolderName ?? null;
-      const ragResults = await searchLoreV2(supabase, {
+      const ragResults = await searchLoreV2ForProject(supabase, {
         query: userContent,
-        folderName: ragFolderName,
+        projectId: currentProjectId,
         userId,
         topK: CHAT_LORE_SEARCH_POLICY.rag.topK,
         openaiKey,

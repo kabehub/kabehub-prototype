@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { PINNED_GITHUB_FILES_MAX } from '@/lib/validationLimits'
+import { resolveOwnedProjectIdByName } from '@/lib/project-memory/resolve-owned-project-id'
 
 // GET /api/folder-settings?folder_name=xxx
 export async function GET(req: NextRequest) {
@@ -24,11 +25,25 @@ export async function GET(req: NextRequest) {
     return finalizeJson(data ?? [])
   }
 
+  const resolved = await resolveOwnedProjectIdByName(supabase, user.id, folder_name)
+  if (!resolved.ok) {
+    return finalizeJson({ error: resolved.error }, { status: resolved.status })
+  }
+  if (!resolved.projectId) {
+    return finalizeJson({
+      system_prompt: null,
+      folder_type: null,
+      pinned_github_files: [],
+      github_repo: null,
+      github_ref: null,
+    })
+  }
+
   const { data, error } = await supabase
     .from('folder_settings')
     .select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
     .eq('user_id', user.id)
-    .eq('folder_name', folder_name)
+    .eq('project_id', resolved.projectId)
     .maybeSingle()
 
   if (error) {

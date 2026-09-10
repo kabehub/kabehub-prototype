@@ -12,6 +12,16 @@ export interface LoreSearchOptionsV2 {
   matchThreshold: number;
 }
 
+export interface LoreSearchOptionsV2ForProject {
+  query: string;
+  projectId: string | null;
+  userId: string;
+  topK: number;
+  openaiKey: string;
+  timeoutMs: number;
+  matchThreshold: number;
+}
+
 export type LoreSearchV2Result = {
   id: string;
   chunkText: string;
@@ -62,6 +72,34 @@ export async function searchLoreByEmbedding(
     logger.dbOperationFailedBestEffort({
       route: "lore-search",
       operation: "lore-search-rpc",
+      table: "lore_embeddings",
+      errorCode: error.code,
+    });
+    return [];
+  }
+  return (data ?? []).map((row: { chunk_text: string }) => row.chunk_text);
+}
+
+export async function searchLoreByEmbeddingForProject(
+  supabase: SupabaseClient,
+  embedding: number[],
+  opts: { projectId: string; userId: string; topK: number; signal: AbortSignal },
+): Promise<string[]> {
+  const { projectId, userId, topK, signal } = opts;
+
+  const { data, error } = await supabase
+    .rpc("match_lore_embeddings_by_project", {
+      query_embedding: embedding,
+      match_project_id: projectId,
+      match_user_id: userId,
+      match_count: topK,
+    })
+    .abortSignal(signal);
+
+  if (error) {
+    logger.dbOperationFailedBestEffort({
+      route: "lore-search",
+      operation: "lore-search-by-project-rpc",
       table: "lore_embeddings",
       errorCode: error.code,
     });
@@ -130,6 +168,62 @@ export async function searchLoreV2ByEmbedding(
   }));
 }
 
+export async function searchLoreV2ByEmbeddingForProject(
+  supabase: SupabaseClient,
+  embedding: number[],
+  opts: {
+    projectId: string | null;
+    userId: string;
+    topK: number;
+    matchThreshold: number;
+    signal: AbortSignal;
+  },
+): Promise<LoreSearchV2Result[]> {
+  const { projectId, userId, topK, matchThreshold, signal } = opts;
+
+  const { data, error } = await supabase
+    .rpc("match_lore_embeddings_v2_by_project", {
+      query_embedding: embedding,
+      f_user_id: userId,
+      f_project_id: projectId,
+      match_count: topK,
+      match_threshold: matchThreshold,
+    })
+    .abortSignal(signal);
+
+  if (error) {
+    logger.dbOperationFailedBestEffort({
+      route: "lore-search",
+      operation: "lore-v2-search-by-project-rpc",
+      table: "lore_embeddings",
+      errorCode: error.code,
+    });
+    return [];
+  }
+
+  return (data ?? []).map((row: {
+    id: string;
+    chunk_text: string;
+    similarity: number;
+    final_score: number;
+    memory_kind: string | null;
+    temporal_status: string | null;
+    confidence_score: number | null;
+    source_thread_id: string | null;
+    source_message_id: string | null;
+  }) => ({
+    id: row.id,
+    chunkText: row.chunk_text,
+    similarity: row.similarity,
+    finalScore: row.final_score,
+    memoryKind: row.memory_kind,
+    temporalStatus: row.temporal_status,
+    confidenceScore: row.confidence_score,
+    sourceThreadId: row.source_thread_id,
+    sourceMessageId: row.source_message_id,
+  }));
+}
+
 export async function searchLoreV2(
   supabase: SupabaseClient,
   opts: LoreSearchOptionsV2,
@@ -144,6 +238,35 @@ export async function searchLoreV2(
     if (!embedding) return [];
     return await searchLoreV2ByEmbedding(supabase, embedding, {
       folderName,
+      userId,
+      topK,
+      matchThreshold,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      console.warn("[loreV2] search timed out after", timeoutMs, "ms — skipping injection");
+    }
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function searchLoreV2ForProject(
+  supabase: SupabaseClient,
+  opts: LoreSearchOptionsV2ForProject,
+): Promise<LoreSearchV2Result[]> {
+  const { query, projectId, userId, topK, openaiKey, timeoutMs, matchThreshold } = opts;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const embedding = await embedQuery(openaiKey, query, controller.signal);
+    if (!embedding) return [];
+    return await searchLoreV2ByEmbeddingForProject(supabase, embedding, {
+      projectId,
       userId,
       topK,
       matchThreshold,
