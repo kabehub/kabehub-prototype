@@ -1635,24 +1635,6 @@ $$;
 -- AI記憶（RAG）検索・統合まわりのRPC群
 -- ============================================================
 
--- Lore Book自動注入用（旧・単純版）
-create or replace function match_lore_embeddings(
-  query_embedding vector,
-  match_folder_name text,
-  match_user_id uuid,
-  match_count integer
-)
-returns table(chunk_text text, similarity double precision)
-language sql
-stable
-as $$
-  select chunk_text, 1 - (embedding <-> query_embedding) as similarity
-  from lore_embeddings
-  where user_id = match_user_id and folder_name = match_folder_name
-  order by embedding <-> query_embedding
-  limit match_count;
-$$;
-
 -- Lore Book自動注入用（UUID版）
 create or replace function public.match_lore_embeddings_by_project(
   query_embedding vector,
@@ -1675,58 +1657,6 @@ revoke execute on function public.match_lore_embeddings_by_project(vector, uuid,
   from public, anon;
 grant execute on function public.match_lore_embeddings_by_project(vector, uuid, uuid, integer)
   to authenticated, service_role;
-
--- 汎用RAG記憶検索（v2・スコアリング版／importance・confidence・kind重み付け）
-create or replace function match_lore_embeddings_v2(
-  query_embedding vector,
-  f_user_id uuid,
-  f_folder_name text,
-  match_count integer default 5,
-  match_threshold double precision default 0.3
-)
-returns table(
-  id uuid, chunk_text text, similarity double precision, final_score double precision,
-  memory_kind text, temporal_status text, confidence_score double precision,
-  source_thread_id uuid, source_message_id uuid
-)
-language sql
-stable
-as $$
-  select
-    le.id,
-    le.chunk_text,
-    1 - (le.embedding <=> query_embedding) as similarity,
-    (
-      (1 - (le.embedding <=> query_embedding)) * 0.75
-      + coalesce(le.importance_score, 0.5) * 0.15
-      + coalesce(le.confidence_score, 0.8) * 0.10
-    ) * case le.memory_kind
-        when 'decision'   then 1.2
-        when 'constraint' then 1.2
-        when 'preference' then 1.1
-        when 'profile'    then 1.1
-        when 'project'    then 1.0
-        when 'plan'       then 1.0
-        when 'fact'       then 1.0
-        when 'idea'       then 0.8
-        when 'todo'       then 0.7
-        else                   1.0
-      end as final_score,
-    le.memory_kind,
-    le.temporal_status,
-    le.confidence_score,
-    le.source_thread_id,
-    le.source_message_id
-  from lore_embeddings le
-  where le.user_id = f_user_id
-    and (le.folder_name = f_folder_name or le.folder_name is null)
-    and le.is_archived = false
-    and le.superseded_by is null
-    and le.temporal_status <> 'expired'
-    and (1 - (le.embedding <=> query_embedding)) >= match_threshold
-  order by final_score desc
-  limit match_count;
-$$;
 
 -- 汎用RAG記憶検索（v2・UUID版）
 create or replace function public.match_lore_embeddings_v2_by_project(
@@ -1784,42 +1714,6 @@ revoke execute on function public.match_lore_embeddings_v2_by_project(vector, uu
   from public, anon;
 grant execute on function public.match_lore_embeddings_v2_by_project(vector, uuid, uuid, integer, double precision)
   to authenticated, service_role;
-
--- 汎用RAG記憶検索（v2・フィルタ版／memory_kind・temporal_statusで絞り込み）
--- 【注意】match_lore_embeddings_v2 は上記2つのシグネチャでオーバーロードされている
-create or replace function match_lore_embeddings_v2(
-  query_embedding vector,
-  match_folder_name text,
-  match_user_id uuid,
-  match_count integer,
-  match_threshold double precision default 0.0,
-  filter_memory_kinds text[] default null::text[],
-  filter_temporal_status text[] default null::text[]
-)
-returns table(
-  id uuid, chunk_text text, similarity double precision, memory_kind text,
-  temporal_status text, importance_score double precision, confidence_score double precision,
-  source_message_id uuid, source_thread_id uuid, source_type text, tags text[]
-)
-language sql
-stable
-as $$
-  select
-    le.id, le.chunk_text,
-    1 - (le.embedding <=> query_embedding) as similarity,
-    le.memory_kind, le.temporal_status, le.importance_score, le.confidence_score,
-    le.source_message_id, le.source_thread_id, le.source_type, le.tags
-  from lore_embeddings le
-  where
-    le.user_id = match_user_id
-    and (match_folder_name is null or le.folder_name = match_folder_name)
-    and 1 - (le.embedding <=> query_embedding) >= match_threshold
-    and (filter_memory_kinds is null or le.memory_kind = any(filter_memory_kinds))
-    and (filter_temporal_status is null or le.temporal_status = any(filter_temporal_status))
-    and le.superseded_by is null
-  order by le.embedding <=> query_embedding
-  limit match_count;
-$$;
 
 -- 記憶の時系列ステータス更新（future→past、期限切れ→expired）
 create or replace function update_lore_temporal_status(
