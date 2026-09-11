@@ -39,4 +39,5 @@
 | migration_v185_get_or_create_project.sql | Project Memory Manager Phase C（get_or_create_project RPC新設、Dreaming／ユーザー編集Lore統合でproject_id伝播）。test環境へ適用し、Phase C検証スクリプトで確認するためのmigration |
 | migration_v186_project_memory_phase_d_read_path.sql | Project Memory Manager Phase D（既存folder_name版を保持したままproject_id版のLore検索RPCを追加し、read pathを移行） |
 | migration_v187_project_memory_phase_e_drop_legacy_rpc.sql | Project Memory Manager Phase E-1（project_id版へのread path移行後に未使用となったfolder_name版Lore検索RPC 3本を削除） |
+| migration_v188_project_memory_phase_e_find_similar_lore_pairs_by_project.sql | Project Memory Manager Phase E-2（旧RPCを維持したままproject_id版の類似Loreペア検索RPC 2本を追加） |
 
