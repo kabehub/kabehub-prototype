@@ -8,6 +8,7 @@ installAliasResolver();
 const testExportsByFile = new Map([
   ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId", "toMemoryCard", "memoryNeedsReview", "clamp"]],
   ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "buildConsolidationUserPrompt", "isJsonStringLike", "validateMergedText", "validateApprovedPair", "validateDreamingSources"]],
+  ["packages/shared/src/lore/consolidation.ts", ["normalizePair", "pairKey", "buildConsolidationUserPrompt", "isJsonStringLike", "validateMergedText", "validateApprovedPair", "validateDreamingSources"]],
   ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind"]],
   ["app/api/lore/consolidate/preview/route.ts", ["newerSource", "suggestedValue"]],
   ["lib/lore/batchTrain.ts", ["normalizeMemory", "buildMemoryExtractionPrompt", "fetchTargetMessages"]],
@@ -63,6 +64,7 @@ function test(name, fn) {
 
 const mappersModule = loadTestExports("lib/lore/mappers.ts", testExportsByFile.get("lib/lore/mappers.ts"));
 const consolidationModule = loadTestExports("lib/lore/consolidation.ts", testExportsByFile.get("lib/lore/consolidation.ts"));
+const sharedConsolidationModule = loadTestExports("packages/shared/src/lore/consolidation.ts", testExportsByFile.get("packages/shared/src/lore/consolidation.ts"));
 const dreaming = loadTestExports("lib/lore/dreaming.ts", testExportsByFile.get("lib/lore/dreaming.ts"));
 const preview = loadTestExports("app/api/lore/consolidate/preview/route.ts", testExportsByFile.get("app/api/lore/consolidate/preview/route.ts"));
 const batchTrain = loadTestExports("lib/lore/batchTrain.ts", testExportsByFile.get("lib/lore/batchTrain.ts"));
@@ -143,13 +145,22 @@ function source(id, extractionVersion = "ai", overrides = {}) {
 }
 
 test("preview and merge reject only user-edited extraction variants", () => {
-  for (const api of [consolidationModule, consolidationModule]) {
+  for (const api of [consolidationModule, sharedConsolidationModule]) {
     for (const version of ["liked_ai", "liked_ai_cleaned"]) {
       assert.ok(api.validateApprovedPair([source("a", version), source("b")], "user", "a", "b"));
     }
     for (const version of ["user_edited", "user_created"]) {
       assert.equal(api.validateApprovedPair([source("a", version), source("b")], "user", "a", "b"), null);
     }
+  }
+});
+
+test("preview and merge reject sources from different projects", () => {
+  for (const api of [consolidationModule, sharedConsolidationModule]) {
+    assert.equal(
+      api.validateApprovedPair([source("a"), source("b", "ai", { project_id: "other" })], "user", "a", "b"),
+      null,
+    );
   }
 });
 

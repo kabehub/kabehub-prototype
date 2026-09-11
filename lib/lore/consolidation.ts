@@ -95,6 +95,7 @@ export function validateApprovedPair(
     isEditableExtraction(row.extraction_version)
   );
   if (invalid) return null;
+  if (sourceA.project_id !== sourceB.project_id) return null;
 
   return { sourceA, sourceB };
 }
