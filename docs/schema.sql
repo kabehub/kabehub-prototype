@@ -1715,57 +1715,6 @@ revoke execute on function public.match_lore_embeddings_v2_by_project(vector, uu
 grant execute on function public.match_lore_embeddings_v2_by_project(vector, uuid, uuid, integer, double precision)
   to authenticated, service_role;
 
--- 記憶の時系列ステータス更新（future→past、期限切れ→expired）
-create or replace function update_lore_temporal_status(
-  p_user_id uuid,
-  p_folder_name text default null::text
-)
-returns jsonb
-language plpgsql
-as $$
-declare
-  past_count  int := 0;
-  expired_count int := 0;
-begin
-  -- Step 1: future な plan/todo で event_time を過ぎたものを past へ
-  update lore_embeddings
-  set temporal_status = 'past'
-  where user_id = p_user_id
-    and (p_folder_name is null or folder_name = p_folder_name)
-    and is_archived = false
-    and superseded_by is null
-    and is_pinned = false
-    and coalesce(extraction_version, '') not in ('user_edited', 'user_created')
-    and event_time is not null
-    and event_time < now()
-    and temporal_status = 'future'
-    and memory_kind in ('plan', 'todo');
-
-  get diagnostics past_count = row_count;
-
-  -- Step 2: valid_until を過ぎた記憶を expired へ
-  update lore_embeddings
-  set temporal_status = 'expired'
-  where user_id = p_user_id
-    and (p_folder_name is null or folder_name = p_folder_name)
-    and is_archived = false
-    and superseded_by is null
-    and is_pinned = false
-    and coalesce(extraction_version, '') not in ('user_edited', 'user_created')
-    and valid_until is not null
-    and valid_until < now()
-    and temporal_status in ('current', 'future', 'uncertain');
-
-  get diagnostics expired_count = row_count;
-
-  return jsonb_build_object(
-    'pastCount',    past_count,
-    'expiredCount', expired_count,
-    'total',        past_count + expired_count
-  );
-end;
-$$;
-
 -- 記憶の時系列ステータス更新（project_id版）
 create or replace function public.update_lore_temporal_status_by_project(
   p_user_id uuid,
