@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
 
   const rawLimit = Number.parseInt(req.nextUrl.searchParams.get("limit") ?? "", 10);
   const limit = clamp(Number.isFinite(rawLimit) ? rawLimit : 20, 1, 20);
-  const folderName = req.nextUrl.searchParams.get("folderName")?.trim() || null;
 
   let newRecordsQuery = supabase
     .from("lore_embeddings")
@@ -29,10 +28,6 @@ export async function GET(req: NextRequest) {
     .eq("is_archived", false)
     .order("created_at", { ascending: false })
     .limit(limit);
-
-  if (folderName) {
-    newRecordsQuery = newRecordsQuery.eq("folder_name", folderName);
-  }
 
   const { data: newRecords, error: newRecordsError } = await newRecordsQuery;
   if (newRecordsError) return finalizeJson({ error: newRecordsError.message }, { status: 500 });

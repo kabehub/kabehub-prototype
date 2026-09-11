@@ -11,7 +11,6 @@ export async function GET(req: NextRequest) {
   const { user, supabase, finalizeJson } = auth;
 
   const { searchParams } = new URL(req.url);
-  const folder = searchParams.get("folder");
   const kind = searchParams.get("kind");
   const status = searchParams.get("status");
   const pinned = searchParams.get("pinned");
@@ -26,10 +25,6 @@ export async function GET(req: NextRequest) {
 
   if (includeArchived !== "true") {
     query = query.eq("is_archived", false);
-  }
-
-  if (folder) {
-    query = query.eq("folder_name", folder);
   }
 
   if (kind) {
