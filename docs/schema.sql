@@ -1766,6 +1766,58 @@ begin
 end;
 $$;
 
+-- 記憶の時系列ステータス更新（project_id版）
+create or replace function public.update_lore_temporal_status_by_project(
+  p_user_id uuid,
+  p_project_id uuid default null::uuid
+)
+returns jsonb
+language plpgsql
+as $$
+declare
+  past_count  int := 0;
+  expired_count int := 0;
+begin
+  update lore_embeddings
+  set temporal_status = 'past'
+  where user_id = p_user_id
+    and (p_project_id is null or project_id = p_project_id)
+    and is_archived = false
+    and superseded_by is null
+    and is_pinned = false
+    and coalesce(extraction_version, '') not in ('user_edited', 'user_created')
+    and event_time is not null
+    and event_time < now()
+    and temporal_status = 'future'
+    and memory_kind in ('plan', 'todo');
+
+  get diagnostics past_count = row_count;
+
+  update lore_embeddings
+  set temporal_status = 'expired'
+  where user_id = p_user_id
+    and (p_project_id is null or project_id = p_project_id)
+    and is_archived = false
+    and superseded_by is null
+    and is_pinned = false
+    and coalesce(extraction_version, '') not in ('user_edited', 'user_created')
+    and valid_until is not null
+    and valid_until < now()
+    and temporal_status in ('current', 'future', 'uncertain');
+
+  get diagnostics expired_count = row_count;
+
+  return jsonb_build_object(
+    'pastCount',    past_count,
+    'expiredCount', expired_count,
+    'total',        past_count + expired_count
+  );
+end;
+$$;
+
+revoke all on function public.update_lore_temporal_status_by_project(uuid, uuid) from public, anon;
+grant execute on function public.update_lore_temporal_status_by_project(uuid, uuid) to authenticated, service_role;
+
 -- 類似記憶ペア検出（project_id版）
 create or replace function public.find_similar_lore_pairs_by_project(
   p_user_id uuid,

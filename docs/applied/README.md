@@ -42,4 +42,5 @@
 | migration_v188_project_memory_phase_e_find_similar_lore_pairs_by_project.sql | Project Memory Manager Phase E-2（旧RPCを維持したままproject_id版の類似Loreペア検索RPC 2本を追加） |
 | migration_v189_project_memory_phase_e_merge_project_guard.sql | Project Memory Manager Phase E-2（merge_user_edited_lore_pairへproject_id一致ガードを追加） |
 | migration_v190_project_memory_phase_e_drop_legacy_find_similar.sql | Project Memory Manager Phase E-2（project_id版への切り替え後に旧folder_name版の類似Loreペア検索RPC 2本を削除） |
+| migration_v191_project_memory_phase_e_update_temporal_status_by_project.sql | Project Memory Manager Phase E-3（旧RPCを維持したままproject_id版のLore時系列ステータス更新RPCを追加） |
 
