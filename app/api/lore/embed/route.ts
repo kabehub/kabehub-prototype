@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { error: delError } = await supabase.from('lore_embeddings').delete()
-    .eq('user_id', user.id).eq('folder_name', folderName);
+    .eq('user_id', user.id).eq('project_id', projectId);
   if (delError) {
     return finalizeJson({ error: "既存のLoreデータの削除に失敗しました" }, { status: 500 });
   }
