@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { clamp, normalizeConsolidationCandidate, type ConsolidationCandidate } from "@/lib/lore/mappers";
 import { pairKey } from "@/lib/lore/consolidation";
+import { resolveOwnedProjectIdByName } from "@/lib/project-memory/resolve-owned-project-id";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,23 @@ export async function GET(req: NextRequest) {
   const limit = clamp(Number.isFinite(rawLimit) ? rawLimit : 10, 1, 30);
   const folderName = req.nextUrl.searchParams.get("folderName")?.trim() || null;
 
-  const { data, error } = await supabase.rpc("find_similar_lore_pairs", {
+  let projectId: string | null = null;
+  if (folderName) {
+    const resolved = await resolveOwnedProjectIdByName(supabase, user.id, folderName);
+    if (!resolved.ok) {
+      return finalizeJson({ error: resolved.error }, { status: resolved.status });
+    }
+    if (!resolved.projectId) {
+      return finalizeJson({ candidates: [] });
+    }
+    projectId = resolved.projectId;
+  }
+
+  const { data, error } = await supabase.rpc("find_similar_lore_pairs_by_project", {
     p_user_id: user.id,
+    p_project_id: projectId,
     p_threshold: threshold,
     p_limit: limit,
-    p_folder_name: folderName,
   });
 
   if (error) return finalizeJson({ error: error.message }, { status: 500 });

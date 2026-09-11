@@ -12,6 +12,7 @@ import {
   normalizeDreamingCandidate,
   normalizeRpcNewId,
 } from "@/lib/lore/mappers";
+import { resolveOwnedProjectIdByName } from "@/lib/project-memory/resolve-owned-project-id";
 
 const LIKED_AI_CLEANING_PROMPT = `以下はチャットAIの発言テキストです。
 会話口調・前置き・Markdown記法・感嘆符などのノイズを取り除き、
@@ -214,17 +215,33 @@ export async function runDreamingBatch(
   userId: string,
   { limit, threshold, folderName }: { limit: number; threshold: number; folderName: string | null },
 ) {
-  const { data, error } = await supabase.rpc("find_similar_lore_pairs_v2", {
-    p_user_id: userId,
-    p_threshold: threshold,
-    p_limit: limit * 8,
-    p_k: 5,
-    p_folder_name: folderName,
-  });
+  let projectId: string | null = null;
+  let shouldSearchCandidates = true;
+  if (folderName) {
+    const resolved = await resolveOwnedProjectIdByName(supabase, userId, folderName);
+    if (!resolved.ok) throw new Error(resolved.error);
+    if (!resolved.projectId) {
+      shouldSearchCandidates = false;
+    } else {
+      projectId = resolved.projectId;
+    }
+  }
 
-  if (error) throw new Error(error.message);
+  let candidateRows: SimilarLorePairRow[] = [];
+  if (shouldSearchCandidates) {
+    const { data, error } = await supabase.rpc("find_similar_lore_pairs_v2_by_project", {
+      p_user_id: userId,
+      p_threshold: threshold,
+      p_limit: limit * 8,
+      p_k: 5,
+      p_project_id: projectId,
+    });
 
-  const candidates = ((Array.isArray(data) ? data : []) as SimilarLorePairRow[])
+    if (error) throw new Error(error.message);
+    candidateRows = (Array.isArray(data) ? data : []) as SimilarLorePairRow[];
+  }
+
+  const candidates = candidateRows
     .map(normalizeDreamingCandidate)
     .filter((candidate): candidate is DreamingCandidate => Boolean(candidate))
     .sort((a, b) => b.similarity - a.similarity);

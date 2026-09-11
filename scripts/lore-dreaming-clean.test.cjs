@@ -68,17 +68,22 @@ const sourceRows = [
   },
 ];
 
-function createSupabaseMock(cleanSelectResult) {
+function createSupabaseMock(cleanSelectResult, projectResult = { data: { id: "project-1" }, error: null }) {
   const trace = {
     cleanSelectCalls: 0,
     consolidationCalls: 0,
+    projectResolveCalls: 0,
+    candidateSearchCalls: 0,
+    candidateSearchArgs: [],
     inserted: [],
     updated: [],
   };
 
   const supabase = {
-    async rpc(name) {
-      if (name === "find_similar_lore_pairs_v2") {
+    async rpc(name, args) {
+      if (name === "find_similar_lore_pairs_v2_by_project") {
+        trace.candidateSearchCalls++;
+        trace.candidateSearchArgs.push(args);
         return {
           data: [{ id_a: "source-a", id_b: "source-b", similarity: 0.95 }],
           error: null,
@@ -92,6 +97,22 @@ function createSupabaseMock(cleanSelectResult) {
     },
 
     from(table) {
+      if (table === "projects") {
+        const projectBuilder = {
+          select() {
+            return projectBuilder;
+          },
+          eq() {
+            return projectBuilder;
+          },
+          maybeSingle() {
+            trace.projectResolveCalls++;
+            return Promise.resolve(projectResult);
+          },
+        };
+        return projectBuilder;
+      }
+
       assert.equal(table, "lore_embeddings");
       let operation = "select";
       let selectedColumns = null;
@@ -151,13 +172,13 @@ function createSupabaseMock(cleanSelectResult) {
   return { supabase, trace };
 }
 
-async function runScenario(cleanSelectResult, failureTexts = []) {
+async function runScenario(cleanSelectResult, failureTexts = [], folderName = null, projectResult) {
   cleaningFailureTexts = new Set(failureTexts);
-  const { supabase, trace } = createSupabaseMock(cleanSelectResult);
+  const { supabase, trace } = createSupabaseMock(cleanSelectResult, projectResult);
   const result = await runDreamingBatch(supabase, "openai-key", userId, {
     limit: 1,
     threshold: 0.8,
-    folderName: null,
+    folderName,
   });
   return { result, trace };
 }
@@ -189,7 +210,25 @@ const tests = [
     assert.equal(result.succeeded, 1);
     assert.equal(result.failed, 0);
     assert.equal(trace.cleanSelectCalls, 1);
+    assert.equal(trace.candidateSearchCalls, 1);
+    assert.equal(trace.candidateSearchArgs[0].p_project_id, null);
     baselineMergeResult = mergeResultView(result);
+  }],
+
+  ["project不存在なら候補RPCをスキップしてliked_ai cleaningへ進む", async () => {
+    const { result, trace } = await runScenario(
+      { data: [], error: null },
+      [],
+      "missing-project",
+      { data: null, error: null },
+    );
+
+    assert.equal(trace.projectResolveCalls, 1);
+    assert.equal(trace.candidateSearchCalls, 0);
+    assert.equal(trace.cleanSelectCalls, 1);
+    assert.equal(result.processed, 0);
+    assert.equal(result.cleaned, 0);
+    assert.equal(result.cleanError, null);
   }],
 
   ["records取得errorでもmerge結果を保持してcleanErrorを返す", async () => {
