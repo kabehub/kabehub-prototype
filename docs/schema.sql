@@ -2086,6 +2086,10 @@ begin
     raise exception 'source records failed protection check' using errcode = 'P0001';
   end if;
 
+  if v_source_a.project_id is distinct from v_source_b.project_id then
+    raise exception 'source records belong to different projects' using errcode = 'P0001';
+  end if;
+
   if coalesce(v_source_a.created_at, '-infinity'::timestamptz)
       >= coalesce(v_source_b.created_at, '-infinity'::timestamptz) then
     v_folder_name := v_source_a.folder_name;
