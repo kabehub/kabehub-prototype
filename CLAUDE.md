@@ -96,7 +96,7 @@ git pull origin main
 | `app/api/threads/[id]/messages/route.ts` / `app/api/threads/[id]/messages/[messageId]/route.ts` | 前者はGET・DELETE、後者はDELETE・PATCHでスレッド内メッセージを操作 |
 | `app/api/threads/[id]/messages/restore-branch/route.ts` | 分岐の復元 |
 | `app/api/threads/[id]/tags/route.ts` | タグ管理 |
-| `app/api/folder-settings/route.ts` | フォルダ単位のシステムプロンプト設定・GitHub連携設定（プロジェクト機能） |
+| `app/api/project-settings/route.ts` | フォルダ単位のシステムプロンプト設定・GitHub連携設定（プロジェクト機能） |
 | `app/api/messages/[id]/route.ts` | DELETE・PATCHによるメッセージ単体操作（画像tombstone操作を含む） |
 
 ### API Routes（RAG / Memory）
@@ -506,7 +506,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | shared_at 後方互換 | 既存の公開スレッドは `shared_at = null`。フィルターを無条件に適用すると既存スレッドが全件消える |
 | upsertのtitle必須 | `threads/[id]/route.ts` のupsertがINSERTに回った場合、titleが必要。`title: thread.title \|\| "無題"` を必ず含める |
 | remark-gfm の [[text]] 誤認識 | shareページのYOUメッセージはMarkdownRendererを経由せずプレーンテキストで `.replace(/\[\[(.+?)\]\]/g, "████")` する |
-| フォルダ名変更の整合性 | `threads` と `folder_settings` 両テーブルを同時にUPDATEする。片方だけ変えると孤立する |
+| フォルダ名変更の整合性 | `threads` と `project_settings` 両テーブルを同時にUPDATEする。片方だけ変えると孤立する |
 | Prompt Caching ヘッダー | `anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache_controlが無視される |
 | [[text]] マスク記法 | `MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする |
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |

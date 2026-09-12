@@ -17,8 +17,8 @@ let upstreamCalls;
 let upstreamBodies;
 
 function routeQuery(table) {
-  if (table === "folder_settings") {
-    throw new Error("project-scoped folder_settings must be skipped");
+  if (table === "project_settings") {
+    throw new Error("project-scoped project_settings must be skipped");
   }
 
   const state = { select: null, filters: [] };
@@ -215,7 +215,7 @@ async function verifyBrokenInvariant(label, fixture) {
     assert.match(upstreamBodies[0].url, /generativelanguage\.googleapis\.com/);
     assert.deepEqual(loreCalls, [], `${label}: all three memory paths are skipped`);
     assert.equal(
-      databaseCalls.some((call) => call.table === "folder_settings"),
+      databaseCalls.some((call) => call.table === "project_settings"),
       false,
       `${label}: project-scoped settings are skipped`,
     );

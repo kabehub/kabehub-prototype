@@ -299,7 +299,7 @@ export default function ChatPanel({
     let ignore = false
     const fetch_ = async () => {
       try {
-        const r = await fetch(`/api/folder-settings?folder_name=${encodeURIComponent(thread.folder_name!)}`)
+        const r = await fetch(`/api/project-settings?folder_name=${encodeURIComponent(thread.folder_name!)}`)
         if (!r.ok) throw new Error('fetch failed')
         const data = await r.json()
         if (!ignore) setFolderSystemPrompt(data?.system_prompt ?? null)

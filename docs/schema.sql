@@ -1283,9 +1283,9 @@ grant execute on function public.submit_report(uuid, text, uuid, text)
   to service_role;
 
 -- ============================================================
--- folder_settings テーブル
+-- project_settings テーブル
 -- ============================================================
-create table if not exists folder_settings (
+create table if not exists project_settings (
   id                    uuid primary key default gen_random_uuid(),
   user_id               uuid references auth.users(id) on delete cascade,
   folder_name           text not null,
@@ -1300,30 +1300,30 @@ create table if not exists folder_settings (
   unique (user_id, folder_name)
 );
 
-create index if not exists idx_folder_settings_project on folder_settings(project_id);
+create index if not exists idx_project_settings_project on project_settings(project_id);
 
-alter table folder_settings enable row level security;
+alter table project_settings enable row level security;
 
-create policy "folder_settings: select own"
-  on folder_settings for select
+create policy "project_settings: select own"
+  on project_settings for select
   using (auth.uid() = user_id);
 
-create policy "folder_settings: insert own"
-  on folder_settings for insert
+create policy "project_settings: insert own"
+  on project_settings for insert
   with check (
     auth.uid() = user_id
     and (
       project_id is null
       or exists (
         select 1 from projects p
-        where p.id = folder_settings.project_id
+        where p.id = project_settings.project_id
           and p.user_id = auth.uid()
       )
     )
   );
 
-create policy "folder_settings: update own"
-  on folder_settings for update
+create policy "project_settings: update own"
+  on project_settings for update
   using (auth.uid() = user_id)
   with check (
     auth.uid() = user_id
@@ -1331,21 +1331,21 @@ create policy "folder_settings: update own"
       project_id is null
       or exists (
         select 1 from projects p
-        where p.id = folder_settings.project_id
+        where p.id = project_settings.project_id
           and p.user_id = auth.uid()
       )
     )
   );
 
-create policy "folder_settings: delete own"
-  on folder_settings for delete
+create policy "project_settings: delete own"
+  on project_settings for delete
   using (auth.uid() = user_id);
 
-comment on column folder_settings.pinned_github_files
+comment on column project_settings.pinned_github_files
   is 'Pinned GitHub file URLs. Array of strings. Max 5 items.';
-comment on column folder_settings.github_repo
+comment on column project_settings.github_repo
   is 'GitHub連携フェーズ4: "owner/repo" 形式。設定時にAIが自律探索する';
-comment on column folder_settings.github_ref
+comment on column project_settings.github_ref
   is 'GitHub連携フェーズ4: ブランチ/タグ/SHA。未指定時はデフォルトブランチ';
 
 create or replace function update_updated_at_column()
@@ -1366,8 +1366,8 @@ create trigger project_memory_topics_updated_at
   before update on project_memory_topics
   for each row execute function update_updated_at_column();
 
-create trigger folder_settings_updated_at
-  before update on folder_settings
+create trigger project_settings_updated_at
+  before update on project_settings
   for each row execute function update_updated_at_column();
 
 -- ============================================================

@@ -169,7 +169,7 @@ async function insertLore(client, userId, rows) {
 }
 
 async function checkInvariants(client, label) {
-  const tables = ["threads", "folder_settings", "lore_embeddings"];
+  const tables = ["threads", "project_settings", "lore_embeddings"];
   const missingProject = {};
   const missingFolder = {};
 
@@ -315,7 +315,7 @@ async function run() {
     { folderName: otherOnlyFolder, projectId: otherOnlyProject, text: otherUserText },
   ]);
 
-  const { error: settingsError } = await service.from("folder_settings").insert([
+  const { error: settingsError } = await service.from("project_settings").insert([
     {
       user_id: userA.id,
       folder_name: folderA,
@@ -341,7 +341,7 @@ async function run() {
       pinned_github_files: [],
     },
   ]);
-  expectNoError(settingsError, "insert folder_settings fixtures");
+  expectNoError(settingsError, "insert project_settings fixtures");
 
   const serviceSimple = await rpcRows(
     service,
@@ -499,7 +499,7 @@ async function run() {
   const ownedSettings = await apiRequest(
     baseUrl,
     accessToken,
-    `/api/folder-settings?folder_name=${encodeURIComponent(folderA)}`,
+    `/api/project-settings?folder_name=${encodeURIComponent(folderA)}`,
   );
   assert.equal(ownedSettings.status, 200);
   assert.equal(ownedSettings.body.system_prompt, `owned-${suffix}`);
@@ -514,7 +514,7 @@ async function run() {
   const missingSettings = await apiRequest(
     baseUrl,
     accessToken,
-    `/api/folder-settings?folder_name=${encodeURIComponent(`missing-${suffix}`)}`,
+    `/api/project-settings?folder_name=${encodeURIComponent(`missing-${suffix}`)}`,
   );
   assert.deepEqual(missingSettings.body, {
     system_prompt: null,
@@ -533,7 +533,7 @@ async function run() {
   const otherOnlySettings = await apiRequest(
     baseUrl,
     accessToken,
-    `/api/folder-settings?folder_name=${encodeURIComponent(otherOnlyFolder)}`,
+    `/api/project-settings?folder_name=${encodeURIComponent(otherOnlyFolder)}`,
   );
   assert.equal(otherOnlySettings.body.system_prompt, null);
   const otherOnlyChunks = await apiRequest(

@@ -31,7 +31,7 @@ function createQuery(table) {
     },
     maybeSingle() {
       if (table === "projects") return Promise.resolve(projectResult);
-      if (table === "folder_settings") return Promise.resolve(settingsResult);
+      if (table === "project_settings") return Promise.resolve(settingsResult);
       throw new Error(`unexpected maybeSingle table: ${table}`);
     },
     then(onFulfilled, onRejected) {
@@ -79,12 +79,12 @@ installTsLoader();
 installAliasResolver();
 
 const { NextRequest } = require("next/server");
-const folderSettingsRoute = require(path.join(
+const projectSettingsRoute = require(path.join(
   __dirname,
   "..",
   "app",
   "api",
-  "folder-settings",
+  "project-settings",
   "route.ts",
 ));
 const loreChunksRoute = require(path.join(
@@ -104,9 +104,9 @@ function resetMocks(options = {}) {
   queryCalls = [];
 }
 
-function invokeFolderSettings(folderName) {
-  return folderSettingsRoute.GET(new NextRequest(
-    `https://www.kabehub.com/api/folder-settings?folder_name=${encodeURIComponent(folderName)}`,
+function invokeProjectSettings(folderName) {
+  return projectSettingsRoute.GET(new NextRequest(
+    `https://www.kabehub.com/api/project-settings?folder_name=${encodeURIComponent(folderName)}`,
   ));
 }
 
@@ -121,7 +121,7 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
-test("folder-settings resolves the owned project and queries by project_id", async () => {
+test("project-settings resolves the owned project and queries by project_id", async () => {
   resetMocks({
     settingsResult: {
       data: {
@@ -135,7 +135,7 @@ test("folder-settings resolves the owned project and queries by project_id", asy
     },
   });
 
-  const response = await invokeFolderSettings("same-name");
+  const response = await invokeProjectSettings("same-name");
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
@@ -145,7 +145,7 @@ test("folder-settings resolves the owned project and queries by project_id", asy
     github_repo: "owner/repo",
     github_ref: "main",
   });
-  assert.deepEqual(queryCalls.map((call) => call.table), ["projects", "folder_settings"]);
+  assert.deepEqual(queryCalls.map((call) => call.table), ["projects", "project_settings"]);
   assert.deepEqual(queryCalls[0].state.filters, [
     { column: "user_id", value: USER_ID },
     { column: "name", value: "same-name" },
@@ -178,7 +178,7 @@ test("lore/chunks resolves the owned project and queries by project_id", async (
 test("an unresolved or other-user-only project name keeps successful empty responses", async () => {
   resetMocks({ projectResult: { data: null, error: null } });
 
-  const settingsResponse = await invokeFolderSettings("other-user-project");
+  const settingsResponse = await invokeProjectSettings("other-user-project");
   assert.equal(settingsResponse.status, 200);
   assert.deepEqual(await settingsResponse.json(), {
     system_prompt: null,
@@ -197,7 +197,7 @@ test("an unresolved or other-user-only project name keeps successful empty respo
 });
 
 for (const [label, invoke] of [
-  ["folder-settings", invokeFolderSettings],
+  ["project-settings", invokeProjectSettings],
   ["lore/chunks", invokeLoreChunks],
 ]) {
   test(`${label} returns a finalized 500 when project resolution fails`, async () => {

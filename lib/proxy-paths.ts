@@ -42,7 +42,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/explore\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/extract-settings\/?$/, methods: ["GET", "POST"], classification: "bearer" },
   { pattern: /^\/api\/fetch-github\/?$/, methods: ["POST"], classification: "bearer" },
-  { pattern: /^\/api\/folder-settings\/?$/, methods: ["GET", "POST"], classification: "bearer" },
+  { pattern: /^\/api\/project-settings\/?$/, methods: ["GET", "POST"], classification: "bearer" },
   { pattern: /^\/api\/image-gen\/?$/, methods: ["POST"], classification: "bearer" },
   {
     pattern:

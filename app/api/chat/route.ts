@@ -802,7 +802,7 @@ export async function POST(req: NextRequest) {
 
     if (!isInvariantBroken && currentProjectId !== null) {
       const { data: folderSetting, error: folderSettingError } = await supabase
-        .from('folder_settings').select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
+        .from('project_settings').select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
         .eq('user_id', userId).eq('project_id', currentProjectId).maybeSingle();
       if (folderSettingError) {
         return chatResponse(JSON.stringify({ error: folderSettingError.message }), {

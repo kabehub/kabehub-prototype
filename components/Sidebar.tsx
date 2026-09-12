@@ -448,12 +448,12 @@ interface FolderSectionProps {
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
-  onEditFolderSettings?: (folderName: string) => void;
+  onEditProjectSettings?: (folderName: string) => void;
   onNewThreadInFolder?: (folderName: string) => void;
   folderType?: string | null;
 }
 
-function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditFolderSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
+function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditProjectSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hovered, setHovered] = useState(false);
 
@@ -528,9 +528,9 @@ function FolderSection({ folderName, threads, activeThreadId, existingFolders, o
         )}
 
         {/* ⚙️ フォルダ設定ボタン（フォルダ名ありかつホバー時のみ表示） */}
-        {folderName && onEditFolderSettings && (
+        {folderName && onEditProjectSettings && (
           <button
-            onClick={(e) => { e.stopPropagation(); onEditFolderSettings(folderName); }}
+            onClick={(e) => { e.stopPropagation(); onEditProjectSettings(folderName); }}
             title="フォルダのシステムプロンプトを設定"
             style={{
               opacity: hovered ? 1 : 0,
@@ -622,7 +622,7 @@ export default function Sidebar({
     if (!user) return;
     (async () => {
       try {
-        const res = await fetch("/api/folder-settings");
+        const res = await fetch("/api/project-settings");
         if (!res.ok) return;
         const arr = await res.json();
         const map: Record<string, string | null> = {};
@@ -637,7 +637,7 @@ export default function Sidebar({
   }, [user]);
 
   // フォルダ設定モーダル
-  const [folderSettingsModal, setFolderSettingsModal] = useState<{
+  const [projectSettingsModal, setProjectSettingsModal] = useState<{
     folderName: string;
     systemPrompt: string;
     folderType: string | null;
@@ -645,18 +645,18 @@ export default function Sidebar({
     githubRepo: string;
     githubRef: string;
   } | null>(null);
-  const [folderSettingsSaving, setFolderSettingsSaving] = useState(false);
+  const [projectSettingsSaving, setProjectSettingsSaving] = useState(false);
   const [githubRepoError, setGithubRepoError] = useState<string | null>(null);
 
   const handleNewThreadInFolder = useCallback((folderName: string) => {
     onNewThreadInFolder(folderName);
   }, [onNewThreadInFolder]);
 
-  const handleEditFolderSettings = useCallback(async (folderName: string) => {
+  const handleEditProjectSettings = useCallback(async (folderName: string) => {
     try {
-      const res = await fetch(`/api/folder-settings?folder_name=${encodeURIComponent(folderName)}`);
+      const res = await fetch(`/api/project-settings?folder_name=${encodeURIComponent(folderName)}`);
       const data = await res.json();
-      setFolderSettingsModal({
+      setProjectSettingsModal({
         folderName,
         systemPrompt: data?.system_prompt ?? "",
         folderType: data?.folder_type ?? null,
@@ -666,7 +666,7 @@ export default function Sidebar({
       });
       setGithubRepoError(null);
     } catch {
-      setFolderSettingsModal({
+      setProjectSettingsModal({
         folderName,
         systemPrompt: "",
         folderType: null,
@@ -678,40 +678,40 @@ export default function Sidebar({
     }
   }, []);
 
-  const handleSaveFolderSettings = useCallback(async () => {
-    if (!folderSettingsModal) return;
+  const handleSaveProjectSettings = useCallback(async () => {
+    if (!projectSettingsModal) return;
     // github_repo バリデーション
-    if (folderSettingsModal.githubRepo.trim() !== "") {
-      if (!/^[^/]+\/[^/]+$/.test(folderSettingsModal.githubRepo.trim())) {
+    if (projectSettingsModal.githubRepo.trim() !== "") {
+      if (!/^[^/]+\/[^/]+$/.test(projectSettingsModal.githubRepo.trim())) {
         setGithubRepoError("owner/repo の形式で入力してください");
         return;
       }
     }
     setGithubRepoError(null);
-    setFolderSettingsSaving(true);
+    setProjectSettingsSaving(true);
     try {
-      const res = await fetch("/api/folder-settings", {
+      const res = await fetch("/api/project-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          folder_name: folderSettingsModal.folderName,
-          system_prompt: folderSettingsModal.systemPrompt,
-          folder_type: folderSettingsModal.folderType ?? null,
-          pinned_github_files: folderSettingsModal.pinnedFiles,
-          github_repo: folderSettingsModal.githubRepo.trim() || null,
-          github_ref: folderSettingsModal.githubRef.trim() || null,
+          folder_name: projectSettingsModal.folderName,
+          system_prompt: projectSettingsModal.systemPrompt,
+          folder_type: projectSettingsModal.folderType ?? null,
+          pinned_github_files: projectSettingsModal.pinnedFiles,
+          github_repo: projectSettingsModal.githubRepo.trim() || null,
+          github_ref: projectSettingsModal.githubRef.trim() || null,
         }),
       });
       if (!res.ok) throw new Error("フォルダ設定の保存に失敗しました");
-      setFolderTypes(prev => ({ ...prev, [folderSettingsModal.folderName]: folderSettingsModal.folderType ?? null }));
-      setFolderSettingsModal(null);
+      setFolderTypes(prev => ({ ...prev, [projectSettingsModal.folderName]: projectSettingsModal.folderType ?? null }));
+      setProjectSettingsModal(null);
     } catch (err) {
       console.error("フォルダ設定保存失敗:", err);
       showToast("フォルダ設定の保存に失敗しました", "error");
     } finally {
-      setFolderSettingsSaving(false);
+      setProjectSettingsSaving(false);
     }
-  }, [folderSettingsModal, showToast]);
+  }, [projectSettingsModal, showToast]);
 
   const handleSearchChange = useCallback((val: string) => {
     setSearchQuery(val);
@@ -915,7 +915,7 @@ export default function Sidebar({
               onSelectThread={onSelectThread}
               onDeleteThread={onDeleteThread}
               onUpdateFolder={onUpdateFolder}
-              onEditFolderSettings={handleEditFolderSettings}
+              onEditProjectSettings={handleEditProjectSettings}
               onNewThreadInFolder={handleNewThreadInFolder}
               defaultCollapsed={!hasActive}
               folderType={group.folderName ? folderTypes[group.folderName] ?? null : null}
@@ -1219,9 +1219,9 @@ export default function Sidebar({
         </>
       )}
       {/* フォルダ設定ドロワー */}
-      {folderSettingsModal && (
+      {projectSettingsModal && (
         <div
-          onClick={() => setFolderSettingsModal(null)}
+          onClick={() => setProjectSettingsModal(null)}
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 200 }}
         >
           <div
@@ -1229,29 +1229,29 @@ export default function Sidebar({
             style={{ position: "fixed", top: 0, right: 0, width: "480px", height: "100vh", background: "white", boxShadow: "-4px 0 24px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column", padding: "24px", overflowY: "auto", boxSizing: "border-box" }}
           >
             <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, marginBottom: "4px", color: "var(--ink)" }}>
-              {folderSettingsModal.folderType === "novel" ? "📖" : "📁"} {folderSettingsModal.folderName}
+              {projectSettingsModal.folderType === "novel" ? "📖" : "📁"} {projectSettingsModal.folderName}
             </div>
             <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "16px", fontFamily: "'JetBrains Mono', monospace" }}>
               フォルダのシステムプロンプト
             </div>
             {/* 小説プロジェクトモードトグル */}
-            <div style={{ border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", marginBottom: "12px", background: folderSettingsModal.folderType === "novel" ? "#fffbeb" : "white", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", marginBottom: "12px", background: projectSettingsModal.folderType === "novel" ? "#fffbeb" : "white", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
                 <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)" }}>📖 小説プロジェクトモード</div>
                 <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "2px" }}>Prompt Cachingを活用した長編執筆に最適化</div>
               </div>
               <button
-                onClick={() => setFolderSettingsModal(prev => prev ? { ...prev, folderType: prev.folderType === "novel" ? null : "novel" } : null)}
-                style={{ position: "relative", width: "40px", height: "22px", borderRadius: "11px", border: "none", background: folderSettingsModal.folderType === "novel" ? "#7c3aed" : "var(--border)", cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}
+                onClick={() => setProjectSettingsModal(prev => prev ? { ...prev, folderType: prev.folderType === "novel" ? null : "novel" } : null)}
+                style={{ position: "relative", width: "40px", height: "22px", borderRadius: "11px", border: "none", background: projectSettingsModal.folderType === "novel" ? "#7c3aed" : "var(--border)", cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}
               >
-                <span style={{ position: "absolute", top: "3px", left: folderSettingsModal.folderType === "novel" ? "21px" : "3px", width: "16px", height: "16px", borderRadius: "50%", background: "white", transition: "left 0.2s", display: "block" }} />
+                <span style={{ position: "absolute", top: "3px", left: projectSettingsModal.folderType === "novel" ? "21px" : "3px", width: "16px", height: "16px", borderRadius: "50%", background: "white", transition: "left 0.2s", display: "block" }} />
               </button>
             </div>
-            {folderSettingsModal.folderType === "novel" && (
+            {projectSettingsModal.folderType === "novel" && (
               <button
                 onClick={() => {
                   const template = `---\n## 世界観設定\n（地理・歴史・魔法体系・社会構造など）\n\n## 登場人物一覧\n（名前・年齢・外見・性格・動機・他キャラとの関係）\n\n## あらすじ（全体）\n（起承転結の骨格）\n\n## 現在の執筆状況\n（何章まで書いたか・未回収の伏線・次に書くシーン）\n\n## 執筆スタイル指定\n（文体・一人称/三人称・禁止表現など）\n\n---\n`;
-                  setFolderSettingsModal(prev => prev ? { ...prev, systemPrompt: template + prev.systemPrompt } : null);
+                  setProjectSettingsModal(prev => prev ? { ...prev, systemPrompt: template + prev.systemPrompt } : null);
                 }}
                 style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "12px", cursor: "pointer", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}
               >
@@ -1260,9 +1260,9 @@ export default function Sidebar({
             )}
             <textarea
               autoFocus
-              value={folderSettingsModal.systemPrompt}
-              onChange={(e) => setFolderSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
-              placeholder={folderSettingsModal.folderType === "novel"
+              value={projectSettingsModal.systemPrompt}
+              onChange={(e) => setProjectSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
+              placeholder={projectSettingsModal.folderType === "novel"
                 ? `例：あなたは優秀な小説の共同執筆者です。世界観・登場人物・文体の一貫性を保ちながら、指示された内容を執筆してください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`
                 : `例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
               style={{ width: "100%", minHeight: "calc(100vh - 320px)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
@@ -1271,13 +1271,13 @@ export default function Sidebar({
             />
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "6px", display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'DM Sans', sans-serif" }}>
               <span>
-                {folderSettingsModal.systemPrompt.length.toLocaleString()}文字 / 約{Math.ceil(folderSettingsModal.systemPrompt.length * 1.2).toLocaleString()}トークン（概算）
+                {projectSettingsModal.systemPrompt.length.toLocaleString()}文字 / 約{Math.ceil(projectSettingsModal.systemPrompt.length * 1.2).toLocaleString()}トークン（概算）
               </span>
-              {folderSettingsModal.folderType === "novel" && (
-                folderSettingsModal.systemPrompt.length >= 5000 ? (
+              {projectSettingsModal.folderType === "novel" && (
+                projectSettingsModal.systemPrompt.length >= 5000 ? (
                   <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#d1fae5", color: "#065f46" }}>⚡ Caching 有効</span>
                 ) : (
-                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#fef3c7", color: "#92400e" }}>△ あと{(5000 - folderSettingsModal.systemPrompt.length).toLocaleString()}文字でCaching有効</span>
+                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#fef3c7", color: "#92400e" }}>△ あと{(5000 - projectSettingsModal.systemPrompt.length).toLocaleString()}文字でCaching有効</span>
                 )
               )}
             </div>
@@ -1291,16 +1291,16 @@ export default function Sidebar({
               </div>
 
               {/* URL入力欄 */}
-              {(folderSettingsModal.pinnedFiles.length < PINNED_GITHUB_FILES_MAX) && (
+              {(projectSettingsModal.pinnedFiles.length < PINNED_GITHUB_FILES_MAX) && (
                 <PinnedFileInput
                   onAdd={(url) => {
-                    setFolderSettingsModal(prev =>
+                    setProjectSettingsModal(prev =>
                       prev ? { ...prev, pinnedFiles: [...prev.pinnedFiles, url] } : null
                     );
                   }}
                 />
               )}
-              {folderSettingsModal.pinnedFiles.length >= PINNED_GITHUB_FILES_MAX && (
+              {projectSettingsModal.pinnedFiles.length >= PINNED_GITHUB_FILES_MAX && (
                 <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "6px" }}>
                   上限（{PINNED_GITHUB_FILES_MAX}件）に達しています
                 </div>
@@ -1308,7 +1308,7 @@ export default function Sidebar({
 
               {/* 登録済みファイル一覧 */}
               <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "6px" }}>
-                {folderSettingsModal.pinnedFiles.map((url, i) => {
+                {projectSettingsModal.pinnedFiles.map((url, i) => {
                   const fileName = url.split("/").pop() ?? url;
                   return (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", background: "var(--sidebar-bg)", borderRadius: "5px", border: "1px solid var(--border)" }}>
@@ -1316,7 +1316,7 @@ export default function Sidebar({
                          {fileName}
                       </span>
                       <button
-                        onClick={() => setFolderSettingsModal(prev =>
+                        onClick={() => setProjectSettingsModal(prev =>
                           prev ? { ...prev, pinnedFiles: prev.pinnedFiles.filter((_, idx) => idx !== i) } : null
                         )}
                         style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: "14px", padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
@@ -1344,9 +1344,9 @@ export default function Sidebar({
                 </div>
                 <input
                   type="text"
-                  value={folderSettingsModal.githubRepo}
+                  value={projectSettingsModal.githubRepo}
                   onChange={(e) => {
-                    setFolderSettingsModal(prev => prev ? { ...prev, githubRepo: e.target.value } : null);
+                    setProjectSettingsModal(prev => prev ? { ...prev, githubRepo: e.target.value } : null);
                     setGithubRepoError(null);
                   }}
                   placeholder="例: owner/repo-name"
@@ -1368,8 +1368,8 @@ export default function Sidebar({
                 </div>
                 <input
                   type="text"
-                  value={folderSettingsModal.githubRef}
-                  onChange={(e) => setFolderSettingsModal(prev => prev ? { ...prev, githubRef: e.target.value } : null)}
+                  value={projectSettingsModal.githubRef}
+                  onChange={(e) => setProjectSettingsModal(prev => prev ? { ...prev, githubRef: e.target.value } : null)}
                   placeholder="例: main, v1.0.0（省略時はデフォルトブランチ）"
                   style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-muted)"; }}
@@ -1382,17 +1382,17 @@ export default function Sidebar({
             </div>
             <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
               <button
-                onClick={() => setFolderSettingsModal(null)}
+                onClick={() => setProjectSettingsModal(null)}
                 style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer" }}
               >
                 キャンセル
               </button>
               <button
-                onClick={handleSaveFolderSettings}
-                disabled={folderSettingsSaving}
-                style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: folderSettingsSaving ? "var(--border)" : "#7c3aed", color: folderSettingsSaving ? "var(--ink-faint)" : "white", fontSize: "13px", cursor: folderSettingsSaving ? "default" : "pointer", transition: "all 0.15s" }}
+                onClick={handleSaveProjectSettings}
+                disabled={projectSettingsSaving}
+                style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: projectSettingsSaving ? "var(--border)" : "#7c3aed", color: projectSettingsSaving ? "var(--ink-faint)" : "white", fontSize: "13px", cursor: projectSettingsSaving ? "default" : "pointer", transition: "all 0.15s" }}
               >
-                {folderSettingsSaving ? "保存中…" : "保存"}
+                {projectSettingsSaving ? "保存中…" : "保存"}
               </button>
             </div>
           </div>

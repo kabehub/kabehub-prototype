@@ -225,19 +225,19 @@ async function run() {
   const projectB = thread.project_id;
   pass("② フォルダ付け替え→project_id更新", thread);
 
-  await apiRequest(baseUrl, accessToken, "/api/folder-settings", {
+  await apiRequest(baseUrl, accessToken, "/api/project-settings", {
     method: "POST",
     body: { folder_name: folderB, system_prompt: "Phase C" },
   });
-  const { data: folderSettings, error: folderError } = await service
-    .from("folder_settings")
+  const { data: projectSettings, error: projectError } = await service
+    .from("project_settings")
     .select("folder_name, project_id")
     .eq("user_id", userA.id)
     .eq("folder_name", folderB)
     .single();
-  expectNoError(folderError, "select folder settings");
-  assert.equal(folderSettings.project_id, projectB);
-  pass("③ folder-settings保存→project_id確認", folderSettings);
+  expectNoError(projectError, "select project settings");
+  assert.equal(projectSettings.project_id, projectB);
+  pass("③ project-settings保存→project_id確認", projectSettings);
 
   await apiRequest(baseUrl, accessToken, "/api/lore/embed", {
     method: "POST",
@@ -492,7 +492,7 @@ async function run() {
   expectRpcError(callerFolderError, "P0001", "p_folder_name does not match", "negative: caller folder不一致→P0001");
   await deleteLore(service, negativeIds);
 
-  const invariantTables = ["threads", "folder_settings", "lore_embeddings"];
+  const invariantTables = ["threads", "project_settings", "lore_embeddings"];
   const missing = {};
   for (const table of invariantTables) {
     const { count, error } = await service

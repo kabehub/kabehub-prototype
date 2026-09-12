@@ -3,7 +3,7 @@ import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { PINNED_GITHUB_FILES_MAX } from '@/lib/validationLimits'
 import { resolveOwnedProjectIdByName } from '@/lib/project-memory/resolve-owned-project-id'
 
-// GET /api/folder-settings?folder_name=xxx
+// GET /api/project-settings?folder_name=xxx
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const folder_name = searchParams.get('folder_name')
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   if (!folder_name) {
     const { data, error } = await supabase
-      .from('folder_settings')
+      .from('project_settings')
       .select('folder_name, folder_type')
       .eq('user_id', user.id)
 
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await supabase
-    .from('folder_settings')
+    .from('project_settings')
     .select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
     .eq('user_id', user.id)
     .eq('project_id', resolved.projectId)
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// POST /api/folder-settings
+// POST /api/project-settings
 // body: { folder_name: string, system_prompt: string }
 export async function POST(req: NextRequest) {
   const auth = await requireRouteUser(req)
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { error } = await supabase
-    .from('folder_settings')
+    .from('project_settings')
     .upsert(
       {
         user_id: user.id,
