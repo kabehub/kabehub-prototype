@@ -13,6 +13,53 @@ type LorePromotion = {
   embedding: number[];
 };
 
+export async function PATCH(req: NextRequest, props: RouteProps) {
+  const { projectId } = await props.params;
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return finalizeJson({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const requestBody =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)
+      : null;
+  if (typeof requestBody?.name !== "string") {
+    return finalizeJson(
+      { error: "name (string) is required" },
+      { status: 400 },
+    );
+  }
+  if (requestBody.name.trim() === "") {
+    return finalizeJson({ error: "name is required" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase.rpc("rename_project", {
+    p_user_id: user.id,
+    p_project_id: projectId,
+    p_new_name: requestBody.name,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      return finalizeJson(
+        { error: "A Project with this name already exists" },
+        { status: 409 },
+      );
+    }
+    const mapped = mapProjectMemoryRpcError(error);
+    return finalizeJson({ error: mapped.error }, { status: mapped.status });
+  }
+
+  return finalizeJson({ success: true, name: data });
+}
+
 export async function DELETE(req: NextRequest, props: RouteProps) {
   const { projectId } = await props.params;
   const auth = await requireRouteUser(req);

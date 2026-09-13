@@ -114,6 +114,7 @@ test("classification helpers are fail-closed and keep auth modes separate", () =
     classifyApi("/api/projects/project-1/memory/consolidate/preview", "POST"),
     "bearer"
   );
+  assert.equal(classifyApi("/api/projects/project-1", "PATCH"), "bearer");
   assert.equal(classifyApi("/api/share/token", "GET"), "public");
   assert.equal(classifyApi("/api/mcp/threads", "GET"), "mcp");
   assert.equal(

@@ -1,0 +1,10 @@
+﻿feat: Project削除機能を追加（Project Memory/Lore/スレッドは孤立保存）
+
+- projectsテーブルの物理削除を実装。threads/lore_embeddings/project_memory_topics
+  は孤立させて生存させ、project_settingsのみCASCADE削除する
+- delete_project_preserving_contents RPCで削除本体をatomicに実行し、任意で
+  Project MemoryをLoreへ昇格できる
+- DELETE /api/projects/[projectId]、ProjectDeleteConfirmModal、Sidebar導線を追加
+- project_memory_topicsにuser_idを追加し、Project削除後も所有権を保持できるよう
+  RLS/RPC/revision RLSをuser_idベースへ移行
+- test環境で実DB統合テスト8シナリオ全PASSを確認済み

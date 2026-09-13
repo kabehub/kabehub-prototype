@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/09/13（migration_v194_delete_project_preserving_contents.sql反映・DB未適用）
+-- 最終更新: 2026/09/14（migration_v195_rename_project.sql反映・DB未適用）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -54,6 +54,7 @@
 -- 2026/08/15、migration_v181_ai_usage_events.sqlをスキーマ正本へ反映（本番DB適用済み、AI利用コスト計測基盤対応）。
 -- 2026/09/08、migration_v182_project_memory_phase_a.sqlをスキーマ正本へ反映（テスト環境/本番DB適用済み、Project Memory Manager Phase A対応）。
 -- 2026/09/13、migration_v194_delete_project_preserving_contents.sqlをスキーマ正本へ反映（Project物理削除・関連コンテンツ保持・Project Memory任意Lore昇格。DB未適用）。
+-- 2026/09/14、migration_v195_rename_project.sqlをスキーマ正本へ反映（Project名変更と関連テーブルのfolder_name同期。DB未適用）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1670,6 +1671,74 @@ $$;
 revoke execute on function public.delete_project_preserving_contents(uuid, uuid, boolean, jsonb)
   from public, anon, authenticated;
 grant execute on function public.delete_project_preserving_contents(uuid, uuid, boolean, jsonb)
+  to authenticated;
+
+-- ============================================================
+-- Project名変更（関連テーブルのfolder_name同期）
+-- ============================================================
+create or replace function public.rename_project(
+  p_user_id uuid,
+  p_project_id uuid,
+  p_new_name text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_new_name text;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  v_new_name := btrim(coalesce(p_new_name, ''));
+  if v_new_name = '' then
+    raise exception 'name is required' using errcode = 'P0001';
+  end if;
+
+  -- Project行をロックしつつ所有権確認する（delete RPCと同じ規約）
+  perform 1 from public.projects p
+  where p.id = p_project_id and p.user_id = p_user_id
+  for update;
+  if not found then
+    raise exception 'project not found' using errcode = 'P0001';
+  end if;
+
+  update public.projects
+  set name = v_new_name
+  where id = p_project_id and user_id = p_user_id;
+
+  update public.project_settings
+  set folder_name = v_new_name
+  where project_id = p_project_id and user_id = p_user_id;
+
+  -- novel_settingsはthreads経由でJOINし、project_id一致の行だけ更新
+  update public.novel_settings ns
+  set folder_name = v_new_name
+  from public.threads t
+  where ns.thread_id = t.id
+    and ns.user_id = p_user_id
+    and t.user_id = p_user_id
+    and t.project_id = p_project_id;
+
+  -- 双方向不変条件（project_id非NULLの間はfolder_nameが現在名と一致）を維持
+  update public.threads
+  set folder_name = v_new_name
+  where project_id = p_project_id and user_id = p_user_id;
+
+  update public.lore_embeddings
+  set folder_name = v_new_name
+  where project_id = p_project_id and user_id = p_user_id;
+
+  return v_new_name;
+end;
+$$;
+
+revoke execute on function public.rename_project(uuid, uuid, text)
+  from public, anon, authenticated;
+grant execute on function public.rename_project(uuid, uuid, text)
   to authenticated;
 
 -- ============================================================

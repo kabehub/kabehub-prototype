@@ -64,6 +64,20 @@ function getUniqueFolderNames(threads: Thread[]): string[] {
   return Array.from(new Set(names)).sort();
 }
 
+export function rekeyFolderTypesAfterRename(
+  folderTypes: Record<string, string | null>,
+  oldName: string,
+  newName: string,
+): Record<string, string | null> {
+  const next = { ...folderTypes };
+  if (Object.prototype.hasOwnProperty.call(folderTypes, oldName)) {
+    const folderType = folderTypes[oldName];
+    delete next[oldName];
+    next[newName] = folderType;
+  }
+  return next;
+}
+
 // ---- Pinned File URL入力 ----
 function PinnedFileInput({ onAdd }: { onAdd: (url: string) => void }) {
   const [inputUrl, setInputUrl] = useState("");
@@ -657,6 +671,8 @@ export default function Sidebar({
     githubRef: string;
   } | null>(null);
   const [projectSettingsSaving, setProjectSettingsSaving] = useState(false);
+  const [projectRenameInput, setProjectRenameInput] = useState("");
+  const [projectRenaming, setProjectRenaming] = useState(false);
   const [githubRepoError, setGithubRepoError] = useState<string | null>(null);
   const [projectDeleteModalOpen, setProjectDeleteModalOpen] = useState(false);
   const [projectDeleting, setProjectDeleting] = useState(false);
@@ -675,6 +691,7 @@ export default function Sidebar({
   }, [onNewThreadInFolder]);
 
   const handleEditProjectSettings = useCallback(async (folderName: string) => {
+    setProjectRenameInput(folderName);
     try {
       const res = await fetch(`/api/project-settings?folder_name=${encodeURIComponent(folderName)}`);
       if (!res.ok) throw new Error("フォルダ設定の取得に失敗しました");
@@ -701,6 +718,11 @@ export default function Sidebar({
       });
       setGithubRepoError(null);
     }
+  }, []);
+
+  const closeProjectSettings = useCallback(() => {
+    setProjectSettingsModal(null);
+    setProjectRenameInput("");
   }, []);
 
   const handleOpenProjectDelete = useCallback(async () => {
@@ -846,6 +868,7 @@ export default function Sidebar({
       });
       setProjectDeleteModalOpen(false);
       setProjectSettingsModal(null);
+      setProjectRenameInput("");
       showToast("Projectを削除しました");
     } catch (err) {
       console.error("Project削除失敗:", err);
@@ -858,8 +881,71 @@ export default function Sidebar({
     }
   }, [onRefreshThreads, projectDeleting, projectSettingsModal, showToast]);
 
+  const handleRenameProject = useCallback(async () => {
+    if (
+      !projectSettingsModal?.projectId ||
+      projectRenaming ||
+      projectSettingsSaving
+    ) {
+      return;
+    }
+
+    if (projectRenameInput.trim() === "") {
+      showToast("Project名を入力してください", "error");
+      return;
+    }
+
+    const oldFolderName = projectSettingsModal.folderName;
+    setProjectRenaming(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectSettingsModal.projectId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: projectRenameInput }),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.error === "string"
+            ? data.error
+            : "Project名の変更に失敗しました",
+        );
+      }
+      if (typeof data?.name !== "string") {
+        throw new Error("Project名の変更に失敗しました");
+      }
+
+      const confirmedName = data.name;
+      await onRefreshThreads();
+      setFolderTypes((prev) =>
+        rekeyFolderTypesAfterRename(prev, oldFolderName, confirmedName),
+      );
+      setProjectSettingsModal(null);
+      setProjectRenameInput("");
+      showToast(`Project名を「${confirmedName}」に変更しました`);
+    } catch (err) {
+      console.error("Project名変更失敗:", err);
+      showToast(
+        err instanceof Error ? err.message : "Project名の変更に失敗しました",
+        "error",
+      );
+    } finally {
+      setProjectRenaming(false);
+    }
+  }, [
+    onRefreshThreads,
+    projectRenameInput,
+    projectRenaming,
+    projectSettingsModal,
+    projectSettingsSaving,
+    showToast,
+  ]);
+
   const handleSaveProjectSettings = useCallback(async () => {
-    if (!projectSettingsModal) return;
+    if (!projectSettingsModal || projectSettingsSaving || projectRenaming) return;
     // github_repo バリデーション
     if (projectSettingsModal.githubRepo.trim() !== "") {
       if (!/^[^/]+\/[^/]+$/.test(projectSettingsModal.githubRepo.trim())) {
@@ -891,7 +977,7 @@ export default function Sidebar({
     } finally {
       setProjectSettingsSaving(false);
     }
-  }, [projectSettingsModal, showToast]);
+  }, [projectRenaming, projectSettingsModal, projectSettingsSaving, showToast]);
 
   const handleSearchChange = useCallback((val: string) => {
     setSearchQuery(val);
@@ -1401,15 +1487,39 @@ export default function Sidebar({
       {/* フォルダ設定ドロワー */}
       {projectSettingsModal && (
         <div
-          onClick={() => setProjectSettingsModal(null)}
+          onClick={closeProjectSettings}
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 200 }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{ position: "fixed", top: 0, right: 0, width: "480px", height: "100vh", background: "white", boxShadow: "-4px 0 24px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column", padding: "24px", overflowY: "auto", boxSizing: "border-box" }}
           >
-            <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, marginBottom: "4px", color: "var(--ink)" }}>
-              {projectSettingsModal.folderType === "novel" ? "📖" : "📁"} {projectSettingsModal.folderName}
+            <div style={{ fontFamily: "'Lora', serif", fontSize: "16px", fontWeight: 600, marginBottom: "8px", color: "var(--ink)" }}>
+              {projectSettingsModal.folderType === "novel" ? "📖" : "📁"} Project名
+            </div>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "4px" }}>
+              <input
+                type="text"
+                aria-label="Project名"
+                value={projectRenameInput}
+                onChange={(e) => setProjectRenameInput(e.target.value)}
+                disabled={projectSettingsSaving || projectRenaming}
+                style={{ flex: 1, minWidth: 0, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-muted)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+              />
+              <button
+                onClick={handleRenameProject}
+                disabled={
+                  !projectSettingsModal.projectId ||
+                  projectRenameInput.trim() === "" ||
+                  projectSettingsSaving ||
+                  projectRenaming
+                }
+                style={{ padding: "7px 14px", borderRadius: "6px", border: "none", background: !projectSettingsModal.projectId || projectRenameInput.trim() === "" || projectSettingsSaving || projectRenaming ? "var(--border)" : "#7c3aed", color: !projectSettingsModal.projectId || projectRenameInput.trim() === "" || projectSettingsSaving || projectRenaming ? "var(--ink-faint)" : "white", fontSize: "12px", cursor: !projectSettingsModal.projectId || projectRenameInput.trim() === "" || projectSettingsSaving || projectRenaming ? "not-allowed" : "pointer", flexShrink: 0 }}
+              >
+                {projectRenaming ? "変更中…" : "変更"}
+              </button>
             </div>
             <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "16px", fontFamily: "'JetBrains Mono', monospace" }}>
               フォルダのシステムプロンプト
@@ -1578,22 +1688,23 @@ export default function Sidebar({
             <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "space-between", alignItems: "center" }}>
               <button
                 onClick={handleOpenProjectDelete}
-                disabled={!projectSettingsModal.projectId || projectSettingsSaving}
-                style={{ padding: "8px 12px", borderRadius: "7px", border: "1px solid #dc2626", background: "white", color: projectSettingsModal.projectId && !projectSettingsSaving ? "#b91c1c" : "var(--ink-faint)", fontSize: "13px", cursor: projectSettingsModal.projectId && !projectSettingsSaving ? "pointer" : "not-allowed" }}
+                disabled={!projectSettingsModal.projectId || projectSettingsSaving || projectRenaming}
+                style={{ padding: "8px 12px", borderRadius: "7px", border: "1px solid #dc2626", background: "white", color: projectSettingsModal.projectId && !projectSettingsSaving && !projectRenaming ? "#b91c1c" : "var(--ink-faint)", fontSize: "13px", cursor: projectSettingsModal.projectId && !projectSettingsSaving && !projectRenaming ? "pointer" : "not-allowed" }}
               >
                 Projectを削除
               </button>
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
-                  onClick={() => setProjectSettingsModal(null)}
+                  onClick={closeProjectSettings}
+                  disabled={projectSettingsSaving || projectRenaming}
                   style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer" }}
                 >
                   キャンセル
                 </button>
                 <button
                   onClick={handleSaveProjectSettings}
-                  disabled={projectSettingsSaving}
-                  style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: projectSettingsSaving ? "var(--border)" : "#7c3aed", color: projectSettingsSaving ? "var(--ink-faint)" : "white", fontSize: "13px", cursor: projectSettingsSaving ? "default" : "pointer", transition: "all 0.15s" }}
+                  disabled={projectSettingsSaving || projectRenaming}
+                  style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: projectSettingsSaving || projectRenaming ? "var(--border)" : "#7c3aed", color: projectSettingsSaving || projectRenaming ? "var(--ink-faint)" : "white", fontSize: "13px", cursor: projectSettingsSaving || projectRenaming ? "default" : "pointer", transition: "all 0.15s" }}
                 >
                   {projectSettingsSaving ? "保存中…" : "保存"}
                 </button>
