@@ -4,6 +4,8 @@ import { Thread } from "@/types";
 import { timeAgo } from "@/lib/formatters";
 import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useToast } from "@/components/Toast";
+import ProjectDeleteConfirmModal from "@/components/ProjectDeleteConfirmModal";
+import { webApiKeyStore } from "@/lib/apiKeyStore";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 
@@ -19,6 +21,7 @@ interface SidebarProps {
   onLogout: () => void;
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
   onNewThreadInFolder: (folderName: string) => void;
+  onRefreshThreads: () => Promise<unknown>;
   isMobileOverlay?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -589,6 +592,7 @@ export default function Sidebar({
   onLogout,
   onUpdateFolder,
   onNewThreadInFolder,
+  onRefreshThreads,
   isMobileOverlay = false,
   isCollapsed = false,
   onToggleCollapse,
@@ -638,6 +642,7 @@ export default function Sidebar({
 
   // フォルダ設定モーダル
   const [projectSettingsModal, setProjectSettingsModal] = useState<{
+    projectId: string | null;
     folderName: string;
     systemPrompt: string;
     folderType: string | null;
@@ -647,6 +652,9 @@ export default function Sidebar({
   } | null>(null);
   const [projectSettingsSaving, setProjectSettingsSaving] = useState(false);
   const [githubRepoError, setGithubRepoError] = useState<string | null>(null);
+  const [projectDeleteModalOpen, setProjectDeleteModalOpen] = useState(false);
+  const [projectDeleting, setProjectDeleting] = useState(false);
+  const [canPromoteProjectToLore, setCanPromoteProjectToLore] = useState(false);
 
   const handleNewThreadInFolder = useCallback((folderName: string) => {
     onNewThreadInFolder(folderName);
@@ -655,8 +663,10 @@ export default function Sidebar({
   const handleEditProjectSettings = useCallback(async (folderName: string) => {
     try {
       const res = await fetch(`/api/project-settings?folder_name=${encodeURIComponent(folderName)}`);
+      if (!res.ok) throw new Error("フォルダ設定の取得に失敗しました");
       const data = await res.json();
       setProjectSettingsModal({
+        projectId: typeof data?.project_id === "string" ? data.project_id : null,
         folderName,
         systemPrompt: data?.system_prompt ?? "",
         folderType: data?.folder_type ?? null,
@@ -667,6 +677,7 @@ export default function Sidebar({
       setGithubRepoError(null);
     } catch {
       setProjectSettingsModal({
+        projectId: null,
         folderName,
         systemPrompt: "",
         folderType: null,
@@ -677,6 +688,76 @@ export default function Sidebar({
       setGithubRepoError(null);
     }
   }, []);
+
+  const handleOpenProjectDelete = useCallback(async () => {
+    if (!projectSettingsModal?.projectId) return;
+
+    let openaiKey: string | null = null;
+    try {
+      openaiKey = await webApiKeyStore.getKey("openai");
+    } catch {
+      // Route側でもheader必須を検証する。UIは読込失敗時に昇格を無効化する。
+    }
+    setCanPromoteProjectToLore(Boolean(openaiKey?.trim()));
+    setProjectDeleteModalOpen(true);
+  }, [projectSettingsModal]);
+
+  const handleDeleteProject = useCallback(async (promoteToLore: boolean) => {
+    if (!projectSettingsModal?.projectId || projectDeleting) return;
+
+    setProjectDeleting(true);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (promoteToLore) {
+        const openaiKey = await webApiKeyStore.getKey("openai");
+        if (!openaiKey?.trim()) {
+          setCanPromoteProjectToLore(false);
+          showToast("OpenAI APIキーが設定されていません", "error");
+          return;
+        }
+        headers["x-openai-api-key"] = openaiKey;
+      }
+
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectSettingsModal.projectId)}`,
+        {
+          method: "DELETE",
+          headers,
+          body: JSON.stringify({ promoteToLore }),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.error === "string"
+            ? data.error
+            : "Projectの削除に失敗しました",
+        );
+      }
+
+      const deletedFolderName = projectSettingsModal.folderName;
+      await onRefreshThreads();
+      setFolderTypes((prev) => {
+        const next = { ...prev };
+        delete next[deletedFolderName];
+        return next;
+      });
+      setProjectDeleteModalOpen(false);
+      setProjectSettingsModal(null);
+      showToast("Projectを削除しました");
+    } catch (err) {
+      console.error("Project削除失敗:", err);
+      showToast(
+        err instanceof Error ? err.message : "Projectの削除に失敗しました",
+        "error",
+      );
+    } finally {
+      setProjectDeleting(false);
+    }
+  }, [onRefreshThreads, projectDeleting, projectSettingsModal, showToast]);
 
   const handleSaveProjectSettings = useCallback(async () => {
     if (!projectSettingsModal) return;
@@ -1380,23 +1461,42 @@ export default function Sidebar({
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
               💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
             </div>
-            <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "space-between", alignItems: "center" }}>
               <button
-                onClick={() => setProjectSettingsModal(null)}
-                style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer" }}
+                onClick={handleOpenProjectDelete}
+                disabled={!projectSettingsModal.projectId || projectSettingsSaving}
+                style={{ padding: "8px 12px", borderRadius: "7px", border: "1px solid #dc2626", background: "white", color: projectSettingsModal.projectId && !projectSettingsSaving ? "#b91c1c" : "var(--ink-faint)", fontSize: "13px", cursor: projectSettingsModal.projectId && !projectSettingsSaving ? "pointer" : "not-allowed" }}
               >
-                キャンセル
+                Projectを削除
               </button>
-              <button
-                onClick={handleSaveProjectSettings}
-                disabled={projectSettingsSaving}
-                style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: projectSettingsSaving ? "var(--border)" : "#7c3aed", color: projectSettingsSaving ? "var(--ink-faint)" : "white", fontSize: "13px", cursor: projectSettingsSaving ? "default" : "pointer", transition: "all 0.15s" }}
-              >
-                {projectSettingsSaving ? "保存中…" : "保存"}
-              </button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => setProjectSettingsModal(null)}
+                  style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "13px", cursor: "pointer" }}
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleSaveProjectSettings}
+                  disabled={projectSettingsSaving}
+                  style={{ padding: "8px 16px", borderRadius: "7px", border: "none", background: projectSettingsSaving ? "var(--border)" : "#7c3aed", color: projectSettingsSaving ? "var(--ink-faint)" : "white", fontSize: "13px", cursor: projectSettingsSaving ? "default" : "pointer", transition: "all 0.15s" }}
+                >
+                  {projectSettingsSaving ? "保存中…" : "保存"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      )}
+      {projectSettingsModal && (
+        <ProjectDeleteConfirmModal
+          isOpen={projectDeleteModalOpen}
+          projectName={projectSettingsModal.folderName}
+          canPromoteToLore={canPromoteProjectToLore}
+          isDeleting={projectDeleting}
+          onDelete={handleDeleteProject}
+          onCancel={() => setProjectDeleteModalOpen(false)}
+        />
       )}
     </aside>
   );

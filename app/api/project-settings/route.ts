@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   }
   if (!resolved.projectId) {
     return finalizeJson({
+      project_id: null,
       system_prompt: null,
       folder_type: null,
       pinned_github_files: [],
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest) {
   }
 
   return finalizeJson({
+    project_id: resolved.projectId,
     system_prompt: data?.system_prompt ?? null,
     folder_type: data?.folder_type ?? null,
     pinned_github_files: data?.pinned_github_files ?? [],

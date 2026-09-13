@@ -139,6 +139,7 @@ test("project-settings resolves the owned project and queries by project_id", as
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
+    project_id: PROJECT_ID,
     system_prompt: "owned setting",
     folder_type: "novel",
     pinned_github_files: ["README.md"],
@@ -181,6 +182,7 @@ test("an unresolved or other-user-only project name keeps successful empty respo
   const settingsResponse = await invokeProjectSettings("other-user-project");
   assert.equal(settingsResponse.status, 200);
   assert.deepEqual(await settingsResponse.json(), {
+    project_id: null,
     system_prompt: null,
     folder_type: null,
     pinned_github_files: [],

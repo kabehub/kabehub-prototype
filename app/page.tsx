@@ -1461,6 +1461,7 @@ export default function Home() {
             handleNewThreadInFolder(folderName);
             if (isMobileViewport) setIsMobileSidebarOpen(false);
           }}
+          onRefreshThreads={fetchThreads}
           isMobileOverlay={isMobileViewport}
           isCollapsed={!isMobileViewport && isSidebarCollapsed}
           onToggleCollapse={() => {

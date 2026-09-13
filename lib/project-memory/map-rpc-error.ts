@@ -26,6 +26,30 @@ const MESSAGE_STATUS_MAP: Record<string, { status: number; error: string }> = {
     status: 400,
     error: "old_text and new_text are required for partial edit",
   },
+  "promote_to_lore is required": {
+    status: 400,
+    error: "promote_to_lore is required",
+  },
+  "lore_promotions must be a jsonb array": {
+    status: 400,
+    error: "lore_promotions must be a jsonb array",
+  },
+  "lore_promotions must be empty when promote_to_lore is false": {
+    status: 400,
+    error: "lore_promotions must be empty when promote_to_lore is false",
+  },
+  "invalid lore promotion element": {
+    status: 400,
+    error: "invalid lore promotion element",
+  },
+  "duplicate topic_id in lore_promotions": {
+    status: 400,
+    error: "duplicate topic_id in lore_promotions",
+  },
+  "topic changed during promotion": {
+    status: 409,
+    error: "Topic changed during promotion",
+  },
 };
 
 export function mapProjectMemoryRpcError(error: { code?: string; message: string }) {

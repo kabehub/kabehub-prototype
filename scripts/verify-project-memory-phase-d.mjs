@@ -517,6 +517,7 @@ async function run() {
     `/api/project-settings?folder_name=${encodeURIComponent(`missing-${suffix}`)}`,
   );
   assert.deepEqual(missingSettings.body, {
+    project_id: null,
     system_prompt: null,
     folder_type: null,
     pinned_github_files: [],

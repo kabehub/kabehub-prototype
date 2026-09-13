@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/09/08（migration_v182_project_memory_phase_a.sql反映・テスト環境/本番DB適用済み）
+-- 最終更新: 2026/09/13（migration_v194_delete_project_preserving_contents.sql反映・DB未適用）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -53,6 +53,7 @@
 -- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映・テスト環境/本番DB適用済み（H-09対応）。
 -- 2026/08/15、migration_v181_ai_usage_events.sqlをスキーマ正本へ反映（本番DB適用済み、AI利用コスト計測基盤対応）。
 -- 2026/09/08、migration_v182_project_memory_phase_a.sqlをスキーマ正本へ反映（テスト環境/本番DB適用済み、Project Memory Manager Phase A対応）。
+-- 2026/09/13、migration_v194_delete_project_preserving_contents.sqlをスキーマ正本へ反映（Project物理削除・関連コンテンツ保持・Project Memory任意Lore昇格。DB未適用）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -209,7 +210,8 @@ grant execute on function public.get_or_create_project(uuid, text)
 -- ============================================================
 create table if not exists project_memory_topics (
   id         uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
+  project_id uuid references projects(id) on delete set null,
+  user_id    uuid not null references auth.users(id) on delete cascade,
   topic_key  text not null,
   content_md text not null default '',
   revision   integer not null default 1,
@@ -223,13 +225,10 @@ alter table project_memory_topics enable row level security;
 
 create policy "project_memory_topics: select own"
   on project_memory_topics for select
-  using (
-    exists (
-      select 1 from projects p
-      where p.id = project_memory_topics.project_id
-        and p.user_id = auth.uid()
-    )
-  );
+  using (auth.uid() = user_id);
+
+create index if not exists idx_project_memory_topics_user
+  on project_memory_topics(user_id);
 
 revoke all on table project_memory_topics from anon, authenticated;
 grant select on table project_memory_topics to authenticated;
@@ -260,9 +259,8 @@ create policy "project_memory_revisions: select own"
   using (
     exists (
       select 1 from project_memory_topics t
-      join projects p on p.id = t.project_id
       where t.id = project_memory_revisions.topic_id
-        and p.user_id = auth.uid()
+        and t.user_id = auth.uid()
     )
   );
 
@@ -310,8 +308,10 @@ begin
     raise exception 'project not found' using errcode = 'P0001';
   end if;
 
-  insert into public.project_memory_topics as t (project_id, topic_key, content_md, revision)
-  values (p_project_id, v_topic_key, coalesce(p_content_md, ''), 1)
+  insert into public.project_memory_topics as t (
+    project_id, user_id, topic_key, content_md, revision
+  )
+  values (p_project_id, p_user_id, v_topic_key, coalesce(p_content_md, ''), 1)
   on conflict (project_id, topic_key) do nothing
   returning t.id, t.created_at into v_topic_id, v_created_at;
 
@@ -373,14 +373,12 @@ begin
     raise exception 'source_refs must be a jsonb array' using errcode = 'P0001';
   end if;
 
-  -- 対象topic行をロック＋所有権確認（SECURITY DEFINERで実質RLSがバイパスされる
-  -- ため、projectsとのJOINで所有権を明示チェックする）
+  -- 対象topic行をロックし、topic自身に保持したuser_idで所有権を確認する。
   select t.content_md, t.revision
   into v_topic
   from public.project_memory_topics t
-  join public.projects p on p.id = t.project_id
-  where t.id = p_topic_id and p.user_id = p_user_id
-  for update of t;
+  where t.id = p_topic_id and t.user_id = p_user_id
+  for update;
 
   if not found then
     raise exception 'topic not found' using errcode = 'P0001';
@@ -468,7 +466,7 @@ create table if not exists threads (
   rp_char_name      text,
   rp_char_icon_url  text,
   shared_at         timestamptz,
-  project_id        uuid references projects(id)
+  project_id        uuid references projects(id) on delete set null
 );
 
 create index if not exists idx_threads_user_id on threads(user_id);
@@ -1296,7 +1294,7 @@ create table if not exists project_settings (
   pinned_github_files   jsonb default '[]'::jsonb,      -- GitHub連携フェーズ4
   github_repo           text default null,               -- "owner/repo" 形式
   github_ref            text default null,               -- ブランチ/タグ/SHA
-  project_id            uuid references projects(id),
+  project_id            uuid references projects(id) on delete cascade,
   unique (user_id, folder_name)
 );
 
@@ -1456,7 +1454,7 @@ create table if not exists lore_embeddings (
   metadata               jsonb default '{}'::jsonb,
   is_manually_corrected  boolean not null default false,
   updated_at             timestamptz,
-  project_id             uuid references projects(id)
+  project_id             uuid references projects(id) on delete set null
 );
 
 create index if not exists idx_lore_embeddings_memory_kind on lore_embeddings(memory_kind);
@@ -1505,6 +1503,174 @@ create policy "lore_embeddings: update own"
 create policy "lore_embeddings: delete own"
   on lore_embeddings for delete
   using (auth.uid() = user_id);
+
+-- ============================================================
+-- Project物理削除（関連コンテンツ保持 + Project Memory任意Lore昇格）
+-- ============================================================
+create or replace function public.delete_project_preserving_contents(
+  p_user_id uuid,
+  p_project_id uuid,
+  p_promote_to_lore boolean,
+  p_lore_promotions jsonb default '[]'::jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_promo jsonb;
+  v_topic record;
+  v_promo_topic_ids uuid[];
+  v_nonempty_topic_ids uuid[] := '{}'::uuid[];
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  if p_promote_to_lore is null then
+    raise exception 'promote_to_lore is required' using errcode = 'P0001';
+  end if;
+
+  if p_lore_promotions is null
+     or jsonb_typeof(p_lore_promotions) is distinct from 'array'
+  then
+    raise exception 'lore_promotions must be a jsonb array' using errcode = 'P0001';
+  end if;
+
+  if p_promote_to_lore is false and jsonb_array_length(p_lore_promotions) <> 0 then
+    raise exception 'lore_promotions must be empty when promote_to_lore is false'
+      using errcode = 'P0001';
+  end if;
+
+  for v_promo in select * from jsonb_array_elements(p_lore_promotions)
+  loop
+    if jsonb_typeof(v_promo) is distinct from 'object'
+       or v_promo->>'topic_id' is null
+       or v_promo->>'expected_revision' is null
+       or v_promo->'embedding' is null
+       or jsonb_typeof(v_promo->'embedding') is distinct from 'array'
+    then
+      raise exception 'invalid lore promotion element' using errcode = 'P0001';
+    end if;
+
+    if jsonb_typeof(v_promo->'topic_id') is distinct from 'string'
+       or (v_promo->>'topic_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or jsonb_typeof(v_promo->'expected_revision') is distinct from 'number'
+       or (v_promo->>'expected_revision') !~ '^[1-9][0-9]*$'
+       or jsonb_array_length(v_promo->'embedding') = 0
+       or exists (
+         select 1
+         from jsonb_array_elements(v_promo->'embedding')
+           as embedding_element(value)
+         where jsonb_typeof(embedding_element.value) is distinct from 'number'
+       )
+    then
+      raise exception 'invalid lore promotion element' using errcode = 'P0001';
+    end if;
+  end loop;
+
+  select array_agg((elem->>'topic_id')::uuid)
+  into v_promo_topic_ids
+  from jsonb_array_elements(p_lore_promotions) elem;
+
+  if v_promo_topic_ids is not null
+     and array_length(v_promo_topic_ids, 1) <>
+       (select count(distinct x) from unnest(v_promo_topic_ids) x)
+  then
+    raise exception 'duplicate topic_id in lore_promotions' using errcode = 'P0001';
+  end if;
+
+  perform 1
+  from public.projects p
+  where p.id = p_project_id and p.user_id = p_user_id
+  for update;
+  if not found then
+    raise exception 'project not found' using errcode = 'P0001';
+  end if;
+
+  for v_topic in
+    select t.id, t.content_md, t.revision
+    from public.project_memory_topics t
+    where t.project_id = p_project_id
+      and t.user_id = p_user_id
+    order by t.id
+    for update
+  loop
+    if btrim(v_topic.content_md) <> '' then
+      v_nonempty_topic_ids := array_append(v_nonempty_topic_ids, v_topic.id);
+    end if;
+  end loop;
+
+  if p_promote_to_lore then
+    if coalesce(array_length(v_nonempty_topic_ids, 1), 0) <>
+       coalesce(array_length(v_promo_topic_ids, 1), 0)
+    then
+      raise exception 'topic changed during promotion' using errcode = 'P0001';
+    end if;
+
+    for v_promo in select * from jsonb_array_elements(p_lore_promotions)
+    loop
+      select id, content_md, topic_key, revision
+      into v_topic
+      from public.project_memory_topics
+      where id = (v_promo->>'topic_id')::uuid
+        and project_id = p_project_id
+        and user_id = p_user_id;
+
+      if not found
+         or v_topic.revision is distinct from (v_promo->>'expected_revision')::int
+         or not (v_topic.id = any(v_nonempty_topic_ids))
+      then
+        raise exception 'topic changed during promotion' using errcode = 'P0001';
+      end if;
+
+      insert into public.lore_embeddings (
+        user_id, chunk_text, embedding, memory_kind, temporal_status,
+        extraction_version, source_type, project_id, folder_name, metadata
+      )
+      values (
+        p_user_id,
+        v_topic.content_md,
+        (v_promo->>'embedding')::public.vector,
+        'project',
+        'current',
+        'user_created',
+        'project_memory_promotion',
+        null,
+        null,
+        jsonb_build_object(
+          'source_topic_id', v_topic.id,
+          'source_topic_key', v_topic.topic_key,
+          'source_project_id', p_project_id
+        )
+      );
+    end loop;
+  end if;
+
+  update public.threads
+  set project_id = null,
+      folder_name = null
+  where project_id = p_project_id and user_id = p_user_id;
+
+  update public.lore_embeddings
+  set project_id = null,
+      folder_name = null
+  where project_id = p_project_id and user_id = p_user_id;
+
+  update public.project_memory_topics
+  set project_id = null
+  where project_id = p_project_id and user_id = p_user_id;
+
+  delete from public.projects
+  where id = p_project_id and user_id = p_user_id;
+end;
+$$;
+
+revoke execute on function public.delete_project_preserving_contents(uuid, uuid, boolean, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.delete_project_preserving_contents(uuid, uuid, boolean, jsonb)
+  to authenticated;
 
 -- ============================================================
 -- lore_consolidation_dismissals テーブル（Dreaming統合の却下履歴）
