@@ -5,7 +5,13 @@ import { timeAgo } from "@/lib/formatters";
 import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useToast } from "@/components/Toast";
 import ProjectDeleteConfirmModal from "@/components/ProjectDeleteConfirmModal";
+import ProjectMemoryConsolidationModal from "@/components/ProjectMemoryConsolidationModal";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
+import {
+  applyProjectMemoryConsolidation,
+  type ConsolidationApplyResult,
+  type ProjectMemoryConsolidationPreview,
+} from "@/lib/project-memory/consolidation-client";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 
@@ -655,6 +661,14 @@ export default function Sidebar({
   const [projectDeleteModalOpen, setProjectDeleteModalOpen] = useState(false);
   const [projectDeleting, setProjectDeleting] = useState(false);
   const [canPromoteProjectToLore, setCanPromoteProjectToLore] = useState(false);
+  const [consolidationLoading, setConsolidationLoading] = useState(false);
+  const [consolidationApplying, setConsolidationApplying] = useState(false);
+  const [consolidationResults, setConsolidationResults] = useState<ConsolidationApplyResult[] | null>(null);
+  const [consolidationModal, setConsolidationModal] = useState<{
+    projectId: string;
+    projectName: string;
+    preview: ProjectMemoryConsolidationPreview;
+  } | null>(null);
 
   const handleNewThreadInFolder = useCallback((folderName: string) => {
     onNewThreadInFolder(folderName);
@@ -701,6 +715,91 @@ export default function Sidebar({
     setCanPromoteProjectToLore(Boolean(openaiKey?.trim()));
     setProjectDeleteModalOpen(true);
   }, [projectSettingsModal]);
+
+  const handleOpenMemoryConsolidation = useCallback(async () => {
+    if (!projectSettingsModal?.projectId || consolidationLoading) return;
+
+    setConsolidationLoading(true);
+    try {
+      const openaiKey = await webApiKeyStore.getKey("openai");
+      if (!openaiKey?.trim()) {
+        throw new Error("OpenAI APIキーが設定されていません");
+      }
+
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectSettingsModal.projectId)}/memory/consolidate/preview`,
+        {
+          method: "POST",
+          headers: { "x-openai-api-key": openaiKey },
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          typeof body?.error === "string"
+            ? body.error
+            : "Project Memoryの整理案を生成できませんでした",
+        );
+      }
+      if (
+        typeof body?.run_id !== "string" ||
+        typeof body?.model !== "string" ||
+        typeof body?.prompt_version !== "number" ||
+        !Array.isArray(body?.considered_topics) ||
+        !Array.isArray(body?.topics)
+      ) {
+        throw new Error("Project Memoryの整理案を生成できませんでした");
+      }
+
+      const preview = body as ProjectMemoryConsolidationPreview;
+      if (preview.topics.length === 0) {
+        showToast("整理が必要なProject Memoryはありません");
+        return;
+      }
+      setConsolidationResults(null);
+      setConsolidationModal({
+        projectId: projectSettingsModal.projectId,
+        projectName: projectSettingsModal.folderName,
+        preview,
+      });
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Project Memoryの整理案を生成できませんでした",
+        "error",
+      );
+    } finally {
+      setConsolidationLoading(false);
+    }
+  }, [consolidationLoading, projectSettingsModal, showToast]);
+
+  const handleApplyMemoryConsolidation = useCallback(async (topicIds: string[]) => {
+    if (!consolidationModal || consolidationApplying || topicIds.length === 0) return;
+
+    setConsolidationApplying(true);
+    try {
+      const results = await applyProjectMemoryConsolidation(
+        consolidationModal.projectId,
+        consolidationModal.preview,
+        topicIds,
+      );
+      setConsolidationResults(results);
+      const appliedCount = results.filter((result) => result.status === "applied").length;
+      const conflictCount = results.filter((result) => result.status === "conflict").length;
+      const failedCount = results.length - appliedCount - conflictCount;
+      if (conflictCount === 0 && failedCount === 0) {
+        showToast(`${appliedCount}件のProject Memoryを更新しました`);
+      } else {
+        showToast(
+          `${appliedCount}件更新、${conflictCount}件競合、${failedCount}件失敗`,
+          conflictCount + failedCount > 0 ? "error" : undefined,
+        );
+      }
+    } finally {
+      setConsolidationApplying(false);
+    }
+  }, [consolidationApplying, consolidationModal, showToast]);
 
   const handleDeleteProject = useCallback(async (promoteToLore: boolean) => {
     if (!projectSettingsModal?.projectId || projectDeleting) return;
@@ -1461,6 +1560,21 @@ export default function Sidebar({
             <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
               💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
             </div>
+            <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", background: "white" }}>
+              <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "3px" }}>
+                Project Memory
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--ink-muted)", lineHeight: 1.6, marginBottom: "10px" }}>
+                既存topicの重複・矛盾・古くなった記述をAIで確認し、topicごとの全文更新案を作ります。
+              </div>
+              <button
+                onClick={handleOpenMemoryConsolidation}
+                disabled={!projectSettingsModal.projectId || consolidationLoading}
+                style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: projectSettingsModal.projectId && !consolidationLoading ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: projectSettingsModal.projectId && !consolidationLoading ? "pointer" : "not-allowed", fontWeight: 500 }}
+              >
+                {consolidationLoading ? "整理案を生成中…" : "Project Memoryを整理"}
+              </button>
+            </div>
             <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "space-between", alignItems: "center" }}>
               <button
                 onClick={handleOpenProjectDelete}
@@ -1496,6 +1610,21 @@ export default function Sidebar({
           isDeleting={projectDeleting}
           onDelete={handleDeleteProject}
           onCancel={() => setProjectDeleteModalOpen(false)}
+        />
+      )}
+      {consolidationModal && (
+        <ProjectMemoryConsolidationModal
+          isOpen
+          projectName={consolidationModal.projectName}
+          preview={consolidationModal.preview}
+          isApplying={consolidationApplying}
+          results={consolidationResults}
+          onApply={handleApplyMemoryConsolidation}
+          onCancel={() => {
+            if (consolidationApplying) return;
+            setConsolidationModal(null);
+            setConsolidationResults(null);
+          }}
         />
       )}
     </aside>

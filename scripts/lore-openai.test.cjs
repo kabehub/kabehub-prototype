@@ -98,6 +98,20 @@ async function rejectsMessage(promise, message) {
     assert.deepEqual(body.response_format, { type: "json_object" });
   });
 
+  await test("chatCompleteMini accepts a dedicated completion token budget", async () => {
+    let body;
+    global.fetch = async (_url, options) => {
+      body = JSON.parse(options.body);
+      return response(true, { choices: [{ message: { content: "{}" } }] });
+    };
+    await chatCompleteMini("key", "system", "user", {
+      jsonMode: true,
+      maxCompletionTokens: 8192,
+    });
+    assert.equal(body.max_completion_tokens, 8192);
+    assert.deepEqual(body.response_format, { type: "json_object" });
+  });
+
   await test("chatCompleteMini throws the expected HTTP error", async () => {
     global.fetch = async () => response(false, {});
     await rejectsMessage(chatCompleteMini("key", "system", "user"), "OpenAI APIへのリクエストに失敗しました");

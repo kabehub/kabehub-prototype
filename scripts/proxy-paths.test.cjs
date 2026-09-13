@@ -110,6 +110,10 @@ test("every manifest rule×method maps to a real exported route method", () => {
 
 test("classification helpers are fail-closed and keep auth modes separate", () => {
   assert.equal(classifyApi("/api/chat", "POST"), "bearer");
+  assert.equal(
+    classifyApi("/api/projects/project-1/memory/consolidate/preview", "POST"),
+    "bearer"
+  );
   assert.equal(classifyApi("/api/share/token", "GET"), "public");
   assert.equal(classifyApi("/api/mcp/threads", "GET"), "mcp");
   assert.equal(

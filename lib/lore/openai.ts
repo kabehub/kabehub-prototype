@@ -67,7 +67,7 @@ export async function chatCompleteMini(
   openaiKey: string,
   systemPrompt: string,
   userContent: string,
-  opts?: { jsonMode?: boolean },
+  opts?: { jsonMode?: boolean; maxCompletionTokens?: number },
 ): Promise<string | null> {
   let llmRes: Response;
   try {
@@ -80,7 +80,7 @@ export async function chatCompleteMini(
       body: JSON.stringify({
         model: LORE_CHAT_MODEL,
         reasoning_effort: "none",
-        max_completion_tokens: 2000,
+        max_completion_tokens: opts?.maxCompletionTokens ?? 2000,
         ...(opts?.jsonMode ? { response_format: { type: "json_object" } } : {}),
         messages: [
           { role: "system", content: systemPrompt },

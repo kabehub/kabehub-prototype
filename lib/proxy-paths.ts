@@ -72,6 +72,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/novel-check\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/profile\/?$/, methods: ["GET", "POST"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/?$/, methods: ["DELETE"], classification: "bearer" },
+  { pattern: /^\/api\/projects\/[^/]+\/memory\/consolidate\/preview\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/?$/, methods: ["GET", "POST"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/[^/]+\/?$/, methods: ["GET", "PATCH"], classification: "bearer" },
   { pattern: /^\/api\/reports\/?$/, methods: ["POST"], classification: "bearer" },

@@ -69,6 +69,7 @@ Web/Mobileのどちらでも、BYOK APIキーをKabeHubのアプリケーショ�
 | `app/memory/page.tsx` / `MemoryCard.patchCard`（`update_text`のみ） | `/api/lore/[id]` | `x-openai-api-key` | メタデータ更新・pin・archive等にはキーを送らない |
 | `app/memory/page.tsx` / 手動記憶追加 | `/api/lore` | `x-openai-api-key` | OpenAI embedding作成 |
 | `components/Sidebar.tsx` / Project削除（Lore昇格あり） | `/api/projects/[projectId]`（`DELETE`） | `x-openai-api-key` | Project Memoryの本文からOpenAI embeddingを作成。昇格なしの削除ではキーを送らない |
+| `components/Sidebar.tsx` / `handleOpenMemoryConsolidation` | `/api/projects/[projectId]/memory/consolidate/preview` | `x-openai-api-key` | Project Memory全topic（`current_state`除外）のcontent-only整理案をオンデマンド生成。適用時の既存topic PATCHにはキーを送らない |
 | `app/memory/page.tsx`、`app/settings/page.tsx` / `handleBatchTrain` | `/api/lore/batch-train` | `x-openai-api-key` | OpenAI chat/embedding |
 | `app/memory/page.tsx` / `handleDreamingBatch` | `/api/lore/dreaming-batch` | `x-openai-api-key` | OpenAI chat/embedding |
 | `app/memory/page.tsx` / `handlePreviewMerge` | `/api/lore/consolidate/preview` | `x-openai-api-key` | OpenAI chat |
@@ -94,6 +95,7 @@ Web/Mobileのどちらでも、BYOK APIキーをKabeHubのアプリケーショ�
 | `app/api/novel-check/route.ts` / `POST` | 受信・外部転送 / Gemini | `x-goog-api-key` | なし | provider/status/固定errorCodeのみ | 本文を解析・転送せず、SSEへ固定メッセージ |
 | `app/api/lore/route.ts` / `POST` | 受信・外部転送 / OpenAI | `lib/lore/openai.ts`から`Authorization: Bearer` | `lore_embeddings.insert`あり（本文・embedding・分類のみ、キーなし） | 共通helperがprovider/status/固定errorCodeのみ | 固定`OpenAI APIへのリクエストに失敗しました` |
 | `app/api/projects/[projectId]/route.ts` / `DELETE`（Lore昇格あり） | 受信・外部転送 / OpenAI | `lib/lore/openai.ts`の`createEmbedding()`から`Authorization: Bearer` | 削除RPCへtopic ID・revision・embeddingを渡し、DB内の本文・分類値と合わせてLoreを作成（キーなし）。昇格なしでは外部転送なし | 共通helperがprovider/status/固定errorCodeのみ | 固定`OpenAI APIへのリクエストに失敗しました` |
+| `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` / `POST` | 受信・外部転送 / OpenAI | `lib/project-memory/consolidation.ts`から`lib/lore/openai.ts`を経由し`Authorization: Bearer`でChat Completionsへ送信 | なし。Previewのみを返し、承認後は既存topic PATCHが`source_refs`へprovenance metadataを書き込む（キーなし） | 共通helperとRouteがprovider/status/固定errorCodeのみ。snapshot本文・生成結果・キーは記録しない | 固定`Project Memoryの整理案を生成できませんでした` |
 | `app/api/lore/[id]/route.ts` / `PATCH`の`update_text` | 受信・外部転送 / OpenAI | 同上 | `lore_embeddings.update`あり（本文・embedding・分類のみ、キーなし） | 同上 | 同上 |
 | `app/api/lore/embed/route.ts` / `POST` | 受信・外部転送 / OpenAI | 同上 | 既存Lore削除と`lore_embeddings.insert`あり（本文・embeddingのみ、キーなし） | provider/status/固定errorCodeのみ | `{error, provider, status}`の固定メッセージ |
 | `app/api/lore/like/route.ts` / `POST` | 受信・外部転送 / OpenAI | 同上 | `lore_embeddings.insert`あり（既存message本文・embedding・由来metadataのみ、キーなし） | provider/status/固定errorCodeのみ | `{error, provider, status}`の固定メッセージ |
