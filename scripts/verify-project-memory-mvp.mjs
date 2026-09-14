@@ -4,8 +4,8 @@
  *
  * 実装順5: 初期4topicでのMVP動作確認
  * Project Memory Manager (仮) の Update Protocol API を test環境に対して
- * 実際に POST -> GET(一覧/単体) -> PATCH(full/partial) -> 楽観ロック(409)
- * の順で叩き、raw JSONをそのまま出力する。
+ * 実際に project作成POST x2 -> topic作成POST x4 -> GET(一覧/単体)
+ * -> PATCH(full/partial) -> 楽観ロック(409) の順で叩き、raw JSONをそのまま出力する。
  * 手動実行専用。test環境以外、特に本番環境に対しては絶対に実行しないこと。
  *
  * 事前準備:
@@ -23,18 +23,13 @@
  *   node --env-file=.env.test.local scripts/verify-project-memory-mvp.mjs
  *
  * project作成について:
- *   - projectsテーブルは "projects: insert own" RLS（auth.uid() = user_id）で
- *     authenticatedロールにINSERTが許可されているため、専用APIルートが無くても
- *     ログイン済みSupabaseクライアントから直接INSERTできる。
  *   - TEST_PROJECT_ID未指定時は `mvp-verify-<timestamp>` という名前で
- *     projectを1件自動作成し、そのidを使う（UNIQUE(user_id, name)により
- *     複数回実行しても衝突しない）。
- *   - この自動作成処理は、post-MVPバックログ「検証用project作成APIの正式実装」の
- *     叩き台として利用できる。
+ *     `POST /api/projects` を2回連続実行し、同じproject_idが返ることを確認する。
+ *     そのidを後続のtopic検証に使う。
  *
  * 注意:
- *   - DELETE APIは未実装（MVP方針で削除禁止）のため、作成したtopicは
- *     test DBに残り続ける。同一project_idに対する2回目以降の実行は
+ *   - このスクリプトはproject削除APIを呼ばないため、作成したprojectとtopicは
+ *     test DBに残る。同一project_idに対する2回目以降の実行は
  *     topic_key の重複で POSTが 409 "topic already exists" になる
  *     想定通りの結果になる。project自動作成モードなら毎回新しいprojectに
  *     なるためこの制約は気にしなくてよい。
@@ -114,23 +109,59 @@ async function main() {
   const token = signInData.session.access_token;
   log("LOGIN", { userId: signInData.user.id });
 
-  // 0. TEST_PROJECT_ID未指定なら検証用projectを自動作成
-  //    (RLS "projects: insert own" により、ログイン済みクライアントから直接INSERT可能)
+  // 2. TEST_PROJECT_ID未指定なら正式APIで検証用projectを取得または作成し、
+  //    同名への2回連続POSTが同じproject_idを返すことを確認
   let projectId = TEST_PROJECT_ID;
   if (!projectId) {
     const projectName = `mvp-verify-${Date.now()}`;
-    const { data: projectRow, error: projectError } = await supabase
-      .from("projects")
-      .insert({ user_id: signInData.user.id, name: projectName })
-      .select("id, name, created_at")
-      .single();
-    if (projectError) {
-      console.error("[PROJECT CREATE FAILED]", projectError.message);
+    const firstProjectResponse = await api(
+      "POST",
+      "/api/projects",
+      token,
+      { name: projectName },
+    );
+    log(
+      `POST /api/projects (1/2) -> ${firstProjectResponse.status}`,
+      firstProjectResponse.json,
+    );
+
+    const secondProjectResponse = await api(
+      "POST",
+      "/api/projects",
+      token,
+      { name: projectName },
+    );
+    log(
+      `POST /api/projects (2/2) -> ${secondProjectResponse.status}`,
+      secondProjectResponse.json,
+    );
+
+    if (firstProjectResponse.status !== 200) {
+      fail("1回目のPOST /api/projectsが200ではありません");
+    }
+    if (secondProjectResponse.status !== 200) {
+      fail("2回目のPOST /api/projectsが200ではありません");
+    }
+
+    const firstProjectId = firstProjectResponse.json?.project_id;
+    const secondProjectId = secondProjectResponse.json?.project_id;
+    if (!firstProjectId || !secondProjectId) {
+      fail("POST /api/projectsのレスポンスにproject_idがありません");
+    } else if (firstProjectId !== secondProjectId) {
+      fail("同名projectへの2回のPOSTでproject_idが一致しません");
+    }
+
+    if (
+      firstProjectResponse.status !== 200 ||
+      secondProjectResponse.status !== 200 ||
+      !firstProjectId ||
+      !secondProjectId ||
+      firstProjectId !== secondProjectId
+    ) {
       process.exitCode = 1;
       return;
     }
-    log("CREATED PROJECT", projectRow);
-    projectId = projectRow.id;
+    projectId = firstProjectId;
   } else {
     log("USING EXISTING PROJECT_ID", { projectId });
   }
@@ -138,7 +169,7 @@ async function main() {
   const topicKeys = ["overview", "current-work", "principles", "references"];
   const created = {};
 
-  // 2. POST x4 - topic作成
+  // 3. POST x4 - topic作成
   for (const key of topicKeys) {
     const { status, json } = await api(
       "POST",
@@ -165,7 +196,7 @@ async function main() {
     return;
   }
 
-  // 3. GET一覧
+  // 4. GET一覧
   {
     const { status, json } = await api(
       "GET",
@@ -183,7 +214,7 @@ async function main() {
     }
   }
 
-  // 4. GET単体
+  // 5. GET単体
   const overviewId = created["overview"].id;
   {
     const { status, json } = await api(
@@ -197,7 +228,7 @@ async function main() {
     }
   }
 
-  // 5. PATCH full編集
+  // 6. PATCH full編集
   let currentRevision = created["overview"].revision; // 1のはず
   {
     const { status, json } = await api(
@@ -218,7 +249,7 @@ async function main() {
     }
   }
 
-  // 6. PATCH partial編集
+  // 7. PATCH partial編集
   {
     const { status, json } = await api(
       "PATCH",
@@ -242,7 +273,7 @@ async function main() {
     }
   }
 
-  // 7. 楽観ロック確認（stale revisionで409）
+  // 8. 楽観ロック確認（stale revisionで409）
   {
     const staleRevision = currentRevision - 1;
     const { status, json } = await api(
