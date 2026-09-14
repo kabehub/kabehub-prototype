@@ -85,14 +85,16 @@ const sidebarModule = require(path.join(
   "Sidebar.tsx",
 ));
 const Sidebar = sidebarModule.default;
-const { rekeyFolderTypesAfterRename } = sidebarModule;
 
 global.fetch = async (input, init = {}) => {
   const url = String(input);
   const method = init.method ?? "GET";
   const body = typeof init.body === "string" ? JSON.parse(init.body) : null;
-  fetchCalls.push({ url, method, body });
+  fetchCalls.push({ url, method, body, cache: init.cache });
 
+  if (url === "/api/projects" && method === "GET") {
+    return Response.json({ projects: [{ id: "11111111-1111-4111-8111-111111111111", name: "New Project" }] });
+  }
   if (url.startsWith("/api/project-settings?") && method === "GET") {
     return Response.json({
       project_id: "11111111-1111-4111-8111-111111111111",
@@ -119,6 +121,7 @@ const props = {
       title: "Thread",
       created_at: "2026-09-14T00:00:00.000Z",
       folder_name: "Old Project",
+      project_id: "11111111-1111-4111-8111-111111111111",
     },
   ],
   activeThreadId: null,
@@ -129,7 +132,7 @@ const props = {
   isSearching: false,
   user: { id: "user-1", email: "user@example.com" },
   onLogout() {},
-  onUpdateFolder() {},
+  async onUpdateFolder() { return null; },
   onNewThreadInFolder() {},
   async onRefreshThreads() {
     refreshCalls += 1;
@@ -196,14 +199,6 @@ async function openSettings(nodes) {
 
 (async () => {
   try {
-    assert.deepEqual(
-      rekeyFolderTypesAfterRename(
-        { "Old Project": "novel", Other: null },
-        "Old Project",
-        "New Project",
-      ),
-      { "New Project": "novel", Other: null },
-    );
 
     hookState = [];
     fetchCalls = [];
@@ -239,11 +234,23 @@ async function openSettings(nodes) {
     const renameCall = fetchCalls.find((call) => call.method === "PATCH");
     assert.deepEqual(renameCall.body, { name: "  New Project  " });
     assert.equal(refreshCalls, 1);
+    const projectsListCall = fetchCalls.find(
+      (call) => call.url === "/api/projects" && call.method === "GET",
+    );
+    assert.ok(projectsListCall, "rename must refresh the Projects name map");
+    assert.equal(projectsListCall.cache, "no-store");
     assert.deepEqual(toastCalls.at(-1), [
       "Project名を「New Project」に変更しました",
     ]);
 
     nodes = renderSidebar();
+    assert.equal(
+      nodes.some(
+        (node) => node.type === "span" && textContent(node.props.children) === "New Project",
+      ),
+      true,
+      "the projectNameById map must expose the renamed display name",
+    );
     assert.equal(
       nodes.some(
         (node) =>

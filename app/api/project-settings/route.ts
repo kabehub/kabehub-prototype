@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   if (!folder_name) {
     const { data, error } = await supabase
       .from('project_settings')
-      .select('folder_name, folder_type')
+      .select('project_id, folder_type')
       .eq('user_id', user.id)
 
     if (error) {

@@ -389,19 +389,37 @@ export default function Home() {
     [activeThreadId, fetchThreads, showToast]
   );
 
-  const handleUpdateFolder = useCallback(async (threadId: string, folderName: string | null) => {
-    await fetch(`/api/threads/${threadId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ folder_name: folderName }),
-    });
-    setThreads((prev) =>
-      prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
-    );
-    setDisplayThreads((prev) =>
-      prev.map((t) => t.id === threadId ? { ...t, folder_name: folderName } : t)
-    );
-  }, []);
+  const handleUpdateFolder = useCallback(
+    async (threadId: string, folderName: string | null): Promise<Thread | null> => {
+      try {
+        const res = await fetch(`/api/threads/${threadId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder_name: folderName }),
+        });
+        if (!res.ok) {
+          showToast("フォルダの更新に失敗しました", "error");
+          return null;
+        }
+        const updatedThread: Thread = await res.json();
+        const patch = {
+          folder_name: updatedThread.folder_name,
+          project_id: updatedThread.project_id,
+        };
+        setThreads((prev) =>
+          prev.map((t) => (t.id === threadId ? { ...t, ...patch } : t))
+        );
+        setDisplayThreads((prev) =>
+          prev.map((t) => (t.id === threadId ? { ...t, ...patch } : t))
+        );
+        return updatedThread;
+      } catch {
+        showToast("フォルダの更新に失敗しました", "error");
+        return null;
+      }
+    },
+    [showToast]
+  );
 
   const handleTitleUpdate = useCallback((id: string, title: string) => {
     setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));

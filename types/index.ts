@@ -27,6 +27,7 @@ export interface Thread {
   forked_from_id?: string | null;
   allow_prompt_fork?: boolean;
   folder_name?: string | null;
+  project_id?: string | null;
   genre?: string | null;
   // ✅ v63追加: なりきりモード
   roleplay_mode?: boolean;

@@ -13,6 +13,7 @@ import { timeAgo, type Thread } from "@kabehub/shared";
 
 export interface SidebarProps {
   threads: Thread[];
+  projects: { id: string; name: string }[];
   activeThreadId: string | null;
   onSelectThread: (id: string) => void;
   onNewThread: () => void;
@@ -36,28 +37,35 @@ export interface SidebarProps {
 
 type SearchTarget = "title" | "message" | "both";
 
-function groupThreadsByFolder(
-  threads: Thread[]
-): { folderName: string | null; threads: Thread[] }[] {
+function groupThreadsByProject(
+  threads: Thread[],
+  projectNameById: Record<string, string>
+): { projectId: string | null; threads: Thread[] }[] {
   const map = new Map<string, Thread[]>();
   const nullKey = "__null__";
 
   for (const thread of threads) {
-    const key = thread.folder_name ?? nullKey;
+    const key = thread.project_id ?? nullKey;
     if (!map.has(key)) map.set(key, []);
     map.get(key)?.push(thread);
   }
 
-  const result: { folderName: string | null; threads: Thread[] }[] = [];
-  const folderNames = Array.from(map.keys())
-    .filter((key) => key !== nullKey)
-    .sort();
-
-  for (const folderName of folderNames) {
-    result.push({ folderName, threads: map.get(folderName) ?? [] });
-  }
+  const keys = Array.from(map.keys()).filter((key) => key !== nullKey);
+  const sortNameFor = (key: string): string => {
+    if (projectNameById[key]) return projectNameById[key];
+    const representative = map.get(key)?.find((thread) => thread.folder_name);
+    return representative?.folder_name ?? "";
+  };
+  keys.sort((a, b) => {
+    const nameA = sortNameFor(a);
+    const nameB = sortNameFor(b);
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    return a.localeCompare(b);
+  });
+  const result: { projectId: string | null; threads: Thread[] }[] =
+    keys.map((key) => ({ projectId: key, threads: map.get(key) ?? [] }));
   if (map.has(nullKey)) {
-    result.push({ folderName: null, threads: map.get(nullKey) ?? [] });
+    result.push({ projectId: null, threads: map.get(nullKey) ?? [] });
   }
 
   return result;
@@ -351,15 +359,19 @@ function RecentSection({
 }
 
 interface FolderSectionProps extends ThreadSectionProps {
-  folderName: string | null;
+  projectId: string | null;
+  displayName: string | null;
+  legacyFolderName: string | null;
   defaultCollapsed: boolean;
   onNewThreadInFolder?: (
-    folderName: string
+    legacyFolderName: string
   ) => void | Promise<void>;
 }
 
 function FolderSection({
-  folderName,
+  projectId,
+  displayName,
+  legacyFolderName,
   threads,
   activeThreadId,
   existingFolders,
@@ -392,21 +404,21 @@ function FolderSection({
             ▼
           </span>
           <span className="chat-sidebar-folder-icon" aria-hidden="true">
-            {folderName ? "📁" : "📋"}
+            {projectId ? "📁" : "📋"}
           </span>
           <span className="chat-sidebar-section-name">
-            {folderName ?? "未分類"}
+            {displayName ?? "未分類"}
           </span>
           <span className="chat-sidebar-section-count">{threads.length}</span>
         </button>
 
-        {folderName && onNewThreadInFolder && (
+        {projectId && legacyFolderName && onNewThreadInFolder && (
           <button
             type="button"
             className="chat-sidebar-folder-add"
-            onClick={() => void onNewThreadInFolder(folderName)}
-            aria-label={`「${folderName}」に新しいスレッドを作成`}
-            title={`「${folderName}」に新しいスレッドを作成`}
+            onClick={() => void onNewThreadInFolder(legacyFolderName)}
+            aria-label={`「${displayName ?? legacyFolderName}」に新しいスレッドを作成`}
+            title={`「${displayName ?? legacyFolderName}」に新しいスレッドを作成`}
           >
             +
           </button>
@@ -442,6 +454,7 @@ const searchTargets: { value: SearchTarget; label: string }[] = [
 
 export default function Sidebar({
   threads,
+  projects,
   activeThreadId,
   onSelectThread,
   onNewThread,
@@ -499,7 +512,14 @@ export default function Sidebar({
     void onSearch("", searchTarget);
   }, [onSearch, searchTarget]);
 
-  const grouped = useMemo(() => groupThreadsByFolder(threads), [threads]);
+  const projectNameById = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.name])),
+    [projects]
+  );
+  const grouped = useMemo(
+    () => groupThreadsByProject(threads, projectNameById),
+    [threads, projectNameById]
+  );
   const existingFolders = useMemo(
     () => getUniqueFolderNames(threads),
     [threads]
@@ -564,13 +584,20 @@ export default function Sidebar({
 
         {!showFlat &&
           grouped.map((group) => {
+            const legacyFolderName: string | null =
+              group.threads.find((thread) => thread.folder_name)?.folder_name ?? null;
+            const displayName: string | null = group.projectId
+              ? (projectNameById[group.projectId] ?? legacyFolderName ?? "…")
+              : null;
             const hasActiveThread = group.threads.some(
               (thread) => thread.id === activeThreadId
             );
             return (
               <FolderSection
-                key={group.folderName ?? "__null__"}
-                folderName={group.folderName}
+                key={group.projectId ?? "__null__"}
+                projectId={group.projectId}
+                displayName={displayName}
+                legacyFolderName={legacyFolderName}
                 threads={group.threads}
                 activeThreadId={activeThreadId}
                 existingFolders={existingFolders}

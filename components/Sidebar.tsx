@@ -25,7 +25,7 @@ interface SidebarProps {
   isSearching: boolean;
   user: User | null;
   onLogout: () => void;
-  onUpdateFolder: (threadId: string, folderName: string | null) => void;
+  onUpdateFolder: (threadId: string, folderName: string | null) => Promise<Thread | null>;
   onNewThreadInFolder: (folderName: string) => void;
   onRefreshThreads: () => Promise<unknown>;
   isMobileOverlay?: boolean;
@@ -33,25 +33,36 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
 }
 
-// フォルダ名でスレッドをグループ化
-function groupThreadsByFolder(threads: Thread[]): { folderName: string | null; threads: Thread[] }[] {
+// 不変のProject IDでスレッドをグループ化
+function groupThreadsByProject(
+  threads: Thread[],
+  projectNameById: Record<string, string>
+): { projectId: string | null; threads: Thread[] }[] {
   const map = new Map<string, Thread[]>();
   const nullKey = "__null__";
 
   for (const t of threads) {
-    const key = t.folder_name ?? nullKey;
+    const key = t.project_id ?? nullKey;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
   }
 
-  // フォルダ名あり → アルファベット順、未分類は末尾
-  const result: { folderName: string | null; threads: Thread[] }[] = [];
-  const keys = Array.from(map.keys()).filter((k) => k !== nullKey).sort();
-  for (const k of keys) {
-    result.push({ folderName: k, threads: map.get(k)! });
-  }
+  const keys = Array.from(map.keys()).filter((k) => k !== nullKey);
+  const sortNameFor = (key: string): string => {
+    if (projectNameById[key]) return projectNameById[key];
+    const representative = map.get(key)!.find((t) => t.folder_name);
+    return representative?.folder_name ?? "";
+  };
+  keys.sort((a, b) => {
+    const nameA = sortNameFor(a);
+    const nameB = sortNameFor(b);
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    return a.localeCompare(b);
+  });
+  const result: { projectId: string | null; threads: Thread[] }[] =
+    keys.map((k) => ({ projectId: k, threads: map.get(k)! }));
   if (map.has(nullKey)) {
-    result.push({ folderName: null, threads: map.get(nullKey)! });
+    result.push({ projectId: null, threads: map.get(nullKey)! });
   }
   return result;
 }
@@ -464,19 +475,21 @@ function RecentSection({ threads, activeThreadId, existingFolders, onSelectThrea
 
 // ---- フォルダセクション ----
 interface FolderSectionProps {
-  folderName: string | null;
+  projectId: string | null;
+  displayName: string | null;
+  legacyFolderName: string | null;
   threads: Thread[];
   activeThreadId: string | null;
   existingFolders: string[];
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
   onUpdateFolder: (threadId: string, folderName: string | null) => void;
-  onEditProjectSettings?: (folderName: string) => void;
-  onNewThreadInFolder?: (folderName: string) => void;
+  onEditProjectSettings?: (projectId: string, legacyFolderName: string) => void;
+  onNewThreadInFolder?: (legacyFolderName: string) => void;
   folderType?: string | null;
 }
 
-function FolderSection({ folderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditProjectSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
+function FolderSection({ projectId, displayName, legacyFolderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditProjectSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hovered, setHovered] = useState(false);
 
@@ -508,10 +521,10 @@ function FolderSection({ folderName, threads, activeThreadId, existingFolders, o
             ▼
           </span>
           <span style={{ fontSize: "11px" }}>
-            {folderName ? "📁" : "📋"}
+            {projectId ? "📁" : "📋"}
           </span>
           <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--ink-muted)", flex: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {folderName ?? "未分類"}
+            {displayName ?? "未分類"}
           </span>
           {folderType === "novel" && (
             <span style={{ background: "#fef3c7", color: "#92400e", fontSize: "9px", padding: "1px 5px", borderRadius: "3px", flexShrink: 0, marginRight: "2px" }}>📖</span>
@@ -521,11 +534,11 @@ function FolderSection({ folderName, threads, activeThreadId, existingFolders, o
           </span>
         </button>
 
-        {/* ＋ 新規スレッドボタン（フォルダ名ありかつホバー時のみ表示） */}
-        {folderName && onNewThreadInFolder && (
+        {/* ＋ 新規スレッドボタン（legacy write keyありかつホバー時のみ表示） */}
+        {projectId && legacyFolderName && onNewThreadInFolder && (
           <button
-            onClick={(e) => { e.stopPropagation(); onNewThreadInFolder(folderName); }}
-            title={`「${folderName}」に新しいスレッドを作成`}
+            onClick={(e) => { e.stopPropagation(); onNewThreadInFolder(legacyFolderName); }}
+            title={`「${displayName ?? legacyFolderName}」に新しいスレッドを作成`}
             style={{
               opacity: hovered ? 1 : 0,
               transition: "opacity 0.1s",
@@ -550,10 +563,10 @@ function FolderSection({ folderName, threads, activeThreadId, existingFolders, o
           </button>
         )}
 
-        {/* ⚙️ フォルダ設定ボタン（フォルダ名ありかつホバー時のみ表示） */}
-        {folderName && onEditProjectSettings && (
+        {/* ⚙️ フォルダ設定ボタン（legacy write keyありかつホバー時のみ表示） */}
+        {projectId && legacyFolderName && onEditProjectSettings && (
           <button
-            onClick={(e) => { e.stopPropagation(); onEditProjectSettings(folderName); }}
+            onClick={(e) => { e.stopPropagation(); onEditProjectSettings(projectId, legacyFolderName); }}
             title="フォルダのシステムプロンプトを設定"
             style={{
               opacity: hovered ? 1 : 0,
@@ -640,6 +653,34 @@ export default function Sidebar({
     })();
   }, [user]);
 
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const projectNameById = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.name])),
+    [projects]
+  );
+
+  const loadProjects = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch("/api/projects", { cache: "no-store" });
+      if (!res.ok) return;
+      const { projects: data } = await res.json();
+      setProjects(data ?? []);
+    } catch {}
+  }, [user]);
+
+  useEffect(() => { loadProjects(); }, [loadProjects]);
+
+  const handleUpdateFolderWithSync = useCallback(
+    async (threadId: string, folderName: string | null) => {
+      const updated = await onUpdateFolder(threadId, folderName);
+      if (updated?.project_id && !(updated.project_id in projectNameById)) {
+        void loadProjects();
+      }
+    },
+    [onUpdateFolder, projectNameById, loadProjects]
+  );
+
   const [folderTypes, setFolderTypes] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
@@ -651,7 +692,7 @@ export default function Sidebar({
         const arr = await res.json();
         const map: Record<string, string | null> = {};
         for (const item of arr) {
-          map[item.folder_name] = item.folder_type ?? null;
+          if (item.project_id) map[item.project_id] = item.folder_type ?? null;
         }
         setFolderTypes(map);
       } catch {
@@ -662,7 +703,7 @@ export default function Sidebar({
 
   // フォルダ設定モーダル
   const [projectSettingsModal, setProjectSettingsModal] = useState<{
-    projectId: string | null;
+    projectId: string;
     folderName: string;
     systemPrompt: string;
     folderType: string | null;
@@ -690,14 +731,14 @@ export default function Sidebar({
     onNewThreadInFolder(folderName);
   }, [onNewThreadInFolder]);
 
-  const handleEditProjectSettings = useCallback(async (folderName: string) => {
+  const handleEditProjectSettings = useCallback(async (projectId: string, folderName: string) => {
     setProjectRenameInput(folderName);
     try {
       const res = await fetch(`/api/project-settings?folder_name=${encodeURIComponent(folderName)}`);
       if (!res.ok) throw new Error("フォルダ設定の取得に失敗しました");
       const data = await res.json();
       setProjectSettingsModal({
-        projectId: typeof data?.project_id === "string" ? data.project_id : null,
+        projectId,
         folderName,
         systemPrompt: data?.system_prompt ?? "",
         folderType: data?.folder_type ?? null,
@@ -708,7 +749,7 @@ export default function Sidebar({
       setGithubRepoError(null);
     } catch {
       setProjectSettingsModal({
-        projectId: null,
+        projectId,
         folderName,
         systemPrompt: "",
         folderType: null,
@@ -859,11 +900,12 @@ export default function Sidebar({
         );
       }
 
-      const deletedFolderName = projectSettingsModal.folderName;
+      const deletedProjectId = projectSettingsModal.projectId;
       await onRefreshThreads();
+      setProjects((prev) => prev.filter((project) => project.id !== deletedProjectId));
       setFolderTypes((prev) => {
         const next = { ...prev };
-        delete next[deletedFolderName];
+        delete next[deletedProjectId];
         return next;
       });
       setProjectDeleteModalOpen(false);
@@ -895,7 +937,6 @@ export default function Sidebar({
       return;
     }
 
-    const oldFolderName = projectSettingsModal.folderName;
     setProjectRenaming(true);
     try {
       const res = await fetch(
@@ -920,9 +961,7 @@ export default function Sidebar({
 
       const confirmedName = data.name;
       await onRefreshThreads();
-      setFolderTypes((prev) =>
-        rekeyFolderTypesAfterRename(prev, oldFolderName, confirmedName),
-      );
+      await loadProjects();
       setProjectSettingsModal(null);
       setProjectRenameInput("");
       showToast(`Project名を「${confirmedName}」に変更しました`);
@@ -936,6 +975,7 @@ export default function Sidebar({
       setProjectRenaming(false);
     }
   }, [
+    loadProjects,
     onRefreshThreads,
     projectRenameInput,
     projectRenaming,
@@ -969,7 +1009,7 @@ export default function Sidebar({
         }),
       });
       if (!res.ok) throw new Error("フォルダ設定の保存に失敗しました");
-      setFolderTypes(prev => ({ ...prev, [projectSettingsModal.folderName]: projectSettingsModal.folderType ?? null }));
+      setFolderTypes(prev => ({ ...prev, [projectSettingsModal.projectId]: projectSettingsModal.folderType ?? null }));
       setProjectSettingsModal(null);
     } catch (err) {
       console.error("フォルダ設定保存失敗:", err);
@@ -1001,7 +1041,10 @@ export default function Sidebar({
   }, [onSearch, searchTarget]);
 
   // 検索中はフラットリスト、通常時はフォルダグループ
-  const grouped = useMemo(() => groupThreadsByFolder(threads), [threads]);
+  const grouped = useMemo(
+    () => groupThreadsByProject(threads, projectNameById),
+    [threads, projectNameById]
+  );
   const existingFolders = useMemo(() => getUniqueFolderNames(threads), [threads]);
   const showFlat = isSearching && searchQuery.trim() !== "";
 
@@ -1140,7 +1183,7 @@ export default function Sidebar({
       {/* Thread list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
         {/* 最近セクション（検索中は非表示） */}
-        {!showFlat && <RecentSection threads={threads} activeThreadId={activeThreadId} existingFolders={existingFolders} onSelectThread={onSelectThread} onDeleteThread={onDeleteThread} onUpdateFolder={onUpdateFolder} />}
+        {!showFlat && <RecentSection threads={threads} activeThreadId={activeThreadId} existingFolders={existingFolders} onSelectThread={onSelectThread} onDeleteThread={onDeleteThread} onUpdateFolder={handleUpdateFolderWithSync} />}
 
         {threads.length === 0 && !isSearching && (
           <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--ink-muted)", fontSize: "12px", lineHeight: 1.6 }}>
@@ -1164,27 +1207,34 @@ export default function Sidebar({
             existingFolders={existingFolders}
             onSelect={() => onSelectThread(thread.id)}
             onDelete={() => onDeleteThread(thread.id)}
-            onUpdateFolder={(fn) => onUpdateFolder(thread.id, fn)}
+            onUpdateFolder={(folderName) => handleUpdateFolderWithSync(thread.id, folderName)}
           />
         ))}
 
         {/* 通常時：フォルダグループ */}
         {!showFlat && grouped.map((group) => {
+          const legacyFolderName: string | null =
+            group.threads.find((thread) => thread.folder_name)?.folder_name ?? null;
+          const displayName: string | null = group.projectId
+            ? (projectNameById[group.projectId] ?? legacyFolderName ?? "…")
+            : null;
           const hasActive = group.threads.some((t) => t.id === activeThreadId);
           return (
             <FolderSection
-              key={group.folderName ?? "__null__"}
-              folderName={group.folderName}
+              key={group.projectId ?? "__null__"}
+              projectId={group.projectId}
+              displayName={displayName}
+              legacyFolderName={legacyFolderName}
               threads={group.threads}
               activeThreadId={activeThreadId}
               existingFolders={existingFolders}
               onSelectThread={onSelectThread}
               onDeleteThread={onDeleteThread}
-              onUpdateFolder={onUpdateFolder}
+              onUpdateFolder={handleUpdateFolderWithSync}
               onEditProjectSettings={handleEditProjectSettings}
               onNewThreadInFolder={handleNewThreadInFolder}
               defaultCollapsed={!hasActive}
-              folderType={group.folderName ? folderTypes[group.folderName] ?? null : null}
+              folderType={group.projectId ? folderTypes[group.projectId] ?? null : null}
             />
           );
         })}

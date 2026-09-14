@@ -4,6 +4,20 @@ import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
 
+export async function GET(req: NextRequest) {
+  const auth = await requireRouteUser(req);
+  if (!auth.ok) return auth.response;
+  const { user, supabase, finalizeJson } = auth;
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("user_id", user.id);
+
+  if (error) return finalizeJson({ error: error.message }, { status: 500 });
+  return finalizeJson({ projects: data ?? [] });
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireRouteUser(req);
   if (!auth.ok) return auth.response;

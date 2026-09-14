@@ -108,6 +108,7 @@ function ChatWorkspace({ session }: { session: Session }) {
   const { showToast } = useToast();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [displayThreads, setDisplayThreads] = useState<Thread[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchMatchIds, setSearchMatchIds] = useState<string[]>([]);
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
@@ -195,6 +196,17 @@ function ChatWorkspace({ session }: { session: Session }) {
       return [];
     }
   }, []);
+
+  const loadProjects = useCallback(async () => {
+    try {
+      const res = await apiClient.request("/api/projects", { cache: "no-store" });
+      if (!res.ok) return;
+      const { projects: data } = await res.json();
+      setProjects(data ?? []);
+    } catch {}
+  }, []);
+
+  useEffect(() => { void loadProjects(); }, [loadProjects]);
 
   const selectThread = useCallback(
     async (id: string, matchedMessageIds?: string[]) => {
@@ -391,25 +403,25 @@ function ChatWorkspace({ session }: { session: Session }) {
           showToast("フォルダの更新に失敗しました", "error");
           return;
         }
+        const updated: Thread = await res.json();
+        const patch = {
+          folder_name: updated.folder_name,
+          project_id: updated.project_id,
+        };
         setThreads((current) =>
-          current.map((thread) =>
-            thread.id === threadId
-              ? { ...thread, folder_name: folderName }
-              : thread
-          )
+          current.map((thread) => (thread.id === threadId ? { ...thread, ...patch } : thread))
         );
         setDisplayThreads((current) =>
-          current.map((thread) =>
-            thread.id === threadId
-              ? { ...thread, folder_name: folderName }
-              : thread
-          )
+          current.map((thread) => (thread.id === threadId ? { ...thread, ...patch } : thread))
         );
+        if (updated.project_id && !projects.some((project) => project.id === updated.project_id)) {
+          void loadProjects();
+        }
       } catch {
         showToast("フォルダの更新に失敗しました", "error");
       }
     },
-    [showToast]
+    [showToast, projects, loadProjects]
   );
 
   const handleTitleUpdate = useCallback((id: string, title: string) => {
@@ -895,6 +907,7 @@ function ChatWorkspace({ session }: { session: Session }) {
           />
           <Sidebar
             threads={displayThreads}
+            projects={projects}
             activeThreadId={activeThreadId}
             onSelectThread={(id) => {
               const selected = displayThreads.find(
