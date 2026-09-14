@@ -3,6 +3,7 @@ node_modules
 out
 build
 .env.local
+.env.test.local
 .env.vercel-production.local
 .env.local.*.bak
 .vercel/
