@@ -53,8 +53,8 @@
 -- 2026/08/09、migration_v180_drop_legacy_counter_rpcs.sqlをスキーマ正本へ反映・テスト環境/本番DB適用済み（H-09対応）。
 -- 2026/08/15、migration_v181_ai_usage_events.sqlをスキーマ正本へ反映（本番DB適用済み、AI利用コスト計測基盤対応）。
 -- 2026/09/08、migration_v182_project_memory_phase_a.sqlをスキーマ正本へ反映（テスト環境/本番DB適用済み、Project Memory Manager Phase A対応）。
--- 2026/09/13、migration_v194_delete_project_preserving_contents.sqlをスキーマ正本へ反映（Project物理削除・関連コンテンツ保持・Project Memory任意Lore昇格。DB未適用）。
--- 2026/09/14、migration_v195_rename_project.sqlをスキーマ正本へ反映（Project名変更と関連テーブルのfolder_name同期。DB未適用）。
+-- 2026/09/13、migration_v194_delete_project_preserving_contents.sqlをスキーマ正本へ反映（Project物理削除・関連コンテンツ保持・Project Memory任意Lore昇格。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
+-- 2026/09/14、migration_v195_rename_project.sqlをスキーマ正本へ反映（Project名変更と関連テーブルのfolder_name同期。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
