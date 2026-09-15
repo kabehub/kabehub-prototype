@@ -2,17 +2,26 @@ import { NextRequest } from 'next/server'
 import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { PINNED_GITHUB_FILES_MAX } from '@/lib/validationLimits'
 import { resolveOwnedProjectIdByName } from '@/lib/project-memory/resolve-owned-project-id'
+import { getOwnedProject } from '@/lib/project-memory/get-owned-project'
 
-// GET /api/project-settings?folder_name=xxx
+// GET /api/project-settings?project_id=xxx (folder_name is a legacy fallback)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const folder_name = searchParams.get('folder_name')
+  const hasProjectId = searchParams.has('project_id')
+  const hasFolderName = searchParams.has('folder_name')
 
   const auth = await requireRouteUser(req)
   if (!auth.ok) return auth.response
   const { user, supabase, finalizeJson } = auth
 
-  if (!folder_name) {
+  if (hasProjectId && hasFolderName) {
+    return finalizeJson(
+      { error: 'project_id and folder_name cannot both be specified' },
+      { status: 400 },
+    )
+  }
+
+  if (!hasProjectId && !hasFolderName) {
     const { data, error } = await supabase
       .from('project_settings')
       .select('project_id, folder_type')
@@ -25,26 +34,44 @@ export async function GET(req: NextRequest) {
     return finalizeJson(data ?? [])
   }
 
-  const resolved = await resolveOwnedProjectIdByName(supabase, user.id, folder_name)
-  if (!resolved.ok) {
-    return finalizeJson({ error: resolved.error }, { status: resolved.status })
-  }
-  if (!resolved.projectId) {
-    return finalizeJson({
-      project_id: null,
-      system_prompt: null,
-      folder_type: null,
-      pinned_github_files: [],
-      github_repo: null,
-      github_ref: null,
-    })
+  let projectId: string | null
+  if (hasProjectId) {
+    const requestedProjectId = searchParams.get('project_id')
+    if (!requestedProjectId) {
+      return finalizeJson({ error: 'project_id is required' }, { status: 400 })
+    }
+    const ownedProject = await getOwnedProject(supabase, user.id, requestedProjectId)
+    if (!ownedProject.ok) {
+      return finalizeJson(
+        { error: ownedProject.error },
+        { status: ownedProject.status },
+      )
+    }
+    projectId = requestedProjectId
+  } else {
+    const folderName = searchParams.get('folder_name') ?? ''
+    const resolved = await resolveOwnedProjectIdByName(supabase, user.id, folderName)
+    if (!resolved.ok) {
+      return finalizeJson({ error: resolved.error }, { status: resolved.status })
+    }
+    projectId = resolved.projectId
+    if (!projectId) {
+      return finalizeJson({
+        project_id: null,
+        system_prompt: null,
+        folder_type: null,
+        pinned_github_files: [],
+        github_repo: null,
+        github_ref: null,
+      })
+    }
   }
 
   const { data, error } = await supabase
     .from('project_settings')
     .select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
     .eq('user_id', user.id)
-    .eq('project_id', resolved.projectId)
+    .eq('project_id', projectId)
     .maybeSingle()
 
   if (error) {
@@ -52,7 +79,7 @@ export async function GET(req: NextRequest) {
   }
 
   return finalizeJson({
-    project_id: resolved.projectId,
+    project_id: projectId,
     system_prompt: data?.system_prompt ?? null,
     folder_type: data?.folder_type ?? null,
     pinned_github_files: data?.pinned_github_files ?? [],
@@ -62,16 +89,17 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/project-settings
-// body: { folder_name: string, system_prompt: string }
+// body: { project_id: string, system_prompt: string }
 export async function POST(req: NextRequest) {
   const auth = await requireRouteUser(req)
   if (!auth.ok) return auth.response
   const { user, supabase, finalizeJson } = auth
 
-  const { folder_name, system_prompt, folder_type, pinned_github_files, github_repo, github_ref } = await req.json()
+  const requestBody = await req.json()
+  const { project_id, system_prompt, folder_type, pinned_github_files, github_repo, github_ref } = requestBody
 
-  if (!folder_name) {
-    return finalizeJson({ error: 'folder_name is required' }, { status: 400 })
+  if (typeof requestBody.project_id !== 'string') {
+    return finalizeJson({ error: 'project_id is required' }, { status: 400 })
   }
 
   // pinned_github_files バリデーション
@@ -93,16 +121,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: projectId, error: projectError } = await supabase.rpc(
-    'get_or_create_project',
-    {
-      p_user_id: user.id,
-      p_name: folder_name,
-    }
-  )
-
-  if (projectError) {
-    return finalizeJson({ error: projectError.message }, { status: 500 })
+  const ownedProject = await getOwnedProject(supabase, user.id, project_id)
+  if (!ownedProject.ok) {
+    return finalizeJson(
+      { error: ownedProject.error },
+      { status: ownedProject.status },
+    )
   }
 
   const { error } = await supabase
@@ -110,8 +134,7 @@ export async function POST(req: NextRequest) {
     .upsert(
       {
         user_id: user.id,
-        folder_name,
-        project_id: projectId,
+        project_id,
         system_prompt: system_prompt ?? null,
         folder_type: folder_type ?? null,
         ...(pinned_github_files !== undefined
@@ -120,7 +143,7 @@ export async function POST(req: NextRequest) {
         ...(github_repo !== undefined ? { github_repo: github_repo ?? null } : {}),
         ...(github_ref !== undefined ? { github_ref: github_ref ?? null } : {}),
       },
-      { onConflict: 'user_id,folder_name' }
+      { onConflict: 'user_id,project_id' }
     )
 
   if (error) {
