@@ -25,8 +25,8 @@ interface SidebarProps {
   isSearching: boolean;
   user: User | null;
   onLogout: () => void;
-  onUpdateFolder: (threadId: string, folderName: string | null) => Promise<Thread | null>;
-  onNewThreadInFolder: (folderName: string) => void;
+  onUpdateFolder: (threadId: string, projectId: string | null) => Promise<Thread | null>;
+  onNewThreadInFolder: (projectId: string) => void;
   onRefreshThreads: () => Promise<unknown>;
   isMobileOverlay?: boolean;
   isCollapsed?: boolean;
@@ -65,14 +65,6 @@ function groupThreadsByProject(
     result.push({ projectId: null, threads: map.get(nullKey)! });
   }
   return result;
-}
-
-// フォルダ名一覧を取得（既存フォルダのオートコンプリート用）
-function getUniqueFolderNames(threads: Thread[]): string[] {
-  const names = threads
-    .map((t) => t.folder_name)
-    .filter((n): n is string => !!n);
-  return Array.from(new Set(names)).sort();
 }
 
 export function rekeyFolderTypesAfterRename(
@@ -144,22 +136,35 @@ function PinnedFileInput({ onAdd }: { onAdd: (url: string) => void }) {
 // ---- フォルダ割り当てポップオーバー ----
 interface FolderPopoverProps {
   thread: Thread;
-  existingFolders: string[];
-  onAssign: (folderName: string | null) => void;
+  projects: { id: string; name: string }[];
+  onAssign: (projectId: string | null) => void | Promise<void>;
   onClose: () => void;
 }
 
-function FolderPopover({ thread, existingFolders, onAssign, onClose }: FolderPopoverProps) {
-  const [inputValue, setInputValue] = useState(thread.folder_name ?? "");
+function FolderPopover({ thread, projects, onAssign, onClose }: FolderPopoverProps) {
+  const [inputValue, setInputValue] = useState("");
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     const trimmed = inputValue.trim();
-    onAssign(trimmed === "" ? null : trimmed);
-    onClose();
+    if (trimmed === "") return;
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (typeof data.project_id !== "string") return;
+      await onAssign(data.project_id);
+      onClose();
+    } catch {
+      // 入力を保持し、再試行できる状態にする。
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleAssign();
+    if (e.key === "Enter") void handleAssign();
     if (e.key === "Escape") { e.stopPropagation(); onClose(); }
   };
 
@@ -191,18 +196,18 @@ function FolderPopover({ thread, existingFolders, onAssign, onClose }: FolderPop
         </div>
 
         {/* 既存フォルダのクイック選択 */}
-        {existingFolders.length > 0 && (
+        {projects.length > 0 && (
           <div style={{ marginBottom: "6px", display: "flex", flexDirection: "column", gap: "2px" }}>
-            {existingFolders.map((f) => (
+            {projects.map((project) => (
               <button
-                key={f}
-                onClick={() => { onAssign(f); onClose(); }}
+                key={project.id}
+                onClick={() => { void onAssign(project.id); onClose(); }}
                 style={{
                   padding: "4px 8px",
                   border: "1px solid var(--border)",
                   borderRadius: "4px",
-                  background: thread.folder_name === f ? "var(--accent)" : "white",
-                  color: thread.folder_name === f ? "white" : "var(--ink)",
+                  background: thread.project_id === project.id ? "var(--accent)" : "white",
+                  color: thread.project_id === project.id ? "white" : "var(--ink)",
                   fontSize: "11px",
                   cursor: "pointer",
                   textAlign: "left",
@@ -212,17 +217,17 @@ function FolderPopover({ thread, existingFolders, onAssign, onClose }: FolderPop
                   textOverflow: "ellipsis",
                 }}
                 onMouseEnter={(e) => {
-                  if (thread.folder_name !== f) {
+                  if (thread.project_id !== project.id) {
                     (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar-bg)";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (thread.folder_name !== f) {
+                  if (thread.project_id !== project.id) {
                     (e.currentTarget as HTMLButtonElement).style.background = "white";
                   }
                 }}
               >
-                📁 {f}
+                📁 {project.name}
               </button>
             ))}
           </div>
@@ -253,7 +258,8 @@ function FolderPopover({ thread, existingFolders, onAssign, onClose }: FolderPop
 
         <div style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
           <button
-            onClick={handleAssign}
+            onClick={() => void handleAssign()}
+            disabled={inputValue.trim() === ""}
             style={{
               flex: 1,
               padding: "4px 0",
@@ -268,7 +274,7 @@ function FolderPopover({ thread, existingFolders, onAssign, onClose }: FolderPop
           >
             決定
           </button>
-          {thread.folder_name && (
+          {thread.project_id && (
             <button
               onClick={() => { onAssign(null); onClose(); }}
               style={{
@@ -295,13 +301,13 @@ function FolderPopover({ thread, existingFolders, onAssign, onClose }: FolderPop
 interface ThreadItemProps {
   thread: Thread;
   isActive: boolean;
-  existingFolders: string[];
+  projects: { id: string; name: string }[];
   onSelect: () => void;
   onDelete: () => void;
-  onUpdateFolder: (folderName: string | null) => void;
+  onUpdateFolder: (projectId: string | null) => void | Promise<void>;
 }
 
-function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onUpdateFolder }: ThreadItemProps) {
+function ThreadItem({ thread, isActive, projects, onSelect, onDelete, onUpdateFolder }: ThreadItemProps) {
   const [showFolderPopover, setShowFolderPopover] = useState(false);
   const [hovered, setHovered] = useState(false);
   const itemRef = useRef<HTMLDivElement>(null);
@@ -355,9 +361,9 @@ function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onU
               height: "20px",
               borderRadius: "4px",
               border: "1px solid",
-              borderColor: thread.folder_name ? "var(--accent-muted)" : "var(--border)",
-              background: thread.folder_name ? "#f0f4ff" : "white",
-              color: thread.folder_name ? "var(--accent)" : "var(--ink-muted)",
+              borderColor: thread.project_id ? "var(--accent-muted)" : "var(--border)",
+              background: thread.project_id ? "#f0f4ff" : "white",
+              color: thread.project_id ? "var(--accent)" : "var(--ink-muted)",
               fontSize: "11px",
               cursor: "pointer",
               display: "flex",
@@ -414,7 +420,7 @@ function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onU
       {showFolderPopover && (
         <FolderPopover
           thread={thread}
-          existingFolders={existingFolders}
+          projects={projects}
           onAssign={onUpdateFolder}
           onClose={() => setShowFolderPopover(false)}
         />
@@ -424,13 +430,13 @@ function ThreadItem({ thread, isActive, existingFolders, onSelect, onDelete, onU
 }
 
 // ---- 最近セクション ----
-function RecentSection({ threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder }: {
+function RecentSection({ threads, activeThreadId, projects, onSelectThread, onDeleteThread, onUpdateFolder }: {
   threads: Thread[];
   activeThreadId: string | null;
-  existingFolders: string[];
+  projects: { id: string; name: string }[];
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
-  onUpdateFolder: (threadId: string, folderName: string | null) => void;
+  onUpdateFolder: (threadId: string, projectId: string | null) => void | Promise<void>;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -461,7 +467,7 @@ function RecentSection({ threads, activeThreadId, existingFolders, onSelectThrea
               key={thread.id}
               thread={thread}
               isActive={activeThreadId === thread.id}
-              existingFolders={existingFolders}
+              projects={projects}
               onSelect={() => onSelectThread(thread.id)}
               onDelete={() => onDeleteThread(thread.id)}
               onUpdateFolder={(fn) => onUpdateFolder(thread.id, fn)}
@@ -480,16 +486,16 @@ interface FolderSectionProps {
   legacyFolderName: string | null;
   threads: Thread[];
   activeThreadId: string | null;
-  existingFolders: string[];
+  projects: { id: string; name: string }[];
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
-  onUpdateFolder: (threadId: string, folderName: string | null) => void;
+  onUpdateFolder: (threadId: string, projectId: string | null) => void | Promise<void>;
   onEditProjectSettings?: (projectId: string, legacyFolderName: string) => void;
-  onNewThreadInFolder?: (legacyFolderName: string) => void;
+  onNewThreadInFolder?: (projectId: string) => void;
   folderType?: string | null;
 }
 
-function FolderSection({ projectId, displayName, legacyFolderName, threads, activeThreadId, existingFolders, onSelectThread, onDeleteThread, onUpdateFolder, onEditProjectSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
+function FolderSection({ projectId, displayName, legacyFolderName, threads, activeThreadId, projects, onSelectThread, onDeleteThread, onUpdateFolder, onEditProjectSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hovered, setHovered] = useState(false);
 
@@ -534,11 +540,11 @@ function FolderSection({ projectId, displayName, legacyFolderName, threads, acti
           </span>
         </button>
 
-        {/* ＋ 新規スレッドボタン（legacy write keyありかつホバー時のみ表示） */}
-        {projectId && legacyFolderName && onNewThreadInFolder && (
+        {/* ＋ 新規スレッドボタン（Project所属時かつホバー時のみ表示） */}
+        {projectId && onNewThreadInFolder && (
           <button
-            onClick={(e) => { e.stopPropagation(); onNewThreadInFolder(legacyFolderName); }}
-            title={`「${displayName ?? legacyFolderName}」に新しいスレッドを作成`}
+            onClick={(e) => { e.stopPropagation(); onNewThreadInFolder(projectId); }}
+            title={`「${displayName ?? legacyFolderName ?? "…"}」に新しいスレッドを作成`}
             style={{
               opacity: hovered ? 1 : 0,
               transition: "opacity 0.1s",
@@ -563,10 +569,10 @@ function FolderSection({ projectId, displayName, legacyFolderName, threads, acti
           </button>
         )}
 
-        {/* ⚙️ フォルダ設定ボタン（legacy write keyありかつホバー時のみ表示） */}
-        {projectId && legacyFolderName && onEditProjectSettings && (
+        {/* ⚙️ フォルダ設定ボタン（Project所属時かつホバー時のみ表示） */}
+        {projectId && onEditProjectSettings && (
           <button
-            onClick={(e) => { e.stopPropagation(); onEditProjectSettings(projectId, legacyFolderName); }}
+            onClick={(e) => { e.stopPropagation(); onEditProjectSettings(projectId, displayName ?? ""); }}
             title="フォルダのシステムプロンプトを設定"
             style={{
               opacity: hovered ? 1 : 0,
@@ -600,7 +606,7 @@ function FolderSection({ projectId, displayName, legacyFolderName, threads, acti
               key={thread.id}
               thread={thread}
               isActive={activeThreadId === thread.id}
-              existingFolders={existingFolders}
+              projects={projects}
               onSelect={() => onSelectThread(thread.id)}
               onDelete={() => onDeleteThread(thread.id)}
               onUpdateFolder={(fn) => onUpdateFolder(thread.id, fn)}
@@ -672,8 +678,8 @@ export default function Sidebar({
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
   const handleUpdateFolderWithSync = useCallback(
-    async (threadId: string, folderName: string | null) => {
-      const updated = await onUpdateFolder(threadId, folderName);
+    async (threadId: string, projectId: string | null) => {
+      const updated = await onUpdateFolder(threadId, projectId);
       if (updated?.project_id && !(updated.project_id in projectNameById)) {
         void loadProjects();
       }
@@ -727,14 +733,14 @@ export default function Sidebar({
     preview: ProjectMemoryConsolidationPreview;
   } | null>(null);
 
-  const handleNewThreadInFolder = useCallback((folderName: string) => {
-    onNewThreadInFolder(folderName);
+  const handleNewThreadInFolder = useCallback((projectId: string) => {
+    onNewThreadInFolder(projectId);
   }, [onNewThreadInFolder]);
 
   const handleEditProjectSettings = useCallback(async (projectId: string, folderName: string) => {
     setProjectRenameInput(folderName);
     try {
-      const res = await fetch(`/api/project-settings?folder_name=${encodeURIComponent(folderName)}`);
+      const res = await fetch(`/api/project-settings?project_id=${encodeURIComponent(projectId)}`);
       if (!res.ok) throw new Error("フォルダ設定の取得に失敗しました");
       const data = await res.json();
       setProjectSettingsModal({
@@ -1000,7 +1006,7 @@ export default function Sidebar({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          folder_name: projectSettingsModal.folderName,
+          project_id: projectSettingsModal.projectId,
           system_prompt: projectSettingsModal.systemPrompt,
           folder_type: projectSettingsModal.folderType ?? null,
           pinned_github_files: projectSettingsModal.pinnedFiles,
@@ -1045,7 +1051,6 @@ export default function Sidebar({
     () => groupThreadsByProject(threads, projectNameById),
     [threads, projectNameById]
   );
-  const existingFolders = useMemo(() => getUniqueFolderNames(threads), [threads]);
   const showFlat = isSearching && searchQuery.trim() !== "";
 
   return (
@@ -1183,7 +1188,7 @@ export default function Sidebar({
       {/* Thread list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
         {/* 最近セクション（検索中は非表示） */}
-        {!showFlat && <RecentSection threads={threads} activeThreadId={activeThreadId} existingFolders={existingFolders} onSelectThread={onSelectThread} onDeleteThread={onDeleteThread} onUpdateFolder={handleUpdateFolderWithSync} />}
+        {!showFlat && <RecentSection threads={threads} activeThreadId={activeThreadId} projects={projects} onSelectThread={onSelectThread} onDeleteThread={onDeleteThread} onUpdateFolder={handleUpdateFolderWithSync} />}
 
         {threads.length === 0 && !isSearching && (
           <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--ink-muted)", fontSize: "12px", lineHeight: 1.6 }}>
@@ -1204,10 +1209,10 @@ export default function Sidebar({
             key={thread.id}
             thread={thread}
             isActive={activeThreadId === thread.id}
-            existingFolders={existingFolders}
+            projects={projects}
             onSelect={() => onSelectThread(thread.id)}
             onDelete={() => onDeleteThread(thread.id)}
-            onUpdateFolder={(folderName) => handleUpdateFolderWithSync(thread.id, folderName)}
+            onUpdateFolder={(projectId) => handleUpdateFolderWithSync(thread.id, projectId)}
           />
         ))}
 
@@ -1227,7 +1232,7 @@ export default function Sidebar({
               legacyFolderName={legacyFolderName}
               threads={group.threads}
               activeThreadId={activeThreadId}
-              existingFolders={existingFolders}
+              projects={projects}
               onSelectThread={onSelectThread}
               onDeleteThread={onDeleteThread}
               onUpdateFolder={handleUpdateFolderWithSync}
