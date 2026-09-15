@@ -402,10 +402,7 @@ export default function Home() {
           return null;
         }
         const updatedThread: Thread = await res.json();
-        const patch = {
-          folder_name: updatedThread.folder_name,
-          project_id: updatedThread.project_id,
-        };
+        const patch = { project_id: updatedThread.project_id };
         setThreads((prev) =>
           prev.map((t) => (t.id === threadId ? { ...t, ...patch } : t))
         );

@@ -404,10 +404,7 @@ function ChatWorkspace({ session }: { session: Session }) {
           return;
         }
         const updated: Thread = await res.json();
-        const patch = {
-          folder_name: updated.folder_name,
-          project_id: updated.project_id,
-        };
+        const patch = { project_id: updated.project_id };
         setThreads((current) =>
           current.map((thread) => (thread.id === threadId ? { ...thread, ...patch } : thread))
         );

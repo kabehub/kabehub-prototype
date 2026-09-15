@@ -18,6 +18,9 @@ let toastCalls = [];
 let refreshCalls = 0;
 let updateFolderCalls = [];
 let projectFlowEvents = [];
+let mounting = false;
+let pendingEffects = [];
+let projectListName = "Old Project";
 
 const hooks = {
   ...React,
@@ -38,7 +41,9 @@ const hooks = {
   useRef(value) {
     return { current: value };
   },
-  useEffect() {},
+  useEffect(fn) {
+    if (mounting) pendingEffects.push(fn);
+  },
   useMemo(fn) {
     return fn();
   },
@@ -98,7 +103,13 @@ global.fetch = async (input, init = {}) => {
   projectFlowEvents.push({ kind: "fetch", url, method });
 
   if (url === "/api/projects" && method === "GET") {
-    return Response.json({ projects: [{ id: "11111111-1111-4111-8111-111111111111", name: "New Project" }] });
+    return Response.json({ projects: [{ id: "11111111-1111-4111-8111-111111111111", name: projectListName }] });
+  }
+  if (url === "/api/stats?period=today") {
+    return Response.json({ sends: 0, total_tokens: 0 });
+  }
+  if (url === "/api/project-settings" && method === "GET") {
+    return Response.json([]);
   }
   if (url === "/api/projects" && method === "POST") {
     return Response.json({
@@ -121,6 +132,7 @@ global.fetch = async (input, init = {}) => {
     return Response.json({ success: true });
   }
   if (url.startsWith("/api/projects/") && method === "PATCH") {
+    projectListName = body.name.trim();
     return Response.json({ success: true, name: body.name.trim() });
   }
   throw new Error(`unexpected fetch: ${method} ${url}`);
@@ -132,7 +144,7 @@ const props = {
       id: "thread-1",
       title: "Thread",
       created_at: "2026-09-14T00:00:00.000Z",
-      folder_name: "Old Project",
+      folder_name: "Stale legacy name",
       project_id: "11111111-1111-4111-8111-111111111111",
     },
   ],
@@ -172,9 +184,21 @@ function collectExpanded(value, result) {
 
 function renderSidebar() {
   cursor = 0;
+  mounting = hookState.length === 0;
   const result = [];
   collectExpanded(Sidebar(props), result);
+  mounting = false;
   return result;
+}
+
+async function mountSidebar() {
+  pendingEffects = [];
+  renderSidebar();
+  for (const effect of pendingEffects) effect();
+  await new Promise((resolve) => setImmediate(resolve));
+  fetchCalls = [];
+  projectFlowEvents = [];
+  return renderSidebar();
 }
 
 function textContent(value) {
@@ -223,7 +247,7 @@ async function openSettings(nodes) {
     updateFolderCalls = [];
     projectFlowEvents = [];
 
-    let nodes = renderSidebar();
+    let nodes = await mountSidebar();
     const folderButtons = nodes.filter(
       (node) => node.type === "button" && node.props.title === "フォルダに追加",
     );
@@ -255,7 +279,7 @@ async function openSettings(nodes) {
     updateFolderCalls = [];
     projectFlowEvents = [];
 
-    nodes = renderSidebar();
+    nodes = await mountSidebar();
     const createFolderButton = nodes.find(
       (node) => node.type === "button" && node.props.title === "フォルダに追加",
     );
@@ -286,7 +310,7 @@ async function openSettings(nodes) {
     updateFolderCalls = [];
     projectFlowEvents = [];
 
-    nodes = renderSidebar();
+    nodes = await mountSidebar();
     await openSettings(nodes);
     nodes = renderSidebar();
     const renameInput = findRenameInput(nodes);

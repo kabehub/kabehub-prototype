@@ -13,6 +13,12 @@ const mobilePage = read("apps/mobile/app/chat/page.tsx");
 const novelSettingsPane = read("components/NovelSettingsPane.tsx");
 const chatPanel = read("components/ChatPanel.tsx");
 
+assert.doesNotMatch(webSidebar, /legacyFolderName|\.folder_name\b/);
+assert.doesNotMatch(mobileSidebar, /legacyFolderName|\.folder_name\b/);
+assert.doesNotMatch(webSidebar, /rekeyFolderTypesAfterRename/);
+assert.doesNotMatch(webPage, /folder_name:\s*updatedThread\.folder_name/);
+assert.doesNotMatch(mobilePage, /folder_name:\s*updated\.folder_name/);
+
 assert.doesNotMatch(webSidebar, /getUniqueFolderNames|existingFolders/);
 assert.match(webSidebar, /function FolderPopover[\s\S]*?useState\(""\)/);
 assert.match(webSidebar, /const trimmed = inputValue\.trim\(\);\s*if \(trimmed === ""\) return;/);
@@ -50,4 +56,4 @@ assert.match(chatPanel, /\[thread\?\.project_id\]/);
 assert.match(chatPanel, /フォルダの設定を継承中/);
 assert.doesNotMatch(chatPanel, /フォルダ「\{thread\.folder_name\}」/);
 
-console.log("ok - web and mobile UI use the Phase 2 project_id contract");
+console.log("ok - web and mobile UI use project_id without legacy folder_name fallbacks");
