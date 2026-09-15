@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   const { data: thread, error: threadError } = await serviceRoleClient()
     .from("threads")
-    .select("folder_name, project_id")
+    .select("project_id")
     .eq("id", message.thread_id)
     .single();
 
@@ -73,7 +73,6 @@ export async function POST(req: NextRequest) {
     source_type: "liked_ai",
     source_message_id: message.id,
     source_thread_id: message.thread_id,
-    folder_name: thread?.folder_name ?? null,
     project_id: thread?.project_id ?? null,
     extraction_version: "liked_ai",
     memory_kind: memoryKind,
