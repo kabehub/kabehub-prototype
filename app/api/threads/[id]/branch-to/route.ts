@@ -79,7 +79,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       title: `分岐・${sourceThread.title}`,
       user_id: user.id,
       system_prompt: sourceThread.system_prompt,
-      folder_name: sourceThread.folder_name,
       project_id: sourceThread.project_id,
       forked_from_id: sourceThread.id,
       roleplay_mode: false,
