@@ -292,14 +292,14 @@ export default function ChatPanel({
   }, [orderedMessages]);
 
   useEffect(() => {
-    if (!thread?.folder_name) {
+    if (!thread?.project_id) {
       setFolderSystemPrompt(null)
       return
     }
     let ignore = false
     const fetch_ = async () => {
       try {
-        const r = await fetch(`/api/project-settings?folder_name=${encodeURIComponent(thread.folder_name!)}`)
+        const r = await fetch(`/api/project-settings?project_id=${encodeURIComponent(thread.project_id!)}`)
         if (!r.ok) throw new Error('fetch failed')
         const data = await r.json()
         if (!ignore) setFolderSystemPrompt(data?.system_prompt ?? null)
@@ -309,7 +309,7 @@ export default function ChatPanel({
     }
     fetch_()
     return () => { ignore = true }
-  }, [thread?.folder_name])
+  }, [thread?.project_id])
 
   // APIキーをstorageから読み込む
   useEffect(() => {
@@ -1643,7 +1643,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
               <span style={{ fontSize: "12px", flexShrink: 0 }}>📁</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: "11px", color: "#7c3aed", fontFamily: "'JetBrains Mono', monospace", marginBottom: "2px" }}>
-                  フォルダ「{thread.folder_name}」の設定を継承中
+                  フォルダの設定を継承中
                 </div>
                 <div style={{ fontSize: "11px", color: "#6d28d9", fontFamily: "'DM Sans', sans-serif", whiteSpace: "pre-wrap", lineHeight: 1.5, opacity: 0.8 }}>
                   {folderSystemPrompt.length > 60 ? folderSystemPrompt.slice(0, 60) + "…" : folderSystemPrompt}
