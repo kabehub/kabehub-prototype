@@ -16,49 +16,30 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { chunks } = body;
   const hasProjectId = body.projectId !== undefined;
-  const hasFolderName = body.folderName !== undefined;
 
-  if (hasProjectId && hasFolderName) {
+  if (Object.prototype.hasOwnProperty.call(body ?? {}, "folderName")) {
     return finalizeJson(
-      { error: "projectId and folderName cannot both be specified" },
+      { error: "folderName is no longer supported; use projectId" },
       { status: 400 },
     );
   }
-  if (!hasProjectId && !hasFolderName) {
-    return finalizeJson({ error: "projectId or folderName is required" }, { status: 400 });
+  if (!hasProjectId) {
+    return finalizeJson({ error: "projectId is required" }, { status: 400 });
   }
   if (!Array.isArray(chunks)) {
     return finalizeJson({ error: "chunks are required" }, { status: 400 });
   }
 
-  let projectId: string;
-  if (hasProjectId) {
-    if (typeof body.projectId !== "string") {
-      return finalizeJson({ error: "projectId must be a string" }, { status: 400 });
-    }
-    const ownedProject = await getOwnedProject(supabase, user.id, body.projectId);
-    if (!ownedProject.ok) {
-      return finalizeJson(
-        { error: ownedProject.error },
-        { status: ownedProject.status },
-      );
-    }
-    projectId = body.projectId;
-  } else {
-    if (typeof body.folderName !== "string" || body.folderName.length === 0) {
-      return finalizeJson({ error: "folderName must be a non-empty string" }, { status: 400 });
-    }
-    const { data, error } = await supabase.rpc(
-      "get_or_create_project",
-      {
-        p_user_id: user.id,
-        p_name: body.folderName,
-      },
+  const projectId = body.projectId;
+  if (typeof projectId !== "string") {
+    return finalizeJson({ error: "projectId must be a string" }, { status: 400 });
+  }
+  const ownedProject = await getOwnedProject(supabase, user.id, projectId);
+  if (!ownedProject.ok) {
+    return finalizeJson(
+      { error: ownedProject.error },
+      { status: ownedProject.status },
     );
-    if (error) {
-      return finalizeJson({ error: error.message }, { status: 500 });
-    }
-    projectId = data;
   }
 
   const embeddedChunks: { chunkText: string; embedding: number[] }[] = [];

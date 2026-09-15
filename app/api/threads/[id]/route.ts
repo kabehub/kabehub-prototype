@@ -118,9 +118,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const body = await req.json();
   const updates: Record<string, unknown> = {};
 
-  if (body.project_id !== undefined && body.folder_name !== undefined) {
+  if (Object.prototype.hasOwnProperty.call(body ?? {}, "folder_name")) {
     return finalizeJson(
-      { error: "project_id and folder_name cannot both be specified" },
+      { error: "folder_name is no longer supported; use project_id" },
       { status: 400 },
     );
   }
@@ -145,26 +145,6 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
         );
       }
       updates.project_id = body.project_id;
-    }
-  }
-  if (body.folder_name !== undefined) {
-    if (body.folder_name === null) {
-      updates.project_id = null;
-    } else {
-      if (typeof body.folder_name !== "string") {
-        return finalizeJson({ error: "folder_name must be a string or null" }, { status: 400 });
-      }
-      const { data: projectId, error: projectError } = await supabase.rpc(
-        "get_or_create_project",
-        {
-          p_user_id: user.id,
-          p_name: body.folder_name,
-        },
-      );
-      if (projectError) {
-        return finalizeJson({ error: projectError.message }, { status: 500 });
-      }
-      updates.project_id = projectId;
     }
   }
   if (body.share_token !== undefined) updates.share_token = body.share_token;

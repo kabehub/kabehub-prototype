@@ -1,27 +1,25 @@
 import { NextRequest } from 'next/server'
 import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { PINNED_GITHUB_FILES_MAX } from '@/lib/validationLimits'
-import { resolveOwnedProjectIdByName } from '@/lib/project-memory/resolve-owned-project-id'
 import { getOwnedProject } from '@/lib/project-memory/get-owned-project'
 
-// GET /api/project-settings?project_id=xxx (folder_name is a legacy fallback)
+// GET /api/project-settings?project_id=xxx (omit project_id to list settings)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const hasProjectId = searchParams.has('project_id')
-  const hasFolderName = searchParams.has('folder_name')
 
   const auth = await requireRouteUser(req)
   if (!auth.ok) return auth.response
   const { user, supabase, finalizeJson } = auth
 
-  if (hasProjectId && hasFolderName) {
+  if (searchParams.has('folder_name')) {
     return finalizeJson(
-      { error: 'project_id and folder_name cannot both be specified' },
+      { error: 'folder_name is no longer supported; use project_id' },
       { status: 400 },
     )
   }
 
-  if (!hasProjectId && !hasFolderName) {
+  if (!hasProjectId) {
     const { data, error } = await supabase
       .from('project_settings')
       .select('project_id, folder_type')
@@ -34,37 +32,16 @@ export async function GET(req: NextRequest) {
     return finalizeJson(data ?? [])
   }
 
-  let projectId: string | null
-  if (hasProjectId) {
-    const requestedProjectId = searchParams.get('project_id')
-    if (!requestedProjectId) {
-      return finalizeJson({ error: 'project_id is required' }, { status: 400 })
-    }
-    const ownedProject = await getOwnedProject(supabase, user.id, requestedProjectId)
-    if (!ownedProject.ok) {
-      return finalizeJson(
-        { error: ownedProject.error },
-        { status: ownedProject.status },
-      )
-    }
-    projectId = requestedProjectId
-  } else {
-    const folderName = searchParams.get('folder_name') ?? ''
-    const resolved = await resolveOwnedProjectIdByName(supabase, user.id, folderName)
-    if (!resolved.ok) {
-      return finalizeJson({ error: resolved.error }, { status: resolved.status })
-    }
-    projectId = resolved.projectId
-    if (!projectId) {
-      return finalizeJson({
-        project_id: null,
-        system_prompt: null,
-        folder_type: null,
-        pinned_github_files: [],
-        github_repo: null,
-        github_ref: null,
-      })
-    }
+  const projectId = searchParams.get('project_id')
+  if (!projectId) {
+    return finalizeJson({ error: 'project_id is required' }, { status: 400 })
+  }
+  const ownedProject = await getOwnedProject(supabase, user.id, projectId)
+  if (!ownedProject.ok) {
+    return finalizeJson(
+      { error: ownedProject.error },
+      { status: ownedProject.status },
+    )
   }
 
   const { data, error } = await supabase

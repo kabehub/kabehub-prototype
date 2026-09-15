@@ -273,29 +273,19 @@ test("threads PATCH rejects project_id and folder_name together", async () => {
   assert.deepEqual(rpcCalls, []);
 });
 
-test("threads PATCH preserves the legacy folder_name fallback without writing it", async () => {
-  resetMocks();
-  const response = await invokeThreadPatch({ folder_name: "legacy" });
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(rpcCalls, [{
-    name: "get_or_create_project",
-    args: { p_user_id: USER_ID, p_name: "legacy" },
-  }]);
-  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "upsert");
-  assert.equal(write.payload.project_id, PROJECT_ID);
-  assert.equal("folder_name" in write.payload, false);
-});
-
-test("threads PATCH legacy null clears only project_id without RPC", async () => {
-  resetMocks();
-  const response = await invokeThreadPatch({ folder_name: null });
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(rpcCalls, []);
-  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "upsert");
-  assert.equal(write.payload.project_id, null);
-  assert.equal("folder_name" in write.payload, false);
+test("threads PATCH rejects folder_name regardless of value before DB or RPC", async () => {
+  for (const folder_name of ["legacy", null, "", 42, false, [], {}]) {
+    for (const canonical of [{}, { project_id: PROJECT_ID }, { project_id: null }]) {
+      resetMocks();
+      const response = await invokeThreadPatch({ ...canonical, folder_name });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), {
+        error: "folder_name is no longer supported; use project_id",
+      });
+      assert.deepEqual(queryCalls, []);
+      assert.deepEqual(rpcCalls, []);
+    }
+  }
 });
 
 test("threads PATCH with title only leaves both project keys untouched", async () => {
@@ -380,23 +370,24 @@ test("lore/embed canonical projectId skips RPC and writes project_id only", asyn
   assert.equal("folder_name" in write.payload[0], false);
 });
 
-test("lore/embed legacy folderName resolves a project but does not persist folder_name", async () => {
-  resetMocks();
-  const response = await invokeLoreEmbed({
-    folderName: "legacy",
-    chunks: [{ text: "legacy lore" }],
-  });
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(rpcCalls, [{
-    name: "get_or_create_project",
-    args: { p_user_id: USER_ID, p_name: "legacy" },
-  }]);
-  const write = queryCalls.find(
-    (call) => call.table === "lore_embeddings" && call.operation === "insert",
-  );
-  assert.equal(write.payload[0].project_id, PROJECT_ID);
-  assert.equal("folder_name" in write.payload[0], false);
+test("lore/embed rejects folderName regardless of value before DB, RPC or embedding", async () => {
+  for (const folderName of ["legacy", null, "", 42, false, [], {}]) {
+    for (const canonical of [{}, { projectId: PROJECT_ID }]) {
+      resetMocks();
+      const response = await invokeLoreEmbed({
+        ...canonical,
+        folderName,
+        chunks: [{ text: "must not embed" }],
+      });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), {
+        error: "folderName is no longer supported; use projectId",
+      });
+      assert.deepEqual(queryCalls, []);
+      assert.deepEqual(rpcCalls, []);
+      assert.deepEqual(embeddingCalls, []);
+    }
+  }
 });
 
 test("lore/embed rejects both or neither project key before embedding", async () => {

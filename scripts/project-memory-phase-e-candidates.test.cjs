@@ -100,48 +100,15 @@ test("folderName未指定ならproject resolverを使わずnullで新RPCを呼�
   assert.equal("p_folder_name" in trace.rpcCalls[0].args, false);
 });
 
-test("folderName指定かつproject存在なら解決したUUIDで新RPCを呼ぶ", async () => {
-  resetMocks();
-
-  const response = await invoke("folderName=owned-project");
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { candidates: [] });
-  assert.equal(trace.projectQueries.length, 1);
-  assert.deepEqual(trace.projectQueries[0].filters, [
-    { column: "user_id", value: USER_ID },
-    { column: "name", value: "owned-project" },
-  ]);
-  assert.equal(trace.rpcCalls.length, 1);
-  assert.equal(trace.rpcCalls[0].name, "find_similar_lore_pairs_by_project");
-  assert.equal(trace.rpcCalls[0].args.p_project_id, PROJECT_ID);
-});
-
-test("folderName指定かつproject不存在ならRPCを呼ばず空候補を返す", async () => {
-  resetMocks({ projectResult: { data: null, error: null } });
-
-  const response = await invoke("folderName=missing-project");
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { candidates: [] });
-  assert.equal(trace.projectQueries.length, 1);
-  assert.equal(trace.rpcCalls.length, 0);
-});
-
-test("folderName指定かつproject解決失敗なら500を返す", async () => {
-  resetMocks({
-    projectResult: {
-      data: null,
-      error: { code: "57014", message: "raw lookup failure" },
-    },
-  });
-
-  const response = await invoke("folderName=failed-project");
-
-  assert.equal(response.status, 500);
-  assert.deepEqual(await response.json(), { error: "Failed to resolve project" });
-  assert.equal(trace.projectQueries.length, 1);
-  assert.equal(trace.rpcCalls.length, 0);
+test("folderName指定時は空値を含め400を返しDB・RPCを呼ばない", async () => {
+  for (const value of ["owned-project", "missing-project", "", "null", "42", "   "]) {
+    resetMocks();
+    const response = await invoke(`folderName=${encodeURIComponent(value)}`);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "folderName is no longer supported" });
+    assert.equal(trace.projectQueries.length, 0);
+    assert.equal(trace.rpcCalls.length, 0);
+  }
 });
 
 (async () => {

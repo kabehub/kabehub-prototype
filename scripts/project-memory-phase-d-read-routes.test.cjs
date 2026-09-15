@@ -35,6 +35,9 @@ function createQuery(table) {
       throw new Error(`unexpected maybeSingle table: ${table}`);
     },
     then(onFulfilled, onRejected) {
+      if (table === "project_settings") {
+        return Promise.resolve(settingsResult).then(onFulfilled, onRejected);
+      }
       if (table !== "lore_embeddings") {
         throw new Error(`unexpected awaited table: ${table}`);
       }
@@ -133,59 +136,35 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
-test("project-settings resolves the owned project and queries by project_id", async () => {
-  resetMocks({
-    settingsResult: {
-      data: {
-        system_prompt: "owned setting",
-        folder_type: "novel",
-        pinned_github_files: ["README.md"],
-        github_repo: "owner/repo",
-        github_ref: "main",
-      },
-      error: null,
-    },
+for (const [label, invoke] of [
+  ["project-settings", invokeProjectSettings],
+  ["lore/chunks", invokeLoreChunks],
+]) {
+  test(`${label} rejects folder_name including empty values before DB`, async () => {
+    for (const value of ["same-name", "missing-project", "other-user-project", "", "null", "42"]) {
+      resetMocks();
+      const response = await invoke(value);
+      assert.equal(response.status, 400);
+      assert.equal(response.headers.get("x-phase-d-finalized"), "1");
+      assert.deepEqual(await response.json(), {
+        error: "folder_name is no longer supported; use project_id",
+      });
+      assert.deepEqual(queryCalls, []);
+    }
   });
+}
 
-  const response = await invokeProjectSettings("same-name");
-
+test("project-settings without project_id lists owned settings without resolving a project", async () => {
+  const settings = [{ project_id: PROJECT_ID, folder_type: "novel" }];
+  resetMocks({ settingsResult: { data: settings, error: null } });
+  const response = await projectSettingsRoute.GET(new NextRequest(
+    "https://www.kabehub.com/api/project-settings",
+  ));
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    project_id: PROJECT_ID,
-    system_prompt: "owned setting",
-    folder_type: "novel",
-    pinned_github_files: ["README.md"],
-    github_repo: "owner/repo",
-    github_ref: "main",
-  });
-  assert.deepEqual(queryCalls.map((call) => call.table), ["projects", "project_settings"]);
-  assert.deepEqual(queryCalls[0].state.filters, [
-    { column: "user_id", value: USER_ID },
-    { column: "name", value: "same-name" },
-  ]);
-  assert.deepEqual(queryCalls[1].state.filters, [
-    { column: "user_id", value: USER_ID },
-    { column: "project_id", value: PROJECT_ID },
-  ]);
-});
-
-test("lore/chunks resolves the owned project and queries by project_id", async () => {
-  const chunks = [{ id: "chunk-1", chunk_text: "owned chunk", created_at: "2026-09-10" }];
-  resetMocks({ chunksResult: { data: chunks, error: null } });
-
-  const response = await invokeLoreChunks("same-name");
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { chunks });
-  assert.deepEqual(queryCalls.map((call) => call.table), ["projects", "lore_embeddings"]);
-  assert.deepEqual(queryCalls[1].state.filters, [
-    { column: "user_id", value: USER_ID },
-    { column: "project_id", value: PROJECT_ID },
-  ]);
-  assert.deepEqual(queryCalls[1].state.order, {
-    column: "created_at",
-    options: { ascending: true },
-  });
+  assert.deepEqual(await response.json(), settings);
+  assert.deepEqual(queryCalls.map((call) => call.table), ["project_settings"]);
+  assert.equal(queryCalls[0].state.select, "project_id, folder_type");
+  assert.deepEqual(queryCalls[0].state.filters, [{ column: "user_id", value: USER_ID }]);
 });
 
 test("project-settings accepts an owned canonical project_id", async () => {
@@ -230,6 +209,14 @@ test("lore/chunks accepts an owned canonical project_id", async () => {
     { column: "id", value: PROJECT_ID },
     { column: "user_id", value: USER_ID },
   ]);
+  assert.deepEqual(queryCalls[1].state.filters, [
+    { column: "user_id", value: USER_ID },
+    { column: "project_id", value: PROJECT_ID },
+  ]);
+  assert.deepEqual(queryCalls[1].state.order, {
+    column: "created_at",
+    options: { ascending: true },
+  });
 });
 
 for (const [label, invoke] of [
@@ -246,15 +233,20 @@ for (const [label, invoke] of [
     assert.deepEqual(queryCalls.map((call) => call.table), ["projects"]);
   });
 
-  test(`${label} rejects canonical and legacy keys together`, async () => {
-    resetMocks();
-    const route = label === "project-settings" ? projectSettingsRoute : loreChunksRoute;
-    const response = await route.GET(new NextRequest(
-      `https://www.kabehub.com/api/${label}?project_id=&folder_name=legacy`,
-    ));
+  test(`${label} rejects folder_name alongside canonical project_id before DB`, async () => {
+    for (const value of ["legacy", "", "null", "42"]) {
+      resetMocks();
+      const route = label === "project-settings" ? projectSettingsRoute : loreChunksRoute;
+      const response = await route.GET(new NextRequest(
+        `https://www.kabehub.com/api/${label}?project_id=${PROJECT_ID}&folder_name=${value}`,
+      ));
 
-    assert.equal(response.status, 400);
-    assert.deepEqual(queryCalls, []);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), {
+        error: "folder_name is no longer supported; use project_id",
+      });
+      assert.deepEqual(queryCalls, []);
+    }
   });
 
   test(`${label} rejects an empty canonical project_id`, async () => {
@@ -277,33 +269,11 @@ test("lore/chunks rejects a request without a project key", async () => {
   assert.deepEqual(queryCalls, []);
 });
 
-test("an unresolved or other-user-only project name keeps successful empty responses", async () => {
-  resetMocks({ projectResult: { data: null, error: null } });
-
-  const settingsResponse = await invokeProjectSettings("other-user-project");
-  assert.equal(settingsResponse.status, 200);
-  assert.deepEqual(await settingsResponse.json(), {
-    project_id: null,
-    system_prompt: null,
-    folder_type: null,
-    pinned_github_files: [],
-    github_repo: null,
-    github_ref: null,
-  });
-  assert.deepEqual(queryCalls.map((call) => call.table), ["projects"]);
-
-  resetMocks({ projectResult: { data: null, error: null } });
-  const chunksResponse = await invokeLoreChunks("other-user-project");
-  assert.equal(chunksResponse.status, 200);
-  assert.deepEqual(await chunksResponse.json(), { chunks: [] });
-  assert.deepEqual(queryCalls.map((call) => call.table), ["projects"]);
-});
-
 for (const [label, invoke] of [
-  ["project-settings", invokeProjectSettings],
-  ["lore/chunks", invokeLoreChunks],
+  ["project-settings", invokeProjectSettingsByProjectId],
+  ["lore/chunks", invokeLoreChunksByProjectId],
 ]) {
-  test(`${label} returns a finalized 500 when project resolution fails`, async () => {
+  test(`${label} returns a finalized 500 when canonical ownership lookup fails`, async () => {
     resetMocks({
       projectResult: {
         data: null,
@@ -311,12 +281,12 @@ for (const [label, invoke] of [
       },
     });
 
-    const response = await invoke("project-name");
+    const response = await invoke();
 
     assert.equal(response.status, 500);
     assert.equal(response.headers.get("x-phase-d-finalized"), "1");
     const body = await response.json();
-    assert.deepEqual(body, { error: "Failed to resolve project" });
+    assert.deepEqual(body, { error: "Failed to load project" });
     assert.equal(JSON.stringify(body).includes("raw project lookup failure"), false);
     assert.deepEqual(queryCalls.map((call) => call.table), ["projects"]);
   });
