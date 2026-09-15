@@ -340,7 +340,7 @@ function ChatWorkspace({ session }: { session: Session }) {
   }, []);
 
   const handleNewThreadInFolder = useCallback(
-    async (folderName: string) => {
+    async (projectId: string) => {
       const id = crypto.randomUUID();
       try {
         const res = await apiClient.request(`/api/threads/${id}`, {
@@ -348,7 +348,7 @@ function ChatWorkspace({ session }: { session: Session }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: "新しい壁打ち",
-            folder_name: folderName,
+            project_id: projectId,
           }),
         });
         if (!res.ok) {
@@ -392,12 +392,12 @@ function ChatWorkspace({ session }: { session: Session }) {
   );
 
   const handleUpdateFolder = useCallback(
-    async (threadId: string, folderName: string | null) => {
+    async (threadId: string, projectId: string | null) => {
       try {
         const res = await apiClient.request(`/api/threads/${threadId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folder_name: folderName }),
+          body: JSON.stringify({ project_id: projectId }),
         });
         if (!res.ok) {
           showToast("フォルダの更新に失敗しました", "error");
@@ -423,6 +423,21 @@ function ChatWorkspace({ session }: { session: Session }) {
     },
     [showToast, projects, loadProjects]
   );
+
+  const handleCreateProject = useCallback(async (name: string): Promise<string | null> => {
+    try {
+      const res = await apiClient.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.project_id ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const handleTitleUpdate = useCallback((id: string, title: string) => {
     setThreads((current) =>
@@ -926,10 +941,11 @@ function ChatWorkspace({ session }: { session: Session }) {
             user={session.user}
             onLogout={handleLogout}
             onUpdateFolder={handleUpdateFolder}
-            onNewThreadInFolder={async (folderName) => {
-              await handleNewThreadInFolder(folderName);
+            onNewThreadInFolder={async (projectId) => {
+              await handleNewThreadInFolder(projectId);
               setIsSidebarOpen(false);
             }}
+            onCreateProject={handleCreateProject}
             isMobileOverlay
           />
         </>
