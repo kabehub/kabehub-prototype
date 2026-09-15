@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/extract-settings
-// body: { threadId: string, messages: {role:string, content:string}[], folderName?: string }
+// body: { threadId: string, messages: {role:string, content:string}[] }
 export async function POST(req: NextRequest) {
   const auth = await requireRouteUser(req)
   if (!auth.ok) return auth.response
@@ -88,7 +88,11 @@ export async function POST(req: NextRequest) {
 }`
 
   try {
-    const { threadId, messages, folderName } = await req.json()
+    const { threadId, messages } = await req.json()
+
+    if (typeof threadId !== 'string' || threadId.length === 0) {
+      return finalizeJson({ error: 'threadId is required' }, { status: 400 })
+    }
 
     if (
       !Array.isArray(messages) ||
@@ -100,6 +104,20 @@ export async function POST(req: NextRequest) {
       )
     ) {
       return finalizeJson({ error: 'messages must be an array of { role: string, content: string }' }, { status: 400 })
+    }
+
+    const { data: thread, error: threadError } = await supabase
+      .from('threads')
+      .select('id')
+      .eq('id', threadId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (threadError) {
+      return finalizeJson({ error: threadError.message }, { status: 500 })
+    }
+    if (!thread) {
+      return finalizeJson({ error: 'Thread not found' }, { status: 404 })
     }
 
     const userContent = [
@@ -195,9 +213,9 @@ export async function POST(req: NextRequest) {
       .from('novel_settings')
       .upsert(
         [
-          { user_id: user.id, thread_id: threadId, folder_name: folderName ?? null, type: 'character', data: { characters: parsed.characters ?? [] } },
-          { user_id: user.id, thread_id: threadId, folder_name: folderName ?? null, type: 'faction',   data: { factions:   parsed.factions   ?? [] } },
-          { user_id: user.id, thread_id: threadId, folder_name: folderName ?? null, type: 'glossary',  data: { glossary:   parsed.glossary   ?? [] } },
+          { user_id: user.id, thread_id: threadId, type: 'character', data: { characters: parsed.characters ?? [] } },
+          { user_id: user.id, thread_id: threadId, type: 'faction',   data: { factions:   parsed.factions   ?? [] } },
+          { user_id: user.id, thread_id: threadId, type: 'glossary',  data: { glossary:   parsed.glossary   ?? [] } },
         ],
         { onConflict: 'user_id,thread_id,type' }
       )
