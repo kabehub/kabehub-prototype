@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/09/14（migration_v195_rename_project.sql反映・DB未適用）
+-- 最終更新: 2026/09/15（migration_v196_project_settings_project_id_contract.sql反映・DB未適用）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -55,6 +55,7 @@
 -- 2026/09/08、migration_v182_project_memory_phase_a.sqlをスキーマ正本へ反映（テスト環境/本番DB適用済み、Project Memory Manager Phase A対応）。
 -- 2026/09/13、migration_v194_delete_project_preserving_contents.sqlをスキーマ正本へ反映（Project物理削除・関連コンテンツ保持・Project Memory任意Lore昇格。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
 -- 2026/09/14、migration_v195_rename_project.sqlをスキーマ正本へ反映（Project名変更と関連テーブルのfolder_name同期。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
+-- 2026/09/15、migration_v196_project_settings_project_id_contract.sqlをスキーマ正本へ反映（DB未適用。project_settings.folder_nameをnullable化し、(user_id, project_id) UNIQUE制約を追加）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1287,7 +1288,7 @@ grant execute on function public.submit_report(uuid, text, uuid, text)
 create table if not exists project_settings (
   id                    uuid primary key default gen_random_uuid(),
   user_id               uuid references auth.users(id) on delete cascade,
-  folder_name           text not null,
+  folder_name           text,
   system_prompt         text,
   created_at            timestamptz default now(),
   updated_at            timestamptz default now(),
@@ -1296,7 +1297,8 @@ create table if not exists project_settings (
   github_repo           text default null,               -- "owner/repo" 形式
   github_ref            text default null,               -- ブランチ/タグ/SHA
   project_id            uuid references projects(id) on delete cascade,
-  unique (user_id, folder_name)
+  unique (user_id, folder_name),
+  constraint project_settings_user_id_project_id_key unique (user_id, project_id)
 );
 
 create index if not exists idx_project_settings_project on project_settings(project_id);
