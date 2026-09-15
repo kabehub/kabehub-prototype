@@ -52,10 +52,6 @@ export async function POST(req: NextRequest) {
     openaiKey    ? 'openai' :
     null
 
-  if (!provider) {
-    return finalizeJson({ error: 'API key is required (x-anthropic-api-key, x-gemini-api-key, or x-openai-api-key)' }, { status: 400 })
-  }
-
   function providerFailure(providerId: 'claude' | 'gemini' | 'openai', providerLabel: string, status: number) {
     logger.externalApiFailed({
       service: logger.toExternalService(providerId),
@@ -118,6 +114,10 @@ export async function POST(req: NextRequest) {
     }
     if (!thread) {
       return finalizeJson({ error: 'Thread not found' }, { status: 404 })
+    }
+
+    if (!provider) {
+      return finalizeJson({ error: 'API key is required (x-anthropic-api-key, x-gemini-api-key, or x-openai-api-key)' }, { status: 400 })
     }
 
     const userContent = [

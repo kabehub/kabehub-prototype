@@ -195,14 +195,14 @@ function invokeProjectSettingsPost(body) {
   ));
 }
 
-function invokeExtractSettings(body) {
+function invokeExtractSettings(body, includeApiKey = true) {
   return extractSettingsRoute.POST(new NextRequest(
     "https://www.kabehub.com/api/extract-settings",
     {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-anthropic-api-key": "anthropic-key",
+        ...(includeApiKey ? { "x-anthropic-api-key": "anthropic-key" } : {}),
       },
       body: JSON.stringify(body),
     },
@@ -350,7 +350,10 @@ test("extract-settings rejects invalid threadId before database or external AI",
 
 test("extract-settings rejects an unowned thread before external AI", async () => {
   resetMocks({ threadResult: { data: null, error: null } });
-  const response = await invokeExtractSettings({ threadId: THREAD_ID, messages: [] });
+  const response = await invokeExtractSettings(
+    { threadId: THREAD_ID, messages: [] },
+    false,
+  );
 
   assert.equal(response.status, 404);
   assert.equal(externalFetchCalls, 0);
