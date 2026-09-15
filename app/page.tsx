@@ -337,7 +337,7 @@ export default function Home() {
     localStorage.removeItem("lastActiveThreadId");
   }, [isTemporary, temporaryMessages]);
 
-  const handleNewThreadInFolder = useCallback(async (folderName: string) => {
+  const handleNewThreadInFolder = useCallback(async (projectId: string) => {
     if (isTemporary && temporaryMessages.length > 0) {
       const ok = window.confirm("保存されていない一時メッセージは消去されます。よろしいですか？");
       if (!ok) return;
@@ -349,7 +349,7 @@ export default function Home() {
       const res = await fetch(`/api/threads/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "新しい壁打ち", folder_name: folderName }),
+        body: JSON.stringify({ title: "新しい壁打ち", project_id: projectId }),
       });
       if (!res.ok) {
         showToast("フォルダ内スレッドの作成に失敗しました", "error");
@@ -390,12 +390,12 @@ export default function Home() {
   );
 
   const handleUpdateFolder = useCallback(
-    async (threadId: string, folderName: string | null): Promise<Thread | null> => {
+    async (threadId: string, projectId: string | null): Promise<Thread | null> => {
       try {
         const res = await fetch(`/api/threads/${threadId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folder_name: folderName }),
+          body: JSON.stringify({ project_id: projectId }),
         });
         if (!res.ok) {
           showToast("フォルダの更新に失敗しました", "error");
@@ -1394,7 +1394,6 @@ export default function Home() {
           messages: messages
             .filter(m => m.provider !== "memo")
             .map(m => ({ role: m.role, content: m.content })),
-          folderName: threads.find(t => t.id === activeThreadId)?.folder_name ?? undefined,
         }),
       });
       if (!res.ok) throw new Error("抽出失敗");
@@ -1475,8 +1474,8 @@ export default function Home() {
           user={user}
           onLogout={handleLogout}
           onUpdateFolder={handleUpdateFolder}
-          onNewThreadInFolder={(folderName: string) => {
-            handleNewThreadInFolder(folderName);
+          onNewThreadInFolder={(projectId: string) => {
+            handleNewThreadInFolder(projectId);
             if (isMobileViewport) setIsMobileSidebarOpen(false);
           }}
           onRefreshThreads={fetchThreads}
@@ -1557,7 +1556,7 @@ export default function Home() {
         apiKeyStore={webApiKeyStore}
         threadId={activeThreadId}
         threadTitle={threads.find(t => t.id === activeThreadId)?.title ?? undefined}
-        folderName={threads.find(t => t.id === activeThreadId)?.folder_name ?? null}
+        projectId={activeThread?.project_id ?? null}
         isOpen={isNovelPaneOpen}
         onToggle={handleNovelPaneToggle}
         isExtracting={isExtracting}
