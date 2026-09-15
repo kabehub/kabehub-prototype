@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/storage-cleanup";
 import { v4 as uuidv4 } from "uuid";
 import * as logger from "@/lib/logger";
+import { getOwnedProject } from "@/lib/project-memory/get-owned-project";
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -117,16 +118,42 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const body = await req.json();
   const updates: Record<string, unknown> = {};
 
+  if (body.project_id !== undefined && body.folder_name !== undefined) {
+    return finalizeJson(
+      { error: "project_id and folder_name cannot both be specified" },
+      { status: 400 },
+    );
+  }
+
   if (body.title !== undefined) updates.title = body.title;
   if (body.system_prompt !== undefined) updates.system_prompt = body.system_prompt;
   if (body.is_public !== undefined) updates.is_public = body.is_public;
   if (body.hide_memos !== undefined) updates.hide_memos = body.hide_memos;
   if (body.allow_prompt_fork !== undefined) updates.allow_prompt_fork = body.allow_prompt_fork;
+  if (body.project_id !== undefined) {
+    if (body.project_id === null) {
+      updates.project_id = null;
+    } else {
+      if (typeof body.project_id !== "string") {
+        return finalizeJson({ error: "project_id must be a string or null" }, { status: 400 });
+      }
+      const ownedProject = await getOwnedProject(supabase, user.id, body.project_id);
+      if (!ownedProject.ok) {
+        return finalizeJson(
+          { error: ownedProject.error },
+          { status: ownedProject.status },
+        );
+      }
+      updates.project_id = body.project_id;
+    }
+  }
   if (body.folder_name !== undefined) {
-    updates.folder_name = body.folder_name;
     if (body.folder_name === null) {
       updates.project_id = null;
     } else {
+      if (typeof body.folder_name !== "string") {
+        return finalizeJson({ error: "folder_name must be a string or null" }, { status: 400 });
+      }
       const { data: projectId, error: projectError } = await supabase.rpc(
         "get_or_create_project",
         {
