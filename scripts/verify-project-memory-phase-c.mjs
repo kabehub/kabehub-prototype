@@ -54,12 +54,13 @@ function expectRpcError(error, code, messagePart, context) {
 }
 
 async function apiRequest(baseUrl, accessToken, path, init = {}) {
+  const { expectedStatus, ...requestInit } = init;
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${accessToken}`);
   if (init.body !== undefined) headers.set("content-type", "application/json");
 
   const response = await fetch(new URL(path, baseUrl), {
-    ...init,
+    ...requestInit,
     headers,
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
@@ -70,7 +71,9 @@ async function apiRequest(baseUrl, accessToken, path, init = {}) {
   } catch {
     body = text;
   }
-  if (!response.ok) {
+  if (expectedStatus !== undefined) {
+    assert.equal(response.status, expectedStatus, `${init.method ?? "GET"} ${path}: ${text}`);
+  } else if (!response.ok) {
     throw new Error(`${init.method ?? "GET"} ${path}: HTTP ${response.status} ${text}`);
   }
   return { status: response.status, body };
@@ -202,28 +205,41 @@ async function run() {
   const folderB = `phase-c-b-${suffix}`;
   const folderMcp = `phase-c-mcp-${suffix}`;
   const threadId = randomUUID();
+  const projectA = await getProject(authenticated, userA.id, folderA);
+  const projectB = await getProject(authenticated, userA.id, folderB);
 
   await apiRequest(baseUrl, accessToken, `/api/threads/${threadId}`, {
     method: "PATCH",
-    body: { title: "Phase C verification", folder_name: folderA },
+    body: { title: "Phase C verification", project_id: projectA },
   });
   let thread = await selectSingle(service, "threads", threadId, "id, user_id, folder_name, project_id");
   assert.equal(thread.user_id, userA.id);
   assert.equal(thread.folder_name, null);
   assert.ok(thread.project_id);
+  assert.equal(thread.project_id, projectA);
   const firstProjectId = thread.project_id;
   pass("① 新規スレッド作成→project_id非null", thread);
 
   await apiRequest(baseUrl, accessToken, `/api/threads/${threadId}`, {
     method: "PATCH",
-    body: { folder_name: folderB },
+    body: { project_id: projectB },
   });
   thread = await selectSingle(service, "threads", threadId, "id, folder_name, project_id");
   assert.equal(thread.folder_name, null);
   assert.ok(thread.project_id);
   assert.notEqual(thread.project_id, firstProjectId);
-  const projectB = thread.project_id;
+  assert.equal(thread.project_id, projectB);
   pass("② フォルダ付け替え→project_id更新", thread);
+
+  await apiRequest(baseUrl, accessToken, `/api/threads/${threadId}`, {
+    method: "PATCH",
+    body: { folder_name: folderA },
+    expectedStatus: 400,
+  });
+  thread = await selectSingle(service, "threads", threadId, "id, folder_name, project_id");
+  assert.equal(thread.project_id, projectB);
+  assert.equal(thread.folder_name, null);
+  pass("negative: PATCH folder_name→400・project_id不変", thread);
 
   await apiRequest(baseUrl, accessToken, "/api/project-settings", {
     method: "POST",
@@ -243,7 +259,7 @@ async function run() {
   await apiRequest(baseUrl, accessToken, "/api/lore/embed", {
     method: "POST",
     headers: { "x-openai-api-key": openaiKey },
-    body: { folderName: folderB, chunks: [{ text: "Phase C embed verification" }] },
+    body: { projectId: projectB, chunks: [{ text: "Phase C embed verification" }] },
   });
   const { data: embeddedRows, error: embedSelectError } = await service
     .from("lore_embeddings")
@@ -255,6 +271,14 @@ async function run() {
   assert.ok(embeddedRows.every((row) => row.folder_name === null));
   assert.ok(embeddedRows.every((row) => row.project_id === projectB));
   pass("④ lore embed→project_id確認", { count: embeddedRows.length, project_id: projectB });
+
+  await apiRequest(baseUrl, accessToken, "/api/lore/embed", {
+    method: "POST",
+    headers: { "x-openai-api-key": openaiKey },
+    body: { folderName: folderB, chunks: [] },
+    expectedStatus: 400,
+  });
+  pass("negative: lore/embed folderName→400");
 
   const { data: message, error: messageError } = await service
     .from("messages")

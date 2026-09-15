@@ -152,8 +152,10 @@ async function verifyMissingProjectRoute(authenticated, userId, missingFolderNam
   const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
   const originalLoad = Module._load;
   const rpcCalls = [];
+  const queryCalls = [];
   const routeSupabase = {
     from(table) {
+      queryCalls.push(table);
       return authenticated.from(table);
     },
     rpc(name, args) {
@@ -197,13 +199,12 @@ async function verifyMissingProjectRoute(authenticated, userId, missingFolderNam
       },
     ));
 
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), {
-      pastCount: 0,
-      expiredCount: 0,
-      total: 0,
+      error: "folderName is no longer supported",
     });
-    assert.equal(rpcCalls.length, 0, "missing project must not invoke any RPC");
+    assert.equal(queryCalls.length, 0, "rejected folderName must not query the DB");
+    assert.equal(rpcCalls.length, 0, "rejected folderName must not invoke any RPC");
   } finally {
     Module._load = originalLoad;
   }
@@ -336,10 +337,12 @@ async function run() {
 
   const missingFolderName = `phase-e3-missing-${suffix}`;
   await verifyMissingProjectRoute(authenticated, createdUserId, missingFolderName);
-  pass(2, "project不存在時はゼロ件を返しRPCを呼び出さない", {
+  pass(2, "folderName文字列指定は400・DB/RPC呼び出しなし", {
     folderName: missingFolderName,
     rpcCallCount: 0,
   });
+  await verifyMissingProjectRoute(authenticated, createdUserId, null);
+  pass(3, "folderName:nullも400・DB/RPC呼び出しなし", { rpcCallCount: 0 });
 }
 
 let exitCode = 0;

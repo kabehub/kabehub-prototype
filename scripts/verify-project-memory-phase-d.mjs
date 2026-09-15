@@ -55,7 +55,7 @@ function assertIncludesOnly(actual, expected, context) {
   assert.deepEqual([...texts(actual)].sort(), [...expected].sort(), context);
 }
 
-async function apiRequest(baseUrl, accessToken, path) {
+async function apiRequest(baseUrl, accessToken, path, expectedStatus = 200) {
   const response = await fetch(new URL(path, baseUrl), {
     headers: { authorization: `Bearer ${accessToken}` },
   });
@@ -66,9 +66,7 @@ async function apiRequest(baseUrl, accessToken, path) {
   } catch {
     body = text;
   }
-  if (!response.ok) {
-    throw new Error(`GET ${path}: HTTP ${response.status} ${text}`);
-  }
+  assert.equal(response.status, expectedStatus, `GET ${path}: ${text}`);
   return { status: response.status, body };
 }
 
@@ -251,6 +249,12 @@ async function rpcRows(client, name, args, context) {
   return data ?? [];
 }
 
+async function expectRemovedRpc(client, name, args, context) {
+  const { error } = await client.rpc(name, args);
+  assert.equal(error?.code, "PGRST202", `${context}: v187 removed this signature`);
+  return error.code;
+}
+
 async function run() {
   if (managementAccessToken) {
     await checkCatalogPostflight(projectRef, managementAccessToken);
@@ -415,7 +419,8 @@ async function run() {
     anon_error_codes: [anonSimpleError.code, anonV2Error.code],
   });
 
-  const oldSimple = await rpcRows(
+  // v187 is applied: the three legacy search signatures must be absent.
+  const oldSimple = await expectRemovedRpc(
     authenticated,
     "match_lore_embeddings",
     {
@@ -426,7 +431,7 @@ async function run() {
     },
     "old text match_lore_embeddings named arguments",
   );
-  const oldScoredV2 = await rpcRows(
+  const oldScoredV2 = await expectRemovedRpc(
     authenticated,
     "match_lore_embeddings_v2",
     {
@@ -438,7 +443,7 @@ async function run() {
     },
     "old f_ match_lore_embeddings_v2 named arguments",
   );
-  const oldFilteredV2 = await rpcRows(
+  const oldFilteredV2 = await expectRemovedRpc(
     authenticated,
     "match_lore_embeddings_v2",
     {
@@ -452,10 +457,10 @@ async function run() {
     },
     "unused filter match_lore_embeddings_v2 named arguments",
   );
-  pass("③ all old/new/filter RPC signatures resolve with named arguments", {
-    old_simple: oldSimple.length,
-    old_scored_v2: oldScoredV2.length,
-    old_filtered_v2: oldFilteredV2.length,
+  pass("③ canonical RPCs resolve; v187 legacy search signatures are removed", {
+    old_simple_error: oldSimple,
+    old_scored_v2_error: oldScoredV2,
+    old_filtered_v2_error: oldFilteredV2,
     new_simple: authSimple.length,
     new_scored_v2: authV2.length,
   });
@@ -481,58 +486,42 @@ async function run() {
   assertIncludesOnly(unassigned, [globalText], "unassigned thread scope");
   pass("⑦ null project searches only project_id IS NULL memory");
 
-  assert.ok(texts(oldSimple).has(sameText));
-  assert.ok(texts(oldScoredV2).has(sameText));
-  assert.ok(texts(oldFilteredV2).has(sameText));
-
   const ownedSettings = await apiRequest(
     baseUrl,
     accessToken,
-    `/api/project-settings?folder_name=${encodeURIComponent(folderA)}`,
+    `/api/project-settings?project_id=${projectA}`,
   );
   assert.equal(ownedSettings.status, 200);
   assert.equal(ownedSettings.body.system_prompt, `owned-${suffix}`);
   const ownedChunks = await apiRequest(
     baseUrl,
     accessToken,
-    `/api/lore/chunks?folder_name=${encodeURIComponent(folderA)}`,
+    `/api/lore/chunks?project_id=${projectA}`,
   );
   assert.equal(ownedChunks.status, 200);
   assert.deepEqual(ownedChunks.body.chunks.map((row) => row.chunk_text), [sameText]);
 
-  const missingSettings = await apiRequest(
-    baseUrl,
-    accessToken,
-    `/api/project-settings?folder_name=${encodeURIComponent(`missing-${suffix}`)}`,
-  );
-  assert.deepEqual(missingSettings.body, {
-    project_id: null,
-    system_prompt: null,
-    folder_type: null,
-    pinned_github_files: [],
-    github_repo: null,
-    github_ref: null,
-  });
-  const missingChunks = await apiRequest(
-    baseUrl,
-    accessToken,
-    `/api/lore/chunks?folder_name=${encodeURIComponent(`missing-${suffix}`)}`,
-  );
-  assert.deepEqual(missingChunks.body, { chunks: [] });
-
-  const otherOnlySettings = await apiRequest(
-    baseUrl,
-    accessToken,
-    `/api/project-settings?folder_name=${encodeURIComponent(otherOnlyFolder)}`,
-  );
-  assert.equal(otherOnlySettings.body.system_prompt, null);
-  const otherOnlyChunks = await apiRequest(
-    baseUrl,
-    accessToken,
-    `/api/lore/chunks?folder_name=${encodeURIComponent(otherOnlyFolder)}`,
-  );
-  assert.deepEqual(otherOnlyChunks.body, { chunks: [] });
-  pass("⑪⑫ query-parameter routes keep empty success and owner isolation");
+  for (const route of ["project-settings", "lore/chunks"]) {
+    for (const value of [folderA, ""]) {
+      const rejected = await apiRequest(
+        baseUrl,
+        accessToken,
+        `/api/${route}?folder_name=${encodeURIComponent(value)}`,
+        400,
+      );
+      assert.deepEqual(rejected.body, {
+        error: "folder_name is no longer supported; use project_id",
+      });
+    }
+    const unowned = await apiRequest(
+      baseUrl,
+      accessToken,
+      `/api/${route}?project_id=${otherOnlyProject}`,
+      404,
+    );
+    assert.deepEqual(unowned.body, { error: "Project not found" });
+  }
+  pass("⑪⑫ canonical project_id returns owned data/404 for unowned; folder_name returns 400");
 
   await checkInvariants(service, "⑭ test DB");
 }
