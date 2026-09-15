@@ -395,8 +395,16 @@ async function run() {
     mcpResponse.body.thread.id,
     "id, folder_name, project_id",
   );
-  assert.equal(mcpThread.folder_name, folderMcp);
-  assert.ok(mcpThread.project_id);
+  const { data: mcpProject, error: mcpProjectError } = await service
+    .from("projects")
+    .select("id")
+    .eq("user_id", userA.id)
+    .eq("name", folderMcp)
+    .single();
+  expectNoError(mcpProjectError, "select MCP-created project");
+
+  assert.equal(mcpThread.folder_name, null);
+  assert.equal(mcpThread.project_id, mcpProject.id);
   pass("⑨ MCP経由スレッド作成→project_id確認", mcpThread);
 
   const branchResponse = await apiRequest(baseUrl, accessToken, `/api/threads/${threadId}/branch-to`, {
