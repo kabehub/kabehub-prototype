@@ -30,7 +30,7 @@ interface NovelSettingsPaneProps {
   apiKeyStore: ApiKeyStore;
   threadId: string | null;
   threadTitle?: string;
-  folderName?: string | null;
+  projectId?: string | null;
   isOpen: boolean;
   onToggle: () => void;
   isExtracting: boolean;
@@ -42,7 +42,7 @@ export default function NovelSettingsPane({
   apiKeyStore,
   threadId,
   threadTitle,
-  folderName,
+  projectId,
   isOpen,
   onToggle,
   isExtracting,
@@ -143,13 +143,13 @@ export default function NovelSettingsPane({
   };
 
   const fetchLoreChunks = useCallback(async () => {
-    if (!folderName) {
+    if (!projectId) {
       setLoreChunks([]);
       return;
     }
-    setLoreChunks([]); // fetch開始時点で旧一覧をクリア（folderName切替時に前フォルダのchunkを表示させない）
+    setLoreChunks([]); // fetch開始時点で旧一覧をクリア（projectId切替時に前Projectのchunkを表示させない）
     try {
-      const res = await fetch(`/api/lore/chunks?folder_name=${encodeURIComponent(folderName)}`);
+      const res = await fetch(`/api/lore/chunks?project_id=${encodeURIComponent(projectId)}`);
       if (res.ok) {
         const data = await res.json();
         setLoreChunks(data.chunks ?? []);
@@ -159,14 +159,14 @@ export default function NovelSettingsPane({
       // 読み取り専用: 例外時も空配列クリアのまま。前フォルダのchunkは表示されない。
       // 非同期レース（旧フォルダの取得が新フォルダの取得より遅れて完了するケース）への対策は別スコープとする。
     }
-  }, [folderName]);
+  }, [projectId]);
 
   useEffect(() => {
     if (isOpen && activeTab === "lore") fetchLoreChunks();
   }, [isOpen, activeTab, fetchLoreChunks]);
 
   const handleEmbed = async (text: string) => {
-    if (!folderName || !text.trim()) return;
+    if (!projectId || !text.trim()) return;
     const apiKeyHeaders = await buildApiKeyHeaders(apiKeyStore, ["openai"]);
     if (!apiKeyHeaders[API_KEY_HEADER_NAMES.openai]) {
       alert("OpenAI APIキーが設定されていません。右上の「🔑 APIキー」から設定してください。");
@@ -178,7 +178,7 @@ export default function NovelSettingsPane({
       const res = await webApiClient.request("/api/lore/embed", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...apiKeyHeaders },
-        body: JSON.stringify({ folderName, chunks }),
+        body: JSON.stringify({ projectId, chunks }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -414,7 +414,7 @@ export default function NovelSettingsPane({
 
                   <button
                     onClick={() => handleEmbed(loreText)}
-                    disabled={isEmbedding || !loreText.trim() || !folderName}
+                    disabled={isEmbedding || !loreText.trim() || !projectId}
                     className="w-full text-[11px] py-1.5 rounded border font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "none" }}
                   >
@@ -423,7 +423,7 @@ export default function NovelSettingsPane({
 
                   <button
                     onClick={handleGenerateFromDB}
-                    disabled={isEmbedding || !settingsData || !folderName}
+                    disabled={isEmbedding || !settingsData || !projectId}
                     className="w-full text-[11px] py-1.5 rounded border font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     style={{ borderColor: "var(--border)", color: "var(--ink-muted)", background: "none" }}
                   >
