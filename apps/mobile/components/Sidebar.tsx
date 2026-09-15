@@ -27,9 +27,10 @@ export interface SidebarProps {
   onLogout: () => void | Promise<void>;
   onUpdateFolder: (
     threadId: string,
-    folderName: string | null
+    projectId: string | null
   ) => void | Promise<void>;
-  onNewThreadInFolder: (folderName: string) => void | Promise<void>;
+  onNewThreadInFolder: (projectId: string) => void | Promise<void>;
+  onCreateProject: (name: string) => Promise<string | null>;
   isMobileOverlay?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -71,42 +72,41 @@ function groupThreadsByProject(
   return result;
 }
 
-function getUniqueFolderNames(threads: Thread[]): string[] {
-  const names = threads
-    .map((thread) => thread.folder_name)
-    .filter((folderName): folderName is string => Boolean(folderName));
-  return Array.from(new Set(names)).sort();
-}
-
 interface FolderPopoverProps {
   thread: Thread;
-  existingFolders: string[];
-  onAssign: (folderName: string | null) => void | Promise<void>;
+  projects: { id: string; name: string }[];
+  onAssign: (projectId: string | null) => void | Promise<void>;
+  onCreateProject: (name: string) => Promise<string | null>;
   onClose: () => void;
 }
 
 function FolderPopover({
   thread,
-  existingFolders,
+  projects,
   onAssign,
+  onCreateProject,
   onClose,
 }: FolderPopoverProps) {
-  const [inputValue, setInputValue] = useState(thread.folder_name ?? "");
+  const [inputValue, setInputValue] = useState("");
 
-  const assignAndClose = (folderName: string | null) => {
-    void onAssign(folderName);
+  const assignAndClose = (projectId: string | null) => {
+    void onAssign(projectId);
     onClose();
   };
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     const trimmed = inputValue.trim();
-    assignAndClose(trimmed === "" ? null : trimmed);
+    if (trimmed === "") return;
+    const projectId = await onCreateProject(trimmed);
+    if (!projectId) return;
+    await onAssign(projectId);
+    onClose();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      handleAssign();
+      void handleAssign();
     }
     if (event.key === "Escape") {
       event.stopPropagation();
@@ -130,21 +130,21 @@ function FolderPopover({
       >
         <div className="chat-sidebar-popover-title">フォルダを割り当て</div>
 
-        {existingFolders.length > 0 && (
+        {projects.length > 0 && (
           <div className="chat-sidebar-folder-options">
-            {existingFolders.map((folderName) => (
+            {projects.map((project) => (
               <button
                 type="button"
-                key={folderName}
+                key={project.id}
                 className={
-                  thread.folder_name === folderName
+                  thread.project_id === project.id
                     ? "chat-sidebar-folder-option chat-sidebar-folder-option-active"
                     : "chat-sidebar-folder-option"
                 }
-                onClick={() => assignAndClose(folderName)}
+                onClick={() => assignAndClose(project.id)}
               >
                 <span aria-hidden="true">📁</span>
-                <span className="chat-sidebar-ellipsis">{folderName}</span>
+                <span className="chat-sidebar-ellipsis">{project.name}</span>
               </button>
             ))}
           </div>
@@ -165,11 +165,12 @@ function FolderPopover({
           <button
             type="button"
             className="chat-sidebar-popover-submit"
-            onClick={handleAssign}
+            onClick={() => void handleAssign()}
+            disabled={inputValue.trim() === ""}
           >
             決定
           </button>
-          {thread.folder_name && (
+          {thread.project_id && (
             <button
               type="button"
               className="chat-sidebar-popover-remove"
@@ -187,19 +188,21 @@ function FolderPopover({
 interface ThreadItemProps {
   thread: Thread;
   isActive: boolean;
-  existingFolders: string[];
+  projects: { id: string; name: string }[];
   onSelect: () => void;
   onDelete: () => void | Promise<void>;
-  onUpdateFolder: (folderName: string | null) => void | Promise<void>;
+  onUpdateFolder: (projectId: string | null) => void | Promise<void>;
+  onCreateProject: (name: string) => Promise<string | null>;
 }
 
 function ThreadItem({
   thread,
   isActive,
-  existingFolders,
+  projects,
   onSelect,
   onDelete,
   onUpdateFolder,
+  onCreateProject,
 }: ThreadItemProps) {
   const [showFolderPopover, setShowFolderPopover] = useState(false);
 
@@ -239,7 +242,7 @@ function ThreadItem({
           <button
             type="button"
             className={
-              thread.folder_name
+              thread.project_id
                 ? "chat-sidebar-thread-action chat-sidebar-thread-folder-assigned"
                 : "chat-sidebar-thread-action"
             }
@@ -273,8 +276,9 @@ function ThreadItem({
       {showFolderPopover && (
         <FolderPopover
           thread={thread}
-          existingFolders={existingFolders}
+          projects={projects}
           onAssign={onUpdateFolder}
+          onCreateProject={onCreateProject}
           onClose={() => setShowFolderPopover(false)}
         />
       )}
@@ -285,22 +289,24 @@ function ThreadItem({
 interface ThreadSectionProps {
   threads: Thread[];
   activeThreadId: string | null;
-  existingFolders: string[];
+  projects: { id: string; name: string }[];
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void | Promise<void>;
   onUpdateFolder: (
     threadId: string,
-    folderName: string | null
+    projectId: string | null
   ) => void | Promise<void>;
+  onCreateProject: (name: string) => Promise<string | null>;
 }
 
 function RecentSection({
   threads,
   activeThreadId,
-  existingFolders,
+  projects,
   onSelectThread,
   onDeleteThread,
   onUpdateFolder,
+  onCreateProject,
 }: ThreadSectionProps) {
   const [isSectionCollapsed, setIsSectionCollapsed] = useState(false);
   const recentThreads = useMemo(
@@ -344,12 +350,13 @@ function RecentSection({
               key={thread.id}
               thread={thread}
               isActive={activeThreadId === thread.id}
-              existingFolders={existingFolders}
+              projects={projects}
               onSelect={() => onSelectThread(thread.id)}
               onDelete={() => onDeleteThread(thread.id)}
-              onUpdateFolder={(folderName) =>
-                onUpdateFolder(thread.id, folderName)
+              onUpdateFolder={(projectId) =>
+                onUpdateFolder(thread.id, projectId)
               }
+              onCreateProject={onCreateProject}
             />
           ))}
         </div>
@@ -363,9 +370,7 @@ interface FolderSectionProps extends ThreadSectionProps {
   displayName: string | null;
   legacyFolderName: string | null;
   defaultCollapsed: boolean;
-  onNewThreadInFolder?: (
-    legacyFolderName: string
-  ) => void | Promise<void>;
+  onNewThreadInFolder?: (projectId: string) => void | Promise<void>;
 }
 
 function FolderSection({
@@ -374,10 +379,11 @@ function FolderSection({
   legacyFolderName,
   threads,
   activeThreadId,
-  existingFolders,
+  projects,
   onSelectThread,
   onDeleteThread,
   onUpdateFolder,
+  onCreateProject,
   onNewThreadInFolder,
   defaultCollapsed,
 }: FolderSectionProps) {
@@ -412,13 +418,13 @@ function FolderSection({
           <span className="chat-sidebar-section-count">{threads.length}</span>
         </button>
 
-        {projectId && legacyFolderName && onNewThreadInFolder && (
+        {projectId && onNewThreadInFolder && (
           <button
             type="button"
             className="chat-sidebar-folder-add"
-            onClick={() => void onNewThreadInFolder(legacyFolderName)}
-            aria-label={`「${displayName ?? legacyFolderName}」に新しいスレッドを作成`}
-            title={`「${displayName ?? legacyFolderName}」に新しいスレッドを作成`}
+            onClick={() => void onNewThreadInFolder(projectId)}
+            aria-label={`「${displayName ?? legacyFolderName ?? "…"}」に新しいスレッドを作成`}
+            title={`「${displayName ?? legacyFolderName ?? "…"}」に新しいスレッドを作成`}
           >
             +
           </button>
@@ -432,12 +438,13 @@ function FolderSection({
               key={thread.id}
               thread={thread}
               isActive={activeThreadId === thread.id}
-              existingFolders={existingFolders}
+              projects={projects}
               onSelect={() => onSelectThread(thread.id)}
               onDelete={() => onDeleteThread(thread.id)}
-              onUpdateFolder={(nextFolderName) =>
-                onUpdateFolder(thread.id, nextFolderName)
+              onUpdateFolder={(nextProjectId) =>
+                onUpdateFolder(thread.id, nextProjectId)
               }
+              onCreateProject={onCreateProject}
             />
           ))}
         </div>
@@ -465,6 +472,7 @@ export default function Sidebar({
   onLogout,
   onUpdateFolder,
   onNewThreadInFolder,
+  onCreateProject,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<SearchTarget>("both");
@@ -477,7 +485,7 @@ export default function Sidebar({
   }, []);
 
   const handleNewThreadInFolder = useCallback(
-    (folderName: string) => onNewThreadInFolder(folderName),
+    (projectId: string) => onNewThreadInFolder(projectId),
     [onNewThreadInFolder]
   );
 
@@ -520,10 +528,6 @@ export default function Sidebar({
     () => groupThreadsByProject(threads, projectNameById),
     [threads, projectNameById]
   );
-  const existingFolders = useMemo(
-    () => getUniqueFolderNames(threads),
-    [threads]
-  );
   const showFlat = isSearching && searchQuery.trim() !== "";
 
   return (
@@ -547,10 +551,11 @@ export default function Sidebar({
           <RecentSection
             threads={threads}
             activeThreadId={activeThreadId}
-            existingFolders={existingFolders}
+            projects={projects}
             onSelectThread={onSelectThread}
             onDeleteThread={onDeleteThread}
             onUpdateFolder={onUpdateFolder}
+            onCreateProject={onCreateProject}
           />
         )}
 
@@ -573,12 +578,13 @@ export default function Sidebar({
               key={thread.id}
               thread={thread}
               isActive={activeThreadId === thread.id}
-              existingFolders={existingFolders}
+              projects={projects}
               onSelect={() => onSelectThread(thread.id)}
               onDelete={() => onDeleteThread(thread.id)}
-              onUpdateFolder={(folderName) =>
-                onUpdateFolder(thread.id, folderName)
+              onUpdateFolder={(projectId) =>
+                onUpdateFolder(thread.id, projectId)
               }
+              onCreateProject={onCreateProject}
             />
           ))}
 
@@ -600,10 +606,11 @@ export default function Sidebar({
                 legacyFolderName={legacyFolderName}
                 threads={group.threads}
                 activeThreadId={activeThreadId}
-                existingFolders={existingFolders}
+                projects={projects}
                 onSelectThread={onSelectThread}
                 onDeleteThread={onDeleteThread}
                 onUpdateFolder={onUpdateFolder}
+                onCreateProject={onCreateProject}
                 onNewThreadInFolder={handleNewThreadInFolder}
                 defaultCollapsed={!hasActiveThread}
               />
