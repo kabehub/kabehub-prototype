@@ -726,9 +726,7 @@ export async function POST(req: NextRequest) {
   // フォルダのシステムプロンプトを解決
   let resolvedSystemPrompt: string | undefined = systemPrompt || undefined;
   let loreTargetProjectId: string | null = null;
-  let currentFolderName: string | null = null;
   let currentProjectId: string | null = null;
-  let isInvariantBroken = false;
   let loreEnabled = false;
   let pinnedGithubFiles: string[] = [];
   let githubRepo: string | null = null;
@@ -738,7 +736,7 @@ export async function POST(req: NextRequest) {
   if (!isTemporary) {
     let { data: thread, error: threadError } = await supabase
       .from('threads')
-      .select('folder_name, project_id, user_id')
+      .select('project_id, user_id')
       .eq('id', threadId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -766,7 +764,7 @@ export async function POST(req: NextRequest) {
 
       const { data: confirmedThread, error: confirmedThreadError } = await supabase
         .from('threads')
-        .select('folder_name, project_id, user_id')
+        .select('project_id, user_id')
         .eq('id', threadId)
         .eq('user_id', userId)
         .maybeSingle();
@@ -788,19 +786,9 @@ export async function POST(req: NextRequest) {
       thread = confirmedThread;
     }
 
-    currentFolderName = thread?.folder_name ?? null;
     currentProjectId = thread?.project_id ?? null;
-    const hasFolder = currentFolderName != null;
-    const hasProject = currentProjectId != null;
-    isInvariantBroken = hasFolder !== hasProject;
 
-    if (isInvariantBroken) {
-      logger.bestEffortFailed({
-        operation: "project-memory-invariant-broken",
-      });
-    }
-
-    if (!isInvariantBroken && currentProjectId !== null) {
+    if (currentProjectId !== null) {
       const { data: folderSetting, error: folderSettingError } = await supabase
         .from('project_settings').select('system_prompt, folder_type, pinned_github_files, github_repo, github_ref')
         .eq('user_id', userId).eq('project_id', currentProjectId).maybeSingle();
@@ -1059,13 +1047,12 @@ export async function POST(req: NextRequest) {
   let dynamicSystemText: string | undefined = undefined;
 
   // NOTE: This combined search covers Lore Book injection and legacy Memory injection.
-  // The later rule-based RAG memory context also uses the same project invariant guard.
-  const wantsLoreBook = !isInvariantBroken && loreEnabled && !!openaiKey && !!loreTargetProjectId;
+  // Both paths use the thread's canonical project_id resolved above.
+  const wantsLoreBook = loreEnabled && !!openaiKey && !!loreTargetProjectId;
   const MEMORY_TRIGGER_PATTERN = /前に|以前|覚えて|記憶|方針|決定|このプロジェクト|続き|KabeHub|RAG|メモリ/;
   const wantsMemorySearch =
     !isTemporary &&
     !isMemo &&
-    !isInvariantBroken &&
     !!openaiKey &&
     MEMORY_TRIGGER_PATTERN.test(userContent);
 
@@ -1389,7 +1376,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── RAG memory context（rule-based MVP）─────────────────────
-  if (!isInvariantBroken && openaiKey && shouldSearchRagMemory(userContent)) {
+  if (openaiKey && shouldSearchRagMemory(userContent)) {
     try {
       const ragResults = await searchLoreV2ForProject(supabase, {
         query: userContent,
