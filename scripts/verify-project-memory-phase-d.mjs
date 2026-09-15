@@ -171,7 +171,6 @@ async function insertLore(client, userId, rows) {
 async function checkInvariants(client, label) {
   const tables = ["threads", "project_settings", "lore_embeddings"];
   const missingProject = {};
-  const missingFolder = {};
 
   for (const table of tables) {
     const { count: projectCount, error: projectError } = await client
@@ -182,20 +181,10 @@ async function checkInvariants(client, label) {
     expectNoError(projectError, `${table}: folder_name without project_id`);
     missingProject[table] = projectCount;
     assert.equal(projectCount, 0, `${table}: folder_name without project_id`);
-
-    const { count: folderCount, error: folderError } = await client
-      .from(table)
-      .select("id", { count: "exact", head: true })
-      .is("folder_name", null)
-      .not("project_id", "is", null);
-    expectNoError(folderError, `${table}: project_id without folder_name`);
-    missingFolder[table] = folderCount;
-    assert.equal(folderCount, 0, `${table}: project_id without folder_name`);
   }
 
-  pass(`${label}: folder_name/project_id invariant`, {
+  pass(`${label}: folder_name requires project_id invariant`, {
     folder_name_set_project_id_null: missingProject,
-    project_id_set_folder_name_null: missingFolder,
   });
 }
 
@@ -274,7 +263,7 @@ async function run() {
 
   runLocalRegression("scripts/project-memory-phase-d-read-routes.test.cjs");
   runLocalRegression("scripts/project-memory-phase-d-chat-invariant.test.cjs");
-  pass("⑧⑨⑩⑬ local negative paths: finalized helper errors and both chat invariant directions");
+  pass("⑧⑨⑩⑬ local negative paths and canonical chat project context");
 
   const userA = await createTestUser("a");
   const userB = await createTestUser("b");

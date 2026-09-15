@@ -17,10 +17,6 @@ let upstreamCalls;
 let upstreamBodies;
 
 function routeQuery(table) {
-  if (table === "project_settings") {
-    throw new Error("project-scoped project_settings must be skipped");
-  }
-
   const state = { select: null, filters: [] };
   databaseCalls.push({ table, state });
   const query = {
@@ -43,6 +39,18 @@ function routeQuery(table) {
     },
     async maybeSingle() {
       if (table === "threads") return { data: threadFixture, error: null };
+      if (table === "project_settings") {
+        return {
+          data: {
+            system_prompt: "project system prompt",
+            folder_type: "novel",
+            pinned_github_files: [],
+            github_repo: null,
+            github_ref: null,
+          },
+          error: null,
+        };
+      }
       if (table === "messages") return { data: null, error: null };
       return { data: null, error: null };
     },
@@ -78,15 +86,20 @@ const loreMock = {
   },
   async searchLoreByEmbeddingForProject() {
     loreCalls.push("searchLoreByEmbeddingForProject");
-    return ["must not be injected"];
+    return ["canonical lore context"];
   },
   async searchLoreV2ByEmbeddingForProject() {
     loreCalls.push("searchLoreV2ByEmbeddingForProject");
-    return [];
+    return [{
+      chunkText: "canonical memory context",
+      memoryKind: "fact",
+      temporalStatus: "current",
+      confidenceScore: 0.9,
+    }];
   },
   async searchLoreV2ForProject() {
     loreCalls.push("searchLoreV2ForProject");
-    return [];
+    return [{ chunkText: "canonical rag context", memoryKind: "fact" }];
   },
 };
 
@@ -176,7 +189,13 @@ global.fetch = async (url, init) => {
   ].join("\n"), { status: 200 });
 };
 
-async function verifyBrokenInvariant(label, fixture) {
+async function verifyCanonicalProjectContext() {
+  const label = "folder_name null / project_id set";
+  const fixture = {
+    folder_name: null,
+    project_id: PROJECT_ID,
+    user_id: USER_ID,
+  };
   threadFixture = fixture;
   databaseCalls = [];
   loreCalls = [];
@@ -213,20 +232,33 @@ async function verifyBrokenInvariant(label, fixture) {
 
     assert.equal(upstreamCalls, 1, `${label}: chat upstream continues exactly once`);
     assert.match(upstreamBodies[0].url, /generativelanguage\.googleapis\.com/);
-    assert.deepEqual(loreCalls, [], `${label}: all three memory paths are skipped`);
-    assert.equal(
-      databaseCalls.some((call) => call.table === "project_settings"),
-      false,
-      `${label}: project-scoped settings are skipped`,
+    assert.deepEqual(loreCalls, [
+      "embedQuery",
+      "searchLoreByEmbeddingForProject",
+      "searchLoreV2ByEmbeddingForProject",
+      "searchLoreV2ForProject",
+    ], `${label}: all three memory paths run`);
+    const projectSettingsCall = databaseCalls.find(
+      (call) => call.table === "project_settings",
     );
+    assert.ok(projectSettingsCall, `${label}: project-scoped settings are loaded`);
+    assert.deepEqual(projectSettingsCall.state.filters, [
+      { column: "user_id", value: USER_ID },
+      { column: "project_id", value: PROJECT_ID },
+    ]);
+    const upstreamBody = upstreamBodies[0].body;
+    assert.match(upstreamBody, /project system prompt/);
+    assert.match(upstreamBody, /canonical lore context/);
+    assert.match(upstreamBody, /canonical memory context/);
+    assert.match(upstreamBody, /canonical rag context/);
     assert.equal(
       warnings.filter(
         (call) =>
           call[0] === "[best-effort-failed]" &&
           call[1]?.operation === "project-memory-invariant-broken",
       ).length,
-      1,
-      `${label}: invariant warning`,
+      0,
+      `${label}: no legacy invariant warning`,
     );
     console.log(`ok - ${label}`);
   } finally {
@@ -236,17 +268,8 @@ async function verifyBrokenInvariant(label, fixture) {
 
 (async () => {
   try {
-    await verifyBrokenInvariant("folder_name set / project_id null", {
-      folder_name: "broken-folder",
-      project_id: null,
-      user_id: USER_ID,
-    });
-    await verifyBrokenInvariant("folder_name null / project_id set", {
-      folder_name: null,
-      project_id: PROJECT_ID,
-      user_id: USER_ID,
-    });
-    console.log("passed 2 Project Memory Phase D chat invariant tests");
+    await verifyCanonicalProjectContext();
+    console.log("passed Project Memory Phase D canonical chat context test");
   } finally {
     global.fetch = originalFetch;
   }

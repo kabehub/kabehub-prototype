@@ -12,9 +12,12 @@ const originalLoad = Module._load;
 
 let hookState = [];
 let cursor = 0;
+let lastStateUpdateIndex = -1;
 let fetchCalls = [];
 let toastCalls = [];
 let refreshCalls = 0;
+let updateFolderCalls = [];
+let projectFlowEvents = [];
 
 const hooks = {
   ...React,
@@ -26,6 +29,7 @@ const hooks = {
     return [
       hookState[index],
       (value) => {
+        lastStateUpdateIndex = index;
         hookState[index] =
           typeof value === "function" ? value(hookState[index]) : value;
       },
@@ -91,9 +95,17 @@ global.fetch = async (input, init = {}) => {
   const method = init.method ?? "GET";
   const body = typeof init.body === "string" ? JSON.parse(init.body) : null;
   fetchCalls.push({ url, method, body, cache: init.cache });
+  projectFlowEvents.push({ kind: "fetch", url, method });
 
   if (url === "/api/projects" && method === "GET") {
     return Response.json({ projects: [{ id: "11111111-1111-4111-8111-111111111111", name: "New Project" }] });
+  }
+  if (url === "/api/projects" && method === "POST") {
+    return Response.json({
+      success: true,
+      project_id: "22222222-2222-4222-8222-222222222222",
+      name: body.name,
+    });
   }
   if (url.startsWith("/api/project-settings?") && method === "GET") {
     return Response.json({
@@ -132,7 +144,11 @@ const props = {
   isSearching: false,
   user: { id: "user-1", email: "user@example.com" },
   onLogout() {},
-  async onUpdateFolder() { return null; },
+  async onUpdateFolder(threadId, projectId) {
+    updateFolderCalls.push({ threadId, projectId });
+    projectFlowEvents.push({ kind: "assign", threadId, projectId });
+    return null;
+  },
   onNewThreadInFolder() {},
   async onRefreshThreads() {
     refreshCalls += 1;
@@ -204,8 +220,73 @@ async function openSettings(nodes) {
     fetchCalls = [];
     toastCalls = [];
     refreshCalls = 0;
+    updateFolderCalls = [];
+    projectFlowEvents = [];
 
     let nodes = renderSidebar();
+    const folderButtons = nodes.filter(
+      (node) => node.type === "button" && node.props.title === "フォルダに追加",
+    );
+    assert.ok(folderButtons.length > 0, "folder assignment button");
+    folderButtons[0].props.onClick({ stopPropagation() {} });
+    hookState = hookState.slice(0, lastStateUpdateIndex + 1);
+    nodes = renderSidebar();
+
+    const newFolderInput = nodes.find(
+      (node) => node.type === "input" && node.props.placeholder === "新しいフォルダ名…",
+    );
+    assert.ok(newFolderInput, "new Project input");
+    assert.equal(newFolderInput.props.value, "");
+    const assignButton = findButton(nodes, "決定");
+    assert.equal(assignButton.props.disabled, true);
+    assignButton.props.onClick();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(updateFolderCalls, [], "empty submit must not assign or detach");
+
+    findButton(nodes, "解除").props.onClick();
+    assert.deepEqual(updateFolderCalls, [
+      { threadId: "thread-1", projectId: null },
+    ], "only the remove button detaches the Project");
+
+    hookState = [];
+    fetchCalls = [];
+    toastCalls = [];
+    refreshCalls = 0;
+    updateFolderCalls = [];
+    projectFlowEvents = [];
+
+    nodes = renderSidebar();
+    const createFolderButton = nodes.find(
+      (node) => node.type === "button" && node.props.title === "フォルダに追加",
+    );
+    createFolderButton.props.onClick({ stopPropagation() {} });
+    hookState = hookState.slice(0, lastStateUpdateIndex + 1);
+    nodes = renderSidebar();
+    nodes.find(
+      (node) => node.type === "input" && node.props.placeholder === "新しいフォルダ名…",
+    ).props.onChange({ target: { value: "Brand New" } });
+    nodes = renderSidebar();
+    const createButton = findButton(nodes, "決定");
+    assert.equal(createButton.props.disabled, false);
+    createButton.props.onClick();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(projectFlowEvents, [
+      { kind: "fetch", url: "/api/projects", method: "POST" },
+      {
+        kind: "assign",
+        threadId: "thread-1",
+        projectId: "22222222-2222-4222-8222-222222222222",
+      },
+    ], "Project creation must finish before assignment");
+
+    hookState = [];
+    fetchCalls = [];
+    toastCalls = [];
+    refreshCalls = 0;
+    updateFolderCalls = [];
+    projectFlowEvents = [];
+
+    nodes = renderSidebar();
     await openSettings(nodes);
     nodes = renderSidebar();
     const renameInput = findRenameInput(nodes);
@@ -215,7 +296,7 @@ async function openSettings(nodes) {
 
     await findButton(nodes, "保存").props.onClick();
     const settingsSave = fetchCalls.find((call) => call.method === "POST");
-    assert.equal(settingsSave.body.folder_name, "Old Project");
+    assert.equal(settingsSave.body.project_id, "11111111-1111-4111-8111-111111111111");
     assert.equal(
       fetchCalls.some((call) => call.method === "PATCH"),
       false,

@@ -209,7 +209,7 @@ async function run() {
   });
   let thread = await selectSingle(service, "threads", threadId, "id, user_id, folder_name, project_id");
   assert.equal(thread.user_id, userA.id);
-  assert.equal(thread.folder_name, folderA);
+  assert.equal(thread.folder_name, null);
   assert.ok(thread.project_id);
   const firstProjectId = thread.project_id;
   pass("① 新規スレッド作成→project_id非null", thread);
@@ -219,7 +219,7 @@ async function run() {
     body: { folder_name: folderB },
   });
   thread = await selectSingle(service, "threads", threadId, "id, folder_name, project_id");
-  assert.equal(thread.folder_name, folderB);
+  assert.equal(thread.folder_name, null);
   assert.ok(thread.project_id);
   assert.notEqual(thread.project_id, firstProjectId);
   const projectB = thread.project_id;
@@ -227,15 +227,16 @@ async function run() {
 
   await apiRequest(baseUrl, accessToken, "/api/project-settings", {
     method: "POST",
-    body: { folder_name: folderB, system_prompt: "Phase C" },
+    body: { project_id: projectB, system_prompt: "Phase C" },
   });
   const { data: projectSettings, error: projectError } = await service
     .from("project_settings")
     .select("folder_name, project_id")
     .eq("user_id", userA.id)
-    .eq("folder_name", folderB)
+    .eq("project_id", projectB)
     .single();
   expectNoError(projectError, "select project settings");
+  assert.equal(projectSettings.folder_name, null);
   assert.equal(projectSettings.project_id, projectB);
   pass("③ project-settings保存→project_id確認", projectSettings);
 
@@ -248,9 +249,10 @@ async function run() {
     .from("lore_embeddings")
     .select("id, folder_name, project_id")
     .eq("user_id", userA.id)
-    .eq("folder_name", folderB);
+    .eq("project_id", projectB);
   expectNoError(embedSelectError, "select embedded lore");
   assert.ok(embeddedRows.length > 0);
+  assert.ok(embeddedRows.every((row) => row.folder_name === null));
   assert.ok(embeddedRows.every((row) => row.project_id === projectB));
   pass("④ lore embed→project_id確認", { count: embeddedRows.length, project_id: projectB });
 
@@ -278,7 +280,7 @@ async function run() {
     .eq("extraction_version", "liked_ai")
     .single();
   expectNoError(likedError, "select liked_ai lore");
-  assert.equal(liked.folder_name, folderB);
+  assert.equal(liked.folder_name, null);
   assert.equal(liked.project_id, projectB);
   pass("⑤ liked_ai→project_id伝播", liked);
 
@@ -383,7 +385,7 @@ async function run() {
     branchResponse.body.thread.id,
     "id, folder_name, project_id, forked_from_id",
   );
-  assert.equal(branched.folder_name, folderB);
+  assert.equal(branched.folder_name, null);
   assert.equal(branched.project_id, projectB);
   assert.equal(branched.forked_from_id, threadId);
   pass("⑩ branch-to→project_id伝播", branched);
@@ -518,7 +520,10 @@ async function run() {
     );
     mismatched[table] = rows.filter((row) => {
       const project = projectById.get(row.project_id);
-      return project && (project.user_id !== row.user_id || project.name !== row.folder_name);
+      return project && (
+        project.user_id !== row.user_id ||
+        (row.folder_name !== null && project.name !== row.folder_name)
+      );
     }).length;
     assert.equal(mismatched[table], 0, `${table}: mismatched project reference`);
   }
