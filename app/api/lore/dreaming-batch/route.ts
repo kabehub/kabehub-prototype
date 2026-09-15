@@ -17,19 +17,22 @@ export async function POST(req: NextRequest) {
   const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json().catch(() => ({}));
+  if (Object.prototype.hasOwnProperty.call(body ?? {}, "folderName")) {
+    return finalizeJson(
+      { error: "folderName is no longer supported" },
+      { status: 400 },
+    );
+  }
   const rawLimit = typeof body.limit === "number" ? body.limit : Number(body.limit);
   const rawThreshold = typeof body.threshold === "number" ? body.threshold : Number(body.threshold);
   const limit = clamp(Number.isFinite(rawLimit) ? Math.floor(rawLimit) : DREAMING_DEFAULTS.limit, 1, 5);
   const threshold = clamp(Number.isFinite(rawThreshold) ? rawThreshold : DREAMING_DEFAULTS.threshold, 0.80, 0.98);
-  const folderName = typeof body.folderName === "string" && body.folderName.trim()
-    ? body.folderName.trim()
-    : null;
 
   try {
     const result = await runDreamingBatch(supabase, openaiKey, user.id, {
       limit,
       threshold,
-      folderName,
+      folderName: null,
     });
     return finalizeJson(result);
   } catch (err) {

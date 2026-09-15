@@ -52,11 +52,7 @@ function groupThreadsByProject(
   }
 
   const keys = Array.from(map.keys()).filter((key) => key !== nullKey);
-  const sortNameFor = (key: string): string => {
-    if (projectNameById[key]) return projectNameById[key];
-    const representative = map.get(key)?.find((thread) => thread.folder_name);
-    return representative?.folder_name ?? "";
-  };
+  const sortNameFor = (key: string): string => projectNameById[key] ?? "";
   keys.sort((a, b) => {
     const nameA = sortNameFor(a);
     const nameB = sortNameFor(b);
@@ -368,7 +364,6 @@ function RecentSection({
 interface FolderSectionProps extends ThreadSectionProps {
   projectId: string | null;
   displayName: string | null;
-  legacyFolderName: string | null;
   defaultCollapsed: boolean;
   onNewThreadInFolder?: (projectId: string) => void | Promise<void>;
 }
@@ -376,7 +371,6 @@ interface FolderSectionProps extends ThreadSectionProps {
 function FolderSection({
   projectId,
   displayName,
-  legacyFolderName,
   threads,
   activeThreadId,
   projects,
@@ -423,8 +417,8 @@ function FolderSection({
             type="button"
             className="chat-sidebar-folder-add"
             onClick={() => void onNewThreadInFolder(projectId)}
-            aria-label={`「${displayName ?? legacyFolderName ?? "…"}」に新しいスレッドを作成`}
-            title={`「${displayName ?? legacyFolderName ?? "…"}」に新しいスレッドを作成`}
+            aria-label={`「${displayName ?? "…"}」に新しいスレッドを作成`}
+            title={`「${displayName ?? "…"}」に新しいスレッドを作成`}
           >
             +
           </button>
@@ -590,10 +584,8 @@ export default function Sidebar({
 
         {!showFlat &&
           grouped.map((group) => {
-            const legacyFolderName: string | null =
-              group.threads.find((thread) => thread.folder_name)?.folder_name ?? null;
             const displayName: string | null = group.projectId
-              ? (projectNameById[group.projectId] ?? legacyFolderName ?? "…")
+              ? (projectNameById[group.projectId] ?? "…")
               : null;
             const hasActiveThread = group.threads.some(
               (thread) => thread.id === activeThreadId
@@ -603,7 +595,6 @@ export default function Sidebar({
                 key={group.projectId ?? "__null__"}
                 projectId={group.projectId}
                 displayName={displayName}
-                legacyFolderName={legacyFolderName}
                 threads={group.threads}
                 activeThreadId={activeThreadId}
                 projects={projects}

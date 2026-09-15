@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { resolveOwnedProjectIdByName } from "@/lib/project-memory/resolve-owned-project-id";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 
 export const dynamic = "force-dynamic";
@@ -31,25 +30,16 @@ export async function POST(req: NextRequest) {
   const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json().catch(() => ({}));
-  const folderName = typeof body.folderName === "string" && body.folderName.trim()
-    ? body.folderName.trim()
-    : null;
-
-  let projectId: string | null = null;
-  if (folderName) {
-    const resolved = await resolveOwnedProjectIdByName(supabase, user.id, folderName);
-    if (!resolved.ok) {
-      return finalizeJson({ error: resolved.error }, { status: resolved.status });
-    }
-    if (resolved.projectId === null) {
-      return finalizeJson({ pastCount: 0, expiredCount: 0, total: 0 });
-    }
-    projectId = resolved.projectId;
+  if (Object.prototype.hasOwnProperty.call(body ?? {}, "folderName")) {
+    return finalizeJson(
+      { error: "folderName is no longer supported" },
+      { status: 400 },
+    );
   }
 
   const { data, error } = await supabase.rpc("update_lore_temporal_status_by_project", {
     p_user_id: user.id,
-    p_project_id: projectId,
+    p_project_id: null,
   });
 
   if (error) {

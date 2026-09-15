@@ -48,11 +48,7 @@ function groupThreadsByProject(
   }
 
   const keys = Array.from(map.keys()).filter((k) => k !== nullKey);
-  const sortNameFor = (key: string): string => {
-    if (projectNameById[key]) return projectNameById[key];
-    const representative = map.get(key)!.find((t) => t.folder_name);
-    return representative?.folder_name ?? "";
-  };
+  const sortNameFor = (key: string): string => projectNameById[key] ?? "";
   keys.sort((a, b) => {
     const nameA = sortNameFor(a);
     const nameB = sortNameFor(b);
@@ -65,20 +61,6 @@ function groupThreadsByProject(
     result.push({ projectId: null, threads: map.get(nullKey)! });
   }
   return result;
-}
-
-export function rekeyFolderTypesAfterRename(
-  folderTypes: Record<string, string | null>,
-  oldName: string,
-  newName: string,
-): Record<string, string | null> {
-  const next = { ...folderTypes };
-  if (Object.prototype.hasOwnProperty.call(folderTypes, oldName)) {
-    const folderType = folderTypes[oldName];
-    delete next[oldName];
-    next[newName] = folderType;
-  }
-  return next;
 }
 
 // ---- Pinned File URL入力 ----
@@ -483,19 +465,18 @@ function RecentSection({ threads, activeThreadId, projects, onSelectThread, onDe
 interface FolderSectionProps {
   projectId: string | null;
   displayName: string | null;
-  legacyFolderName: string | null;
   threads: Thread[];
   activeThreadId: string | null;
   projects: { id: string; name: string }[];
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
   onUpdateFolder: (threadId: string, projectId: string | null) => void | Promise<void>;
-  onEditProjectSettings?: (projectId: string, legacyFolderName: string) => void;
+  onEditProjectSettings?: (projectId: string, displayName: string) => void;
   onNewThreadInFolder?: (projectId: string) => void;
   folderType?: string | null;
 }
 
-function FolderSection({ projectId, displayName, legacyFolderName, threads, activeThreadId, projects, onSelectThread, onDeleteThread, onUpdateFolder, onEditProjectSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
+function FolderSection({ projectId, displayName, threads, activeThreadId, projects, onSelectThread, onDeleteThread, onUpdateFolder, onEditProjectSettings, onNewThreadInFolder, defaultCollapsed, folderType }: FolderSectionProps & { defaultCollapsed: boolean }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hovered, setHovered] = useState(false);
 
@@ -544,7 +525,7 @@ function FolderSection({ projectId, displayName, legacyFolderName, threads, acti
         {projectId && onNewThreadInFolder && (
           <button
             onClick={(e) => { e.stopPropagation(); onNewThreadInFolder(projectId); }}
-            title={`「${displayName ?? legacyFolderName ?? "…"}」に新しいスレッドを作成`}
+            title={`「${displayName ?? "…"}」に新しいスレッドを作成`}
             style={{
               opacity: hovered ? 1 : 0,
               transition: "opacity 0.1s",
@@ -1218,10 +1199,8 @@ export default function Sidebar({
 
         {/* 通常時：フォルダグループ */}
         {!showFlat && grouped.map((group) => {
-          const legacyFolderName: string | null =
-            group.threads.find((thread) => thread.folder_name)?.folder_name ?? null;
           const displayName: string | null = group.projectId
-            ? (projectNameById[group.projectId] ?? legacyFolderName ?? "…")
+            ? (projectNameById[group.projectId] ?? "…")
             : null;
           const hasActive = group.threads.some((t) => t.id === activeThreadId);
           return (
@@ -1229,7 +1208,6 @@ export default function Sidebar({
               key={group.projectId ?? "__null__"}
               projectId={group.projectId}
               displayName={displayName}
-              legacyFolderName={legacyFolderName}
               threads={group.threads}
               activeThreadId={activeThreadId}
               projects={projects}
