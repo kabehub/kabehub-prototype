@@ -4,7 +4,7 @@ const path = require("node:path");
 
 const root = path.join(__dirname, "..");
 const v198 = fs.readFileSync(
-  path.join(root, "docs", "migration_v198_project_memory_dreaming_final.sql"),
+  path.join(root, "docs", "applied", "migration_v198_project_memory_dreaming_final.sql"),
   "utf8",
 );
 const v197 = fs.readFileSync(
@@ -12,7 +12,7 @@ const v197 = fs.readFileSync(
   "utf8",
 );
 const v199 = fs.readFileSync(
-  path.join(root, "docs", "migration_v199_lore_embeddings_folder_name_drop.sql"),
+  path.join(root, "docs", "applied", "migration_v199_lore_embeddings_folder_name_drop.sql"),
   "utf8",
 );
 const schema = fs.readFileSync(path.join(root, "docs", "schema.sql"), "utf8");

@@ -6,6 +6,7 @@ const root = path.join(__dirname, "..");
 const migrationPath = path.join(
   root,
   "docs",
+  "applied",
   "migration_v198_project_memory_dreaming_final.sql",
 );
 const schemaPath = path.join(root, "docs", "schema.sql");

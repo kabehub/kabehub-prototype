@@ -10,12 +10,12 @@
 
 ## 実装済み
 
-- `migration_v198_project_memory_dreaming_final.sql`
+- `docs/applied/migration_v198_project_memory_dreaming_final.sql`
   - 新3RPCのsignature・戻り値・ロック順序・保護条件・tags集約・エラーを維持。
   - `v_folder_name`解決だけを除去し、3RPCすべてのproject ownership guardを`perform 1`で維持。
   - `rename_project`からLore同期だけを除去。
   - `delete_project_preserving_contents`のLore INSERT/UPDATEから旧列だけを除去し、threads側処理は維持。
-- `migration_v199_lore_embeddings_folder_name_drop.sql`
+- `docs/applied/migration_v199_lore_embeddings_folder_name_drop.sql`
   - `to_regprocedure`による旧3RPCのfail-closed preflightを追加。
   - 完全signature・CASCADEなしで旧3RPCをDROP。
   - schema-qualified、CASCADEなしで旧index・列をDROP。

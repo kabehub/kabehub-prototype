@@ -57,8 +57,8 @@
 -- 2026/09/14、migration_v195_rename_project.sqlをスキーマ正本へ反映（Project名変更と関連テーブルのfolder_name同期。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
 -- 2026/09/15、migration_v196_project_settings_project_id_contract.sqlをスキーマ正本へ反映（DB未適用。project_settings.folder_nameをnullable化し、(user_id, project_id) UNIQUE制約を追加）。
 -- 2026/09/16、migration_v197_project_memory_dreaming_by_project.sqlをスキーマ正本へ反映（test/production適用済み、Project Memory Manager Phase 5A対応：Dreaming/Merge RPCのproject_id専用版3本を追加）。
--- 2026/09/16、migration_v198_project_memory_dreaming_final.sqlをスキーマ正本へ反映（現役Dreaming/Merge・Project rename/delete RPCからlore_embeddings.folder_name依存を除去）。
--- 2026/09/16、migration_v199_lore_embeddings_folder_name_drop.sqlをスキーマ正本へ反映（旧Dreaming/Merge RPC 3本・旧index・lore_embeddings.folder_name列を削除）。
+-- 2026/09/16、migration_v198_project_memory_dreaming_final.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。現役Dreaming/Merge・Project rename/delete RPCからlore_embeddings.folder_name依存を除去）。
+-- 2026/09/16、migration_v199_lore_embeddings_folder_name_drop.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。旧Dreaming/Merge RPC 3本・旧index・lore_embeddings.folder_name列を削除）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
