@@ -71,10 +71,10 @@ export function buildGreedyChainClusters(candidates: DreamingCandidate[], limit:
   return clusters.slice(0, limit);
 }
 
-export function hasSameFolderNameAndMemoryKind(sources: ConsolidationSourceRow[]) {
+export function hasSameProjectIdAndMemoryKind(sources: ConsolidationSourceRow[]) {
   const first = sources[0];
   return sources.every((source) =>
-    source.folder_name === first.folder_name && source.memory_kind === first.memory_kind
+    source.project_id === first.project_id && source.memory_kind === first.memory_kind
   );
 }
 
@@ -92,7 +92,7 @@ async function cleanLikedAiRecords(
 ): Promise<CleanResult> {
   const { data: records, error: recordsError } = await supabase
     .from("lore_embeddings")
-    .select("id, chunk_text, folder_name, project_id, memory_kind, temporal_status, importance_score, confidence_score, tags, source_message_id, source_thread_id, metadata")
+    .select("id, chunk_text, project_id, memory_kind, temporal_status, importance_score, confidence_score, tags, source_message_id, source_thread_id, metadata")
     .eq("user_id", userId)
     .eq("extraction_version", "liked_ai")
     .eq("is_archived", false)
@@ -125,7 +125,6 @@ async function cleanLikedAiRecords(
         .from("lore_embeddings")
         .insert({
           user_id: userId,
-          folder_name: record.folder_name,
           project_id: record.project_id,
           chunk_text: cleanedText,
           embedding,
@@ -181,7 +180,7 @@ export async function callConsolidateDreaming(
   confidence: number,
 ) {
   const { data, error } = sourceIds.length === 2
-    ? await supabase.rpc("consolidate_dreaming_batch", {
+    ? await supabase.rpc("consolidate_dreaming_batch_by_project", {
         p_user_id: userId,
         p_lore_id_a: sourceIds[0],
         p_lore_id_b: sourceIds[1],
@@ -189,18 +188,16 @@ export async function callConsolidateDreaming(
         p_embedding: embedding,
         p_memory_kind: firstSource.memory_kind ?? "fact",
         p_temporal_status: firstSource.temporal_status ?? "current",
-        p_folder_name: firstSource.folder_name ?? null,
         p_importance: importance,
         p_confidence: confidence,
       })
-    : await supabase.rpc("consolidate_dreaming_batch_multi", {
+    : await supabase.rpc("consolidate_dreaming_batch_multi_by_project", {
         p_user_id: userId,
         p_source_ids: sourceIds,
         p_merged_text: mergedText,
         p_embedding: embedding,
         p_memory_kind: firstSource.memory_kind ?? "fact",
         p_temporal_status: firstSource.temporal_status ?? "current",
-        p_folder_name: firstSource.folder_name ?? null,
         p_importance: importance,
         p_confidence: confidence,
       });
@@ -265,7 +262,7 @@ export async function runDreamingBatch(
       const clusterSources = sourceIds.map((id) => byId.get(id));
       if (clusterSources.some((source) => !source)) throw new Error("Invalid lore cluster");
       const orderedSources = clusterSources as ConsolidationSourceRow[];
-      if (!hasSameFolderNameAndMemoryKind(orderedSources)) continue;
+      if (!hasSameProjectIdAndMemoryKind(orderedSources)) continue;
 
       const validated = validateDreamingSources(orderedSources, userId, sourceIds);
       if (!validated) throw new Error("Invalid lore cluster");

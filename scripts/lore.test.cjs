@@ -9,7 +9,7 @@ const testExportsByFile = new Map([
   ["lib/lore/mappers.ts", ["stringValue", "numberValue", "normalizeConsolidationCandidate", "normalizeDreamingCandidate", "normalizeRpcNewId", "toMemoryCard", "memoryNeedsReview", "clamp"]],
   ["lib/lore/consolidation.ts", ["normalizePair", "pairKey", "buildConsolidationUserPrompt", "isJsonStringLike", "validateMergedText", "validateApprovedPair", "validateDreamingSources"]],
   ["packages/shared/src/lore/consolidation.ts", ["normalizePair", "pairKey", "buildConsolidationUserPrompt", "isJsonStringLike", "validateMergedText", "validateApprovedPair", "validateDreamingSources"]],
-  ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameFolderNameAndMemoryKind"]],
+  ["lib/lore/dreaming.ts", ["buildGreedyChainClusters", "hasSameProjectIdAndMemoryKind", "callConsolidateDreaming"]],
   ["app/api/lore/consolidate/preview/route.ts", ["newerSource", "suggestedValue"]],
   ["lib/lore/batchTrain.ts", ["normalizeMemory", "buildMemoryExtractionPrompt", "fetchTargetMessages"]],
   ["app/api/lore/update-temporal-status/route.ts", ["toCount", "normalizeResult"]],
@@ -137,7 +137,7 @@ test("normalizeCandidate copies intentionally disagree on identical ids", () => 
 
 function source(id, extractionVersion = "ai", overrides = {}) {
   return {
-    id, user_id: "user", chunk_text: id, folder_name: "folder", project_id: "project", memory_kind: "fact",
+    id, user_id: "user", chunk_text: id, project_id: "project", memory_kind: "fact",
     is_archived: false, superseded_by: null, is_pinned: false,
     extraction_version: extractionVersion, created_at: `2025-01-0${id === "a" ? 2 : 1}T00:00:00Z`,
     ...overrides,
@@ -164,14 +164,39 @@ test("preview and merge reject sources from different projects", () => {
   }
 });
 
-test("dreaming rejects four protected variants and mismatched folder/kind", () => {
-  for (const version of ["user_edited", "user_created", "liked_ai", "liked_ai_cleaned"]) {
-    assert.equal(consolidationModule.validateDreamingSources([source("a", version), source("b")], "user", ["a", "b"]), null);
+test("dreaming rejects four protected variants and mismatched project/kind", () => {
+  for (const api of [consolidationModule, sharedConsolidationModule]) {
+    for (const version of ["user_edited", "user_created", "liked_ai", "liked_ai_cleaned"]) {
+      assert.equal(api.validateDreamingSources([source("a", version), source("b")], "user", ["a", "b"]), null);
+    }
+    assert.equal(api.validateDreamingSources([source("a"), source("b", "ai", { project_id: "other" })], "user", ["a", "b"]), null);
+    assert.equal(api.validateDreamingSources([source("a"), source("b", "ai", { memory_kind: "plan" })], "user", ["a", "b"]), null);
+    assert.ok(api.validateDreamingSources([source("a"), source("b")], "user", ["a", "b"]));
   }
-  assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { folder_name: "other" })], "user", ["a", "b"]), null);
-  assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { project_id: "other" })], "user", ["a", "b"]), null);
-  assert.equal(consolidationModule.validateDreamingSources([source("a"), source("b", "ai", { memory_kind: "plan" })], "user", ["a", "b"]), null);
-  assert.ok(consolidationModule.validateDreamingSources([source("a"), source("b")], "user", ["a", "b"]));
+});
+
+test("callConsolidateDreaming uses project RPCs without p_folder_name for pairs and larger clusters", async () => {
+  const calls = [];
+  const data = [{ new_id: "merged" }];
+  const supabase = {
+    async rpc(name, args) {
+      calls.push({ name, args });
+      return { data, error: null };
+    },
+  };
+
+  for (const sourceIds of [["a", "b"], ["a", "b", "c"]]) {
+    const result = await dreaming.callConsolidateDreaming(
+      supabase, "user", sourceIds, "merged text", [0.1, 0.2], source("a"), 0.7, 0.8,
+    );
+    const { name, args } = calls[calls.length - 1];
+    assert.equal(name, sourceIds.length === 2
+      ? "consolidate_dreaming_batch_by_project"
+      : "consolidate_dreaming_batch_multi_by_project");
+    assert.equal("p_folder_name" in args, false);
+    assert.equal(result, data);
+  }
+  assert.equal(calls.length, 2);
 });
 
 test("buildConsolidationUserPrompt destructively sorts sources oldest-first", () => {
@@ -383,8 +408,9 @@ test("memoryNeedsReview preserves current review boundaries", () => {
 test("additional exposed helpers preserve current behavior", () => {
   assert.equal(mappersModule.stringValue({ a: 1, b: "x" }, ["a", "b"]), "x");
   assert.equal(mappersModule.numberValue({ a: "2.5" }, ["a"]), 2.5);
-  assert.equal(dreaming.hasSameFolderNameAndMemoryKind([source("a"), source("b")]), true);
-  assert.equal(dreaming.hasSameFolderNameAndMemoryKind([source("a"), source("b", "ai", { memory_kind: "plan" })]), false);
+  assert.equal(dreaming.hasSameProjectIdAndMemoryKind([source("a"), source("b")]), true);
+  assert.equal(dreaming.hasSameProjectIdAndMemoryKind([source("a"), source("b", "ai", { memory_kind: "plan" })]), false);
+  assert.equal(dreaming.hasSameProjectIdAndMemoryKind([source("a"), source("b", "ai", { project_id: "other" })]), false);
   assert.equal(preview.suggestedValue("same", "same", "fallback", "new"), "same");
   assert.equal(preview.suggestedValue(null, null, "fallback", null), "fallback");
   assert.equal(preview.newerSource(source("a"), source("b")).id, "a");

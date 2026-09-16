@@ -12,7 +12,6 @@ export function pairKey(idA: string, idB: string): string {
 export const CONSOLIDATION_SOURCE_SELECT = [
   "id",
   "user_id",
-  "folder_name",
   "project_id",
   "chunk_text",
   "tags",
@@ -30,7 +29,6 @@ export const CONSOLIDATION_SOURCE_SELECT = [
 export type ConsolidationSourceRow = {
   id: string;
   user_id: string;
-  folder_name: string | null;
   project_id: string | null;
   chunk_text: string;
   tags: string[] | null;
@@ -127,7 +125,6 @@ export function validateDreamingSources(
   if (invalid) return null;
   const first = validSources[0];
   const mismatched = validSources.some((row) =>
-    row.folder_name !== first.folder_name ||
     row.project_id !== first.project_id ||
     row.memory_kind !== first.memory_kind
   );

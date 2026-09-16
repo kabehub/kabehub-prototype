@@ -35,7 +35,6 @@ const sourceRows = [
   {
     id: "source-a",
     user_id: userId,
-    folder_name: "folder",
     project_id: "project-1",
     chunk_text: "古い記憶",
     tags: [],
@@ -52,7 +51,6 @@ const sourceRows = [
   {
     id: "source-b",
     user_id: userId,
-    folder_name: "folder",
     project_id: "project-1",
     chunk_text: "新しい記憶",
     tags: [],
@@ -89,7 +87,7 @@ function createSupabaseMock(cleanSelectResult, projectResult = { data: { id: "pr
           error: null,
         };
       }
-      if (name === "consolidate_dreaming_batch") {
+      if (name === "consolidate_dreaming_batch_by_project") {
         trace.consolidationCalls++;
         return { data: [{ new_id: "merged-1" }], error: null };
       }
@@ -134,6 +132,7 @@ function createSupabaseMock(cleanSelectResult, projectResult = { data: { id: "pr
         limit() {
           assert.match(selectedColumns, /source_message_id/);
           assert.match(selectedColumns, /project_id/);
+          assert.doesNotMatch(selectedColumns, /folder_name/);
           trace.cleanSelectCalls++;
           return Promise.resolve(cleanSelectResult);
         },
@@ -259,7 +258,6 @@ const tests = [
       {
         id: "liked-good",
         chunk_text: "成功するAI発言",
-        folder_name: "folder",
         project_id: "project-1",
         memory_kind: "idea",
         temporal_status: "current",
@@ -273,7 +271,6 @@ const tests = [
       {
         id: "liked-bad",
         chunk_text: "失敗するAI発言",
-        folder_name: "folder",
         project_id: "project-1",
         memory_kind: "idea",
         temporal_status: "current",
@@ -296,6 +293,7 @@ const tests = [
     assert.equal(result.cleanError, null);
     assert.equal(trace.inserted.length, 1);
     assert.equal(trace.inserted[0].project_id, "project-1");
+    assert.equal("folder_name" in trace.inserted[0], false);
     assert.equal(trace.updated.length, 1);
     assert.deepEqual(trace.updated[0], {
       is_archived: true,

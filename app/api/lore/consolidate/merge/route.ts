@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   try {
     const newEmbedding = await createEmbedding(openaiKey, mergedText);
     const { data: mergedId, error: rpcError } = await supabase.rpc(
-      "merge_user_edited_lore_pair",
+      "merge_user_edited_lore_pair_by_project",
       {
         p_user_id: user.id,
         p_lore_id_a: loreIdA,
