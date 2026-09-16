@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/09/16（migration_v197_project_memory_dreaming_by_project.sql反映・test/production適用済み）
+-- 最終更新: 2026/09/16（migration_v198/v199 folder_name Contract反映）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -57,6 +57,8 @@
 -- 2026/09/14、migration_v195_rename_project.sqlをスキーマ正本へ反映（Project名変更と関連テーブルのfolder_name同期。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
 -- 2026/09/15、migration_v196_project_settings_project_id_contract.sqlをスキーマ正本へ反映（DB未適用。project_settings.folder_nameをnullable化し、(user_id, project_id) UNIQUE制約を追加）。
 -- 2026/09/16、migration_v197_project_memory_dreaming_by_project.sqlをスキーマ正本へ反映（test/production適用済み、Project Memory Manager Phase 5A対応：Dreaming/Merge RPCのproject_id専用版3本を追加）。
+-- 2026/09/16、migration_v198_project_memory_dreaming_final.sqlをスキーマ正本へ反映（現役Dreaming/Merge・Project rename/delete RPCからlore_embeddings.folder_name依存を除去）。
+-- 2026/09/16、migration_v199_lore_embeddings_folder_name_drop.sqlをスキーマ正本へ反映（旧Dreaming/Merge RPC 3本・旧index・lore_embeddings.folder_name列を削除）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1433,7 +1435,6 @@ create index if not exists idx_github_oauth_states_expires_at
 create table if not exists lore_embeddings (
   id                     uuid primary key default gen_random_uuid(),
   user_id                uuid references auth.users(id) on delete cascade,
-  folder_name            text,
   chunk_text             text,
   embedding              vector(1536),                    -- pgvector 0.8.0・2026/07/10本番確認済み
   created_at             timestamptz default now(),
@@ -1466,7 +1467,6 @@ create index if not exists idx_lore_embeddings_source_message_id on lore_embeddi
 create index if not exists idx_lore_embeddings_source_thread_id on lore_embeddings(source_thread_id);
 create index if not exists idx_lore_embeddings_tags on lore_embeddings using gin(tags);
 create index if not exists idx_lore_embeddings_temporal_status on lore_embeddings(temporal_status);
-create index if not exists idx_lore_embeddings_user_folder on lore_embeddings(user_id, folder_name);
 create index if not exists idx_lore_embeddings_project on lore_embeddings(project_id);
 
 alter table lore_embeddings enable row level security;
@@ -1631,7 +1631,7 @@ begin
 
       insert into public.lore_embeddings (
         user_id, chunk_text, embedding, memory_kind, temporal_status,
-        extraction_version, source_type, project_id, folder_name, metadata
+        extraction_version, source_type, project_id, metadata
       )
       values (
         p_user_id,
@@ -1641,7 +1641,6 @@ begin
         'current',
         'user_created',
         'project_memory_promotion',
-        null,
         null,
         jsonb_build_object(
           'source_topic_id', v_topic.id,
@@ -1658,8 +1657,7 @@ begin
   where project_id = p_project_id and user_id = p_user_id;
 
   update public.lore_embeddings
-  set project_id = null,
-      folder_name = null
+  set project_id = null
   where project_id = p_project_id and user_id = p_user_id;
 
   update public.project_memory_topics
@@ -1677,7 +1675,7 @@ grant execute on function public.delete_project_preserving_contents(uuid, uuid, 
   to authenticated;
 
 -- ============================================================
--- Project名変更（関連テーブルのfolder_name同期）
+-- Project名変更（Loreはproject_idのみ、その他の関連テーブルはfolder_name同期）
 -- ============================================================
 create or replace function public.rename_project(
   p_user_id uuid,
@@ -1728,10 +1726,6 @@ begin
 
   -- 双方向不変条件（project_id非NULLの間はfolder_nameが現在名と一致）を維持
   update public.threads
-  set folder_name = v_new_name
-  where project_id = p_project_id and user_id = p_user_id;
-
-  update public.lore_embeddings
   set folder_name = v_new_name
   where project_id = p_project_id and user_id = p_user_id;
 
@@ -2128,185 +2122,6 @@ $$;
 revoke all on function public.find_similar_lore_pairs_v2_by_project(uuid, double precision, integer, integer, uuid) from public, anon;
 grant execute on function public.find_similar_lore_pairs_v2_by_project(uuid, double precision, integer, integer, uuid) to authenticated, service_role;
 
--- ユーザー編集マージ: 2件を原子的に統合（liked_ai / liked_ai_cleanedは許容）
-create or replace function public.merge_user_edited_lore_pair(
-  p_user_id uuid,
-  p_lore_id_a uuid,
-  p_lore_id_b uuid,
-  p_merged_text text,
-  p_embedding vector,
-  p_memory_kind text default null,
-  p_temporal_status text default null
-)
-returns uuid
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-declare
-  v_lore_id_a     uuid;
-  v_lore_id_b     uuid;
-  v_source        public.lore_embeddings%rowtype;
-  v_source_a      public.lore_embeddings%rowtype;
-  v_source_b      public.lore_embeddings%rowtype;
-  v_found_count   integer := 0;
-  v_folder_name   text;
-  v_project_id    uuid;
-  v_tags          text[];
-  v_new_id        uuid;
-  v_updated_count integer;
-begin
-  if p_user_id is null or auth.uid() is distinct from p_user_id then
-    raise exception 'Unauthorized' using errcode = '42501';
-  end if;
-
-  if p_lore_id_a is not distinct from p_lore_id_b then
-    raise exception 'source ids must differ' using errcode = 'P0001';
-  end if;
-
-  -- UUIDの標準表現では、uuid型の大小順はnormalizePairの文字列昇順と一致する。
-  v_lore_id_a := least(p_lore_id_a, p_lore_id_b);
-  v_lore_id_b := greatest(p_lore_id_a, p_lore_id_b);
-
-  -- 2件を同じ順序で先にロックし、並行マージとの競合を直列化する。
-  for v_source in
-    select le.*
-    from public.lore_embeddings as le
-    where le.id in (v_lore_id_a, v_lore_id_b)
-      and le.user_id = p_user_id
-    order by le.id
-    for update
-  loop
-    v_found_count := v_found_count + 1;
-    if v_source.id = v_lore_id_a then
-      v_source_a := v_source;
-    else
-      v_source_b := v_source;
-    end if;
-  end loop;
-
-  if v_found_count <> 2
-    or not (
-      v_source_a.user_id is not distinct from p_user_id
-      and v_source_a.is_archived is false
-      and v_source_a.superseded_by is null
-      and v_source_a.is_pinned is false
-      and (
-        v_source_a.extraction_version is null
-        or v_source_a.extraction_version not in ('user_edited', 'user_created')
-      )
-    )
-    or not (
-      v_source_b.user_id is not distinct from p_user_id
-      and v_source_b.is_archived is false
-      and v_source_b.superseded_by is null
-      and v_source_b.is_pinned is false
-      and (
-        v_source_b.extraction_version is null
-        or v_source_b.extraction_version not in ('user_edited', 'user_created')
-      )
-    )
-  then
-    raise exception 'source records failed protection check' using errcode = 'P0001';
-  end if;
-
-  if v_source_a.project_id is distinct from v_source_b.project_id then
-    raise exception 'source records belong to different projects' using errcode = 'P0001';
-  end if;
-
-  if coalesce(v_source_a.created_at, '-infinity'::timestamptz)
-      >= coalesce(v_source_b.created_at, '-infinity'::timestamptz) then
-    v_folder_name := v_source_a.folder_name;
-    v_project_id := v_source_a.project_id;
-  else
-    v_folder_name := v_source_b.folder_name;
-    v_project_id := v_source_b.project_id;
-  end if;
-
-  -- normalizeTagsと同じく、sourceA、sourceBの順で最初に現れたタグを残す。
-  select coalesce(
-    array_agg(v_unique_tags.tag order by v_unique_tags.first_ordinality),
-    '{}'::text[]
-  )
-  into v_tags
-  from (
-    select v_tag.tag, min(v_tag.ordinality) as first_ordinality
-    from unnest(
-      coalesce(v_source_a.tags, '{}'::text[])
-      || coalesce(v_source_b.tags, '{}'::text[])
-    ) with ordinality as v_tag(tag, ordinality)
-    where v_tag.tag is not null
-    group by v_tag.tag
-  ) as v_unique_tags;
-
-  insert into public.lore_embeddings (
-    user_id,
-    folder_name,
-    project_id,
-    chunk_text,
-    embedding,
-    memory_kind,
-    temporal_status,
-    extraction_version,
-    source_type,
-    source_thread_id,
-    source_message_id,
-    source_message_number,
-    tags,
-    importance_score,
-    confidence_score,
-    last_confirmed_at
-  ) values (
-    p_user_id,
-    v_folder_name,
-    v_project_id,
-    p_merged_text,
-    p_embedding,
-    coalesce(p_memory_kind, v_source_a.memory_kind),
-    coalesce(p_temporal_status, v_source_a.temporal_status),
-    'user_edited',
-    'consolidation',
-    null,
-    null,
-    null,
-    v_tags,
-    greatest(
-      coalesce(v_source_a.importance_score, 0),
-      coalesce(v_source_b.importance_score, 0)
-    ),
-    (
-      coalesce(v_source_a.confidence_score, 0)
-      + coalesce(v_source_b.confidence_score, 0)
-    ) / 2,
-    now()
-  )
-  returning id into v_new_id;
-
-  update public.lore_embeddings
-  set is_archived = true,
-      superseded_by = v_new_id
-  where id in (v_lore_id_a, v_lore_id_b)
-    and user_id = p_user_id
-    and is_archived = false
-    and superseded_by is null;
-
-  get diagnostics v_updated_count = row_count;
-  if v_updated_count <> 2 then
-    raise exception 'expected 2 source records to be archived, got %', v_updated_count
-      using errcode = 'P0001';
-  end if;
-
-  return v_new_id;
-end;
-$$;
-
-revoke execute on function public.merge_user_edited_lore_pair(
-  uuid, uuid, uuid, text, vector, text, text
-) from public, anon, authenticated;
-grant execute on function public.merge_user_edited_lore_pair(
-  uuid, uuid, uuid, text, vector, text, text
-) to authenticated;
-
 -- 分岐復元: 非active化と対象分岐のactive化を単一トランザクションで実行
 create or replace function public.restore_message_branch(
   p_user_id uuid,
@@ -2506,198 +2321,6 @@ revoke execute on function public.apply_branch_edit(uuid, uuid, uuid, uuid, text
 grant execute on function public.apply_branch_edit(uuid, uuid, uuid, uuid, text)
   to authenticated;
 
--- Dreaming（記憶統合）: 2件統合・タグ自動マージ版
-create or replace function consolidate_dreaming_batch(
-  p_user_id uuid, p_lore_id_a uuid, p_lore_id_b uuid, p_merged_text text,
-  p_embedding vector, p_memory_kind text, p_temporal_status text, p_folder_name text,
-  p_importance double precision, p_confidence double precision
-)
-returns uuid
-language plpgsql
-as $$
-declare
-  new_id             uuid;
-  updated_count      int;
-  v_tags             text[];
-  v_project_id_a     uuid;
-  v_project_id_b     uuid;
-  v_folder_name_a    text;
-  v_folder_name_b    text;
-begin
-  if exists (
-    select 1 from lore_embeddings
-    where id in (p_lore_id_a, p_lore_id_b)
-      and (
-        user_id != p_user_id
-        or is_archived = true
-        or superseded_by is not null
-        or is_pinned = true
-        or extraction_version in ('user_edited', 'user_created', 'liked_ai', 'liked_ai_cleaned')
-      )
-  ) then
-    raise exception 'source records failed protection check';
-  end if;
-  select coalesce(array_agg(distinct tag), '{}')
-  into v_tags
-  from unnest(
-    coalesce((select tags from lore_embeddings where id = p_lore_id_a), '{}') ||
-    coalesce((select tags from lore_embeddings where id = p_lore_id_b), '{}')
-  ) as tag;
-  perform id from lore_embeddings
-  where id in (p_lore_id_a, p_lore_id_b)
-  order by id
-  for update;
-
-  select project_id, folder_name
-  into v_project_id_a, v_folder_name_a
-  from lore_embeddings
-  where id = p_lore_id_a;
-
-  select project_id, folder_name
-  into v_project_id_b, v_folder_name_b
-  from lore_embeddings
-  where id = p_lore_id_b;
-
-  if v_project_id_a is distinct from v_project_id_b
-     or v_folder_name_a is distinct from v_folder_name_b then
-    raise exception 'source records belong to different projects' using errcode = 'P0001';
-  end if;
-
-  if p_folder_name is distinct from v_folder_name_a then
-    raise exception 'p_folder_name does not match source records' using errcode = 'P0001';
-  end if;
-
-  insert into lore_embeddings (
-    user_id, chunk_text, embedding, memory_kind,
-    temporal_status, extraction_version, source_type,
-    source_thread_id, source_message_id, source_message_number,
-    folder_name, project_id, tags, importance_score, confidence_score
-  ) values (
-    p_user_id, p_merged_text, p_embedding, p_memory_kind,
-    p_temporal_status, 'dreaming_batch', 'consolidation',
-    null, null, null,
-    v_folder_name_a, v_project_id_a, v_tags, p_importance, p_confidence
-  ) returning id into new_id;
-  update lore_embeddings
-  set is_archived = true, superseded_by = new_id
-  where id in (p_lore_id_a, p_lore_id_b)
-    and user_id = p_user_id
-    and is_archived = false
-    and superseded_by is null;
-  get diagnostics updated_count = row_count;
-  if updated_count <> 2 then
-    raise exception 'expected 2 source records to be archived, got %', updated_count;
-  end if;
-  return new_id;
-end;
-$$;
-
--- Dreaming（記憶統合）: 3件以上のマルチ統合版
--- extraction_version の保護対象に liked_ai / liked_ai_cleaned を含む
-create or replace function public.consolidate_dreaming_batch_multi(
-  p_user_id uuid, p_source_ids uuid[], p_merged_text text, p_embedding vector,
-  p_memory_kind text, p_temporal_status text, p_folder_name text,
-  p_importance double precision, p_confidence double precision
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_source        record;
-  v_new_id        uuid;
-  v_updated_count integer;
-  v_tags          text[];
-  v_all_tags      text[] := '{}';
-  v_source_count  integer;
-  v_found_count   integer := 0;
-  v_project_id    uuid;
-  v_folder_name   text;
-begin
-  if p_user_id is null or auth.uid() is distinct from p_user_id then
-    raise exception 'Unauthorized' using errcode = '42501';
-  end if;
-
-  v_source_count := array_length(p_source_ids, 1);
-  if v_source_count is null or v_source_count < 2 then
-    raise exception 'source_ids must contain at least 2 elements'
-      using errcode = 'P0001';
-  end if;
-  for v_source in
-    select id, is_pinned, extraction_version, is_archived, superseded_by, tags,
-           project_id, folder_name
-    from public.lore_embeddings
-    where id = any(p_source_ids)
-      and user_id = p_user_id
-    order by id
-    for update
-  loop
-    v_found_count := v_found_count + 1;
-    if v_found_count = 1 then
-      v_project_id := v_source.project_id;
-      v_folder_name := v_source.folder_name;
-    elsif v_source.project_id is distinct from v_project_id
-       or v_source.folder_name is distinct from v_folder_name then
-      raise exception 'source records belong to different projects' using errcode = 'P0001';
-    end if;
-    if v_source.is_pinned then
-      raise exception 'source % is pinned', v_source.id using errcode = 'P0001';
-    end if;
-    if v_source.extraction_version in ('user_edited', 'user_created', 'liked_ai', 'liked_ai_cleaned') then
-      raise exception 'source % is protected (extraction_version=%)', v_source.id, v_source.extraction_version
-        using errcode = 'P0001';
-    end if;
-    if v_source.is_archived then
-      raise exception 'source % is already archived', v_source.id using errcode = 'P0001';
-    end if;
-    if v_source.superseded_by is not null then
-      raise exception 'source % is already superseded', v_source.id using errcode = 'P0001';
-    end if;
-    v_all_tags := v_all_tags || coalesce(v_source.tags, '{}');
-  end loop;
-  if v_found_count <> v_source_count then
-    raise exception 'expected % sources but found %', v_source_count, v_found_count
-      using errcode = 'P0001';
-  end if;
-  if p_folder_name is distinct from v_folder_name then
-    raise exception 'p_folder_name does not match source records' using errcode = 'P0001';
-  end if;
-  select coalesce(array_agg(distinct tag), '{}')
-  into v_tags
-  from unnest(v_all_tags) as tag;
-  insert into public.lore_embeddings (
-    user_id, chunk_text, embedding, memory_kind, temporal_status,
-    folder_name, project_id, tags, importance_score, confidence_score,
-    extraction_version, source_type, is_archived, is_pinned,
-    source_thread_id, source_message_id, source_message_number
-  ) values (
-    p_user_id, p_merged_text, p_embedding, p_memory_kind, p_temporal_status,
-    v_folder_name, v_project_id, v_tags, p_importance, p_confidence,
-    'dreaming_batch', 'consolidation', false, false,
-    null, null, null
-  )
-  returning id into v_new_id;
-  update public.lore_embeddings
-  set superseded_by = v_new_id, is_archived = true
-  where id = any(p_source_ids)
-    and user_id = p_user_id;
-  get diagnostics v_updated_count = row_count;
-  if v_updated_count <> v_source_count then
-    raise exception 'expected to update % sources but updated %', v_source_count, v_updated_count
-      using errcode = 'P0001';
-  end if;
-  return v_new_id;
-end;
-$$;
-
-revoke execute on function public.consolidate_dreaming_batch_multi(
-  uuid, uuid[], text, vector, text, text, text, double precision, double precision
-) from public, anon, authenticated;
-grant execute on function public.consolidate_dreaming_batch_multi(
-  uuid, uuid[], text, vector, text, text, text, double precision, double precision
-) to authenticated;
-
 -- Dreaming統合の取り消し（マルチ統合分）
 create or replace function public.rollback_dreaming_batch_multi(
   p_user_id uuid, p_consolidated_id uuid
@@ -2772,10 +2395,9 @@ revoke execute on function public.rollback_dreaming_batch_multi(uuid, uuid)
 grant execute on function public.rollback_dreaming_batch_multi(uuid, uuid)
   to authenticated;
 
--- Phase 5Aで追加する3つの *_by_project RPCはExpand期間中のみ folder_name を projects.name から派生保存する移行版であり、Phase 5Cでは lore_embeddings.folder_name DROPより先に3RPCを folder_name 非依存の最終形へ CREATE OR REPLACE する。
--- DB Expandのみ。旧3RPCとrollback_dreaming_batch_multiは変更しない。
--- 新版はsourceのproject_idをidentityとし、p_folder_nameを受け取らない。
--- 適用順: test -> verify-project-memory-phase-5a.mjs -> production -> postflight。
+-- Phase 5C最終形。3つの *_by_project RPCはproject_idのみをidentityとし、
+-- lore_embeddings.folder_nameには依存しない。ownership guardは維持する。
+-- rollback_dreaming_batch_multiは現役機能として変更せず維持する。
 
 -- Dreaming: 2件をUUID昇順で先にロックしてから検証する。
 create or replace function public.consolidate_dreaming_batch_by_project(
@@ -2796,7 +2418,6 @@ declare
   v_source_b     public.lore_embeddings%rowtype;
   v_found_count  integer := 0;
   v_project_id   uuid;
-  v_folder_name  text;
   v_tags         text[];
   v_new_id       uuid;
   v_updated_count integer;
@@ -2851,7 +2472,7 @@ begin
 
   v_project_id := v_source_a.project_id;
   if v_project_id is not null then
-    select name into v_folder_name
+    perform 1
     from public.projects
     where id = v_project_id and user_id = p_user_id;
     if not found then
@@ -2870,12 +2491,12 @@ begin
     user_id, chunk_text, embedding, memory_kind,
     temporal_status, extraction_version, source_type,
     source_thread_id, source_message_id, source_message_number,
-    folder_name, project_id, tags, importance_score, confidence_score
+    project_id, tags, importance_score, confidence_score
   ) values (
     p_user_id, p_merged_text, p_embedding, p_memory_kind,
     p_temporal_status, 'dreaming_batch', 'consolidation',
     null, null, null,
-    v_folder_name, v_project_id, v_tags, p_importance, p_confidence
+    v_project_id, v_tags, p_importance, p_confidence
   ) returning id into v_new_id;
 
   update public.lore_embeddings
@@ -2921,7 +2542,6 @@ declare
   v_source_count  integer;
   v_found_count   integer := 0;
   v_project_id    uuid;
-  v_folder_name   text;
 begin
   if p_user_id is null or auth.uid() is distinct from p_user_id then
     raise exception 'Unauthorized' using errcode = '42501';
@@ -2972,7 +2592,7 @@ begin
   end if;
 
   if v_project_id is not null then
-    select name into v_folder_name
+    perform 1
     from public.projects
     where id = v_project_id and user_id = p_user_id;
     if not found then
@@ -2985,12 +2605,12 @@ begin
   from unnest(v_all_tags) as tag;
   insert into public.lore_embeddings (
     user_id, chunk_text, embedding, memory_kind, temporal_status,
-    folder_name, project_id, tags, importance_score, confidence_score,
+    project_id, tags, importance_score, confidence_score,
     extraction_version, source_type, is_archived, is_pinned,
     source_thread_id, source_message_id, source_message_number
   ) values (
     p_user_id, p_merged_text, p_embedding, p_memory_kind, p_temporal_status,
-    v_folder_name, v_project_id, v_tags, p_importance, p_confidence,
+    v_project_id, v_tags, p_importance, p_confidence,
     'dreaming_batch', 'consolidation', false, false,
     null, null, null
   ) returning id into v_new_id;
@@ -3038,7 +2658,6 @@ declare
   v_source_a      public.lore_embeddings%rowtype;
   v_source_b      public.lore_embeddings%rowtype;
   v_found_count   integer := 0;
-  v_folder_name   text;
   v_project_id    uuid;
   v_tags          text[];
   v_new_id        uuid;
@@ -3092,7 +2711,7 @@ begin
 
   v_project_id := v_source_a.project_id;
   if v_project_id is not null then
-    select name into v_folder_name
+    perform 1
     from public.projects
     where id = v_project_id and user_id = p_user_id;
     if not found then
@@ -3118,7 +2737,6 @@ begin
 
   insert into public.lore_embeddings (
     user_id,
-    folder_name,
     project_id,
     chunk_text,
     embedding,
@@ -3135,7 +2753,6 @@ begin
     last_confirmed_at
   ) values (
     p_user_id,
-    v_folder_name,
     v_project_id,
     p_merged_text,
     p_embedding,

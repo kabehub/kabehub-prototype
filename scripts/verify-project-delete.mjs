@@ -157,7 +157,6 @@ async function insertThread(userId, project, label) {
     .insert({
       user_id: userId,
       title: `Project delete ${label}`,
-      folder_name: project.name,
       project_id: project.id,
     })
     .select("id")
@@ -171,7 +170,6 @@ async function insertProjectSettings(userId, project, label) {
     .from("project_settings")
     .insert({
       user_id: userId,
-      folder_name: project.name,
       project_id: project.id,
       system_prompt: `Project delete verification ${label}`,
       pinned_github_files: [],
@@ -187,7 +185,6 @@ async function insertLore(userId, project, label) {
     .from("lore_embeddings")
     .insert({
       user_id: userId,
-      folder_name: project.name,
       project_id: project.id,
       chunk_text: `Existing lore ${label}`,
       embedding: DUMMY_EMBEDDING,
@@ -267,11 +264,11 @@ function promotionFor(topic, expectedRevision = topic.revision) {
 async function snapshotUsers(userIds) {
   const tableSpecs = {
     projects: "id, user_id, name, created_at, updated_at",
-    threads: "id, user_id, title, folder_name, project_id, updated_at",
+    threads: "id, user_id, title, project_id, updated_at",
     project_settings:
-      "id, user_id, folder_name, project_id, system_prompt, folder_type, pinned_github_files",
+      "id, user_id, project_id, system_prompt, folder_type, pinned_github_files",
     lore_embeddings:
-      "id, user_id, folder_name, project_id, chunk_text, memory_kind, temporal_status, extraction_version, source_type, metadata",
+      "id, user_id, project_id, chunk_text, memory_kind, temporal_status, extraction_version, source_type, metadata",
     project_memory_topics:
       "id, user_id, project_id, topic_key, content_md, revision, updated_at",
   };
@@ -341,21 +338,19 @@ async function scenario1PreserveWithoutPromotion() {
     service,
     "threads",
     fixture.thread.id,
-    "id, project_id, folder_name",
+    "id, project_id",
   );
   assert.ok(thread);
   assert.equal(thread.project_id, null);
-  assert.equal(thread.folder_name, null);
 
   const lore = await selectById(
     service,
     "lore_embeddings",
     fixture.lore.id,
-    "id, project_id, folder_name, source_type",
+    "id, project_id, source_type",
   );
   assert.ok(lore);
   assert.equal(lore.project_id, null);
-  assert.equal(lore.folder_name, null);
 
   const orphanedTopic = await selectById(
     service,
@@ -425,7 +420,7 @@ async function scenario2PromoteToLore() {
   const promoted = await fetchAll(
     service,
     "lore_embeddings",
-    "id, user_id, chunk_text, memory_kind, temporal_status, extraction_version, source_type, project_id, folder_name, metadata",
+    "id, user_id, chunk_text, memory_kind, temporal_status, extraction_version, source_type, project_id, metadata",
     (query) =>
       query
         .eq("user_id", user.id)
@@ -441,7 +436,6 @@ async function scenario2PromoteToLore() {
     assert.equal(row.extraction_version, "user_created");
     assert.equal(row.source_type, "project_memory_promotion");
     assert.equal(row.project_id, null);
-    assert.equal(row.folder_name, null);
     assert.equal(row.metadata?.source_project_id, project.id);
 
     const sourceTopic = expectedById.get(row.metadata?.source_topic_id);

@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     if (rpcError) {
       logger.dbOperationFailed({
         route: "lore-consolidate-merge",
-        operation: "merge_user_edited_lore_pair",
+        operation: "merge_user_edited_lore_pair_by_project",
         table: "lore_embeddings",
         errorCode: rpcError.code,
       });

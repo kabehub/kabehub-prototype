@@ -1,3 +1,4 @@
+// v199適用後は再実行不可（historical-only）。
 // Default: test only. Catalog checks require PHASE_5A_SUPABASE_ACCESS_TOKEN
 // (or SUPABASE_ACCESS_TOKEN); missing credentials fail rather than skip ACLs.
 // node scripts/verify-project-memory-phase-5a.mjs --print-postflight

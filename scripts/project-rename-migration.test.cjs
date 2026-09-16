@@ -6,8 +6,7 @@ const root = path.join(__dirname, "..");
 const migrationPath = path.join(
   root,
   "docs",
-  "applied",
-  "migration_v195_rename_project.sql",
+  "migration_v198_project_memory_dreaming_final.sql",
 );
 const schemaPath = path.join(root, "docs", "schema.sql");
 const readmePath = path.join(root, "docs", "applied", "README.md");
@@ -46,10 +45,12 @@ for (const table of [
   "project_settings",
   "novel_settings",
   "threads",
-  "lore_embeddings",
 ]) {
   assert.match(migration, new RegExp(`(?:update|public\\.)${table}`));
 }
+
+const renameDefinition = extractRenameDefinition(migration);
+assert.doesNotMatch(renameDefinition, /lore_embeddings/);
 
 assert.match(
   migration,
@@ -66,9 +67,9 @@ assert.match(
 
 assert.equal(
   extractRenameDefinition(schema),
-  extractRenameDefinition(migration),
-  "canonical schema must contain the exact v195 function and grants",
+  renameDefinition,
+  "canonical schema must contain the exact v198 function and grants",
 );
 assert.match(readme, /migration_v195_rename_project\.sql/);
 
-console.log("ok - v195 rename migration and canonical schema stay aligned");
+console.log("ok - v198 rename migration and canonical schema stay aligned");

@@ -1,3 +1,4 @@
+// v199適用後は再実行不可（historical-only）。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
