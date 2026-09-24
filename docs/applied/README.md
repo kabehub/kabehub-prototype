@@ -45,6 +45,9 @@
 | migration_v191_project_memory_phase_e_update_temporal_status_by_project.sql | Project Memory Manager Phase E-3（旧RPCを維持したままproject_id版のLore時系列ステータス更新RPCを追加） |
 | migration_v192_project_memory_phase_e_drop_legacy_temporal_status.sql | Project Memory Manager Phase E-3（project_id版への切り替え後に旧folder_name版のLore時系列ステータス更新RPCを削除） |
 | migration_v193_folder_settings_to_project_settings.sql | folder_settingsをproject_settingsへフルリネーム（テーブル・制約・インデックス・RLSポリシー・トリガー） |
+| migration_v194_delete_project_preserving_contents.sql | Project物理削除（関連コンテンツ保持・Project Memory任意Lore昇格） |
 | migration_v195_rename_project.sql | Project名変更RPC（所有権検証・行ロック・関連4テーブルのfolder_name同期・authenticated限定実行） |
+| migration_v197_project_memory_dreaming_by_project.sql | Project Memory Manager Phase 5A（Dreaming/Merge RPCのproject_id専用版3本を追加） |
 | migration_v198_project_memory_dreaming_final.sql | Project Memory Manager Phase 5C依存除去（Dreaming/Merge・Project rename/delete RPCをlore_embeddings.folder_name非依存の最終形へ更新） |
 | migration_v199_lore_embeddings_folder_name_drop.sql | Project Memory Manager Phase 5C Contract（旧Dreaming/Merge RPC 3本・旧index・lore_embeddings.folder_name列を削除） |
+| migration_v200_project_memory_topic_promotion.sql | Project Memory Manager Phase 6（topicの通常時Lore昇格RPC新設・revision単位idempotency/supersede・Lore Book検索match_lore_embeddings_by_projectのarchive/supersede除外bug fix） |

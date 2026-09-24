@@ -1,6 +1,7 @@
 const MESSAGE_STATUS_MAP: Record<string, { status: number; error: string }> = {
   "project not found": { status: 404, error: "Project not found" },
   "topic not found": { status: 404, error: "Topic not found" },
+  "topic is empty": { status: 400, error: "Topic is empty" },
   "topic already exists": { status: 409, error: "Topic already exists" },
   "revision conflict": { status: 409, error: "Revision conflict" },
   "old_text not found": { status: 409, error: "old_text not found" },

@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/09/16（migration_v198/v199 folder_name Contract反映）
+-- 最終更新: 2026/09/17（migration_v200 Project Memory topic Promotion反映）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -59,6 +59,7 @@
 -- 2026/09/16、migration_v197_project_memory_dreaming_by_project.sqlをスキーマ正本へ反映（test/production適用済み、Project Memory Manager Phase 5A対応：Dreaming/Merge RPCのproject_id専用版3本を追加）。
 -- 2026/09/16、migration_v198_project_memory_dreaming_final.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。現役Dreaming/Merge・Project rename/delete RPCからlore_embeddings.folder_name依存を除去）。
 -- 2026/09/16、migration_v199_lore_embeddings_folder_name_drop.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。旧Dreaming/Merge RPC 3本・旧index・lore_embeddings.folder_name列を削除）。
+-- 2026/09/17、migration_v200_project_memory_topic_promotion.sqlをスキーマ正本へ反映（Project Memory topicの通常時Lore昇格、revision単位の冪等性・supersede、Lore Book検索のarchive/supersede除外）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1468,6 +1469,21 @@ create index if not exists idx_lore_embeddings_source_thread_id on lore_embeddin
 create index if not exists idx_lore_embeddings_tags on lore_embeddings using gin(tags);
 create index if not exists idx_lore_embeddings_temporal_status on lore_embeddings(temporal_status);
 create index if not exists idx_lore_embeddings_project on lore_embeddings(project_id);
+create unique index if not exists idx_lore_embeddings_promotion_source_revision
+  on lore_embeddings (
+    user_id,
+    (metadata->>'source_topic_id'),
+    (metadata->>'source_revision')
+  )
+  where source_type = 'project_memory_promotion';
+create index if not exists idx_lore_embeddings_promotion_active_by_topic
+  on lore_embeddings (
+    user_id,
+    (metadata->>'source_topic_id')
+  )
+  where source_type = 'project_memory_promotion'
+    and is_archived = false
+    and superseded_by is null;
 
 alter table lore_embeddings enable row level security;
 
@@ -1507,6 +1523,135 @@ create policy "lore_embeddings: update own"
 create policy "lore_embeddings: delete own"
   on lore_embeddings for delete
   using (auth.uid() = user_id);
+
+-- ============================================================
+-- Project Memory topicのLore昇格
+-- ============================================================
+create or replace function public.promote_project_memory_topic_to_lore(
+  p_user_id uuid,
+  p_topic_id uuid,
+  p_expected_revision int,
+  p_embedding vector
+)
+returns table(lore_id uuid, created boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_project_id uuid;
+  v_topic record;
+  v_existing_id uuid;
+  v_new_id uuid;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  if p_expected_revision is null or p_expected_revision < 1 then
+    raise exception 'expected_revision must be a positive integer' using errcode = 'P0001';
+  end if;
+
+  if p_embedding is null then
+    raise exception 'embedding is required' using errcode = 'P0001';
+  end if;
+
+  -- locator：非ロックでproject_idだけ解決する
+  select t.project_id into v_project_id
+  from public.project_memory_topics t
+  where t.id = p_topic_id and t.user_id = p_user_id;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  -- 1. Project lock（Deleteと同じ順序）
+  perform 1
+  from public.projects p
+  where p.id = v_project_id and p.user_id = p_user_id
+  for update;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  -- 2. authoritative topic snapshot（project_id条件込みでロック確定）
+  select t.id, t.project_id, t.topic_key, t.content_md, t.revision
+  into v_topic
+  from public.project_memory_topics t
+  where t.id = p_topic_id
+    and t.user_id = p_user_id
+    and t.project_id = v_project_id
+  for update;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  if v_topic.revision <> p_expected_revision then
+    raise exception 'revision conflict' using errcode = 'P0001';
+  end if;
+
+  if btrim(v_topic.content_md) = '' then
+    raise exception 'topic is empty' using errcode = 'P0001';
+  end if;
+
+  begin
+    insert into public.lore_embeddings (
+      user_id, chunk_text, embedding, memory_kind, temporal_status,
+      extraction_version, source_type, project_id, metadata
+    )
+    values (
+      p_user_id,
+      v_topic.content_md,
+      p_embedding,
+      'project',
+      'current',
+      'user_created',
+      'project_memory_promotion',
+      v_topic.project_id,
+      jsonb_build_object(
+        'source_topic_id', v_topic.id,
+        'source_topic_key', v_topic.topic_key,
+        'source_project_id', v_topic.project_id,
+        'source_revision', p_expected_revision
+      )
+    )
+    returning id into v_new_id;
+  exception when unique_violation then
+    select id into v_existing_id
+    from public.lore_embeddings
+    where user_id = p_user_id
+      and source_type = 'project_memory_promotion'
+      and metadata->>'source_topic_id' = v_topic.id::text
+      and metadata->>'source_revision' = p_expected_revision::text;
+
+    if not found then
+      raise;
+    end if;
+
+    return query select v_existing_id, false;
+    return;
+  end;
+
+  update public.lore_embeddings
+  set is_archived = true,
+      superseded_by = v_new_id
+  where user_id = p_user_id
+    and source_type = 'project_memory_promotion'
+    and metadata->>'source_topic_id' = v_topic.id::text
+    and id <> v_new_id
+    and is_archived = false
+    and superseded_by is null;
+
+  return query select v_new_id, true;
+end;
+$$;
+
+revoke execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector)
+  from public, anon, authenticated;
+grant execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector)
+  to authenticated;
 
 -- ============================================================
 -- Project物理削除（関連コンテンツ保持 + Project Memory任意Lore昇格）
@@ -1880,7 +2025,10 @@ stable
 as $$
   select chunk_text, 1 - (embedding <-> query_embedding) as similarity
   from lore_embeddings
-  where user_id = match_user_id and project_id = match_project_id
+  where user_id = match_user_id
+    and project_id = match_project_id
+    and is_archived = false
+    and superseded_by is null
   order by embedding <-> query_embedding
   limit match_count;
 $$;
