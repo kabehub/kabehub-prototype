@@ -67,7 +67,8 @@ Module._load = function loadWithMocks(request, parent, isMain) {
   }
   if (
     request === "@/components/ProjectDeleteConfirmModal" ||
-    request === "@/components/ProjectMemoryConsolidationModal"
+    request === "@/components/ProjectMemoryConsolidationModal" ||
+    request === "@/components/ProjectMemoryListModal"
   ) {
     return { __esModule: true, default: () => null };
   }

@@ -11,13 +11,14 @@ const USER_ID = "user-1";
 let currentUser = null;
 let projectResult = { data: null, error: null };
 let topicsResult = { data: [], error: null };
+let promotionsResult = { data: [], error: null };
 let rpcResult = { data: null, error: null };
 let fromCalls = [];
 let queryCalls = [];
 let rpcCalls = [];
 
 function createQuery(table, result) {
-  const state = { select: null, filters: [], order: null };
+  const state = { select: null, filters: [], order: null, inCalls: [], isCalls: [] };
   queryCalls.push({ table, state });
 
   function resolveResult() {
@@ -41,6 +42,14 @@ function createQuery(table, result) {
     },
     eq(column, value) {
       state.filters.push({ column, value });
+      return query;
+    },
+    in(column, values) {
+      state.inCalls.push({ column, values });
+      return query;
+    },
+    is(column, value) {
+      state.isCalls.push({ column, value });
       return query;
     },
     order(column, options) {
@@ -67,6 +76,7 @@ const supabase = {
     fromCalls.push(table);
     if (table === "projects") return createQuery(table, projectResult);
     if (table === "project_memory_topics") return createQuery(table, topicsResult);
+    if (table === "lore_embeddings") return createQuery(table, promotionsResult);
     throw new Error(`unexpected table access: ${table}`);
   },
   rpc(name, args) {
@@ -123,6 +133,7 @@ function resetMocks(options = {}) {
     error: null,
   };
   topicsResult = options.topicsResult ?? { data: [], error: null };
+  promotionsResult = options.promotionsResult ?? { data: [], error: null };
   rpcResult = options.rpcResult ?? {
     data: {
       topic_id: "topic-1",
@@ -224,6 +235,7 @@ test("GET requests topic_key ascending order and returns that order", async () =
   const later = {
     id: "topic-2",
     topic_key: "timeline",
+    content_md: "Later content",
     revision: 2,
     created_at: "2026-09-09T00:00:02.000Z",
     updated_at: "2026-09-09T00:00:03.000Z",
@@ -231,6 +243,7 @@ test("GET requests topic_key ascending order and returns that order", async () =
   const earlier = {
     id: "topic-1",
     topic_key: "overview",
+    content_md: "Overview content",
     revision: 1,
     created_at: "2026-09-09T00:00:00.000Z",
     updated_at: "2026-09-09T00:00:01.000Z",
@@ -240,12 +253,46 @@ test("GET requests topic_key ascending order and returns that order", async () =
   const response = await invokeGet();
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { topics: [earlier, later] });
+  const notPromoted = { status: "not_promoted", source_revision: null, lore_id: null };
+  assert.deepEqual(await response.json(), { topics: [{ ...earlier, promotion: notPromoted }, { ...later, promotion: notPromoted }] });
   assert.deepEqual(queryCalls[1].state.order, {
     column: "topic_key",
     options: { ascending: true },
   });
-  assert.equal(queryCalls[1].state.select.includes("content_md"), false);
+  assert.equal(queryCalls[1].state.select.includes("content_md"), true);
+  assert.equal(queryCalls[2].state.select, "id, metadata");
+  assert.deepEqual(queryCalls[2].state.inCalls, [{ column: "metadata->>source_topic_id", values: ["topic-1", "topic-2"] }]);
+  assert.deepEqual(queryCalls[2].state.isCalls, [{ column: "superseded_by", value: null }]);
+  assert.equal(queryCalls.filter((call) => call.table === "lore_embeddings").length, 1);
+});
+
+const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", revision: 3,
+  created_at: "2026-09-09T00:00:00.000Z", updated_at: "2026-09-09T00:00:01.000Z" };
+const promotion = (source_revision, id = "lore-1") => ({ id, metadata: { source_topic_id: topic.id, ...(source_revision === undefined ? {} : { source_revision }) } });
+
+for (const [label, records, expected] of [
+  ["current", [promotion(3)], { status: "current", source_revision: 3, lore_id: "lore-1" }],
+  ["stale", [promotion(2)], { status: "stale", source_revision: 2, lore_id: "lore-1" }],
+  ["missing revision", [promotion(undefined)], { status: "not_promoted", source_revision: null, lore_id: null }],
+  ["non-integer revision", [promotion(1.5)], { status: "not_promoted", source_revision: null, lore_id: null }],
+  ["future revision", [promotion(4)], { status: "not_promoted", source_revision: null, lore_id: null }],
+  ["multiple active rows", [promotion(3), promotion(2, "lore-2")], { status: "not_promoted", source_revision: null, lore_id: null }],
+]) {
+  test(`GET promotion ${label}`, async () => {
+    resetMocks({ topicsResult: { data: [topic], error: null }, promotionsResult: { data: records, error: null } });
+    const { response } = await captureConsoleError(invokeGet);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { topics: [{ ...topic, promotion: expected }] });
+  });
+}
+
+test("GET returns a fixed 500 when promotion lookup fails", async () => {
+  resetMocks({ topicsResult: { data: [topic], error: null }, promotionsResult: { data: null, error: { message: "raw promotion failure" } } });
+  const response = await invokeGet();
+  assert.equal(response.status, 500);
+  const body = await response.json();
+  assert.deepEqual(body, { error: "Failed to load topics" });
+  assert.equal(JSON.stringify(body).includes("raw promotion failure"), false);
 });
 
 test("GET returns a fixed 500 response when the topic lookup fails", async () => {

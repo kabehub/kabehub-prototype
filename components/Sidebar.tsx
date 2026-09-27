@@ -6,6 +6,7 @@ import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useToast } from "@/components/Toast";
 import ProjectDeleteConfirmModal from "@/components/ProjectDeleteConfirmModal";
 import ProjectMemoryConsolidationModal from "@/components/ProjectMemoryConsolidationModal";
+import ProjectMemoryListModal from "@/components/ProjectMemoryListModal";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
 import {
   applyProjectMemoryConsolidation,
@@ -713,6 +714,7 @@ export default function Sidebar({
     projectName: string;
     preview: ProjectMemoryConsolidationPreview;
   } | null>(null);
+  const [memoryListOpen, setMemoryListOpen] = useState(false);
 
   const handleNewThreadInFolder = useCallback((projectId: string) => {
     onNewThreadInFolder(projectId);
@@ -1710,6 +1712,7 @@ export default function Sidebar({
               <div style={{ fontSize: "11px", color: "var(--ink-muted)", lineHeight: 1.6, marginBottom: "10px" }}>
                 既存topicの重複・矛盾・古くなった記述をAIで確認し、topicごとの全文更新案を作ります。
               </div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
               <button
                 onClick={handleOpenMemoryConsolidation}
                 disabled={!projectSettingsModal.projectId || consolidationLoading}
@@ -1717,6 +1720,14 @@ export default function Sidebar({
               >
                 {consolidationLoading ? "整理案を生成中…" : "Project Memoryを整理"}
               </button>
+              <button
+                onClick={() => setMemoryListOpen(true)}
+                disabled={!projectSettingsModal.projectId}
+                style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: "#7c3aed", fontSize: "12px", cursor: "pointer", fontWeight: 500 }}
+              >
+                Project Memory一覧
+              </button>
+              </div>
             </div>
             <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "space-between", alignItems: "center" }}>
               <button
@@ -1745,6 +1756,14 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+      )}
+      {projectSettingsModal && (
+        <ProjectMemoryListModal
+          isOpen={memoryListOpen}
+          projectId={projectSettingsModal.projectId}
+          projectName={projectSettingsModal.folderName}
+          onCancel={() => setMemoryListOpen(false)}
+        />
       )}
       {projectSettingsModal && (
         <ProjectDeleteConfirmModal

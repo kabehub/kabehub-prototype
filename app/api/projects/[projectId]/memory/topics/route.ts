@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, props: RouteProps) {
 
   const { data, error } = await supabase
     .from("project_memory_topics")
-    .select("id, topic_key, revision, created_at, updated_at")
+    .select("id, topic_key, content_md, revision, created_at, updated_at")
     .eq("project_id", projectId)
     .order("topic_key", { ascending: true });
 
@@ -36,7 +36,65 @@ export async function GET(req: NextRequest, props: RouteProps) {
     return finalizeJson({ error: "Failed to load topics" }, { status: 500 });
   }
 
-  return finalizeJson({ topics: data ?? [] });
+  const topics = data ?? [];
+  if (topics.length === 0) return finalizeJson({ topics: [] });
+
+  const topicIds = topics.map((topic) => topic.id);
+  const { data: promotions, error: promotionError } = await supabase
+    .from("lore_embeddings")
+    .select("id, metadata")
+    .eq("user_id", user.id)
+    .eq("source_type", "project_memory_promotion")
+    .eq("is_archived", false)
+    .is("superseded_by", null)
+    .in("metadata->>source_topic_id", topicIds);
+
+  if (promotionError) {
+    return finalizeJson({ error: "Failed to load topics" }, { status: 500 });
+  }
+
+  const promotionsByTopic = new Map<string, Array<{ id: string; metadata: unknown }>>();
+  for (const promotion of promotions ?? []) {
+    const metadata = promotion.metadata;
+    if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) continue;
+    const topicId = (metadata as Record<string, unknown>).source_topic_id;
+    if (typeof topicId !== "string") continue;
+    const matches = promotionsByTopic.get(topicId) ?? [];
+    matches.push(promotion);
+    promotionsByTopic.set(topicId, matches);
+  }
+
+  return finalizeJson({
+    topics: topics.map((topic) => {
+      const notPromoted = { status: "not_promoted" as const, source_revision: null, lore_id: null };
+      const matches = promotionsByTopic.get(topic.id) ?? [];
+      if (matches.length === 0) return { ...topic, promotion: notPromoted };
+      if (matches.length > 1) {
+        console.error("[project-memory-promotion-invariant]", { reason: "multiple_active", topicId: topic.id });
+        return { ...topic, promotion: notPromoted };
+      }
+      const match = matches[0];
+      const metadata = match.metadata as Record<string, unknown>;
+      const rawRevision = metadata.source_revision;
+      const sourceRevision = typeof rawRevision === "number" ? rawRevision :
+        typeof rawRevision === "string" && /^\d+$/.test(rawRevision) ? Number(rawRevision) : NaN;
+      if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 1) {
+        return { ...topic, promotion: notPromoted };
+      }
+      if (sourceRevision > topic.revision) {
+        console.error("[project-memory-promotion-invariant]", { reason: "future_revision", topicId: topic.id });
+        return { ...topic, promotion: notPromoted };
+      }
+      return {
+        ...topic,
+        promotion: {
+          status: sourceRevision === topic.revision ? "current" as const : "stale" as const,
+          source_revision: sourceRevision,
+          lore_id: match.id,
+        },
+      };
+    }),
+  });
 }
 
 export async function POST(req: NextRequest, props: RouteProps) {
