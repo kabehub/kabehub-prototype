@@ -1774,24 +1774,15 @@ begin
         raise exception 'topic changed during promotion' using errcode = 'P0001';
       end if;
 
-      insert into public.lore_embeddings (
-        user_id, chunk_text, embedding, memory_kind, temporal_status,
-        extraction_version, source_type, project_id, metadata
-      )
-      values (
+      -- Phase 3: Lore昇格の実体はPromotion Contract（v200）へ委譲する。
+      -- source_revisionを含むmetadata構築・idempotency（unique_violation）・
+      -- supersede処理はすべてpromote_project_memory_topic_to_lore側の責務。
+      perform 1
+      from public.promote_project_memory_topic_to_lore(
         p_user_id,
-        v_topic.content_md,
-        (v_promo->>'embedding')::public.vector,
-        'project',
-        'current',
-        'user_created',
-        'project_memory_promotion',
-        null,
-        jsonb_build_object(
-          'source_topic_id', v_topic.id,
-          'source_topic_key', v_topic.topic_key,
-          'source_project_id', p_project_id
-        )
+        v_topic.id,
+        (v_promo->>'expected_revision')::int,
+        (v_promo->>'embedding')::public.vector
       );
     end loop;
   end if;

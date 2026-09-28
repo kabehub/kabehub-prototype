@@ -253,6 +253,17 @@ async function callDeleteRpc(user, projectId, promoteToLore, promotions) {
   });
 }
 
+async function callPromoteRpc(user, topicId, expectedRevision, embedding = DUMMY_EMBEDDING) {
+  return user.authenticated
+    .rpc("promote_project_memory_topic_to_lore", {
+      p_user_id: user.id,
+      p_topic_id: topicId,
+      p_expected_revision: expectedRevision,
+      p_embedding: embedding,
+    })
+    .single();
+}
+
 function promotionFor(topic, expectedRevision = topic.revision) {
   return {
     topic_id: topic.id,
@@ -441,6 +452,7 @@ async function scenario2PromoteToLore() {
     const sourceTopic = expectedById.get(row.metadata?.source_topic_id);
     assert.ok(sourceTopic, `unexpected source_topic_id ${row.metadata?.source_topic_id}`);
     assert.equal(row.metadata.source_topic_key, sourceTopic.topicKey);
+    assert.equal(row.metadata.source_revision, sourceTopic.revision);
     assert.equal(row.chunk_text, sourceTopic.contentMd);
   }
   assert.equal(
@@ -698,6 +710,97 @@ async function scenario8DuplicateTopicId() {
   });
 }
 
+async function scenario9SameRevisionIdempotentThroughDelete() {
+  const label = "scenario-9";
+  const user = await createTestUser(label);
+  const project = await createProject(user, label);
+  const topic = await createTopic(user, project.id, "overview", "Idempotent content");
+
+  const { data: promoted, error: promoteError } = await callPromoteRpc(
+    user,
+    topic.id,
+    topic.revision,
+  );
+  expectNoError(promoteError, "scenario 9 direct promotion");
+  assert.equal(promoted.created, true);
+  const loreId = promoted.lore_id;
+
+  const { error } = await callDeleteRpc(user, project.id, true, [
+    promotionFor(topic),
+  ]);
+  expectNoError(error, "scenario 9 delete RPC");
+
+  const rows = await fetchAll(
+    service,
+    "lore_embeddings",
+    "id, source_type, metadata, is_archived, superseded_by, project_id",
+    (query) =>
+      query.eq("user_id", user.id).eq("source_type", "project_memory_promotion"),
+  );
+  assert.equal(rows.length, 1, "no duplicate Lore row should be created");
+  assert.equal(rows[0].id, loreId, "delete-time idempotent promotion must return the same Lore id");
+  assert.equal(rows[0].metadata.source_revision, topic.revision);
+  assert.equal(rows[0].is_archived, false);
+  assert.equal(rows[0].superseded_by, null);
+  assert.equal(rows[0].project_id, null);
+
+  pass("⑨ same-revision promotion through delete is idempotent (delegates to v200)", {
+    project_id: project.id,
+    lore_id: loreId,
+  });
+}
+
+async function scenario10SupersedeThroughDelete() {
+  const label = "scenario-10";
+  const user = await createTestUser(label);
+  const project = await createProject(user, label);
+  const topic = await createTopic(user, project.id, "overview", "Rev1 content");
+
+  const { data: firstPromotion, error: promoteError } = await callPromoteRpc(
+    user,
+    topic.id,
+    topic.revision,
+  );
+  expectNoError(promoteError, "scenario 10 rev1 promotion");
+  const loreIdRev1 = firstPromotion.lore_id;
+
+  const updated = await updateTopic(user, topic.id, topic.revision, "Rev2 content");
+
+  const { error } = await callDeleteRpc(user, project.id, true, [
+    promotionFor(topic, updated.revision),
+  ]);
+  expectNoError(error, "scenario 10 delete RPC with rev2 promotion");
+
+  const rows = await fetchAll(
+    service,
+    "lore_embeddings",
+    "id, metadata, is_archived, superseded_by, project_id",
+    (query) =>
+      query.eq("user_id", user.id).eq("source_type", "project_memory_promotion"),
+  );
+  assert.equal(rows.length, 2, "rev1 and rev2 Lore rows must both exist");
+
+  const rev1Row = rows.find((row) => row.id === loreIdRev1);
+  const rev2Row = rows.find((row) => row.id !== loreIdRev1);
+  assert.ok(rev1Row && rev2Row, "both rev1 and rev2 rows must be found");
+
+  assert.equal(rev1Row.metadata.source_revision, topic.revision);
+  assert.equal(rev1Row.is_archived, true);
+  assert.equal(rev1Row.superseded_by, rev2Row.id);
+  assert.equal(rev1Row.project_id, null);
+
+  assert.equal(rev2Row.metadata.source_revision, updated.revision);
+  assert.equal(rev2Row.is_archived, false);
+  assert.equal(rev2Row.superseded_by, null);
+  assert.equal(rev2Row.project_id, null);
+
+  pass("⑩ new-revision promotion through delete supersedes the prior Promotion Lore", {
+    project_id: project.id,
+    lore_id_rev1: loreIdRev1,
+    lore_id_rev2: rev2Row.id,
+  });
+}
+
 async function run() {
   await scenario1PreserveWithoutPromotion();
   await scenario2PromoteToLore();
@@ -707,7 +810,9 @@ async function run() {
   await scenario6FalseWithPromotions();
   await scenario7InvalidPromotionElements();
   await scenario8DuplicateTopicId();
-  pass("Project delete integration verification complete", { scenarios: 8 });
+  await scenario9SameRevisionIdempotentThroughDelete();
+  await scenario10SupersedeThroughDelete();
+  pass("Project delete integration verification complete", { scenarios: 10 });
 }
 
 let exitCode = 0;

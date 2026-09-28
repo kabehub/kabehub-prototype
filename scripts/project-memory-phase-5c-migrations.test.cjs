@@ -56,7 +56,6 @@ const functions = [
     true,
   ],
   ["rename_project", "uuid, uuid, text", false],
-  ["delete_project_preserving_contents", "uuid, uuid, boolean, jsonb", false],
 ];
 
 for (const [name, signature, isProjectLoreRpc] of functions) {
