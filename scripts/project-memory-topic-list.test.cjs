@@ -17,7 +17,7 @@ const topic = (status = "not_promoted", id = status) => ({ id, topic_key: id, co
 const nodes = (root) => !root || typeof root !== "object" ? [] : [root, ...React.Children.toArray(root.props?.children).flatMap(nodes)];
 const button = (tree, label) => nodes(tree).find((node) => node.type === "button" && node.props.children === label);
 const render = (overrides = {}) => TopicList({ topics: [topic()], loading: false, error: null, expandedIds: new Set(),
-  onToggleExpanded() {}, canPromote: true, promotingTopicId: null, actionsLocked: false, onDownload() {}, onPromote() {}, ...overrides });
+  onToggleExpanded() {}, canPromote: true, canInstructionEdit: true, promotingTopicId: null, actionsLocked: false, onDownload() {}, onPromote() {}, onInstructionEdit() {}, ...overrides });
 
 try {
   for (const [status, stateLabel, actionLabel] of [
@@ -31,23 +31,29 @@ try {
   assert.equal(button(render({ topics: [{ ...topic(), content_md: "  " }] }), "Loreに昇格").props.disabled, true);
   assert.equal(button(render({ topics: [topic("current")] }), "昇格済み").props.disabled, true);
   assert.equal(button(render({ actionsLocked: true }), "Loreに昇格").props.disabled, true);
+  assert.equal(button(render(), "AIで編集").props.disabled, false);
+  assert.equal(button(render({ actionsLocked: true }), "AIで編集").props.disabled, true);
+  assert.equal(button(render({ canInstructionEdit: false }), "AIで編集").props.disabled, true);
+  assert.equal(button(render({ topics: [{ ...topic(), content_md: "" }] }), "AIで編集").props.disabled, false);
   assert.equal(button(render({ promotingTopicId: "not_promoted" }), "昇格中…").props.disabled, true);
   const locked = render({ actionsLocked: true });
   assert.equal(button(locked, "DL").props.disabled, undefined);
   assert.equal(nodes(locked).find((node) => node.type === "button" && node.props["aria-expanded"] === false).props.disabled, undefined);
 
-  let toggled, downloaded, promoted;
+  let toggled, downloaded, promoted, editing;
   const first = topic("not_promoted", "first");
   const second = topic("stale", "second");
   const tree = render({ topics: [first, second], expandedIds: new Set(["first"]),
-    onToggleExpanded(id) { toggled = id; }, onDownload(value) { downloaded = value; }, onPromote(value) { promoted = value; } });
+    onToggleExpanded(id) { toggled = id; }, onDownload(value) { downloaded = value; }, onPromote(value) { promoted = value; }, onInstructionEdit(value) { editing = value; } });
   assert.equal(nodes(tree).filter((node) => node.props?.content === "Content").length, 1);
   nodes(tree).find((node) => node.type === "button" && node.props["aria-expanded"] === true).props.onClick();
   assert.equal(toggled, "first");
   button(tree, "DL").props.onClick();
   button(tree, "Loreに再昇格").props.onClick();
+  button(tree, "AIで編集").props.onClick();
   assert.equal(downloaded, first);
   assert.equal(promoted, second);
+  assert.equal(editing, first);
   for (const status of ["current", "stale"]) {
     const promotedTopic = { ...topic(status), promotion: { status, lore_id: "lore/id", source_revision: 1 } };
     const link = nodes(render({ topics: [promotedTopic] })).find((node) => node.type === "a");

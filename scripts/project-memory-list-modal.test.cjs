@@ -21,6 +21,7 @@ let posts = 0;
 let gets = 0;
 let releasePost;
 let onEscape;
+const keyListeners = new Set();
 
 const hooks = {
   ...React,
@@ -65,6 +66,7 @@ installTsLoader({ jsx: true });
 const Modal = require(path.join(__dirname, "..", "components", "ProjectMemoryListModal.tsx")).default;
 const ProjectMemoryTopicList = require(path.join(__dirname, "..", "components", "ProjectMemoryTopicList.tsx")).default;
 const ProjectMemoryUploadConfirm = require(path.join(__dirname, "..", "components", "ProjectMemoryUploadConfirm.tsx")).default;
+const ProjectMemoryInstructionEditModal = require(path.join(__dirname, "..", "components", "ProjectMemoryInstructionEditModal.tsx")).default;
 
 function render() {
   cursor = 0;
@@ -79,13 +81,23 @@ function nodes(root) {
   const children = React.Children.toArray(root.props?.children);
   return [root, ...children.flatMap(nodes)];
 }
+function element(root, type) {
+  if (!root || typeof root !== "object") return null;
+  if (root.type === type) return root;
+  for (const child of React.Children.toArray(root.props?.children)) {
+    const found = element(child, type);
+    if (found) return found;
+  }
+  return null;
+}
 
 async function flush() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
 (async () => {
-  global.window = { addEventListener(_name, handler) { onEscape = handler; }, removeEventListener() { onEscape = null; } };
+  global.window = { addEventListener(_name, handler) { keyListeners.add(handler); }, removeEventListener(_name, handler) { keyListeners.delete(handler); } };
+  onEscape = (event) => { for (const handler of [...keyListeners]) handler(event); };
   const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", revision: 1,
     created_at: "2026-09-09T00:00:00Z", updated_at: "2026-09-09T00:00:00Z",
     promotion: { status: "not_promoted", source_revision: null, lore_id: null } };
@@ -129,12 +141,13 @@ async function flush() {
   tree = render();
   const noKeyButton = nodes(tree).find((node) => node.type === "button" && node.props.children === "Loreに昇格");
   assert.equal(noKeyButton.props.disabled, true);
-  assert.ok(nodes(tree).some((node) => typeof node.props?.children === "string" && node.props.children.includes("OpenAI APIキーが未設定")));
+  assert.ok(nodes(tree).some((node) => node.props?.children === "OpenAI APIキーが未設定のため、Loreへの昇格・AI編集はできません。"));
   key = "openai-key";
   const findButton = (root, label) => nodes(root).find((node) => node.type === "button" && node.props.children === label);
   const uploadInput = (root) => nodes(root).find((node) => node.type === "input" && node.props.type === "file");
   const alert = (root) => nodes(root).find((node) => node.props?.role === "alert")?.props.children;
   const setup = async (handler, onCancel = () => {}) => {
+    keyListeners.clear();
     state = []; cursor = 0; effects = []; effectDeps = []; effectCleanups = []; firstRender = true;
     global.fetch = handler;
     render();
@@ -263,6 +276,27 @@ async function flush() {
   releaseUpload();
   await flush();
   assert.equal(findButton(view(), "実行"), undefined);
+
+  closes = 0;
+  view = await setup(async () => Response.json({ topics: [topic] }), () => { closes++; });
+  tree = view();
+  const list = element(tree, ProjectMemoryTopicList);
+  list.props.onInstructionEdit(topic);
+  tree = view();
+  const editor = nodes(tree).find((node) => node.type === ProjectMemoryInstructionEditModal);
+  assert.ok(editor.props.edit);
+  assert.equal(list.props.canInstructionEdit, true);
+  assert.equal(element(tree, ProjectMemoryTopicList).props.actionsLocked, true);
+  const closeButton = findButton(tree, "閉じる");
+  assert.equal(closeButton.props.disabled, true);
+  nodes(tree).find((node) => node.type === "div" && node.props.style?.zIndex === 1100).props.onClick();
+  closeButton.props.onClick();
+  assert.equal(closes, 0);
+  // Parent listener is already registered; the child closes on the same Escape event.
+  editor.type(editor.props);
+  onEscape({ key: "Escape" });
+  assert.equal(closes, 0, "child Escape must not close the parent in the same event");
+  assert.equal(nodes(view()).find((node) => node.type === ProjectMemoryInstructionEditModal).props.edit, null);
   console.log("ok - ProjectMemoryListModal upload/download and promotion guards");
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   global.fetch = originalFetch;

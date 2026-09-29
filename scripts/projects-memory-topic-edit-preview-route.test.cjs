@@ -136,6 +136,19 @@ test("checks serialized whole-input size", async () => {
   assert.equal((await invoke()).status, 413);
   assert.equal(calls.some((call) => call.llm), false);
 });
+test("accepts the exact serialized input limit and rejects one character more", async () => {
+  const { buildInstructionEditInput } = require(path.join(__dirname,
+    "../lib/project-memory/instruction-edit.ts"));
+  const snapshot = { topic_id: TOPIC_ID, topic_key: topicResult.data.topic_key, revision: 3,
+    updated_at: topicResult.data.updated_at, content_md: "" };
+  const overhead = buildInstructionEditInput(INSTRUCTION, snapshot).length;
+  topicResult.data.content_md = "x".repeat(MAX_INSTRUCTION_EDIT_INPUT_CHARS - overhead);
+  assert.equal(buildInstructionEditInput(INSTRUCTION, { ...snapshot, content_md: topicResult.data.content_md }).length,
+    MAX_INSTRUCTION_EDIT_INPUT_CHARS);
+  assert.equal((await invoke()).status, 200);
+  topicResult.data.content_md += "x";
+  assert.equal((await invoke()).status, 413);
+});
 test("fails closed for malformed, empty, and upstream model responses", async () => {
   for (const setup of [() => { llmResult = "{"; }, () => { llmResult = null; },
     () => { llmError = new Error(BODY); }]) {

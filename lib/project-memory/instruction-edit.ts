@@ -2,7 +2,7 @@ import { chatCompleteMini } from "@/lib/lore/openai";
 
 export const INSTRUCTION_EDIT_PROMPT_VERSION = 1;
 export const MAX_INSTRUCTION_EDIT_INPUT_CHARS = 20_000;
-export const MAX_INSTRUCTION_CHARS = 2_000;
+export { MAX_INSTRUCTION_CHARS } from "./instruction-edit-limits";
 // Provisional until a near-limit Japanese full-replacement response can be measured.
 export const INSTRUCTION_EDIT_MAX_COMPLETION_TOKENS = 65_536;
 

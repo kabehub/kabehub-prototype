@@ -6,6 +6,7 @@ const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs")
 
 const originalLoad = Module._load;
 const originalFetch = global.fetch;
+let apiKey = "key";
 let state = [], cursor = 0, deps = [], cleanups = [], pending = [];
 const hooks = {
   ...React,
@@ -33,7 +34,7 @@ const hooks = {
 };
 Module._load = function (request, parent, isMain) {
   if (request === "react") return hooks;
-  if (request === "@/lib/apiKeyStore") return { webApiKeyStore: { async getKey() { return "key"; } } };
+  if (request === "@/lib/apiKeyStore") return { webApiKeyStore: { async getKey() { return apiKey; } } };
   return originalLoad.call(this, request, parent, isMain);
 };
 installAliasResolver();
@@ -123,6 +124,187 @@ const header = (id = "A-topic") => `<!-- kabehub-topic:v1 ${JSON.stringify({ top
     await render().executeUpload();
     assert.equal(gets, expectedGets, `${method} ${status} reload count`);
   }
+
+  const preview = { result: "proposal", run_id: "run-1", model: "model-1", prompt_version: 1,
+    topic_id: "A-topic", topic_key: "A-topic", revision: 2, updated_at: "timestamp",
+    old_content_md: "Content", new_content_md: "Replacement", summary: "changed" };
+  const start = async (fetcher) => {
+    apiKey = "key";
+    reset(fetcher);
+    render(); effects(); await flush();
+    render().openInstructionEdit(topic("A-topic"));
+    return render();
+  };
+  const getResponse = () => Response.json({ topics: [topic("A-topic")] });
+
+  let writes = 0;
+  let edit = await start(async (_url, init = {}) => {
+    if (!init.method) return getResponse();
+    writes++; return Response.json(preview);
+  });
+  assert.equal(edit.instructionEdit.phase, "input");
+  assert.equal(edit.isActionLocked(), true);
+  await edit.promote(topic("A-topic"));
+  await edit.selectUploadFile(file("new.md", "New"));
+  await edit.executeUpload();
+  assert.equal(writes, 0, "editing blocks promote and upload");
+  assert.equal(render().uploadConfirm, null);
+  edit.setInstructionEditInstruction("rewrite");
+  assert.equal(render().instructionEdit.instruction, "rewrite");
+  await edit.generateInstructionEditPreview("rewrite");
+  assert.equal(render().instructionEdit.phase, "preview");
+  assert.equal(render().instructionEdit.preview.revision, 2);
+  await render().reload();
+  assert.equal(render().instructionEdit.phase, "preview", "reload preserves edit state");
+  render().backToInstructionInput();
+  assert.equal(render().instructionEdit.phase, "input");
+  assert.equal(render().instructionEdit.preview, null);
+  const regenerating = edit.generateInstructionEditPreview("rewrite again");
+  assert.equal(render().instructionEdit.phase, "generating");
+  assert.equal(render().instructionEdit.preview, null);
+  await regenerating;
+  render().closeInstructionEdit();
+  assert.equal(render().instructionEdit, null);
+
+  for (const [body, notice] of [
+    [{ result: "no_change", run_id: preview.run_id, model: preview.model, prompt_version: 1,
+      topic_id: preview.topic_id, topic_key: preview.topic_key, revision: 2, updated_at: preview.updated_at }, "変更はありませんでした"],
+    [{ result: "not_applicable", run_id: preview.run_id, model: preview.model, prompt_version: 1,
+      topic_id: preview.topic_id, topic_key: preview.topic_key, revision: 2, updated_at: preview.updated_at,
+      reason: "unrelated" }, "unrelated"],
+    [null, "AI編集案を生成できませんでした"],
+  ]) {
+    edit = await start(async (_url, init = {}) => !init.method ? getResponse() : Response.json(body));
+    await edit.generateInstructionEditPreview("rewrite");
+    const current = render().instructionEdit;
+    assert.equal(current.phase, "input");
+    assert.equal(current.preview, null);
+    assert.equal(current.instruction, "rewrite");
+    assert.match(current.notice, new RegExp(notice));
+  }
+
+  let releasePreview, previewSignal;
+  edit = await start(async (_url, init = {}) => {
+    if (!init.method) return getResponse();
+    previewSignal = init.signal;
+    return new Promise((resolve) => { releasePreview = () => resolve(Response.json(preview)); });
+  });
+  const generating = edit.generateInstructionEditPreview("rewrite");
+  await flush();
+  assert.equal(render().instructionEdit.phase, "generating");
+  render().cancelInstructionEditGeneration();
+  assert.equal(previewSignal.aborted, true);
+  assert.equal(render().instructionEdit.phase, "input");
+  assert.equal(render().instructionEdit.notice, null);
+  releasePreview(); await generating;
+  assert.equal(render().instructionEdit.phase, "input", "late preview ignored after cancel");
+
+  for (const [status, phase, doneStatus] of [[200, "done", "applied"], [409, "done", "conflict"],
+    [404, "done", "not_found"], [500, "preview", null]]) {
+    let getsForEdit = 0;
+    let patches = 0;
+    edit = await start(async (_url, init = {}) => {
+      if (!init.method) { getsForEdit++; return getResponse(); }
+      if (init.method === "POST") return Response.json(preview);
+      patches++; return new Response(null, { status });
+    });
+    await edit.generateInstructionEditPreview("rewrite");
+    await render().applyInstructionEditPreview();
+    const current = render().instructionEdit;
+    assert.equal(current.phase, phase);
+    assert.equal(current.doneStatus, doneStatus);
+    assert.equal(getsForEdit, status === 500 ? 1 : 2);
+    if (status === 500) {
+      assert.equal(current.preview.result, "proposal");
+      await render().applyInstructionEditPreview();
+      assert.equal(patches, 2, "transient failure can retry the same revision");
+    } else {
+      assert.equal(current.preview, null);
+      await render().applyInstructionEditPreview();
+      assert.equal(patches, 1, "terminal result cannot reapply");
+    }
+  }
+
+  let releasePatch;
+  edit = await start(async (_url, init = {}) => {
+    if (!init.method) return getResponse();
+    if (init.method === "POST") return Response.json(preview);
+    return new Promise((resolve) => { releasePatch = () => resolve(new Response(null, { status: 200 })); });
+  });
+  await edit.generateInstructionEditPreview("rewrite");
+  const applying = render().applyInstructionEditPreview();
+  assert.equal(render().instructionEdit.phase, "applying");
+  render().closeInstructionEdit();
+  assert.equal(render().instructionEdit.phase, "applying", "cannot close during apply");
+  releasePatch(); await applying;
+
+  let finishStalePatch;
+  edit = await start(async (_url, init = {}) => {
+    if (!init.method) return getResponse();
+    if (init.method === "POST") return Response.json(preview);
+    return new Promise((resolve) => { finishStalePatch = () => resolve(new Response(null, { status: 200 })); });
+  });
+  await edit.generateInstructionEditPreview("rewrite");
+  const staleApply = render().applyInstructionEditPreview();
+  render({ projectId: "B" }); effects(); await flush();
+  finishStalePatch(); await staleApply;
+  assert.equal(render({ projectId: "B" }).instructionEdit, null, "late PATCH result cannot restore old project state");
+
+  let releaseProjectPreview, projectSignal;
+  edit = await start(async (_url, init = {}) => {
+    if (!init.method) return getResponse();
+    projectSignal = init.signal;
+    return new Promise((resolve) => { releaseProjectPreview = () => resolve(Response.json(preview)); });
+  });
+  const projectPending = edit.generateInstructionEditPreview("rewrite"); await flush();
+  render({ projectId: "B" }); effects(); await flush();
+  assert.equal(projectSignal.aborted, true);
+  assert.equal(render({ projectId: "B" }).instructionEdit, null);
+  releaseProjectPreview(); await projectPending;
+  assert.equal(render({ projectId: "B" }).instructionEdit, null);
+
+  edit = await start(async (_url, init = {}) => {
+    if (!init.method) return getResponse();
+    projectSignal = init.signal;
+    return new Promise((resolve) => { releaseProjectPreview = () => resolve(Response.json(preview)); });
+  });
+  const disabledPending = edit.generateInstructionEditPreview("rewrite"); await flush();
+  render({ enabled: false }); effects();
+  assert.equal(projectSignal.aborted, true);
+  assert.equal(render({ enabled: false }).instructionEdit, null);
+  releaseProjectPreview(); await disabledPending;
+  assert.equal(render({ enabled: false }).instructionEdit, null);
+
+  let releaseRead;
+  apiKey = "key"; reset(async () => getResponse());
+  render(); effects(); await flush();
+  const reading = render().selectUploadFile({ name: "new.md", text: () => new Promise((resolve) => { releaseRead = resolve; }) });
+  render().openInstructionEdit(topic("A-topic"));
+  releaseRead("New"); await reading;
+  assert.equal(render().uploadConfirm, null, "late file read cannot open confirmation");
+
+  apiKey = null; reset(async () => getResponse());
+  render(); effects(); await flush();
+  render().openInstructionEdit(topic("A-topic"));
+  assert.equal(render().instructionEdit, null, "missing key blocks open");
+
+  apiKey = "key"; reset(async (_url, init = {}) => init.method === "POST"
+    ? new Promise(() => {}) : getResponse());
+  render(); effects(); await flush();
+  void render().promote(topic("A-topic"));
+  render().openInstructionEdit(topic("A-topic"));
+  assert.equal(render().instructionEdit, null, "promotion blocks open");
+
+  let finishUpload;
+  apiKey = "key"; reset(async (_url, init = {}) => init.method === "POST"
+    ? new Promise((resolve) => { finishUpload = resolve; }) : getResponse());
+  render(); effects(); await flush();
+  await render().selectUploadFile(file("new.md", "New"));
+  const uploading = render().executeUpload();
+  render().openInstructionEdit(topic("A-topic"));
+  assert.equal(render().instructionEdit, null, "upload blocks open");
+  finishUpload(new Response(null, { status: 201 })); await uploading;
+  console.log("ok - instruction edit lock, transitions, cancellation, apply, invalidation, and upload race");
   console.log("ok - useProjectMemoryTopics cache, request invalidation, and reload conditions");
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   global.fetch = originalFetch;

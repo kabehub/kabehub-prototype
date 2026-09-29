@@ -8,13 +8,15 @@ interface Props {
   expandedIds: Set<string>;
   onToggleExpanded: (topicId: string) => void;
   canPromote: boolean;
+  canInstructionEdit: boolean;
   promotingTopicId: string | null;
   actionsLocked: boolean;
   onDownload: (topic: ProjectMemoryTopic) => void;
   onPromote: (topic: ProjectMemoryTopic) => void;
+  onInstructionEdit: (topic: ProjectMemoryTopic) => void;
 }
 
-export default function ProjectMemoryTopicList({ topics, loading, error, expandedIds, onToggleExpanded, canPromote, promotingTopicId, actionsLocked, onDownload, onPromote }: Props) {
+export default function ProjectMemoryTopicList({ topics, loading, error, expandedIds, onToggleExpanded, canPromote, canInstructionEdit, promotingTopicId, actionsLocked, onDownload, onPromote, onInstructionEdit }: Props) {
   return <>
     {loading && <p>読み込み中…</p>}
     {!loading && topics.length === 0 && !error && <p>Project Memoryのtopicはありません。</p>}
@@ -33,6 +35,7 @@ export default function ProjectMemoryTopicList({ topics, loading, error, expande
               <a href={`/memory#lore-${encodeURIComponent(topic.promotion.lore_id)}`} style={{ alignSelf: "center", color: "#7c3aed" }}>Loreで見る →</a>
             )}
             <button type="button" onClick={() => onDownload(topic)} style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid var(--border, #e5e7eb)", background: "white", cursor: "pointer" }}>DL</button>
+            <button type="button" onClick={() => onInstructionEdit(topic)} disabled={actionsLocked || !canInstructionEdit} style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: "#7c3aed", cursor: "pointer" }}>AIで編集</button>
             <button type="button" onClick={() => onPromote(topic)} disabled={Boolean(promotingTopicId) || actionsLocked || !canPromote || !topic.content_md.trim() || topic.promotion.status === "current"} style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: "#7c3aed", cursor: "pointer" }}>{buttonLabel}</button>
           </div>
         </div>

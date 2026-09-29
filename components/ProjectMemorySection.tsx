@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import ProjectMemoryTopicList from "@/components/ProjectMemoryTopicList";
+import ProjectMemoryInstructionEditModal from "@/components/ProjectMemoryInstructionEditModal";
 import ProjectMemoryUploadConfirm from "@/components/ProjectMemoryUploadConfirm";
 import { downloadTopicFile } from "@/lib/project-memory/download-topic-file";
 import { useProjectMemoryTopics } from "@/lib/project-memory/use-project-memory-topics";
@@ -15,8 +16,10 @@ export default function ProjectMemorySection({ projectId, projectName }: Props) 
   const [expanded, setExpanded] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
-  const { topics, loading, error, canPromote, promotingTopicId, uploading, uploadConfirm,
-    promote, selectUploadFile, executeUpload, cancelUploadConfirm, isActionLocked } =
+  const { topics, loading, error, canPromote, canInstructionEdit, promotingTopicId, uploading, uploadConfirm, instructionEdit,
+    promote, selectUploadFile, executeUpload, cancelUploadConfirm, isActionLocked,
+    openInstructionEdit, closeInstructionEdit, setInstructionEditInstruction, generateInstructionEditPreview,
+    cancelInstructionEditGeneration, backToInstructionInput, applyInstructionEditPreview } =
     useProjectMemoryTopics({ projectId, enabled: expanded, keepLoaded: true });
 
   const onToggleExpanded = (topicId: string) => {
@@ -38,11 +41,11 @@ export default function ProjectMemorySection({ projectId, projectName }: Props) 
       {expanded && (
         <>
           <div style={{ padding: "0 20px 12px" }}>
-            {!canPromote && <p style={{ fontSize: "12px", color: "#92400e" }}>OpenAI APIキーが未設定のため、Loreへの昇格はできません。</p>}
+            {!canPromote && <p style={{ fontSize: "12px", color: "#92400e" }}>OpenAI APIキーが未設定のため、Loreへの昇格・AI編集はできません。</p>}
             {error && <p role="alert" style={{ fontSize: "12px", color: "#b91c1c" }}>{error}</p>}
             <ProjectMemoryTopicList topics={topics} loading={loading} error={error} expandedIds={expandedIds} onToggleExpanded={onToggleExpanded}
-              canPromote={canPromote} promotingTopicId={promotingTopicId} actionsLocked={promotingTopicId !== null || uploading || uploadConfirm !== null}
-              onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} />
+              canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null}
+              onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} onInstructionEdit={openInstructionEdit} />
           </div>
           <div style={{ padding: "12px 20px 16px", borderTop: "1px solid var(--border, #e5e7eb)", display: "flex", justifyContent: "flex-end" }}>
             <input ref={uploadInputRef} type="file" accept=".md,.txt" onChange={selectUpload} style={{ display: "none" }} />
@@ -50,6 +53,10 @@ export default function ProjectMemorySection({ projectId, projectName }: Props) 
               style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border, #e5e7eb)", background: "white", cursor: "pointer" }}>ファイルをアップロード</button>
           </div>
           <ProjectMemoryUploadConfirm confirm={uploadConfirm} uploading={uploading} onCancel={cancelUploadConfirm} onExecute={() => void executeUpload()} />
+          <ProjectMemoryInstructionEditModal edit={instructionEdit} onInstructionChange={setInstructionEditInstruction}
+            onGenerate={(instruction) => void generateInstructionEditPreview(instruction)}
+            onCancelGeneration={cancelInstructionEditGeneration} onBackToInput={backToInstructionInput}
+            onApply={() => void applyInstructionEditPreview()} onClose={closeInstructionEdit} />
         </>
       )}
     </section>

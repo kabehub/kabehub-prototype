@@ -43,6 +43,7 @@ installTsLoader({ jsx: true });
 const Section = require(path.join(__dirname, "..", "components", "ProjectMemorySection.tsx")).default;
 const TopicList = require(path.join(__dirname, "..", "components", "ProjectMemoryTopicList.tsx")).default;
 const UploadConfirm = require(path.join(__dirname, "..", "components", "ProjectMemoryUploadConfirm.tsx")).default;
+const InstructionEditModal = require(path.join(__dirname, "..", "components", "ProjectMemoryInstructionEditModal.tsx")).default;
 const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", revision: 1, created_at: "", updated_at: "",
   promotion: { status: "not_promoted", source_revision: null, lore_id: null } };
 const render = () => { cursor = 0; return Section({ projectId: "project-1", projectName: "Project" }); };
@@ -69,9 +70,17 @@ const reset = (fetcher) => { state = []; cursor = 0; deps = []; cleanups = []; p
   assert.equal(header.props["aria-expanded"], true);
   assert.ok(find(tree, TopicList));
   assert.ok(find(tree, UploadConfirm));
+  assert.ok(find(tree, InstructionEditModal));
   assert.ok(find(tree, "button", "ファイルをアップロード"));
   assert.equal(find(tree, TopicList).props.topics[0].id, topic.id);
   const list = find(tree, TopicList);
+  assert.equal(list.props.canInstructionEdit, true);
+  list.props.onInstructionEdit(topic);
+  tree = render();
+  assert.ok(find(tree, InstructionEditModal).props.edit);
+  assert.equal(find(tree, "button").props.disabled, true, "instruction edit locks header");
+  assert.equal(find(tree, TopicList).props.actionsLocked, true);
+  find(tree, InstructionEditModal).props.onClose();
   list.props.onToggleExpanded(topic.id);
   assert.equal(find(render(), TopicList).props.expandedIds.has(topic.id), true);
   find(render(), "button").props.onClick();
@@ -125,7 +134,7 @@ const reset = (fetcher) => { state = []; cursor = 0; deps = []; cleanups = []; p
   render(); effects(); await flush();
   find(render(), "button").props.onClick(); render(); effects(); await flush();
   tree = render();
-  assert.ok(nodes(tree).some((node) => node.props?.children === "OpenAI APIキーが未設定のため、Loreへの昇格はできません。"));
+  assert.ok(nodes(tree).some((node) => node.props?.children === "OpenAI APIキーが未設定のため、Loreへの昇格・AI編集はできません。"));
   assert.ok(nodes(tree).some((node) => node.props?.role === "alert" && node.props.children === "Project Memoryを読み込めませんでした"));
   console.log("ok - ProjectMemorySection lazy load, keepLoaded, content, action locks, warnings");
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
