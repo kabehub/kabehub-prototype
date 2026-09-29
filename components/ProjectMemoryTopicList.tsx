@@ -29,6 +29,9 @@ export default function ProjectMemoryTopicList({ topics, loading, error, expande
             {expanded ? "▾" : "▸"} {topic.topic_key} <span style={{ color: "var(--ink-muted, #6b7280)" }}>rev.{topic.revision}</span> <span style={{ color: topic.promotion.status === "current" ? "#047857" : "#92400e" }}>{statusLabel}</span>
           </button>
           <div style={{ display: "flex", gap: "8px" }}>
+            {topic.promotion.status !== "not_promoted" && topic.promotion.lore_id !== null && (
+              <a href={`/memory#lore-${encodeURIComponent(topic.promotion.lore_id)}`} style={{ alignSelf: "center", color: "#7c3aed" }}>Loreで見る →</a>
+            )}
             <button type="button" onClick={() => onDownload(topic)} style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid var(--border, #e5e7eb)", background: "white", cursor: "pointer" }}>DL</button>
             <button type="button" onClick={() => onPromote(topic)} disabled={Boolean(promotingTopicId) || actionsLocked || !canPromote || !topic.content_md.trim() || topic.promotion.status === "current"} style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: "#7c3aed", cursor: "pointer" }}>{buttonLabel}</button>
           </div>

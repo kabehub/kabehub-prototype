@@ -104,6 +104,7 @@ git pull origin main
 | ファイル | 役割 |
 |-|-|
 | `app/api/lore/route.ts` | GET（記憶一覧取得・sort対応）/ POST（手動追加） |
+| `app/api/lore/promotions/route.ts` | GET・Project Memoryから昇格したLoreの来歴（6フィールドのみ） |
 | `app/api/lore/[id]/route.ts` | PATCH（編集・固定・確認・アーカイブ） |
 | `app/api/lore/bulk-archive/route.ts` | POST・複数記憶を一括アーカイブ（is_pinned保護あり） |
 | `app/api/lore/like/route.ts` | POST・AI発言を「👍 記憶に追加」で liked_ai として保存 |
@@ -168,8 +169,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `app/calendar/page.tsx` | 月別スレッドカレンダーページ |
 | `app/explore/page.tsx` | 公開スレッド一覧 |
 | `app/image/page.tsx` | 画像生成ページ |
-| `app/library/page.tsx` | 全Project横断のProject Memory一覧・DL/UL・Lore昇格。折り畳み＋lazy load |
-| `app/memory/page.tsx` | Memory Summary UI。記憶一覧・フィルタ・検索・ソート・グループ表示・一括アーカイブ・統合候補・Dreaming履歴 |
+| `app/library/page.tsx` | 全Project横断のProject Memory一覧・DL/UL・Lore昇格・昇格先Loreへのリンク。折り畳み＋lazy load |
+| `app/memory/page.tsx` | Memory Summary UI。記憶一覧・フィルタ・検索・ソート・グループ表示・一括アーカイブ・統合候補・Dreaming履歴・Lore昇格の来歴とハッシュリンク |
 | `app/novel-check/page.tsx` | 小説整合性チェックUI |
 | `app/settings/page.tsx` | 設定ページ。フォントサイズ・送信キー設定・「AI記憶を管理する →」リンク |
 | `app/share/[token]/page.tsx` | 共有スレッド閲覧ページ |

@@ -48,6 +48,13 @@ try {
   button(tree, "Loreに再昇格").props.onClick();
   assert.equal(downloaded, first);
   assert.equal(promoted, second);
+  for (const status of ["current", "stale"]) {
+    const promotedTopic = { ...topic(status), promotion: { status, lore_id: "lore/id", source_revision: 1 } };
+    const link = nodes(render({ topics: [promotedTopic] })).find((node) => node.type === "a");
+    assert.equal(link.props.href, "/memory#lore-lore%2Fid");
+  }
+  assert.equal(nodes(render({ topics: [{ ...topic("not_promoted"), promotion: { status: "not_promoted", lore_id: "id" } }] })).some((node) => node.type === "a"), false);
+  assert.equal(nodes(render({ topics: [topic("current")] })).some((node) => node.type === "a"), false);
   assert.ok(nodes(render({ topics: [], loading: true })).some((node) => node.props?.children === "読み込み中…"));
   assert.ok(nodes(render({ topics: [] })).some((node) => node.props?.children === "Project Memoryのtopicはありません。"));
   assert.ok(!nodes(render({ topics: [], error: "failed" })).some((node) => node.props?.children === "Project Memoryのtopicはありません。"));

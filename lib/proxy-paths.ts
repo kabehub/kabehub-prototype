@@ -46,7 +46,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/image-gen\/?$/, methods: ["POST"], classification: "bearer" },
   {
     pattern:
-      /^\/api\/lore\/(?!(?:batch-train|bulk-archive|chunks|consolidate|dreaming-batch|embed|like|update-temporal-status)(?:\/|$))[^/]+\/?$/,
+      /^\/api\/lore\/(?!(?:batch-train|bulk-archive|chunks|consolidate|dreaming-batch|embed|like|promotions|update-temporal-status)(?:\/|$))[^/]+\/?$/,
     methods: ["PATCH"],
     classification: "bearer",
   },
@@ -63,6 +63,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/lore\/dreaming-batch\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/lore\/embed\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/lore\/like\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/lore\/promotions\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/lore\/?$/, methods: ["GET", "POST"], classification: "bearer" },
   { pattern: /^\/api\/lore\/update-temporal-status\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/mcp-tokens\/?$/, methods: ["GET", "POST", "DELETE"], classification: "bearer" },

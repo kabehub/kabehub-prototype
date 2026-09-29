@@ -11,6 +11,9 @@ import { DREAMING_DEFAULTS, BATCH_TRAIN_UI_REQUEST_LIMIT } from "@/lib/lore/type
 import { BULK_ARCHIVE_MAX_ITEMS } from "@/lib/validationLimits";
 import { webApiClient } from "@/lib/api-client";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
+import { getLorePromotionPresentation, loreCardElementId } from "@/lib/lore/promotion-provenance";
+import type { LorePromotionProvenance } from "@/lib/lore/promotion-provenance";
+import { useLoreHashFocus } from "@/lib/lore/use-lore-hash-focus";
 import { API_KEY_HEADER_NAMES, buildApiKeyHeaders } from "@kabehub/shared";
 
 type TemporalStatusUpdateResult = {
@@ -70,6 +73,8 @@ async function getOpenAiApiKeyHeaders(): Promise<Record<string, string> | null> 
 
 interface MemoryCardProps {
   card: LoreMemoryCard;
+  provenance?: LorePromotionProvenance;
+  highlighted?: boolean;
   onUpdate: (updated: LoreMemoryCard) => void;
   onArchive: (id: string) => void;
   selected: boolean;
@@ -99,7 +104,7 @@ function formatDateTime(value: string | null) {
   });
 }
 
-function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCardProps) {
+function MemoryCard({ card, provenance, highlighted, onUpdate, onArchive, selected, onSelect }: MemoryCardProps) {
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(card.chunkText);
   const [draftKind, setDraftKind] = useState(card.memoryKind);
@@ -108,6 +113,7 @@ function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCar
 
   const isTextChanged = draftText.trim() !== card.chunkText.trim();
   const needsReview = memoryNeedsReview(card, Date.now());
+  const promotionPresentation = getLorePromotionPresentation({ sourceMessageId: card.sourceMessageId, extractionVersion: card.extractionVersion, provenance });
   const leftBorderClass = needsReview
     ? "border-l-orange-500"
     : card.isPinned
@@ -201,7 +207,7 @@ function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCar
   };
 
   return (
-    <article className={`border border-l-4 ${leftBorderClass} border-gray-800 rounded-xl bg-gray-950 p-5`}>
+    <article id={loreCardElementId(card.id)} className={`border border-l-4 ${leftBorderClass} border-gray-800 rounded-xl bg-gray-950 p-5 ${highlighted ? "ring-2 ring-purple-500" : ""}`}>
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
@@ -215,9 +221,16 @@ function MemoryCard({ card, onUpdate, onArchive, selected, onSelect }: MemoryCar
           <div className="flex flex-wrap items-center gap-2">
             <span className={badgeClass("blue")}>{card.memoryKind}</span>
             <span className={badgeClass(needsReview ? "orange" : "gray")}>{card.temporalStatus}</span>
-            {card.sourceMessageId ? (
+            {card.sourceMessageId && (
               <span className={badgeClass("gray")}>#{card.sourceMessageNumber ?? "-"}</span>
-            ) : (
+            )}
+            {promotionPresentation.provenanceLabel && (
+              <span className={badgeClass("green")}>{promotionPresentation.provenanceLabel}</span>
+            )}
+            {promotionPresentation.showEdited && (
+              <span className={badgeClass("orange")}>Lore側で編集済み</span>
+            )}
+            {promotionPresentation.showManualAdded && (
               <span className={badgeClass("green")}>手動追加</span>
             )}
           </div>
@@ -617,6 +630,8 @@ function NewMemoryForm({ onCreate, onCancel }: NewMemoryFormProps) {
 export default function MemoryPage() {
   const router = useRouter();
   const [cards, setCards] = useState<LoreMemoryCard[]>([]);
+  const [promotionByLoreId, setPromotionByLoreId] = useState<Record<string, LorePromotionProvenance>>({});
+  const [cardsLoadSucceeded, setCardsLoadSucceeded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterKind, setFilterKind] = useState<string | null>(null);
@@ -654,6 +669,7 @@ export default function MemoryPage() {
 
   const fetchCards = useCallback(async () => {
     setLoading(true);
+    setCardsLoadSucceeded(false);
     setError(null);
 
     try {
@@ -669,7 +685,9 @@ export default function MemoryPage() {
       if (!res.ok) throw new Error(json?.error ?? "記憶一覧の取得に失敗しました");
 
       setCards((json as LoreMemoryRow[]).map(toMemoryCard));
+      setCardsLoadSucceeded(true);
     } catch (err) {
+      setCardsLoadSucceeded(false);
       setError((err as Error).message);
       setCards([]);
     } finally {
@@ -735,6 +753,30 @@ export default function MemoryPage() {
     fetchConsolidationCandidates();
   }, [fetchConsolidationCandidates]);
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/lore/promotions", { cache: "no-store" });
+        if (!res.ok) return;
+        const json: unknown = await res.json();
+        if (json === null || typeof json !== "object" || !Array.isArray((json as { promotions?: unknown }).promotions)) return;
+        const entries = (json as { promotions: unknown[] }).promotions;
+        if (!entries.every((entry) => entry !== null && typeof entry === "object" &&
+          typeof (entry as LorePromotionProvenance).lore_id === "string" &&
+          typeof (entry as LorePromotionProvenance).source_topic_id === "string" &&
+          typeof (entry as LorePromotionProvenance).source_topic_key === "string" &&
+          typeof (entry as LorePromotionProvenance).source_project_id === "string" &&
+          Number.isSafeInteger((entry as LorePromotionProvenance).source_revision) &&
+          ((entry as LorePromotionProvenance).project_name === null || typeof (entry as LorePromotionProvenance).project_name === "string"))) return;
+        if (active) setPromotionByLoreId(Object.fromEntries((entries as LorePromotionProvenance[]).map((entry) => [entry.lore_id, entry])));
+      } catch {
+        // Provenance is optional; card loading and its error state remain independent.
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const filteredCards = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return cards.filter((card) => {
@@ -759,6 +801,9 @@ export default function MemoryPage() {
     }
     return filteredCards;
   }, [filteredCards, sortMode]);
+
+  const visibleCardIds = useMemo(() => sortedCards.map((card) => card.id), [sortedCards]);
+  const { highlightedId, notFound } = useLoreHashFocus({ ready: !loading && cardsLoadSucceeded, cardIds: visibleCardIds });
 
   const groupedSections = useMemo(() => {
     const groups: Record<string, LoreMemoryCard[]> = {};
@@ -1390,6 +1435,7 @@ export default function MemoryPage() {
             onSave={handleSaveMerge}
           />
 
+          {notFound && <p className="text-xs text-gray-500">指定されたLoreは表示されていません（アーカイブ済み・統合済み、または絞り込みで非表示の可能性があります）</p>}
           {loading ? (
             <div className="text-sm text-gray-500">読み込み中...</div>
           ) : sortedCards.length === 0 ? (
@@ -1407,6 +1453,8 @@ export default function MemoryPage() {
                       <MemoryCard
                         key={card.id}
                         card={card}
+                        provenance={promotionByLoreId[card.id]}
+                        highlighted={highlightedId === card.id}
                         onUpdate={handleUpdate}
                         onArchive={handleArchive}
                         selected={selectedIds.has(card.id)}
@@ -1423,6 +1471,8 @@ export default function MemoryPage() {
                 <MemoryCard
                   key={card.id}
                   card={card}
+                  provenance={promotionByLoreId[card.id]}
+                  highlighted={highlightedId === card.id}
                   onUpdate={handleUpdate}
                   onArchive={handleArchive}
                   selected={selectedIds.has(card.id)}
