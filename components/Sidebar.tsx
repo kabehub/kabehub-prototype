@@ -1156,6 +1156,7 @@ export default function Sidebar({
           <a href="/explore" title="みんなの壁打ち" aria-label="みんなの壁打ち" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>🌍</a>
           <a href="/calendar" title="カレンダー" aria-label="カレンダー" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>📅</a>
           <a href="/novel-check" title="整合性チェック" aria-label="整合性チェック" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>📖</a>
+          <a href="/library" title="ライブラリ" aria-label="ライブラリ" style={{ fontSize: "18px", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "none" }}>📚</a>
           <div style={{ flex: 1 }} />
           <button
             onClick={() => window.location.href = "/settings"}
@@ -1457,7 +1458,7 @@ export default function Sidebar({
             fontSize: "11px",
             fontFamily: "'JetBrains Mono', monospace",
             textDecoration: "none",
-            marginBottom: "8px",
+            marginBottom: "6px",
             transition: "all 0.12s",
           }}
           onMouseEnter={(e) => {
@@ -1471,6 +1472,36 @@ export default function Sidebar({
         >
           <span>📖</span>
           <span>整合性チェック</span>
+        </a>
+
+        <a
+          href="/library"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 8px",
+            borderRadius: "6px",
+            border: "1px solid var(--border)",
+            background: "white",
+            color: "var(--ink-muted)",
+            fontSize: "11px",
+            fontFamily: "'JetBrains Mono', monospace",
+            textDecoration: "none",
+            marginBottom: "8px",
+            transition: "all 0.12s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "var(--sidebar-bg)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "white";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--ink-muted)";
+          }}
+        >
+          <span>📚</span>
+          <span>ライブラリ</span>
         </a>
 
         {/* フッター：スレッド数 + ユーザー情報・ログアウト */}

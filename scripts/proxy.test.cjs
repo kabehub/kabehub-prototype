@@ -103,6 +103,7 @@ const pendingTests = [];
 const protectedPagePaths = [
   "/stats",
   "/memory",
+  "/library",
   "/album",
   "/arena",
   "/calendar",

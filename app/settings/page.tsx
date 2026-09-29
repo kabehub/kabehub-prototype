@@ -951,12 +951,20 @@ function SettingsContent() {
               </p>
             )}
             <hr className="border-gray-800" />
-            <button
-              onClick={() => router.push("/memory")}
-              className="px-4 py-2 rounded-lg text-sm border border-gray-600 hover:bg-gray-800 text-gray-300"
-            >
-              AI記憶を管理する →
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => router.push("/memory")}
+                className="px-4 py-2 rounded-lg text-sm border border-gray-600 hover:bg-gray-800 text-gray-300"
+              >
+                AI記憶を管理する →
+              </button>
+              <button
+                onClick={() => router.push("/library")}
+                className="px-4 py-2 rounded-lg text-sm border border-gray-600 hover:bg-gray-800 text-gray-300"
+              >
+                Project Memoryライブラリ →
+              </button>
+            </div>
           </div>
         </section>
 

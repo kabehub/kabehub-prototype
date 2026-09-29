@@ -137,6 +137,7 @@ export function parseBearerAuthorization(
 const PROTECTED_STATIC_PAGES = new Set([
   "/stats",
   "/memory",
+  "/library",
   "/album",
   "/arena",
   "/calendar",
@@ -145,7 +146,7 @@ const PROTECTED_STATIC_PAGES = new Set([
 ]);
 
 /**
- * MB-dで新たにログイン必須化した8ページの判定。
+ * 明示的にログイン必須とする静的ページの判定。
  * 末尾スラッシュは正規化して比較する。
  * /arena/[token]・/threads/[id]（tree以外）は対象外。
  */

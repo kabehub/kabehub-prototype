@@ -192,6 +192,7 @@ test("users with a handle return to protected next destinations", async () => {
 
   for (const next of [
     "/stats",
+    "/library",
     "/settings",
     "/admin/storage-cleanup",
   ]) {

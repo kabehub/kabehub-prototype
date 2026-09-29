@@ -168,6 +168,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `app/calendar/page.tsx` | 月別スレッドカレンダーページ |
 | `app/explore/page.tsx` | 公開スレッド一覧 |
 | `app/image/page.tsx` | 画像生成ページ |
+| `app/library/page.tsx` | 全Project横断のProject Memory一覧・DL/UL・Lore昇格。折り畳み＋lazy load |
 | `app/memory/page.tsx` | Memory Summary UI。記憶一覧・フィルタ・検索・ソート・グループ表示・一括アーカイブ・統合候補・Dreaming履歴 |
 | `app/novel-check/page.tsx` | 小説整合性チェックUI |
 | `app/settings/page.tsx` | 設定ページ。フォントサイズ・送信キー設定・「AI記憶を管理する →」リンク |
@@ -444,7 +445,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 | パス種別 | matcher | セッション確認 | 未認証時・備考 |
 |---|---:|---:|---|
-| `/`・`/settings/*`・`/admin/*`・`/stats`・`/memory`・`/album`・`/arena`・`/calendar`・`/image`・`/novel-check`・`/threads/[id]/tree` | ○ | ○ | ページなので `/login?next=...` へ307 |
+| `/`・`/settings/*`・`/admin/*`・`/stats`・`/memory`・`/library`・`/album`・`/arena`・`/calendar`・`/image`・`/novel-check`・`/threads/[id]/tree` | ○ | ○ | ページなので `/login?next=...` へ307 |
 | `/login` | ○ | ○ | 未ログインは表示、ログイン済みは `/` へ307 |
 | `/arena/[token]`・`/share/[token]`（公開閲覧ページ） | ○※ | ✕ | 未認証でも閲覧可。CSPのみ付与 |
 | その他の通常ページ（`/auth/callback`含む） | ○※ | ✕ | CSPのみ付与。ページ・Route自身の実装に委ねる |
