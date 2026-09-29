@@ -63,6 +63,8 @@ Module._load = function loadWithMocks(request, parent, isMain) {
 installAliasResolver();
 installTsLoader({ jsx: true });
 const Modal = require(path.join(__dirname, "..", "components", "ProjectMemoryListModal.tsx")).default;
+const ProjectMemoryTopicList = require(path.join(__dirname, "..", "components", "ProjectMemoryTopicList.tsx")).default;
+const ProjectMemoryUploadConfirm = require(path.join(__dirname, "..", "components", "ProjectMemoryUploadConfirm.tsx")).default;
 
 function render() {
   cursor = 0;
@@ -73,6 +75,7 @@ function render() {
 
 function nodes(root) {
   if (!root || typeof root !== "object") return [];
+  if (root.type === ProjectMemoryTopicList || root.type === ProjectMemoryUploadConfirm) return nodes(root.type(root.props));
   const children = React.Children.toArray(root.props?.children);
   return [root, ...children.flatMap(nodes)];
 }

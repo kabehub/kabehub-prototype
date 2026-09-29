@@ -1,0 +1,28 @@
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const React = require("react");
+const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs");
+installAliasResolver();
+installTsLoader({ jsx: true });
+const Confirm = require(path.join(__dirname, "..", "components", "ProjectMemoryUploadConfirm.tsx")).default;
+const nodes = (root) => !root || typeof root !== "object" ? [] : [root, ...React.Children.toArray(root.props?.children).flatMap(nodes)];
+const button = (tree, label) => nodes(tree).find((node) => node.type === "button" && node.props.children === label);
+
+assert.equal(Confirm({ confirm: null, uploading: false, onCancel() {}, onExecute() {} }), null);
+let cancelled = 0;
+let executed = 0;
+const props = { uploading: false, onCancel() { cancelled++; }, onExecute() { executed++; } };
+let tree = Confirm({ ...props, confirm: { kind: "overwrite", topicId: "id", topicKey: "overview", currentRevision: 3, expectedRevision: 2, contentMd: "x" } });
+assert.ok(nodes(tree).some((node) => node.props?.role === "alertdialog"));
+assert.ok(nodes(tree).some((node) => typeof node.props?.children === "string" && node.props.children.includes("『overview』(現在rev.3)")));
+assert.ok(nodes(tree).some((node) => node.props?.style?.zIndex === 1102));
+assert.ok(nodes(tree).some((node) => node.props?.style?.zIndex === 1103));
+button(tree, "キャンセル").props.onClick();
+button(tree, "実行").props.onClick();
+assert.equal(cancelled, 1);
+assert.equal(executed, 1);
+tree = Confirm({ ...props, confirm: { kind: "create", topicKey: "new", contentMd: "x" }, uploading: true });
+assert.ok(nodes(tree).some((node) => typeof node.props?.children === "string" && node.props.children.includes("新しいtopic『new』")));
+assert.equal(button(tree, "キャンセル").props.disabled, true);
+assert.equal(button(tree, "実行").props.disabled, true);
+console.log("ok - ProjectMemoryUploadConfirm controlled dialog");
