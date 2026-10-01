@@ -683,6 +683,11 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v194 | Project物理削除RPC（`delete_project_preserving_contents`。スレッド・Lore・topic保持、任意のtopic Lore昇格。昇格処理はv201で共通RPCへ統合。コミットf5ae9c0） |
 | v195 | Project名変更RPC（所有権検証・行ロック・関連4テーブルのfolder_name同期。コミットc563e7c） |
 | v196 | project_settingsのproject_id契約（folder_nameのNOT NULL解除・UNIQUE (user_id, project_id)追加。コミットe935a64とmigration/schemaで確認） |
+| v197 | Project Memory Manager Phase 5A（project_id専用のDreaming／手動LoreマージRPCを3本追加、旧RPCは維持。migration `migration_v197_project_memory_dreaming_by_project.sql`。コミット6a4ba0b） |
+| v198 | Phase 5C依存除去（Dreaming／手動Loreマージ・Project名変更／削除RPCを`lore_embeddings.folder_name`非依存へ更新。migration `migration_v198_project_memory_dreaming_final.sql`。コミット2b590a2） |
+| v199 | Phase 5C Contract（旧Dreaming／手動LoreマージRPC3本・旧インデックス・`lore_embeddings.folder_name`列を削除。migration `migration_v199_lore_embeddings_folder_name_drop.sql`。コミット2b590a2） |
+| v200 | Project Memory topicのLore昇格RPC追加（`promote_project_memory_topic_to_lore`・revision単位の重複防止unique index・active昇格Lore検索用index・旧active Loreのsupersede。Lore Book検索のarchived／superseded除外を修正。migration `migration_v200_project_memory_topic_promotion.sql`。コミット3cf0253） |
+| v201 | Lore昇格ルール Phase 3（`delete_project_preserving_contents`の昇格処理をv200のRPCへ委譲し、source_revision付きmetadata・冪等性・supersedeを削除経路へ統合。migration `migration_v201_delete_project_promotion_delegation.sql`。コミットe80c415） |
 | v202 | Project Memoryの手動編集済みLore再昇格確認（専用409・共通確認モーダル・RPCの承認ID再検証。コミットa0e73fb） |
 | v203 | Project Memory同revisionのarchived昇格Lore復元（専用RPC・本文/embedding保持。コミット4526438） |
 
@@ -691,6 +696,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 > Arena利用量記録（コミット89d9363）は当時「v182」と呼ばれたが、migration v182（Project Memory Phase A）とは別物。
 > コミット日とDB適用日は一致しない。適用状況は`docs/applied/README.md`と`docs/schema.sql`冒頭を参照。
 > migration v182・v184の冒頭コメントに残る「未適用」の記述は古く、台帳とコミット記録では適用済み。
+> v175〜v203のmigrationは、`docs/applied/`と`docs/`直下に番号が存在するものをすべて表に記載（欠番を除く）。
 
 > v133〜v159の詳細変更履歴（RPC定義・設計判断メモ含む）は `KabeHub_引き継ぎ資料_20260615_v159.md`、v160〜v172の詳細は `KabeHub_変更履歴アーカイブ_v160-v172.md` を参照。
 
