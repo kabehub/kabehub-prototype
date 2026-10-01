@@ -16,6 +16,11 @@ type PromoteTopicRpcResult = {
   created: boolean;
 };
 
+type RestorePromotionRpcResult = {
+  lore_id: string;
+  restored: boolean;
+};
+
 export async function POST(req: NextRequest, props: RouteProps) {
   const auth = await requireRouteUser(req);
   if (!auth.ok) return auth.response;
@@ -100,15 +105,49 @@ export async function POST(req: NextRequest, props: RouteProps) {
     edited_lores: editedLores,
   }, { status: 409 });
 
-  // The unique index includes archived rows: this path never replaces any Lore.
+  // The unique index includes archived rows; restore an unsuperseded same-revision row before embedding.
+  // Superseded same-revision rows intentionally retain the legacy embedding/promotion path;
+  // a 409 short-circuit before embedding is out of scope and can be considered in a separate ticket.
   const { data: existing, error: existingError } = await supabase.from("lore_embeddings")
-    .select("id")
+    .select("id, is_archived, superseded_by")
     .eq("user_id", user.id)
     .eq("source_type", "project_memory_promotion")
     .eq("metadata->>source_topic_id", topicId.toLowerCase())
     .eq("metadata->>source_revision", String(expectedRevision))
     .maybeSingle();
   if (existingError) return finalizeJson({ error: "Failed to load promotion" }, { status: 500 });
+  if (existing?.is_archived === true && existing.superseded_by === null) {
+    const { data, error } = await supabase
+      .rpc("restore_archived_project_memory_promotion", {
+        p_user_id: user.id,
+        p_topic_id: topicId,
+        p_expected_revision: expectedRevision,
+      })
+      .single<RestorePromotionRpcResult>();
+
+    if (error) {
+      logger.dbOperationFailed({
+        route: "projects-memory-topics-promote",
+        operation: "restore_archived_project_memory_promotion",
+        table: "lore_embeddings",
+        errorCode: error.code,
+      });
+      if (error.code === "P0001" && [
+        "restore_conflict_active_exists",
+        "restore_not_allowed_superseded",
+        "promotion_not_found",
+      ].includes(error.message)) {
+        return finalizeJson({
+          error: "昇格Loreを復元できません。一覧を更新して状態を確認してください。",
+          code: "promotion_restore_unavailable",
+        }, { status: 409 });
+      }
+      const mapped = mapProjectMemoryRpcError(error);
+      return finalizeJson({ error: mapped.error }, { status: mapped.status });
+    }
+
+    return finalizeJson({ lore_id: data.lore_id, created: false, restored: data.restored });
+  }
   if (!existing) {
     const { error, editedLores } = await loadEditedLores();
     if (error) return finalizeJson({ error: "Failed to load promotion" }, { status: 500 });

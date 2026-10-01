@@ -415,14 +415,92 @@ test("partial acknowledgement still requires confirmation of the complete edited
   assert.equal((await response.json()).edited_lores.length, 2);
   assert.equal(embeddingCalls.length, 0);
 });
-test("existing same revision, including archived, skips confirmation lookup", async () => {
-  resetMocks({ existingResult: { data: { id: LORE_ID }, error: null }, editedResult: { data: editedRows, error: null },
-    rpcResult: { data: { lore_id: LORE_ID, created: false }, error: null } });
-  const response = await invokePost();
-  assert.equal(response.status, 200);
-  assert.equal(queryCalls.filter((row) => row.table === "lore_embeddings").length, 1);
-  assert.equal((await response.json()).created, false);
-});
+for (const [label, is_archived, superseded_by] of [
+  ["active", false, null],
+  ["superseded", true, OTHER_LORE_ID],
+  ["unarchived but superseded", false, OTHER_LORE_ID],
+]) {
+  test(`existing same revision ${label} retains the legacy embedding/promotion path`, async () => {
+    resetMocks({ existingResult: { data: { id: LORE_ID, is_archived, superseded_by }, error: null },
+      editedResult: { data: editedRows, error: null },
+      rpcResult: { data: { lore_id: LORE_ID, created: false }, error: null } });
+    const response = await invokePost();
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { lore_id: LORE_ID, created: false });
+    assert.equal(queryCalls.filter((row) => row.table === "lore_embeddings").length, 1);
+    assert.equal(queryCalls.at(-1).state.select, "id, is_archived, superseded_by");
+    assert.deepEqual(embeddingCalls, [{ key: "openai-test-key", input: defaultTopic.content_md }]);
+    assert.equal(rpcCalls.length, 1);
+    assert.equal(rpcCalls[0].name, "promote_project_memory_topic_to_lore");
+    assert.deepEqual(logCalls, []);
+  });
+  test(`existing same revision ${label} still requires an API key`, async () => {
+    resetMocks({ existingResult: { data: { id: LORE_ID, is_archived, superseded_by }, error: null } });
+    const response = await invokePost({ openaiKey: null });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "x-openai-api-key header required" });
+    assert.deepEqual(embeddingCalls, []);
+    assert.deepEqual(rpcCalls, []);
+  });
+}
+
+const archivedPromotion = { id: LORE_ID, is_archived: true, superseded_by: null };
+for (const restored of [true, false]) {
+  for (const openaiKey of ["openai-test-key", null]) {
+    test(`archived same revision restores without embedding (restored=${restored}, key=${openaiKey !== null})`, async () => {
+      resetMocks({ existingResult: { data: { ...archivedPromotion }, error: null },
+        editedResult: { data: editedRows, error: null },
+        rpcResult: { data: { lore_id: OTHER_LORE_ID, restored }, error: null } });
+      const response = await invokePost({ openaiKey });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { lore_id: OTHER_LORE_ID, created: false, restored });
+      assert.deepEqual(embeddingCalls, []);
+      assert.deepEqual(rpcCalls, [{ name: "restore_archived_project_memory_promotion", args: {
+        p_user_id: USER_ID, p_topic_id: TOPIC_ID, p_expected_revision: 3,
+      } }]);
+      const lookups = queryCalls.filter((row) => row.table === "lore_embeddings");
+      assert.equal(lookups.length, 1, "restoration skips edited replacement confirmation");
+      assert.equal(lookups[0].state.select, "id, is_archived, superseded_by");
+      assert.deepEqual(lookups[0].state.filters, [
+        { column: "user_id", value: USER_ID },
+        { column: "source_type", value: "project_memory_promotion" },
+        { column: "metadata->>source_topic_id", value: TOPIC_ID },
+        { column: "metadata->>source_revision", value: "3" },
+      ]);
+      assert.deepEqual(logCalls, []);
+    });
+  }
+}
+
+for (const [code, message, status, payload] of [
+  ["P0001", "revision conflict", 409, { error: "Revision conflict" }],
+  ...["restore_conflict_active_exists", "restore_not_allowed_superseded", "promotion_not_found"].map((message) =>
+    ["P0001", message, 409, {
+      error: "昇格Loreを復元できません。一覧を更新して状態を確認してください。",
+      code: "promotion_restore_unavailable",
+    }]),
+  ["P0001", "topic not found", 404, { error: "Topic not found" }],
+  ["P0001", "expected_revision must be a positive integer", 400, { error: "expected_revision must be a positive integer" }],
+  ["42501", "Unauthorized", 403, { error: "Forbidden" }],
+  ["42501", "promotion_not_found", 403, { error: "Forbidden" }],
+  ["XX000", "promotion_not_found", 500, { error: "Failed to process request" }],
+  ["XX000", "private database detail", 500, { error: "Failed to process request" }],
+]) {
+  test(`restore RPC error ${code}/${message} maps to ${status} and is logged`, async () => {
+    resetMocks({ existingResult: { data: { ...archivedPromotion }, error: null },
+      rpcResult: { data: null, error: { code, message } } });
+    const response = await invokePost({ openaiKey: null });
+    assert.equal(response.status, status);
+    assert.deepEqual(await response.json(), payload);
+    assert.deepEqual(embeddingCalls, []);
+    assert.equal(rpcCalls.length, 1);
+    assert.equal(rpcCalls[0].name, "restore_archived_project_memory_promotion");
+    assert.deepEqual(logCalls, [{
+      route: "projects-memory-topics-promote", operation: "restore_archived_project_memory_promotion",
+      table: "lore_embeddings", errorCode: code,
+    }]);
+  });
+}
 test("new edit during embedding is rejected by RPC and returns refreshed confirmation", async () => {
   resetMocks({ editedResult: { data: editedRows.slice(0, 1), error: null },
     rpcResult: { data: null, error: { code: "P0001", message: "edited_lore_needs_confirmation" } } });

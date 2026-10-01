@@ -130,7 +130,7 @@ Project（旧フォルダ）単位のtopic型メモリ。`project_memory_topics`
 | `app/api/projects/[projectId]/route.ts` | PATCH：`rename_project` RPC（重複は409。関連4テーブルの`folder_name`を同期）／DELETE：`delete_project_preserving_contents` RPC。bodyに`promoteToLore`(boolean)必須。trueのときは`x-openai-api-key`必須で、非空topicを直列にEmbedding化してRPCへ渡す |
 | `app/api/projects/[projectId]/memory/topics/route.ts` | GET：topic一覧＋`promotion`（`status`: `not_promoted`/`current`/`stale`、`source_revision`、`lore_id`）。`lore_embeddings`の`source_type='project_memory_promotion'`かつ未archive・未supersededを参照し、`source_revision === topic.revision`なら`current`、違えば`stale`。active複数件・未来revisionは`not_promoted`に倒す／POST：`create_project_memory_topic` RPC（201） |
 | `app/api/projects/[projectId]/memory/topics/[topicId]/route.ts` | GET：topic単体／PATCH：`update_project_memory_topic` RPC。`expected_revision`（正整数）必須、`edit_kind`は`full`（`new_content_md`）または`partial`（`old_text`/`new_text`）、`source_refs`はjsonb配列。revision不一致は409（楽観的排他） |
-| `app/api/projects/[projectId]/memory/topics/[topicId]/promote/route.ts` | POST：topicを通常時にLoreへ昇格。`expected_revision`必須→topic取得→revision不一致409→空topic400→`x-openai-api-key`確認→Embedding→`promote_project_memory_topic_to_lore` RPC。返り値`{lore_id, created}` |
+| `app/api/projects/[projectId]/memory/topics/[topicId]/promote/route.ts` | POST：topicを通常時にLoreへ昇格。`expected_revision`必須→topic取得→revision不一致409→空topic400→同revision行確認。archivedかつ`superseded_by=null`ならv203復元RPCをAPIキー確認・Embedding生成より前に呼び、`{lore_id, created:false, restored}`を返す。復元不可は409 `promotion_restore_unavailable`、その他は共通マッパー。新規は編集済みLore確認→`x-openai-api-key`確認→Embedding→v202昇格RPC（`{lore_id, created}`）。active/supersededの同revision行は従来経路を維持 |
 | `app/api/projects/[projectId]/memory/topics/[topicId]/edit-preview/route.ts` | POST：「AIで編集」のプレビュー。**DB書き込みなし**。`x-openai-api-key`を認証より前に確認。body`{instruction}`（trim後非空・2,000文字以下）。結果は`proposal`/`no_change`/`not_applicable`の3種（共通envelope付き）。入力上限超過413、LLM失敗・不正応答は502 |
 | `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` | POST：Project全体の整理案プレビュー（DB書き込みなし）。`current_state` topicは対象外。入力上限超過413、失敗502。適用は専用routeではなく、クライアントがtopicごとに既存PATCHを呼ぶ（`source_refs`に`consolidation_run`） |
 
@@ -550,8 +550,8 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 操作の排他 | AI編集中は昇格・アップロードを禁止（`isActionLocked()`）。`selectUploadFile`は`await file.text()`後にも再確認する。DLはlockしない |
 | 親モーダルのEscape | `ProjectMemoryListModal`はレンダー時stateと同期refの二重guardで、編集モーダル表示中の親Escapeを無効化している |
 | 生成キャンセル | client側fetchのabort＋UI反映停止のみ。`chatCompleteMini`は`signal`非対応のため、upstream OpenAI処理の停止は保証しない |
-| 昇格のstale | AI編集・UL等でtopicの`revision`が上がると、追加のDB処理なしで自動的に`stale`（「更新あり」）になる。再昇格すると旧Loreはarchived/supersededされる（旧Loreが`user_edited`でも） |
-| 同revisionの再昇格 | 同一user+topic+revisionのLoreは最大1件（unique index）。archived済みの同revisionを再昇格しても既存行が返るだけで復活しない（未解決の設計課題） |
+| 昇格のstale | AI編集・UL等でtopicの`revision`が上がると、追加のDB処理なしで自動的に`stale`（「更新あり」）になる。新revisionへの再昇格は旧active Loreをarchived/supersededにする。v202では通常APIが`user_edited`の置き換え確認を要求し、承認後に置き換える。Project削除の4引数呼び出しは第5引数NULLで従来どおり確認を省略（v201/v202は無変更） |
+| 同revisionの再昇格 | 同一user+topic+revisionのLoreはarchived/supersededを含め最大1件（unique index）。v203適用後、通常APIはarchivedかつ`superseded_by=null`の同revision行を専用RPCで復元し、`is_archived=false`のみ更新（編集本文・embedding・`user_edited`等は保持、Embedding再生成・APIキー不要）。他active行があれば409で拒否し、RPC内で既にactiveなら`restored:false`の200。既存の昇格RPC・Project削除は無変更。superseded同revisionは今回の対象外で、通常は発生しない異常系として従来のEmbedding→昇格RPC→`created:false`を維持し、Embedding前の409 short-circuitは別チケットで検討する。UIはOpenAIキー未設定でボタンを無効化し操作を開始できない制約を維持（GETがarchivedを見ず新規/復元を判別できず、変更にはGET・API・UIまで範囲が広がるため）。v203はDB→アプリの順で適用 |
 | `git add`のパス | `[projectId]`・`[topicId]`を含むパスは引用符で囲む。`git add`を飛ばして`git commit`すると何もコミットされない |
 
 ### チャット・UI関連

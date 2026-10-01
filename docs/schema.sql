@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/09/17（migration_v200 Project Memory topic Promotion反映）
+-- 最終更新: 2026/10/01（v201/v202反映済み。v203復元RPCを統合、本番未適用）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -60,6 +60,8 @@
 -- 2026/09/16、migration_v198_project_memory_dreaming_final.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。現役Dreaming/Merge・Project rename/delete RPCからlore_embeddings.folder_name依存を除去）。
 -- 2026/09/16、migration_v199_lore_embeddings_folder_name_drop.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。旧Dreaming/Merge RPC 3本・旧index・lore_embeddings.folder_name列を削除）。
 -- 2026/09/17、migration_v200_project_memory_topic_promotion.sqlをスキーマ正本へ反映（Project Memory topicの通常時Lore昇格、revision単位の冪等性・supersede、Lore Book検索のarchive/supersede除外）。
+-- 2026/10/01、v201のProject削除委譲とv202の編集済みLore再昇格確認は本文へ反映済み（本番適用済みとの引き継ぎ前提）。
+-- 2026/10/01、migration_v203_project_memory_promotion_restore.sqlをスキーマ正本へ統合（同revisionの手動archived昇格Lore復元。DB未適用、適用順序はDB→アプリ）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -1678,6 +1680,126 @@ $$;
 revoke execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector, uuid[])
   from public, anon, authenticated;
 grant execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector, uuid[])
+  to authenticated;
+
+-- ============================================================
+-- Project Memory同revisionのarchived昇格Lore復元（v203）
+-- ============================================================
+create or replace function public.restore_archived_project_memory_promotion(
+  p_user_id uuid,
+  p_topic_id uuid,
+  p_expected_revision integer
+)
+returns table(lore_id uuid, restored boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_project_id uuid;
+  v_topic record;
+  v_lore public.lore_embeddings%rowtype;
+  v_target public.lore_embeddings%rowtype;
+  v_active_count integer := 0;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  if p_expected_revision is null or p_expected_revision < 1 then
+    raise exception 'expected_revision must be a positive integer' using errcode = 'P0001';
+  end if;
+
+  -- locator: Project→topic→Loreのロック順序を既存の昇格・削除RPCと揃える。
+  select t.project_id into v_project_id
+  from public.project_memory_topics t
+  where t.id = p_topic_id and t.user_id = p_user_id;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  perform 1
+  from public.projects p
+  where p.id = v_project_id and p.user_id = p_user_id
+  for update;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  select t.id, t.revision into v_topic
+  from public.project_memory_topics t
+  where t.id = p_topic_id
+    and t.user_id = p_user_id
+    and t.project_id = v_project_id
+  for update;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  if v_topic.revision <> p_expected_revision then
+    raise exception 'revision conflict' using errcode = 'P0001';
+  end if;
+
+  -- 対象と競合候補をまとめてID順でロックする。対象のarchive状態はロック後に判定。
+  for v_lore in
+    select le.*
+    from public.lore_embeddings le
+    where le.user_id = p_user_id
+      and le.source_type = 'project_memory_promotion'
+      and le.metadata->>'source_topic_id' = v_topic.id::text
+      and (
+        le.metadata->>'source_revision' = p_expected_revision::text
+        or (le.is_archived = false and le.superseded_by is null)
+      )
+    order by le.id
+    for update
+  loop
+    if v_lore.metadata->>'source_revision' = p_expected_revision::text then
+      v_target := v_lore;
+    end if;
+    if v_lore.is_archived = false and v_lore.superseded_by is null then
+      v_active_count := v_active_count + 1;
+    end if;
+  end loop;
+
+  if v_target.id is null then
+    raise exception 'promotion_not_found' using errcode = 'P0001';
+  end if;
+
+  if v_target.is_archived = false and v_target.superseded_by is null then
+    return query select v_target.id, false;
+    return;
+  end if;
+
+  if v_target.superseded_by is not null then
+    raise exception 'restore_not_allowed_superseded' using errcode = 'P0001';
+  end if;
+
+  -- schemaではnullableのため、NULL状態をarchivedとみなして復元しない。
+  if v_target.is_archived is not true then
+    raise exception 'promotion_not_found' using errcode = 'P0001';
+  end if;
+
+  -- 対象はarchivedなので、この件数は対象以外のactive行の件数になる。
+  if v_active_count > 0 then
+    raise exception 'restore_conflict_active_exists' using errcode = 'P0001';
+  end if;
+
+  update public.lore_embeddings
+  set is_archived = false
+  where id = v_target.id
+    and user_id = p_user_id;
+
+  return query select v_target.id, true;
+end;
+$$;
+
+revoke execute on function public.restore_archived_project_memory_promotion(uuid, uuid, integer)
+  from public, anon, authenticated;
+grant execute on function public.restore_archived_project_memory_promotion(uuid, uuid, integer)
   to authenticated;
 
 -- ============================================================
