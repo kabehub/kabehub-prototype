@@ -30,6 +30,8 @@ let authenticated = true;
 let projectResult;
 let topicResult;
 let rpcResult;
+let existingResult;
+let editedResult;
 let queryCalls;
 let rpcCalls;
 let embeddingCalls;
@@ -54,6 +56,9 @@ function createQuery(table, result) {
       state.filters.push({ column, value });
       return query;
     },
+    is(column, value) { state.filters.push({ column, value }); return query; },
+    order(column, options) { state.order = { column, options }; return query; },
+    then(resolve, reject) { return Promise.resolve(editedResult).then(resolve, reject); },
     maybeSingle() {
       if (result.error || !result.data) return Promise.resolve(result);
       for (const { column, value } of state.filters) {
@@ -74,6 +79,7 @@ const supabase = {
   from(table) {
     if (table === "projects") return createQuery(table, projectResult);
     if (table === "project_memory_topics") return createQuery(table, topicResult);
+    if (table === "lore_embeddings") return createQuery(table, existingResult);
     throw new Error(`unexpected table access: ${table}`);
   },
   rpc(name, args) {
@@ -158,6 +164,8 @@ function resetMocks(options = {}) {
     data: { lore_id: LORE_ID, created: true },
     error: null,
   };
+  existingResult = options.existingResult ?? { data: null, error: null };
+  editedResult = options.editedResult ?? { data: [], error: null };
   queryCalls = [];
   rpcCalls = [];
   embeddingCalls = [];
@@ -311,6 +319,7 @@ test("success embeds the complete server snapshot and returns the RPC contract",
         p_topic_id: TOPIC_ID,
         p_expected_revision: 3,
         p_embedding: [0.1, 0.2, 0.3],
+        p_acknowledged_edited_lore_ids: [],
       },
     },
   ]);
@@ -371,6 +380,78 @@ test("topic lookup failures do not expose database errors", async () => {
   assert.deepEqual(await response.json(), { error: "Failed to load topic" });
   assert.deepEqual(embeddingCalls, []);
 });
+
+const OTHER_LORE_ID = "66666666-6666-4666-8666-666666666666";
+const editedRows = [{ id: LORE_ID, chunk_text: "\n Edited title\nbody" }, { id: OTHER_LORE_ID, chunk_text: "Other" }];
+for (const rows of [editedRows.slice(0, 1), editedRows]) {
+  test(`unacknowledged ${rows.length} edited active rows stop before embedding`, async () => {
+    resetMocks({ editedResult: { data: rows, error: null } });
+    const response = await invokePost();
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.code, "edited_lore_needs_confirmation");
+    assert.deepEqual(body.edited_lores, rows.map((row, i) => ({ id: row.id, title: i ? "Other" : "Edited title" })));
+    assert.deepEqual(embeddingCalls, []);
+    assert.deepEqual(rpcCalls, []);
+    const lookup = queryCalls.at(-1);
+    assert.deepEqual(lookup.state.filters, [
+      { column: "user_id", value: USER_ID }, { column: "source_type", value: "project_memory_promotion" },
+      { column: "metadata->>source_topic_id", value: TOPIC_ID }, { column: "is_archived", value: false },
+      { column: "superseded_by", value: null }, { column: "extraction_version", value: "user_edited" },
+    ]);
+  });
+}
+test("acknowledged IDs are normalized and deduplicated and permit promotion", async () => {
+  resetMocks({ editedResult: { data: editedRows, error: null } });
+  const response = await invokePost({ body: { expected_revision: 3, acknowledged_edited_lore_ids: [LORE_ID, OTHER_LORE_ID, LORE_ID] } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(rpcCalls[0].args.p_acknowledged_edited_lore_ids, [LORE_ID, OTHER_LORE_ID]);
+  assert.equal(embeddingCalls.length, 1);
+});
+test("partial acknowledgement still requires confirmation of the complete edited list", async () => {
+  resetMocks({ editedResult: { data: editedRows, error: null } });
+  const response = await invokePost({ body: { expected_revision: 3, acknowledged_edited_lore_ids: [LORE_ID] } });
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).edited_lores.length, 2);
+  assert.equal(embeddingCalls.length, 0);
+});
+test("existing same revision, including archived, skips confirmation lookup", async () => {
+  resetMocks({ existingResult: { data: { id: LORE_ID }, error: null }, editedResult: { data: editedRows, error: null },
+    rpcResult: { data: { lore_id: LORE_ID, created: false }, error: null } });
+  const response = await invokePost();
+  assert.equal(response.status, 200);
+  assert.equal(queryCalls.filter((row) => row.table === "lore_embeddings").length, 1);
+  assert.equal((await response.json()).created, false);
+});
+test("new edit during embedding is rejected by RPC and returns refreshed confirmation", async () => {
+  resetMocks({ editedResult: { data: editedRows.slice(0, 1), error: null },
+    rpcResult: { data: null, error: { code: "P0001", message: "edited_lore_needs_confirmation" } } });
+  embeddingImpl = async () => { embeddingCalls.push({}); editedResult = { data: editedRows, error: null }; return [0.1]; };
+  const response = await invokePost({ body: { expected_revision: 3, acknowledged_edited_lore_ids: [LORE_ID] } });
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).edited_lores.length, 2);
+  assert.equal(embeddingCalls.length, 1);
+  assert.equal(rpcCalls.length, 1);
+});
+for (const value of [null, "id", ["bad"], [1], Array(101).fill(LORE_ID)]) {
+  test(`invalid acknowledgements ${JSON.stringify(value).slice(0, 40)}`, async () => {
+    resetMocks();
+    const response = await invokePost({ body: { expected_revision: 3, acknowledged_edited_lore_ids: value } });
+    assert.equal(response.status, 400);
+    assert.equal(queryCalls.length, 0);
+  });
+}
+for (const stage of ["existing", "edited", "refresh"]) {
+  test(`promotion lookup failure ${stage} fails closed`, async () => {
+    resetMocks(stage === "existing" ? { existingResult: { data: null, error: { message: "private" } } }
+      : stage === "edited" ? { editedResult: { data: null, error: { message: "private" } } }
+      : { rpcResult: { data: null, error: { code: "P0001", message: "edited_lore_needs_confirmation" } } });
+    if (stage === "refresh") embeddingImpl = async () => { editedResult = { data: null, error: { message: "private" } }; return [0.1]; };
+    const response = await invokePost();
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: "Failed to load promotion" });
+  });
+}
 
 (async () => {
   for (const { name, fn } of tests) {

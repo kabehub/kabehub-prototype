@@ -1531,7 +1531,8 @@ create or replace function public.promote_project_memory_topic_to_lore(
   p_user_id uuid,
   p_topic_id uuid,
   p_expected_revision int,
-  p_embedding vector
+  p_embedding vector,
+  p_acknowledged_edited_lore_ids uuid[] default null
 )
 returns table(lore_id uuid, created boolean)
 language plpgsql
@@ -1543,6 +1544,7 @@ declare
   v_topic record;
   v_existing_id uuid;
   v_new_id uuid;
+  v_old_lore record;
 begin
   if p_user_id is null or auth.uid() is distinct from p_user_id then
     raise exception 'Unauthorized' using errcode = '42501';
@@ -1627,12 +1629,37 @@ begin
       and metadata->>'source_revision' = p_expected_revision::text;
 
     if not found then
-      raise;
+      raise;  -- 想定外のunique違反はもみ消さず再送出
     end if;
 
     return query select v_existing_id, false;
     return;
   end;
+
+  -- INSERT/unique_violation above resolves the no-replacement path first.
+  -- Lock every supersede target in deterministic order before inspecting edit state.
+  if p_acknowledged_edited_lore_ids is not null then
+    for v_old_lore in
+      select le.id, le.extraction_version
+      from public.lore_embeddings le
+      where le.user_id = p_user_id
+        and le.source_type = 'project_memory_promotion'
+        and le.metadata->>'source_topic_id' = v_topic.id::text
+        and le.id <> v_new_id
+        and le.is_archived = false
+        and le.superseded_by is null
+      order by le.id
+      for update
+    loop
+      if v_old_lore.extraction_version = 'user_edited'
+         and not exists (
+           select 1 from unnest(p_acknowledged_edited_lore_ids) ack(id)
+           where ack.id = v_old_lore.id
+         ) then
+        raise exception 'edited_lore_needs_confirmation' using errcode = 'P0001';
+      end if;
+    end loop;
+  end if;
 
   update public.lore_embeddings
   set is_archived = true,
@@ -1648,9 +1675,9 @@ begin
 end;
 $$;
 
-revoke execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector)
+revoke execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector, uuid[])
   from public, anon, authenticated;
-grant execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector)
+grant execute on function public.promote_project_memory_topic_to_lore(uuid, uuid, int, vector, uuid[])
   to authenticated;
 
 -- ============================================================

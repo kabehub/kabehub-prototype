@@ -16,6 +16,7 @@ interface Props {
 
 export default function ProjectMemoryListModal({ isOpen, projectId, projectName, onCancel }: Props) {
   const { topics, loading, error, canPromote, canInstructionEdit, promotingTopicId, uploading, uploadConfirm, instructionEdit,
+    pendingConfirm, confirmPromotion, cancelPromotionConfirm,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, isActionLocked,
     openInstructionEdit, closeInstructionEdit, setInstructionEditInstruction, generateInstructionEditPreview,
     cancelInstructionEditGeneration, backToInstructionInput, applyInstructionEditPreview } =
@@ -60,7 +61,8 @@ export default function ProjectMemoryListModal({ isOpen, projectId, projectName,
         </div>
         <div style={{ overflowY: "auto", padding: "18px 28px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <ProjectMemoryTopicList topics={topics} loading={loading} error={error} expandedIds={expandedIds} onToggleExpanded={onToggleExpanded}
-            canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null}
+            canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={pendingConfirm !== null || promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null}
+            pendingConfirm={pendingConfirm} onConfirmPromotion={() => void confirmPromotion()} onCancelPromotion={cancelPromotionConfirm}
             onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} onInstructionEdit={openInstructionEdit} />
         </div>
         <div style={{ padding: "16px 28px 20px", borderTop: "1px solid var(--border, #e5e7eb)", display: "flex", justifyContent: "flex-end", gap: "8px" }}>

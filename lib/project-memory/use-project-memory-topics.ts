@@ -11,6 +11,10 @@ export type ProjectMemoryPromotion = {
   source_revision: number | null;
   lore_id: string | null;
 };
+export type ProjectMemoryPromotionConfirm = {
+  topic: ProjectMemoryTopic;
+  editedLores: Array<{ id: string; title: string }>;
+};
 export type ProjectMemoryTopic = {
   id: string;
   topic_key: string;
@@ -44,6 +48,13 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   const [canPromote, setCanPromote] = useState(false);
   const [promotingTopicId, setPromotingTopicId] = useState<string | null>(null);
   const promotingRef = useRef<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<ProjectMemoryPromotionConfirm | null>(null);
+  const pendingConfirmRef = useRef<ProjectMemoryPromotionConfirm | null>(null);
+  const promotionRequestId = useRef(0);
+  const updatePendingConfirm = (next: ProjectMemoryPromotionConfirm | null) => {
+    pendingConfirmRef.current = next;
+    setPendingConfirm(next);
+  };
   const uploadingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [uploadConfirm, setUploadConfirm] = useState<ProjectMemoryUploadCandidate | null>(null);
@@ -63,6 +74,10 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
 
   useEffect(() => {
     if (!enabled) {
+      promotionRequestId.current++;
+      promotingRef.current = null;
+      setPromotingTopicId(null);
+      updatePendingConfirm(null);
       instructionRequestId.current++;
       instructionAbortRef.current?.abort();
       instructionAbortRef.current = null;
@@ -71,6 +86,10 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
       updateInstructionEdit(null);
     }
     return () => {
+      promotionRequestId.current++;
+      promotingRef.current = null;
+      setPromotingTopicId(null);
+      updatePendingConfirm(null);
       instructionRequestId.current++;
       instructionAbortRef.current?.abort();
       instructionAbortRef.current = null;
@@ -122,13 +141,17 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
     return () => { active = false; requestId.current++; };
   }, [enabled, keepLoaded, projectId, reload]);
 
-  const promote = async (topic: ProjectMemoryTopic) => {
-    if (instructionEditRef.current !== null || promotingRef.current || uploadingRef.current || uploadConfirm !== null || !canPromote || !topic.content_md.trim() || topic.promotion.status === "current") return;
+  const promote = async (topic: ProjectMemoryTopic, confirmed = false) => {
+    if (!enabled || instructionEditRef.current !== null || promotingRef.current || uploadingRef.current || uploadConfirm !== null || !canPromote || !topic.content_md.trim() || topic.promotion.status === "current") return;
+    if ((!confirmed && pendingConfirmRef.current !== null) || (confirmed && pendingConfirmRef.current?.topic !== topic)) return;
+    const acknowledgedIds = confirmed ? pendingConfirmRef.current!.editedLores.map((row) => row.id) : [];
+    const promotionId = ++promotionRequestId.current;
     promotingRef.current = topic.id;
     setPromotingTopicId(topic.id);
     setError(null);
     try {
       const key = await webApiKeyStore.getKey("openai");
+      if (promotionId !== promotionRequestId.current) return;
       if (!key?.trim()) {
         setCanPromote(false);
         throw new Error("OpenAI APIキーが設定されていません");
@@ -136,24 +159,44 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
       const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/memory/topics/${encodeURIComponent(topic.id)}/promote`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-openai-api-key": key },
-        body: JSON.stringify({ expected_revision: topic.revision }),
+        body: JSON.stringify({ expected_revision: topic.revision, acknowledged_edited_lore_ids: acknowledgedIds }),
       });
       const body = await response.json().catch(() => null);
+      if (promotionId !== promotionRequestId.current) return;
       if (!response.ok) {
+        if (response.status === 409 && body?.code === "edited_lore_needs_confirmation" &&
+            Array.isArray(body.edited_lores) && body.edited_lores.every((row: { id?: unknown; title?: unknown }) =>
+              row !== null && typeof row === "object" && typeof row.id === "string" && typeof row.title === "string")) {
+          updatePendingConfirm({ topic, editedLores: body.edited_lores });
+          return;
+        }
+        if (response.status === 409 || response.status === 404) updatePendingConfirm(null);
         if (response.status === 409) await reload();
         throw new Error(typeof body?.error === "string" ? body.error : "Loreへの昇格に失敗しました");
       }
+      updatePendingConfirm(null);
       await reload();
     } catch (cause) {
+      if (promotionId !== promotionRequestId.current) return;
       setError(cause instanceof Error ? cause.message : "Loreへの昇格に失敗しました");
     } finally {
-      promotingRef.current = null;
-      setPromotingTopicId(null);
+      if (promotionId === promotionRequestId.current) {
+        promotingRef.current = null;
+        setPromotingTopicId(null);
+      }
     }
   };
 
+  const cancelPromotionConfirm = () => {
+    if (!promotingRef.current) updatePendingConfirm(null);
+  };
+  const confirmPromotion = async () => {
+    const candidate = pendingConfirmRef.current;
+    if (candidate) await promote(candidate.topic, true);
+  };
+
   const selectUploadFile = async (file: File) => {
-    if (instructionEditRef.current !== null || uploadingRef.current || promotingRef.current || uploadConfirm !== null) return;
+    if (pendingConfirmRef.current !== null || instructionEditRef.current !== null || uploadingRef.current || promotingRef.current || uploadConfirm !== null) return;
     let raw: string;
     try {
       raw = await file.text();
@@ -161,7 +204,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
       if (instructionEditRef.current === null) setError("ファイルの読み込みに失敗しました。");
       return;
     }
-    if (instructionEditRef.current !== null) return;
+    if (pendingConfirmRef.current !== null || instructionEditRef.current !== null) return;
     try {
       const decoded = decodeTopicFile(raw);
       if (decoded.hasHeader) {
@@ -187,7 +230,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   };
 
   const executeUpload = async () => {
-    if (instructionEditRef.current !== null || !uploadConfirm || uploadingRef.current || promotingRef.current) return;
+    if (pendingConfirmRef.current !== null || instructionEditRef.current !== null || !uploadConfirm || uploadingRef.current || promotingRef.current) return;
     const candidate = uploadConfirm;
     uploadingRef.current = true;
     setUploading(true);
@@ -223,7 +266,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
 
   const cancelUploadConfirm = () => setUploadConfirm(null);
   const openInstructionEdit = (topic: ProjectMemoryTopic) => {
-    if (!enabled || !canPromote || instructionEditRef.current !== null || promotingRef.current !== null ||
+    if (pendingConfirmRef.current !== null || !enabled || !canPromote || instructionEditRef.current !== null || promotingRef.current !== null ||
         uploadingRef.current || uploadConfirm !== null) return;
     updateInstructionEdit({ topicId: topic.id, topicKey: topic.topic_key, topicRevision: topic.revision,
       promotionStatus: topic.promotion.status, phase: "input", instruction: "", preview: null,
@@ -326,8 +369,9 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
     updateInstructionEdit({ ...current, phase: "done", preview: null, notice: null, doneStatus: result.status });
   };
 
-  const isActionLocked = () => promotingRef.current !== null || uploadingRef.current || uploadConfirm !== null || instructionEditRef.current !== null;
+  const isActionLocked = () => pendingConfirmRef.current !== null || promotingRef.current !== null || uploadingRef.current || uploadConfirm !== null || instructionEditRef.current !== null;
   return { topics, loading, error, canPromote, promotingTopicId, uploading, uploadConfirm,
+    pendingConfirm, confirmPromotion, cancelPromotionConfirm,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, reload, isActionLocked,
     instructionEdit, canInstructionEdit: canPromote, openInstructionEdit, closeInstructionEdit,
     setInstructionEditInstruction,

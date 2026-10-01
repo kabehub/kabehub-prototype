@@ -45,6 +45,14 @@ export async function POST(req: NextRequest, props: RouteProps) {
     );
   }
 
+  const rawAcknowledged = requestBody.acknowledged_edited_lore_ids ?? [];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (requestBody.acknowledged_edited_lore_ids === null || !Array.isArray(rawAcknowledged) ||
+      rawAcknowledged.length > 100 || rawAcknowledged.some((id) => typeof id !== "string" || !uuid.test(id))) {
+    return finalizeJson({ error: "acknowledged_edited_lore_ids must be an array of at most 100 UUIDs" }, { status: 400 });
+  }
+  const acknowledgedIds = [...new Set((rawAcknowledged as string[]).map((id) => id.toLowerCase()))];
+
   const project = await getOwnedProject(supabase, user.id, projectId);
   if (!project.ok) {
     return finalizeJson({ error: project.error }, { status: project.status });
@@ -68,6 +76,45 @@ export async function POST(req: NextRequest, props: RouteProps) {
   }
   if (topic.content_md.trim() === "") {
     return finalizeJson({ error: "Topic is empty" }, { status: 400 });
+  }
+
+  const loadEditedLores = async () => {
+    // Match the RPC supersede predicate. A newly inserted Lore cannot be in this preflight result.
+    const { data, error } = await supabase.from("lore_embeddings")
+      .select("id, chunk_text")
+      .eq("user_id", user.id)
+      .eq("source_type", "project_memory_promotion")
+      .eq("metadata->>source_topic_id", topicId.toLowerCase())
+      .eq("is_archived", false)
+      .is("superseded_by", null)
+      .eq("extraction_version", "user_edited")
+      .order("id", { ascending: true });
+    return { error, editedLores: (data ?? []).map((row) => ({
+      id: row.id,
+      title: (row.chunk_text ?? "").split(/\r?\n/).find((line: string) => line.trim())?.trim().slice(0, 120) || "無題のLore",
+    })) };
+  };
+  const confirmationResponse = (editedLores: Array<{ id: string; title: string }>) => finalizeJson({
+    error: "手動編集済みのLoreを置き換えるには確認が必要です",
+    code: "edited_lore_needs_confirmation",
+    edited_lores: editedLores,
+  }, { status: 409 });
+
+  // The unique index includes archived rows: this path never replaces any Lore.
+  const { data: existing, error: existingError } = await supabase.from("lore_embeddings")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("source_type", "project_memory_promotion")
+    .eq("metadata->>source_topic_id", topicId.toLowerCase())
+    .eq("metadata->>source_revision", String(expectedRevision))
+    .maybeSingle();
+  if (existingError) return finalizeJson({ error: "Failed to load promotion" }, { status: 500 });
+  if (!existing) {
+    const { error, editedLores } = await loadEditedLores();
+    if (error) return finalizeJson({ error: "Failed to load promotion" }, { status: 500 });
+    if (editedLores.some((row) => !acknowledgedIds.includes(row.id.toLowerCase()))) {
+      return confirmationResponse(editedLores);
+    }
   }
 
   const openaiKey = req.headers.get("x-openai-api-key");
@@ -97,10 +144,16 @@ export async function POST(req: NextRequest, props: RouteProps) {
       p_topic_id: topicId,
       p_expected_revision: expectedRevision,
       p_embedding: embedding,
+      p_acknowledged_edited_lore_ids: acknowledgedIds,
     })
     .single<PromoteTopicRpcResult>();
 
   if (error) {
+    if (error.code === "P0001" && error.message === "edited_lore_needs_confirmation") {
+      const { error: lookupError, editedLores } = await loadEditedLores();
+      if (lookupError) return finalizeJson({ error: "Failed to load promotion" }, { status: 500 });
+      return confirmationResponse(editedLores);
+    }
     const mapped = mapProjectMemoryRpcError(error);
     logger.dbOperationFailed({
       route: "projects-memory-topics-promote",

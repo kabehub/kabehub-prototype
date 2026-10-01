@@ -55,16 +55,6 @@ const promotion = extractFunction(
   "uuid, uuid, int, vector",
   "authenticated",
 );
-assert.equal(
-  extractFunction(
-    schema,
-    "promote_project_memory_topic_to_lore",
-    "uuid, uuid, int, vector",
-    "authenticated",
-  ),
-  promotion,
-  "canonical schema promotion RPC must match v200",
-);
 assert.match(promotion, /language plpgsql security definer set search_path = ''/);
 assert.match(
   promotion,
@@ -141,4 +131,4 @@ assert.match(
 assert.doesNotMatch(migration, /create or replace function public\.delete_project_preserving_contents/);
 assert.doesNotMatch(migration, /create or replace function public\.(?:create|update)_project_memory_topic/);
 
-console.log("ok - v200 Phase 6 promotion migration and canonical schema stay aligned");
+console.log("ok - v200 historical promotion contract and canonical indexes/search stay aligned");

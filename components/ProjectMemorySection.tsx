@@ -17,6 +17,7 @@ export default function ProjectMemorySection({ projectId, projectName }: Props) 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const { topics, loading, error, canPromote, canInstructionEdit, promotingTopicId, uploading, uploadConfirm, instructionEdit,
+    pendingConfirm, confirmPromotion, cancelPromotionConfirm,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, isActionLocked,
     openInstructionEdit, closeInstructionEdit, setInstructionEditInstruction, generateInstructionEditPreview,
     cancelInstructionEditGeneration, backToInstructionInput, applyInstructionEditPreview } =
@@ -44,8 +45,9 @@ export default function ProjectMemorySection({ projectId, projectName }: Props) 
             {!canPromote && <p style={{ fontSize: "12px", color: "#92400e" }}>OpenAI APIキーが未設定のため、Loreへの昇格・AI編集はできません。</p>}
             {error && <p role="alert" style={{ fontSize: "12px", color: "#b91c1c" }}>{error}</p>}
             <ProjectMemoryTopicList topics={topics} loading={loading} error={error} expandedIds={expandedIds} onToggleExpanded={onToggleExpanded}
-              canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null}
-              onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} onInstructionEdit={openInstructionEdit} />
+              canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={pendingConfirm !== null || promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null}
+              pendingConfirm={pendingConfirm} onConfirmPromotion={() => void confirmPromotion()} onCancelPromotion={cancelPromotionConfirm}
+            onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} onInstructionEdit={openInstructionEdit} />
           </div>
           <div style={{ padding: "12px 20px 16px", borderTop: "1px solid var(--border, #e5e7eb)", display: "flex", justifyContent: "flex-end" }}>
             <input ref={uploadInputRef} type="file" accept=".md,.txt" onChange={selectUpload} style={{ display: "none" }} />

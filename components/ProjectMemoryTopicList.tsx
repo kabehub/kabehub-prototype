@@ -1,7 +1,11 @@
 import MarkdownRenderer from "@/components/MarkdownRenderer";
-import type { ProjectMemoryTopic } from "@/lib/project-memory/use-project-memory-topics";
+import ProjectMemoryPromotionConfirmModal from "@/components/ProjectMemoryPromotionConfirmModal";
+import type { ProjectMemoryPromotionConfirm, ProjectMemoryTopic } from "@/lib/project-memory/use-project-memory-topics";
 
 interface Props {
+  pendingConfirm?: ProjectMemoryPromotionConfirm | null;
+  onConfirmPromotion?: () => void;
+  onCancelPromotion?: () => void;
   topics: ProjectMemoryTopic[];
   loading: boolean;
   error: string | null;
@@ -16,8 +20,10 @@ interface Props {
   onInstructionEdit: (topic: ProjectMemoryTopic) => void;
 }
 
-export default function ProjectMemoryTopicList({ topics, loading, error, expandedIds, onToggleExpanded, canPromote, canInstructionEdit, promotingTopicId, actionsLocked, onDownload, onPromote, onInstructionEdit }: Props) {
+export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfirmPromotion, onCancelPromotion, topics, loading, error, expandedIds, onToggleExpanded, canPromote, canInstructionEdit, promotingTopicId, actionsLocked, onDownload, onPromote, onInstructionEdit }: Props) {
   return <>
+    <ProjectMemoryPromotionConfirmModal confirm={pendingConfirm} submitting={promotingTopicId !== null}
+      error={error} onConfirm={onConfirmPromotion ?? (() => {})} onCancel={onCancelPromotion ?? (() => {})} />
     {loading && <p>読み込み中…</p>}
     {!loading && topics.length === 0 && !error && <p>Project Memoryのtopicはありません。</p>}
     {topics.map((topic) => {

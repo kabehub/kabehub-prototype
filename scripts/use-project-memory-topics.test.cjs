@@ -109,6 +109,76 @@ const header = (id = "A-topic") => `<!-- kabehub-topic:v1 ${JSON.stringify({ top
     await render().promote(topic("A-topic"));
     assert.equal(gets, expectedGets, `promotion ${status} reload count`);
   }
+  const editedA = { id: "55555555-5555-4555-8555-555555555555", title: "Edited" };
+  const editedB = { id: "66666666-6666-4666-8666-666666666666", title: "Newly edited" };
+  const needsConfirm = (rows) => Response.json({ code: "edited_lore_needs_confirmation", edited_lores: rows }, { status: 409 });
+  let promoteBodies = [];
+  reset(async (_url, init = {}) => {
+    if (!init.method) return Response.json({ topics: [topic("A-topic")] });
+    promoteBodies.push(JSON.parse(init.body));
+    return promoteBodies.length === 1 ? needsConfirm([editedA]) : promoteBodies.length === 2
+      ? needsConfirm([editedA, editedB]) : Response.json({ created: true });
+  });
+  render(); effects(); await flush();
+  await render().promote(topic("A-topic"));
+  assert.deepEqual(render().pendingConfirm.editedLores, [editedA]);
+  assert.equal(render().isActionLocked(), true);
+  await render().promote(topic("A-topic"));
+  await render().selectUploadFile(file("new.md", "New"));
+  render().openInstructionEdit(topic("A-topic"));
+  assert.equal(render().instructionEdit, null);
+  assert.equal(render().uploadConfirm, null);
+  assert.equal(promoteBodies.length, 1);
+  await render().confirmPromotion();
+  assert.deepEqual(promoteBodies[1].acknowledged_edited_lore_ids, [editedA.id]);
+  assert.deepEqual(render().pendingConfirm.editedLores, [editedA, editedB]);
+  await render().confirmPromotion();
+  assert.deepEqual(promoteBodies[2].acknowledged_edited_lore_ids, [editedA.id, editedB.id]);
+  assert.equal(render().pendingConfirm, null);
+
+  for (const finalStatus of ["cancel", 409, 500]) {
+    let calls = 0;
+    reset(async (_url, init = {}) => {
+      if (!init.method) return Response.json({ topics: [topic("A-topic")] });
+      calls++;
+      return calls === 1 ? needsConfirm([editedA]) : Response.json({ error: "failed" }, { status: finalStatus });
+    });
+    render(); effects(); await flush();
+    await render().promote(topic("A-topic"));
+    if (finalStatus === "cancel") { render().cancelPromotionConfirm(); assert.equal(calls, 1); }
+    else await render().confirmPromotion();
+    assert.equal(render().pendingConfirm !== null, finalStatus === 500, "revision conflict is terminal; transient failure can retry");
+  }
+  let finishConfirmation;
+  let confirmationCalls = 0;
+  reset(async (_url, init = {}) => {
+    if (!init.method) return Response.json({ topics: [topic("A-topic")] });
+    confirmationCalls++;
+    return confirmationCalls === 1 ? needsConfirm([editedA]) : new Promise((resolve) => { finishConfirmation = resolve; });
+  });
+  render(); effects(); await flush();
+  await render().promote(topic("A-topic"));
+  const confirming = render().confirmPromotion();
+  void render().confirmPromotion();
+  render().cancelPromotionConfirm();
+  assert.ok(render().pendingConfirm, "cannot cancel in flight");
+  await flush();
+  assert.equal(confirmationCalls, 2, "rapid confirm starts one POST");
+  finishConfirmation(needsConfirm([editedA, editedB])); await confirming;
+  render({ projectId: "B" }); effects(); await flush();
+  assert.equal(render({ projectId: "B" }).pendingConfirm, null);
+
+  for (const options of [{ projectId: "B" }, { enabled: false }]) {
+    let resolveLate;
+    reset(async (_url, init = {}) => !init.method ? Response.json({ topics: [topic("A-topic")] })
+      : new Promise((resolve) => { resolveLate = resolve; }));
+    render(); effects(); await flush();
+    const late = render().promote(topic("A-topic")); await flush();
+    render(options); effects(); await flush();
+    resolveLate(needsConfirm([editedA])); await late;
+    assert.equal(render(options).pendingConfirm, null, "late confirmation does not restore old project state");
+  }
+
   for (const [method, status, expectedGets] of [
     ["PATCH", 200, 2], ["PATCH", 409, 2], ["PATCH", 404, 2], ["PATCH", 500, 1],
     ["POST", 201, 2], ["POST", 409, 2], ["POST", 404, 2], ["POST", 500, 1],
