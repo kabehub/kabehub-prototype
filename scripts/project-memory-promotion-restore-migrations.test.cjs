@@ -4,7 +4,7 @@ const path = require("node:path");
 
 const root = path.join(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
-const migration = read("docs/migration_v203_project_memory_promotion_restore.sql");
+const migration = read("docs/applied/migration_v203_project_memory_promotion_restore.sql");
 const schema = read("docs/schema.sql");
 const normalize = (sql) => sql.replace(/--[^\r\n]*/g, " ").replace(/\s+/g, " ").trim();
 const extract = (sql, name) => {
@@ -71,7 +71,7 @@ assert.match(migration, /先にアプリを旧コードへ戻し/);
 assert.match(migration, /-- drop function if exists public\.restore_archived_project_memory_promotion\(uuid, uuid, integer\);/);
 
 assert.equal(extract(schema, "promote_project_memory_topic_to_lore"),
-  extract(read("docs/migration_v202_project_memory_promotion_confirmation.sql"), "promote_project_memory_topic_to_lore"),
+  extract(read("docs/applied/migration_v202_project_memory_promotion_confirmation.sql"), "promote_project_memory_topic_to_lore"),
   "v203 must leave the canonical v202 promotion definition and grants unchanged");
 assert.equal(extract(schema, "delete_project_preserving_contents"),
   extract(read("docs/applied/migration_v201_delete_project_promotion_delegation.sql"), "delete_project_preserving_contents"),

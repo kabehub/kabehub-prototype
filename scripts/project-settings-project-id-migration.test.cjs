@@ -6,6 +6,7 @@ const migration = fs.readFileSync(path.join(
   __dirname,
   "..",
   "docs",
+  "applied",
   "migration_v196_project_settings_project_id_contract.sql",
 ), "utf8");
 const schema = fs.readFileSync(path.join(__dirname, "..", "docs", "schema.sql"), "utf8");

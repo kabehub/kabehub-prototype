@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const root = path.join(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
-const migration = read("docs/migration_v202_project_memory_promotion_confirmation.sql");
+const migration = read("docs/applied/migration_v202_project_memory_promotion_confirmation.sql");
 const schema = read("docs/schema.sql");
 const normalize = (sql) => sql.replace(/--[^\r\n]*/g, " ").replace(/\s+/g, " ").trim();
 const extract = (sql) => {
