@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/01（Project Memory Phase 4A/4B反映。Project Memory API・components・lib・地雷節を追加）
+最終更新: 2026/10/01（Project Memory v202の再昇格確認・v203の同revision復元を反映。API・components・地雷節・認証helper・Scripts実測を更新）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -128,9 +128,9 @@ Project（旧フォルダ）単位のtopic型メモリ。`project_memory_topics`
 |-|-|
 | `app/api/projects/route.ts` | GET：所有Projectの`id, name`一覧（`/library`が使用）／POST：`get_or_create_project` RPCで名前からProjectを取得または作成（name trim後空は400） |
 | `app/api/projects/[projectId]/route.ts` | PATCH：`rename_project` RPC（重複は409。関連4テーブルの`folder_name`を同期）／DELETE：`delete_project_preserving_contents` RPC。bodyに`promoteToLore`(boolean)必須。trueのときは`x-openai-api-key`必須で、非空topicを直列にEmbedding化してRPCへ渡す |
-| `app/api/projects/[projectId]/memory/topics/route.ts` | GET：topic一覧＋`promotion`（`status`: `not_promoted`/`current`/`stale`、`source_revision`、`lore_id`）。`lore_embeddings`の`source_type='project_memory_promotion'`かつ未archive・未supersededを参照し、`source_revision === topic.revision`なら`current`、違えば`stale`。active複数件・未来revisionは`not_promoted`に倒す／POST：`create_project_memory_topic` RPC（201） |
+| `app/api/projects/[projectId]/memory/topics/route.ts` | GET：topic一覧＋`promotion`（`status`: `not_promoted`/`current`/`stale`、`source_revision`、`lore_id`）。`lore_embeddings`の`source_type='project_memory_promotion'`かつ`is_archived=false`・`superseded_by=null`だけを参照し、同revisionなら`current`、古いrevisionなら`stale`。archived/superseded行は参照せず、active候補がなければ`not_promoted`。active複数件・不正/未来revisionも`not_promoted`に倒す／POST：`create_project_memory_topic` RPC（201） |
 | `app/api/projects/[projectId]/memory/topics/[topicId]/route.ts` | GET：topic単体／PATCH：`update_project_memory_topic` RPC。`expected_revision`（正整数）必須、`edit_kind`は`full`（`new_content_md`）または`partial`（`old_text`/`new_text`）、`source_refs`はjsonb配列。revision不一致は409（楽観的排他） |
-| `app/api/projects/[projectId]/memory/topics/[topicId]/promote/route.ts` | POST：topicを通常時にLoreへ昇格。`expected_revision`必須→topic取得→revision不一致409→空topic400→同revision行確認。archivedかつ`superseded_by=null`ならv203復元RPCをAPIキー確認・Embedding生成より前に呼び、`{lore_id, created:false, restored}`を返す。復元不可は409 `promotion_restore_unavailable`、その他は共通マッパー。新規は編集済みLore確認→`x-openai-api-key`確認→Embedding→v202昇格RPC（`{lore_id, created}`）。active/supersededの同revision行は従来経路を維持 |
+| `app/api/projects/[projectId]/memory/topics/[topicId]/promote/route.ts` | POST：bodyは`expected_revision`必須・`acknowledged_edited_lore_ids`任意（省略時`[]`、最大100 UUID、null不可）。topic取得→revision不一致409→空topic400→同revision行確認。archivedかつ`superseded_by=null`なら`restore_archived_project_memory_promotion`（v203）をAPIキー確認・Embedding生成より前に呼ぶ。新規は編集済みLore確認→APIキー確認→Embedding→v202昇格RPC。未承認の置き換えは409 `edited_lore_needs_confirmation`＋`edited_lores:[{id,title}]`、RPC検出時も一覧を再取得して同じ409を返す。復元不可は409 `promotion_restore_unavailable`、revision conflict等は共通マッパー。成功契約は`{lore_id, created, restored?}`（復元時は`created:false`・RPCの`restored`をそのまま返す）。active/supersededの同revision行は従来経路を維持 |
 | `app/api/projects/[projectId]/memory/topics/[topicId]/edit-preview/route.ts` | POST：「AIで編集」のプレビュー。**DB書き込みなし**。`x-openai-api-key`を認証より前に確認。body`{instruction}`（trim後非空・2,000文字以下）。結果は`proposal`/`no_change`/`not_applicable`の3種（共通envelope付き）。入力上限超過413、LLM失敗・不正応答は502 |
 | `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` | POST：Project全体の整理案プレビュー（DB書き込みなし）。`current_state` topicは対象外。入力上限超過413、失敗502。適用は専用routeではなく、クライアントがtopicごとに既存PATCHを呼ぶ（`source_refs`に`consolidation_run`） |
 
@@ -214,6 +214,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ProjectMemorySection.tsx` | `/library`の各Project行。折り畳み＋展開時のみlazy load（`keepLoaded: true`） |
 | `components/ProjectMemoryListModal.tsx` | Sidebarから開くProject Memory一覧モーダル（`keepLoaded: false`）。Escape・背景クリック・「閉じる」は編集モーダル表示中/操作中は無効 |
 | `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る）。DLは`actionsLocked`の影響を受けない |
+| `components/ProjectMemoryPromotionConfirmModal.tsx` | `/library`・Sidebar一覧で共用する編集済みLore再昇格の確認モーダル（TopicList経由）。対象Loreのタイトルと編集内容を引き継がない説明を表示し、「編集を破棄して再昇格」で承認する。フォーカス制御・Escape・送信中キャンセル禁止あり |
 | `components/ProjectMemoryInstructionEditModal.tsx` | 「AIで編集」の指示入力→差分プレビュー→適用モーダル（z-index 1200/1201） |
 | `components/ProjectMemoryDiffView.tsx` | 差分表示。整理モーダルと編集モーダルで共用 |
 | `components/ProjectMemoryConsolidationModal.tsx` | Project全体整理案の選択・適用モーダル |
@@ -266,7 +267,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/map-rpc-error.ts` | RPCエラーメッセージ→HTTPステータスの対応表（`42501`は403、未知は500） |
 | `lib/project-memory/topic-file.ts` | DL/UL用Markdown入出力。先頭行ヘッダー`<!-- kabehub-topic:v1 {topic_id, topic_key, revision} -->`のencode/decode |
 | `lib/project-memory/download-topic-file.ts` | topicのMarkdownファイルダウンロード |
-| `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・アップロード・AI編集の状態を一括管理するhook |
+| `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・再昇格確認（`pendingConfirm`）・アップロード・AI編集の状態を一括管理するhook。確認409の対象IDを承認リクエストへ送信し、成功後は一覧を再取得する |
 | `lib/project-memory/instruction-edit.ts` | AI編集のLLM契約（strict JSON）・system prompt・サーバー側定数（`MAX_INSTRUCTION_EDIT_INPUT_CHARS`=20,000、`INSTRUCTION_EDIT_MAX_COMPLETION_TOKENS`=65,536） |
 | `lib/project-memory/instruction-edit-limits.ts` | `MAX_INSTRUCTION_CHARS`（2,000）の正本。**importゼロのclient-safeファイル** |
 | `lib/project-memory/instruction-edit-client.ts` | edit-previewのfetchとレスポンス検証（許可キー集合まで厳格）、適用（既存PATCH・`edit_kind:"full"`） |
@@ -292,7 +293,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト77本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 9本（`git ls-files 'scripts/*'`による更新時点の実測）。
+テスト80本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 9本（`git ls-files 'scripts/*.test.cjs'`・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -432,8 +433,11 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ### Supabase クライアントの使い分け
 
-- Route Handler 内では必ず `createRouteHandlerSupabaseClient` を使う（RLSが効く）
-- `waitUntil` フォールバック内では `SUPABASE_SERVICE_ROLE_KEY` で直接 REST API を叩く（レスポンス後にクライアントが失効するため）
+- Project系・Lore系・chat等の認証必須Routeは `requireRouteUser(req)`（`lib/supabase/route-auth.ts`）を使い、返された `user`・`supabase` と `finalizeJson` / `finalizeResponse` を利用する。未認証は401、JSON/応答finalizerは認証時のCookieを最終レスポンスへ転記する。
+- Cookie認証ではhelper内部が `createRouteHandlerSupabaseClient(req, authResponse)` を呼ぶ。許可されたAPIのBearer認証ではanon keyとAuthorizationヘッダーを設定した `createClient` を生成し、`auth.getUser(token)`で検証する。不正BearerをCookieへフォールバックしない。
+- 任意認証の `/api/explore`・`/api/reports` は `getOptionalRouteUser(req)` を使う。`/api/share/[token]` は `createRouteHandlerSupabaseClient` と `serviceRoleClient` を直接使うため、全Routeが同一のhelperを使うわけではない。
+- service roleの実例は、Cronの `createAdminSupabaseClient`、通報RPC用の `createServiceRoleSupabaseClient`、MCPの `authenticateMcpToken` / `serviceRoleClient`。MCPトークン認証はCookie/Supabaseセッション認証とは別経路。
+- chatの `waitUntil` は `dbSavePromise` でストリーム内保存の完了を待ち、保存失敗かつ非一時チャットの場合だけ `SUPABASE_SERVICE_ROLE_KEY` でREST APIへフォールバック保存する。
 
 ### なりきりモード
 
@@ -547,11 +551,15 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | AI編集のLLM契約 | `applicable:true`は`new_content_md`/`summary`のみ、`false`は`reason`のみ。未知キー・非空本文の空化・不正形式はすべて502。本文が同一なら`no_change` |
 | 409/404はterminal | AI編集の適用で409/404を受けたらpreviewは失効。古い`new_content_md`を再適用しない。通信・5xx失敗は同じpreview（同じ`expected_revision`）で再試行可（CASで二重適用されない） |
 | previewの存在期間 | hookの`instructionEdit.preview`が存在してよいのはphaseが`preview`/`applying`の間だけ。`backToInstructionInput`・キャンセルで必ず破棄する |
-| 操作の排他 | AI編集中は昇格・アップロードを禁止（`isActionLocked()`）。`selectUploadFile`は`await file.text()`後にも再確認する。DLはlockしない |
+| 操作の排他 | AI編集中・再昇格確認中（`pendingConfirm`）は別の昇格・アップロード・AI編集を禁止（hookのrefと`isActionLocked()`、一覧の`actionsLocked`）。確認中は親一覧の閉じる/Escape/背景クリック・Projectの折り畳みも禁止。確認モーダルのキャンセルは送信中禁止。`selectUploadFile`は`await file.text()`後にも再確認する。DLはlockしない |
 | 親モーダルのEscape | `ProjectMemoryListModal`はレンダー時stateと同期refの二重guardで、編集モーダル表示中の親Escapeを無効化している |
 | 生成キャンセル | client側fetchのabort＋UI反映停止のみ。`chatCompleteMini`は`signal`非対応のため、upstream OpenAI処理の停止は保証しない |
 | 昇格のstale | AI編集・UL等でtopicの`revision`が上がると、追加のDB処理なしで自動的に`stale`（「更新あり」）になる。新revisionへの再昇格は旧active Loreをarchived/supersededにする。v202では通常APIが`user_edited`の置き換え確認を要求し、承認後に置き換える。Project削除の4引数呼び出しは第5引数NULLで従来どおり確認を省略（v201/v202は無変更） |
-| 同revisionの再昇格 | 同一user+topic+revisionのLoreはarchived/supersededを含め最大1件（unique index）。v203適用後、通常APIはarchivedかつ`superseded_by=null`の同revision行を専用RPCで復元し、`is_archived=false`のみ更新（編集本文・embedding・`user_edited`等は保持、Embedding再生成・APIキー不要）。他active行があれば409で拒否し、RPC内で既にactiveなら`restored:false`の200。既存の昇格RPC・Project削除は無変更。superseded同revisionは今回の対象外で、通常は発生しない異常系として従来のEmbedding→昇格RPC→`created:false`を維持し、Embedding前の409 short-circuitは別チケットで検討する。UIはOpenAIキー未設定でボタンを無効化し操作を開始できない制約を維持（GETがarchivedを見ず新規/復元を判別できず、変更にはGET・API・UIまで範囲が広がるため）。v203はDB→アプリの順で適用 |
+| 再昇格確認の正本 | UIの`stale`表示だけを条件にしない。GETがactive複数件を`not_promoted`へ倒すため、「未昇格」からでも同revision行がなければ旧active Loreを置き換える経路がある。v202以前の昇格RPCは`user_edited`も確認なしにsupersedeしていた。現行はサーバーの409主導で、routeのpreflightに加えRPCが置き換え対象をUUID順に`FOR UPDATE`して編集状態・承認IDを再検証する |
+| 昇格RPCの第5引数 | `p_acknowledged_edited_lore_ids uuid[] default null`。通常APIは未承認時も`[]`を渡してガードを有効にし、確認後は409の対象IDを渡す。NULLはガードなしの互換動作で、v201のProject削除は4引数の位置指定呼び出しを維持。同revisionの既存ID返却は確認ガードより前に終了する |
+| 昇格409とhook | `edited_lore_needs_confirmation`＋`edited_lores`の409だけが確認モーダル用の特別扱い。その他の409（`promotion_restore_unavailable`等）は確認を解除し、一覧再取得後にエラー表示。成功は`created`/`restored`を厳格検証せず確認を解除して再取得するため、`restored:false`も成功として扱う |
+| 同revisionの再昇格 | 同一user+topic+revisionのLoreはarchived/supersededを含め最大1件（unique index）。通常APIはarchivedかつ`superseded_by=null`の同revision行を専用RPC `restore_archived_project_memory_promotion`（v203）で復元し、`is_archived=false`のみ更新（編集本文・embedding・`user_edited`等は保持、Embedding再生成なし）。他active行があれば409で拒否し、RPC内で既にactiveなら`restored:false`の200。superseded同revisionは対象外で従来のEmbedding→昇格RPC→`created:false`を維持し、Embedding前の409 short-circuitは別チケット。既存昇格RPC・Project削除の経路は従来どおり |
+| 復元とOpenAIキー | v203の復元ブランチはroute単体ではOpenAIキー不要。ただし現行hookは`canPromote`が偽だと操作を開始せず、一覧もボタンを無効化する。GETはarchivedを見ず新規/復元を判別できないため、UIからキー無しで復元できる仕様にはなっていない |
 | `git add`のパス | `[projectId]`・`[topicId]`を含むパスは引用符で囲む。`git add`を飛ばして`git commit`すると何もコミットされない |
 
 ### チャット・UI関連
@@ -653,6 +661,11 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v172 | PC版モデル選択をドロップダウン方式に変更 |
 | v173 | 編集・上書き再生成モーダルの送信先をドロップダウン方式に変更 |
 | v174 | Claude Sonnet 5対応（料金自動切替・Extended Thinking非対応ガード） |
+| v196 | project_settingsのproject_id契約（folder_nameのNOT NULL解除・UNIQUE (user_id, project_id)追加。コミットe935a64とmigration/schemaで確認） |
+| v202 | Project Memoryの手動編集済みLore再昇格確認（専用409・共通確認モーダル・RPCの承認ID再検証。コミットa0e73fb） |
+| v203 | Project Memory同revisionのarchived昇格Lore復元（専用RPC・本文/embedding保持。コミット4526438） |
+
+> v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。
 
 > v133〜v159の詳細変更履歴（RPC定義・設計判断メモ含む）は `KabeHub_引き継ぎ資料_20260615_v159.md`、v160〜v172の詳細は `KabeHub_変更履歴アーカイブ_v160-v172.md` を参照。
 

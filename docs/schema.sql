@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/10/01（v201/v202反映済み。v203復元RPCを統合、本番未適用）
+-- 最終更新: 2026/10/01（v203反映済み。v196・v202・v203は本番適用済み、docs/applied/へ移動済み）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -55,13 +55,14 @@
 -- 2026/09/08、migration_v182_project_memory_phase_a.sqlをスキーマ正本へ反映（テスト環境/本番DB適用済み、Project Memory Manager Phase A対応）。
 -- 2026/09/13、migration_v194_delete_project_preserving_contents.sqlをスキーマ正本へ反映（Project物理削除・関連コンテンツ保持・Project Memory任意Lore昇格。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
 -- 2026/09/14、migration_v195_rename_project.sqlをスキーマ正本へ反映（Project名変更と関連テーブルのfolder_name同期。DB適用済み（test/production・2026-09-14 to_regprocedure確認））。
--- 2026/09/15、migration_v196_project_settings_project_id_contract.sqlをスキーマ正本へ反映（DB未適用。project_settings.folder_nameをnullable化し、(user_id, project_id) UNIQUE制約を追加）。
+-- docs/applied/migration_v196_project_settings_project_id_contract.sqlをスキーマ正本へ反映・本番適用済み（2026-10-01に本番確認、適用日不明。project_settings.folder_nameはnullable、UNIQUE (user_id, project_id)あり）。
 -- 2026/09/16、migration_v197_project_memory_dreaming_by_project.sqlをスキーマ正本へ反映（test/production適用済み、Project Memory Manager Phase 5A対応：Dreaming/Merge RPCのproject_id専用版3本を追加）。
 -- 2026/09/16、migration_v198_project_memory_dreaming_final.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。現役Dreaming/Merge・Project rename/delete RPCからlore_embeddings.folder_name依存を除去）。
 -- 2026/09/16、migration_v199_lore_embeddings_folder_name_drop.sqlをdocs/applied/へ移動・スキーマ正本へ統合済み（test/production適用済み。旧Dreaming/Merge RPC 3本・旧index・lore_embeddings.folder_name列を削除）。
 -- 2026/09/17、migration_v200_project_memory_topic_promotion.sqlをスキーマ正本へ反映（Project Memory topicの通常時Lore昇格、revision単位の冪等性・supersede、Lore Book検索のarchive/supersede除外）。
--- 2026/10/01、v201のProject削除委譲とv202の編集済みLore再昇格確認は本文へ反映済み（本番適用済みとの引き継ぎ前提）。
--- 2026/10/01、migration_v203_project_memory_promotion_restore.sqlをスキーマ正本へ統合（同revisionの手動archived昇格Lore復元。DB未適用、適用順序はDB→アプリ）。
+-- migration_v201_delete_project_promotion_delegation.sqlのProject削除委譲は本文へ反映・本番適用済み。
+-- docs/applied/migration_v202_project_memory_promotion_confirmation.sqlの編集済みLore再昇格確認は本文へ反映・本番適用済み（適用日不明）。
+-- 2026/10/01、docs/applied/migration_v203_project_memory_promotion_restore.sqlを本番適用・実機検証済み、スキーマ正本へ統合（同revisionの手動archived昇格Lore復元。コミット4526438）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
