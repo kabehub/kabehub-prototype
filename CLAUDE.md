@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/08/09（MH-1完了。ME-5・MB-c/e・H-21節・MG系・MH-3〜MH-6反映後の最終HEAD基準）
+最終更新: 2026/10/01（Project Memory Phase 4A/4B反映。Project Memory API・components・lib・地雷節を追加）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -120,6 +120,20 @@ git pull origin main
 | `app/api/lore/dreaming-batch/history/route.ts` | GET・Dreaming統合履歴取得 |
 | `app/api/lore/dreaming-batch/rollback/route.ts` | POST・Dreaming統合のロールバック |
 
+### API Routes（Project Memory）
+
+Project（旧フォルダ）単位のtopic型メモリ。`project_memory_topics`（現行本文・`revision`）と`project_memory_revisions`（履歴）を、RPC（SECURITY DEFINER）経由で更新する。認証は全routeで`requireRouteUser`。所有確認はMemory routeで`getOwnedProject`、Project一覧は`user_id`で絞り込み、Project作成・名前変更・削除はRPC内で行う。`proxy-paths.ts`には全routeが`bearer`で登録済み。
+
+| ファイル | 役割 |
+|-|-|
+| `app/api/projects/route.ts` | GET：所有Projectの`id, name`一覧（`/library`が使用）／POST：`get_or_create_project` RPCで名前からProjectを取得または作成（name trim後空は400） |
+| `app/api/projects/[projectId]/route.ts` | PATCH：`rename_project` RPC（重複は409。関連4テーブルの`folder_name`を同期）／DELETE：`delete_project_preserving_contents` RPC。bodyに`promoteToLore`(boolean)必須。trueのときは`x-openai-api-key`必須で、非空topicを直列にEmbedding化してRPCへ渡す |
+| `app/api/projects/[projectId]/memory/topics/route.ts` | GET：topic一覧＋`promotion`（`status`: `not_promoted`/`current`/`stale`、`source_revision`、`lore_id`）。`lore_embeddings`の`source_type='project_memory_promotion'`かつ未archive・未supersededを参照し、`source_revision === topic.revision`なら`current`、違えば`stale`。active複数件・未来revisionは`not_promoted`に倒す／POST：`create_project_memory_topic` RPC（201） |
+| `app/api/projects/[projectId]/memory/topics/[topicId]/route.ts` | GET：topic単体／PATCH：`update_project_memory_topic` RPC。`expected_revision`（正整数）必須、`edit_kind`は`full`（`new_content_md`）または`partial`（`old_text`/`new_text`）、`source_refs`はjsonb配列。revision不一致は409（楽観的排他） |
+| `app/api/projects/[projectId]/memory/topics/[topicId]/promote/route.ts` | POST：topicを通常時にLoreへ昇格。`expected_revision`必須→topic取得→revision不一致409→空topic400→`x-openai-api-key`確認→Embedding→`promote_project_memory_topic_to_lore` RPC。返り値`{lore_id, created}` |
+| `app/api/projects/[projectId]/memory/topics/[topicId]/edit-preview/route.ts` | POST：「AIで編集」のプレビュー。**DB書き込みなし**。`x-openai-api-key`を認証より前に確認。body`{instruction}`（trim後非空・2,000文字以下）。結果は`proposal`/`no_change`/`not_applicable`の3種（共通envelope付き）。入力上限超過413、LLM失敗・不正応答は502 |
+| `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` | POST：Project全体の整理案プレビュー（DB書き込みなし）。`current_state` topicは対象外。入力上限超過413、失敗502。適用は専用routeではなく、クライアントがtopicごとに既存PATCHを呼ぶ（`source_refs`に`consolidation_run`） |
+
 ### API Routes（GitHub連携）
 
 | ファイル | 役割 |
@@ -185,7 +199,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ChatPanel.tsx` | チャット画面のメインコンポーネント。状態管理の大半がここにある |
 | `components/ChatInput.tsx` | 下部固定入力欄。ファイル添付・画像添付・Ctrl+Vスクショ貼り付け・モデルドロップダウン・送信キー設定対応 |
 | `components/ChatInputCentered.tsx` | 新規会話スタート時の中央配置入力欄（v144〜）。`ChatInput.tsx`から型・ヘルパーをimportして共通利用 |
-| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・フォルダ設定モーダル・PC専用折り畳み機能（v168） |
+| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・フォルダ設定モーダル・PC専用折り畳み機能（v168）・Project Memory一覧・整理モーダルの起点 |
 | `components/MessageBubble.tsx` | 通常モードのメッセージ表示。「👍 記憶に追加」ボタン・編集/上書き再生成モーダル（ドロップダウン方式・v173） |
 | `components/RoleplayBubble.tsx` | なりきりモード用メッセージ表示（LINEライクUI） |
 | `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
@@ -197,6 +211,14 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/OutlinePane.tsx` | あらすじ・アウトラインの開閉ペイン |
 | `components/PublishConfirmModal.tsx` | 公開確認モーダル。なりきりモードのスレッドは公開不可のガードあり |
 | `components/Toast.tsx` | 成功・エラー通知を表示するToast Providerと`useToast` hook |
+| `components/ProjectMemorySection.tsx` | `/library`の各Project行。折り畳み＋展開時のみlazy load（`keepLoaded: true`） |
+| `components/ProjectMemoryListModal.tsx` | Sidebarから開くProject Memory一覧モーダル（`keepLoaded: false`）。Escape・背景クリック・「閉じる」は編集モーダル表示中/操作中は無効 |
+| `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る）。DLは`actionsLocked`の影響を受けない |
+| `components/ProjectMemoryInstructionEditModal.tsx` | 「AIで編集」の指示入力→差分プレビュー→適用モーダル（z-index 1200/1201） |
+| `components/ProjectMemoryDiffView.tsx` | 差分表示。整理モーダルと編集モーダルで共用 |
+| `components/ProjectMemoryConsolidationModal.tsx` | Project全体整理案の選択・適用モーダル |
+| `components/ProjectMemoryUploadConfirm.tsx` | topicファイルアップロード時の上書き／新規作成の確認ダイアログ |
+| `components/ProjectDeleteConfirmModal.tsx` | Project削除確認（Loreへ昇格するかの選択つき） |
 
 ### Lib
 
@@ -217,7 +239,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/inputUtils.ts` | 送信キー設定の読み込みとモバイルviewport判定の共通helper |
 | `lib/internalModels.ts` | LoreのEmbedding・抽出・統合で使う内部固定モデルID |
 | `lib/logger.ts` | DB・外部API・ベストエフォート・security guard向けの機微情報を許可リスト化した構造化logger |
-| `lib/lore/`（`batchTrain.ts` / `consolidation.ts` / `consolidationLlm.ts` / `dreaming.ts` / `index.ts` / `mappers.ts` / `openai.ts` / `search.ts` / `selects.ts` / `types.ts`） | 記憶抽出・検索・統合・Dreaming・OpenAI呼び出し・型/mapper/select定義一式 |
+| `lib/lore/`（`batchTrain.ts` / `consolidation.ts` / `consolidationLlm.ts` / `dreaming.ts` / `index.ts` / `mappers.ts` / `openai.ts` / `promotion-provenance.ts` / `search.ts` / `selects.ts` / `types.ts` / `use-lore-hash-focus.ts`） | 記憶抽出・検索・統合・Dreaming・OpenAI呼び出し・型/mapper/select定義一式・Project Memory昇格Loreの来歴解析・`#lore-{id}`ディープリンク |
 | `lib/loreMemorySelect.ts` | `LORE_MEMORY_SELECT` 定数を共通化 |
 | `lib/mcp-auth.ts` | Bearer tokenのhash化・`mcp_tokens`照合・`last_used_at`のベストエフォート更新 |
 | `lib/mcp-token-hash.ts` | MCPトークンをSHA-256でhash化 |
@@ -239,6 +261,19 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/supabase/storage-cleanup.ts` | 所有Storageパス収集・階層一覧取得・batch削除 |
 | `lib/threadResourceCrud.ts` | スレッド配下リソースの認証付きGET・POST・DELETE handler factory |
 | `lib/validationLimits.ts` | handle・tag・Pinned GitHub Files・一括archiveの入力制限と正規化 |
+| `lib/project-memory/get-owned-project.ts` | 所有Project確認（なし404・DBエラー500） |
+| `lib/project-memory/resolve-owned-project-id.ts` | Project名から所有`project_id`を解決 |
+| `lib/project-memory/map-rpc-error.ts` | RPCエラーメッセージ→HTTPステータスの対応表（`42501`は403、未知は500） |
+| `lib/project-memory/topic-file.ts` | DL/UL用Markdown入出力。先頭行ヘッダー`<!-- kabehub-topic:v1 {topic_id, topic_key, revision} -->`のencode/decode |
+| `lib/project-memory/download-topic-file.ts` | topicのMarkdownファイルダウンロード |
+| `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・アップロード・AI編集の状態を一括管理するhook |
+| `lib/project-memory/instruction-edit.ts` | AI編集のLLM契約（strict JSON）・system prompt・サーバー側定数（`MAX_INSTRUCTION_EDIT_INPUT_CHARS`=20,000、`INSTRUCTION_EDIT_MAX_COMPLETION_TOKENS`=65,536） |
+| `lib/project-memory/instruction-edit-limits.ts` | `MAX_INSTRUCTION_CHARS`（2,000）の正本。**importゼロのclient-safeファイル** |
+| `lib/project-memory/instruction-edit-client.ts` | edit-previewのfetchとレスポンス検証（許可キー集合まで厳格）、適用（既存PATCH・`edit_kind:"full"`） |
+| `lib/project-memory/consolidation.ts` | 整理案のLLM契約・入力構築・応答parse（入力上限20,000文字・出力8,192トークン） |
+| `lib/project-memory/consolidation-client.ts` | 整理案の適用（topicごとに既存PATCH） |
+
+LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を使用。
 
 ### Docs
 
@@ -257,7 +292,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 
 ### Scripts
 
-監査時7本 → 現在31本（`git ls-files 'scripts/*'`による生成時点の実測）。
+テスト77本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 9本（`git ls-files 'scripts/*'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -282,6 +317,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `scripts/novel-check-route.test.cjs` | novel-check Routeの認証・入力検証・外部API呼び出しを検証 |
 | `scripts/optional-route-auth.test.cjs` | 任意認証Routeの匿名/認証済みCookie・DB/RPC契約を検証 |
 | `scripts/pricing.test.cjs` | registry由来料金・費用計算・表示formatを検証 |
+| `scripts/project-memory-*.test.cjs` / `scripts/projects-*-route.test.cjs` / `scripts/instruction-edit-client.test.cjs` / `scripts/use-project-memory-topics.test.cjs` | Project Memory API・hook・UI・migration契約の回帰テスト |
+| `scripts/verify-project-memory-*.mjs` | 実DB（test環境）向けの手動検証スクリプト。通常のテスト実行には含めない |
 | `scripts/proxy.test.cjs` | `proxy.ts`のmatcher・認証境界・redirect・CSP付与をマトリクス検証 |
 | `scripts/rate-limit.test.cjs` | rate limiter生成・制限判定・fallbackを検証 |
 | `scripts/restore-branch-route.test.cjs` | 分岐復元RouteのRPC呼び出しとエラー契約を検証 |
@@ -500,6 +537,23 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - **H-21C（未着手・将来検討）**: BYOK資格情報の任意暗号化同期・複数端末対応。ローカル保存は廃止せずオプトイン同期とし、既存LocalStorageキーは明示操作でのみ移行する。生キーをブラウザへ返すAPIは作らず、登録・置換・削除だけを提供する
 - **H-21C暗号化候補**: ①AWS/GCP KMS＋Vercel OIDC Federation、②AES-256-GCM＋Vercel Sensitive Environment Variable、③Supabase Vaultの順で検討する。生キー窃取とKabeHub経由の不正利用を分けて脅威モデル化し、規約改訂・明示同意を必須とする。Capacitorモバイル化前に再評価する
 
+### Project Memory関連
+
+| 地雷 | 説明 |
+|-|-|
+| 新Route追加時の登録 | `app/api`配下にRouteを追加したら`lib/proxy-paths.ts`の`API_AUTH_CLASSIFICATIONS`へ登録が必須。`scripts/proxy-paths.test.cjs`が全route×methodに分類がちょうど1件あることを検証するため、未登録だと確実に失敗する |
+| `MAX_INSTRUCTION_CHARS`の置き場 | `instruction-edit-limits.ts`が正本。`instruction-edit.ts`は`@/lib/lore/openai`（→logger）をimportするため、clientから直接importするとサーバー側コードがbundleに入る |
+| `parsePreview`との同期 | edit-previewのレスポンスに項目を足す場合は`instruction-edit-client.ts`の`parsePreview`（許可キー集合）も同時に更新する。さもないとfail closedで編集不能になる |
+| AI編集のLLM契約 | `applicable:true`は`new_content_md`/`summary`のみ、`false`は`reason`のみ。未知キー・非空本文の空化・不正形式はすべて502。本文が同一なら`no_change` |
+| 409/404はterminal | AI編集の適用で409/404を受けたらpreviewは失効。古い`new_content_md`を再適用しない。通信・5xx失敗は同じpreview（同じ`expected_revision`）で再試行可（CASで二重適用されない） |
+| previewの存在期間 | hookの`instructionEdit.preview`が存在してよいのはphaseが`preview`/`applying`の間だけ。`backToInstructionInput`・キャンセルで必ず破棄する |
+| 操作の排他 | AI編集中は昇格・アップロードを禁止（`isActionLocked()`）。`selectUploadFile`は`await file.text()`後にも再確認する。DLはlockしない |
+| 親モーダルのEscape | `ProjectMemoryListModal`はレンダー時stateと同期refの二重guardで、編集モーダル表示中の親Escapeを無効化している |
+| 生成キャンセル | client側fetchのabort＋UI反映停止のみ。`chatCompleteMini`は`signal`非対応のため、upstream OpenAI処理の停止は保証しない |
+| 昇格のstale | AI編集・UL等でtopicの`revision`が上がると、追加のDB処理なしで自動的に`stale`（「更新あり」）になる。再昇格すると旧Loreはarchived/supersededされる（旧Loreが`user_edited`でも） |
+| 同revisionの再昇格 | 同一user+topic+revisionのLoreは最大1件（unique index）。archived済みの同revisionを再昇格しても既存行が返るだけで復活しない（未解決の設計課題） |
+| `git add`のパス | `[projectId]`・`[topicId]`を含むパスは引用符で囲む。`git add`を飛ばして`git commit`すると何もコミットされない |
+
 ### チャット・UI関連
 
 | 地雷 | 説明 |
@@ -508,7 +562,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | shared_at 後方互換 | 既存の公開スレッドは `shared_at = null`。フィルターを無条件に適用すると既存スレッドが全件消える |
 | upsertのtitle必須 | `threads/[id]/route.ts` のupsertがINSERTに回った場合、titleが必要。`title: thread.title \|\| "無題"` を必ず含める |
 | remark-gfm の [[text]] 誤認識 | shareページのYOUメッセージはMarkdownRendererを経由せずプレーンテキストで `.replace(/\[\[(.+?)\]\]/g, "████")` する |
-| フォルダ名変更の整合性 | `threads` と `project_settings` 両テーブルを同時にUPDATEする。片方だけ変えると孤立する |
+| フォルダ（Project）名変更の整合性 | 名前変更は`PATCH /api/projects/[projectId]`（`rename_project` RPC）に一本化されている。関連4テーブルの`folder_name`はRPCが同期するため、個別にUPDATEしない |
 | Prompt Caching ヘッダー | `anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache_controlが無視される |
 | [[text]] マスク記法 | `MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする |
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |
