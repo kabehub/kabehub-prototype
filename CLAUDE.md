@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/02（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新）
+最終更新: 2026/10/02（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新・Project Memory topicのチャット注入（`include_in_chat`）を追加）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -128,8 +128,9 @@ Project（旧フォルダ）単位のtopic型メモリ。`project_memory_topics`
 |-|-|
 | `app/api/projects/route.ts` | GET：所有Projectの`id, name`一覧（`/library`が使用）／POST：`get_or_create_project` RPCで名前からProjectを取得または作成（name trim後空は400） |
 | `app/api/projects/[projectId]/route.ts` | PATCH：`rename_project` RPC（重複は409。関連4テーブルの`folder_name`を同期）／DELETE：`delete_project_preserving_contents` RPC。bodyに`promoteToLore`(boolean)必須。trueのときは`x-openai-api-key`必須で、非空topicを直列にEmbedding化してRPCへ渡す |
-| `app/api/projects/[projectId]/memory/topics/route.ts` | GET：topic一覧＋`promotion`（`status`: `not_promoted`/`current`/`stale`、`source_revision`、`lore_id`）。`lore_embeddings`の`source_type='project_memory_promotion'`かつ`is_archived=false`・`superseded_by=null`だけを参照し、同revisionなら`current`、古いrevisionなら`stale`。archived/superseded行は参照せず、active候補がなければ`not_promoted`。active複数件・不正/未来revisionも`not_promoted`に倒す／POST：`create_project_memory_topic` RPC（201） |
-| `app/api/projects/[projectId]/memory/topics/[topicId]/route.ts` | GET：topic単体／PATCH：`update_project_memory_topic` RPC。`expected_revision`（正整数）必須、`edit_kind`は`full`（`new_content_md`）または`partial`（`old_text`/`new_text`）、`source_refs`はjsonb配列。revision不一致は409（楽観的排他） |
+| `app/api/projects/[projectId]/memory/topics/route.ts` | GET：topic一覧＋`promotion`（`status`: `not_promoted`/`current`/`stale`、`source_revision`、`lore_id`）。`lore_embeddings`の`source_type='project_memory_promotion'`かつ`is_archived=false`・`superseded_by=null`だけを参照し、同revisionなら`current`、古いrevisionなら`stale`。archived/superseded行は参照せず、active候補がなければ`not_promoted`。active複数件・不正/未来revisionも`not_promoted`に倒す／POST：`create_project_memory_topic` RPC（201）。GET の select に `include_in_chat` を含む |
+| `app/api/projects/[projectId]/memory/topics/[topicId]/route.ts` | GET：topic単体／PATCH：`update_project_memory_topic` RPC。`expected_revision`（正整数）必須、`edit_kind`は`full`（`new_content_md`）または`partial`（`old_text`/`new_text`）、`source_refs`はjsonb配列。revision不一致は409（楽観的排他）。GET の select に `include_in_chat` を含む |
+| `app/api/projects/[projectId]/memory/topics/[topicId]/chat-inclusion/route.ts` | PATCH：bodyは`{include: boolean}`必須（不正は400）。`set_project_memory_topic_chat_inclusion` RPC（v204）でチャット注入のON/OFFのみ更新する（本文・`revision`・履歴は変えない）。成功は`{topic:{id, include_in_chat}, included_chars}`。エラーは404 topicなし・400 空topic・409 上限超過（`code:"chat_inclusion_limit_exceeded"`と`max_chars`）・403 権限なし。事前のtopic SELECTはせず、権限・存在確認はRPCに任せる |
 | `app/api/projects/[projectId]/memory/topics/[topicId]/promote/route.ts` | POST：bodyは`expected_revision`必須・`acknowledged_edited_lore_ids`任意（省略時`[]`、最大100 UUID、null不可）。topic取得→revision不一致409→空topic400→同revision行確認。archivedかつ`superseded_by=null`なら`restore_archived_project_memory_promotion`（v203）をAPIキー確認・Embedding生成より前に呼ぶ。新規は編集済みLore確認→APIキー確認→Embedding→v202昇格RPC。未承認の置き換えは409 `edited_lore_needs_confirmation`＋`edited_lores:[{id,title}]`、RPC検出時も一覧を再取得して同じ409を返す。復元不可は409 `promotion_restore_unavailable`、revision conflict等は共通マッパー。成功契約は`{lore_id, created, restored?}`（復元時は`created:false`・RPCの`restored`をそのまま返す）。active/supersededの同revision行は従来経路を維持 |
 | `app/api/projects/[projectId]/memory/topics/[topicId]/edit-preview/route.ts` | POST：「AIで編集」のプレビュー。**DB書き込みなし**。`x-openai-api-key`を認証より前に確認。body`{instruction}`（trim後非空・2,000文字以下）。結果は`proposal`/`no_change`/`not_applicable`の3種（共通envelope付き）。入力上限超過413、LLM失敗・不正応答は502 |
 | `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` | POST：Project全体の整理案プレビュー（DB書き込みなし）。`current_state` topicは対象外。入力上限超過413、失敗502。適用は専用routeではなく、クライアントがtopicごとに既存PATCHを呼ぶ（`source_refs`に`consolidation_run`） |
@@ -214,7 +215,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/Toast.tsx` | 成功・エラー通知を表示するToast Providerと`useToast` hook |
 | `components/ProjectMemorySection.tsx` | `/library`の各Project行。折り畳み＋展開時のみlazy load（`keepLoaded: true`） |
 | `components/ProjectMemoryListModal.tsx` | Sidebarから開くProject Memory一覧モーダル（`keepLoaded: false`）。Escape・背景クリック・「閉じる」は編集モーダル表示中/操作中は無効 |
-| `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る）。DLは`actionsLocked`の影響を受けない |
+| `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る／**チャットに含める**トグル・「チャット注入中」バッジ）。一覧上部に「Memory注入: X / 8,000字」の使用量・注入されないtopicの警告・注意書きを表示する。DLは`actionsLocked`の影響を受けない |
 | `components/ProjectMemoryPromotionConfirmModal.tsx` | `/library`・Sidebar一覧で共用する編集済みLore再昇格の確認モーダル（TopicList経由）。対象Loreのタイトルと編集内容を引き継がない説明を表示し、「編集を破棄して再昇格」で承認する。フォーカス制御・Escape・送信中キャンセル禁止あり |
 | `components/ProjectMemoryInstructionEditModal.tsx` | 「AIで編集」の指示入力→差分プレビュー→適用モーダル（z-index 1200/1201） |
 | `components/ProjectMemoryDiffView.tsx` | 差分表示。整理・編集・初回生成モーダルで共用（初回生成の旧本文は空文字） |
@@ -228,7 +229,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | ファイル | 役割 |
 |-|-|
 | `lib/chat-system-blocks.ts` | Claude systemブロックの順序・キャッシュmarker選択と、非Claude向けの旧system文字列復元（importゼロの純関数） |
-| `lib/ai-context-blocks.ts` | AI参照データの本文・属性値を無害化し、共通の参照ブロックを生成 |
+| `lib/ai-context-blocks.ts` | AI参照データの本文・属性値を無害化し、共通の参照ブロックを生成。参照元に`project_memory_topic`を含む |
 | `lib/branching.ts` | 表示順・anchor・chain block・現在laneの構築ロジック |
 | `lib/branchTree.ts` | 分岐ツリー構築ロジック（`scripts/branchTree.test.cjs`でテストあり） |
 | `lib/context-window.ts` | `trimContextToWindow`。コンテキストウィンドウのトリミング・キャッシュアンカー算出 |
@@ -267,10 +268,12 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/validationLimits.ts` | handle・tag・Pinned GitHub Files・一括archiveの入力制限と正規化 |
 | `lib/project-memory/get-owned-project.ts` | 所有Project確認（なし404・DBエラー500） |
 | `lib/project-memory/resolve-owned-project-id.ts` | Project名から所有`project_id`を解決 |
-| `lib/project-memory/map-rpc-error.ts` | RPCエラーメッセージ→HTTPステータスの対応表（`42501`は403、未知は500） |
+| `lib/project-memory/map-rpc-error.ts` | RPCエラーメッセージ→HTTPステータスの対応表（`42501`は403、未知は500）。チャット注入の400/409を含む |
 | `lib/project-memory/topic-file.ts` | DL/UL用Markdown入出力。先頭行ヘッダー`<!-- kabehub-topic:v1 {topic_id, topic_key, revision} -->`のencode/decode |
 | `lib/project-memory/download-topic-file.ts` | topicのMarkdownファイルダウンロード |
-| `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・再昇格確認（`pendingConfirm`）・アップロード・AI編集の状態を一括管理するhook。確認409の対象IDを承認リクエストへ送信し、成功後は一覧を再取得する |
+| `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・再昇格確認（`pendingConfirm`）・アップロード・AI編集の状態を一括管理するhook。確認409の対象IDを承認リクエストへ送信し、成功後は一覧を再取得する。チャット注入のON/OFF（`setChatInclusion`・`chatInclusionTopicId`）も管理し、他の操作と相互排他 |
+| `lib/project-memory/chat-inclusion-limits.ts` | チャット注入の正本。`PROJECT_MEMORY_CHAT_MAX_CHARS`（8,000）・コードポイント数の`countProjectMemoryChatChars`・topic_key→idのlocale非依存比較による`selectChatIncludedTopics`・UI用の`summarizeChatInclusion`。**importゼロのclient-safeファイル**。8,000は本文(`content_md`)の合計上限で、preamble・タグ・meta行は含まない |
+| `lib/project-memory/chat-injection.ts` | `buildProjectMemoryChatBlock`。注入対象topicを`buildReferencePreamble()`＋topicごとの参照ブロック（`source="project_memory_topic"`、metaは`topic_key`と`revision`）として1つの文字列にまとめる。対象がなければ`null` |
 | `lib/project-memory/instruction-edit.ts` | AI編集のLLM契約（strict JSON）・system prompt・サーバー側定数（`MAX_INSTRUCTION_EDIT_INPUT_CHARS`=20,000、`INSTRUCTION_EDIT_MAX_COMPLETION_TOKENS`=65,536） |
 | `lib/project-memory/instruction-edit-limits.ts` | `MAX_INSTRUCTION_CHARS`（2,000）の正本。**importゼロのclient-safeファイル** |
 | `lib/project-memory/instruction-edit-client.ts` | edit-previewのfetchとレスポンス検証（許可キー集合まで厳格）、適用（既存PATCH・`edit_kind:"full"`） |
@@ -300,7 +303,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト87本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 9本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト91本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -311,7 +314,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/branchTree.test.cjs` | 分岐laneとツリーレイアウト構築を検証 |
 | `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
-| `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・preamble単一を検証 |
+| `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・memory未使用時のpreamble単一を検証。Project Memory topic注入ブロック（memory＋Pinned＋参照の併存・取得失敗・超過topic除外・memory未使用時の旧文字列一致）も検証 |
 | `scripts/csp.test.cjs` | CSPヘッダー・report解析・URL無害化を検証 |
 | `scripts/fetch-github-route.test.cjs` | GitHubファイル取得Routeの認証・取得・失敗契約を検証 |
 | `scripts/formatters.test.cjs` | 相対時刻・日時フォーマットを固定時刻で検証 |
@@ -568,7 +571,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | AI編集のLLM契約 | `applicable:true`は`new_content_md`/`summary`のみ、`false`は`reason`のみ。未知キー・非空本文の空化・不正形式はすべて502。本文が同一なら`no_change` |
 | 409/404はterminal | AI編集の適用で409/404を受けたらpreviewは失効。古い`new_content_md`を再適用しない。通信・5xx失敗は同じpreview（同じ`expected_revision`）で再試行可（CASで二重適用されない） |
 | previewの存在期間 | hookの`instructionEdit.preview`が存在してよいのはphaseが`preview`/`applying`の間だけ。`backToInstructionInput`・キャンセルで必ず破棄する |
-| 操作の排他 | AI編集中・再昇格確認中（`pendingConfirm`）は別の昇格・アップロード・AI編集を禁止（hookのrefと`isActionLocked()`、一覧の`actionsLocked`）。確認中は親一覧の閉じる/Escape/背景クリック・Projectの折り畳みも禁止。確認モーダルのキャンセルは送信中禁止。`selectUploadFile`は`await file.text()`後にも再確認する。DLはlockしない |
+| 操作の排他 | AI編集中・再昇格確認中（`pendingConfirm`）は別の昇格・アップロード・AI編集を禁止（hookのrefと`isActionLocked()`、一覧の`actionsLocked`）。確認中は親一覧の閉じる/Escape/背景クリック・Projectの折り畳みも禁止。確認モーダルのキャンセルは送信中禁止。`selectUploadFile`は`await file.text()`後にも再確認する。DLはlockしない。チャット注入のON/OFF中も同様にlockする |
 | 親モーダルのEscape | `ProjectMemoryListModal`はレンダー時stateと同期refの二重guardで、編集モーダル表示中の親Escapeを無効化している |
 | 生成キャンセル | client側fetchのabort＋UI反映停止のみ。`chatCompleteMini`は`signal`非対応のため、upstream OpenAI処理の停止は保証しない |
 | 昇格のstale | AI編集・UL等でtopicの`revision`が上がると、追加のDB処理なしで自動的に`stale`（「更新あり」）になる。新revisionへの再昇格は旧active Loreをarchived/supersededにする。v202では通常APIが`user_edited`の置き換え確認を要求し、承認後に置き換える。Project削除の4引数呼び出しは第5引数NULLで従来どおり確認を省略（v201/v202は無変更） |
@@ -577,6 +580,13 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 昇格409とhook | `edited_lore_needs_confirmation`＋`edited_lores`の409だけが確認モーダル用の特別扱い。その他の409（`promotion_restore_unavailable`等）は確認を解除し、一覧再取得後にエラー表示。成功は`created`/`restored`を厳格検証せず確認を解除して再取得するため、`restored:false`も成功として扱う |
 | 同revisionの再昇格 | 同一user+topic+revisionのLoreはarchived/supersededを含め最大1件（unique index）。通常APIはarchivedかつ`superseded_by=null`の同revision行を専用RPC `restore_archived_project_memory_promotion`（v203）で復元し、`is_archived=false`のみ更新（編集本文・embedding・`user_edited`等は保持、Embedding再生成なし）。他active行があれば409で拒否し、RPC内で既にactiveなら`restored:false`の200。superseded同revisionは対象外で従来のEmbedding→昇格RPC→`created:false`を維持し、Embedding前の409 short-circuitは別チケット。既存昇格RPC・Project削除の経路は従来どおり |
 | 復元とOpenAIキー | v203の復元ブランチはroute単体ではOpenAIキー不要。ただし現行hookは`canPromote`が偽だと操作を開始せず、一覧もボタンを無効化する。GETはarchivedを見ず新規/復元を判別できないため、UIからキー無しで復元できる仕様にはなっていない |
+| チャット注入の方式 | `project_memory_topics.include_in_chat`（default false）で**topic単位のopt-in**。ONのtopicは、そのProjectの通常チャットのsystemに毎回入る（一時チャット・未分類チャットは対象外）。昇格Lore検索とは別経路で、**昇格済みかつONのtopicは検索経由でも同内容が参照される場合がある**（許容済みの重複） |
+| 8,000字の意味 | `PROJECT_MEMORY_CHAT_MAX_CHARS`は**topic本文(`content_md`)の合計**で、system全体の大きさではない。数え方はコードポイント（JSの`[...text].length`とPostgresの`char_length`が一致）。preamble・タグ・meta・区切りは含まない |
+| ON時の上限保証 | 上限チェックはRPC（v204）側でON時点のみ（上限値はSQLに直書き）。ON後にAI編集・ULで本文が増えるのは許容し、チャット側のselector（超過topicはskipして後続を続行）が最後の防衛線。OFFは常に許可。DBの空判定は`btrim`、JSは`trim`で、差はDB側が保守的 |
+| selectorのcapはDB取得量を制限しない | チャット側の8,000字上限は注入量の制御であり、取得するDB行数・サイズの上限ではない（ON後に肥大化したtopicも一旦取得してから選別する） |
+| ON/OFFとupdated_at | トグルはtrigger経由で`updated_at`を更新する（同値の再送はRPC内のearly returnで更新なし）。`revision`と履歴は変えない。`updated_at`は「行の更新時刻」であり本文の更新時刻ではない。整理(consolidate)のLLM入力にも`updated_at`が含まれる |
+| 参照ブロックの無害化 | `topic_key`は`sanitizeAttributeValue`を通す。本文は`sanitizeReferenceText`。preambleは動的な参照ブロックとmemoryブロックの両方に入るため、併存時は全プロバイダーで重複するが許容（memoryブロックのバイト決定性のため、自前でpreambleを持つ） |
+| チャット注入UIの排他 | トグル中は他の昇格・アップロード・AI編集を開始できず、逆に実行中はトグルも開始できない（hookのrefと`isActionLocked()`の双方向）。トグルは楽観更新せず、完了後に一覧を再取得する。失敗時は「reload→setError」の順（reloadがerrorをクリアするため） |
 | `git add`のパス | `[projectId]`・`[topicId]`を含むパスは引用符で囲む。`git add`を飛ばして`git commit`すると何もコミットされない |
 
 ### チャット・UI関連
@@ -588,7 +598,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | upsertのtitle必須 | `threads/[id]/route.ts` のupsertがINSERTに回った場合、titleが必要。`title: thread.title \|\| "無題"` を必ず含める |
 | remark-gfm の [[text]] 誤認識 | shareページのYOUメッセージはMarkdownRendererを経由せずプレーンテキストで `.replace(/\[\[(.+?)\]\]/g, "████")` する |
 | フォルダ（Project）名変更の整合性 | 名前変更は`PATCH /api/projects/[projectId]`（`rename_project` RPC）に一本化されている。関連4テーブルの`folder_name`はRPCが同期するため、個別にUPDATEしない |
-| Claude system block | Claude system block の順序は stable(cache) → pinned等のcached(存在時のみ) → dynamic(no cache)。空ブロックは作らない。cache_control は message anchor を含めリクエスト全体で最大4個（system側は常に最大3、1枠をmessage anchor用に予約）。非Claudeの system 文字列は順序を変えない。 |
+| Claude system block | Claude system block の順序は stable(cache) → memory(cache・存在時のみ。`project-memory-topics`) → pinned(cache・存在時のみ) → dynamic(no cache)。空ブロックは作らない。Project Memory topicは複数でも**1つのcachedブロック**にまとめる（marker増加を避ける）。cache_control は message anchor を含めリクエスト全体で最大4個（system側は常に最大3、1枠をmessage anchor用に予約）。非Claude・Tool Loop・トークン見積もりは `buildCombinedSystemPrompt` と `cachedInsertionIndex` で同じ順序の文字列を復元する。memory未使用時のsystem文字列は従来とバイト一致を維持する |
 | Prompt Caching ヘッダー | `anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache_controlが無視される |
 | [[text]] マスク記法 | `MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする |
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |
@@ -708,13 +718,14 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v201 | Lore昇格ルール Phase 3（`delete_project_preserving_contents`の昇格処理をv200のRPCへ委譲し、source_revision付きmetadata・冪等性・supersedeを削除経路へ統合。migration `migration_v201_delete_project_promotion_delegation.sql`。コミットe80c415） |
 | v202 | Project Memoryの手動編集済みLore再昇格確認（専用409・共通確認モーダル・RPCの承認ID再検証。コミットa0e73fb） |
 | v203 | Project Memory同revisionのarchived昇格Lore復元（専用RPC・本文/embedding保持。コミット4526438） |
+| v204 | Project Memory topicのチャット注入（`include_in_chat`列・`set_project_memory_topic_chat_inclusion` RPC・topic単位のopt-in。チャットへの注入・PATCH API・一覧のトグルと使用量表示。migration `migration_v204_project_memory_chat_inclusion.sql`。コミットc7e2eae／fac3277／72140ad） |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。
 > v175以降はmigration番号を基準とし、`docs/applied/README.md`の台帳と対応する。v174以前は機能の変更履歴番号であり、番号体系が異なる。
 > Arena利用量記録（コミット89d9363）は当時「v182」と呼ばれたが、migration v182（Project Memory Phase A）とは別物。
 > コミット日とDB適用日は一致しない。適用状況は`docs/applied/README.md`と`docs/schema.sql`冒頭を参照。
 > migration v182・v184の冒頭コメントに残る「未適用」の記述は古く、台帳とコミット記録では適用済み。
-> v175〜v203のmigrationは、`docs/applied/`と`docs/`直下に番号が存在するものをすべて表に記載（欠番を除く）。
+> v175〜v204のmigrationは、`docs/applied/`と`docs/`直下に番号が存在するものをすべて表に記載（欠番を除く）。
 
 > v133〜v159の詳細変更履歴（RPC定義・設計判断メモ含む）は `KabeHub_引き継ぎ資料_20260615_v159.md`、v160〜v172の詳細は `KabeHub_変更履歴アーカイブ_v160-v172.md` を参照。
 
