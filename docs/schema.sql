@@ -63,6 +63,7 @@
 -- migration_v201_delete_project_promotion_delegation.sqlのProject削除委譲は本文へ反映・本番適用済み。
 -- docs/applied/migration_v202_project_memory_promotion_confirmation.sqlの編集済みLore再昇格確認は本文へ反映・本番適用済み（適用日不明）。
 -- 2026/10/01、docs/applied/migration_v203_project_memory_promotion_restore.sqlを本番適用・実機検証済み、スキーマ正本へ統合（同revisionの手動archived昇格Lore復元。コミット4526438）。
+-- 2026/10/02、docs/applied/migration_v204_project_memory_chat_inclusion.sqlを本番適用・実機検証済み、スキーマ正本へ統合（Project Memory topicのチャット包含opt-in include_in_chatと、ON時点で合計8,000字以内を保証する専用RPC）。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -224,6 +225,7 @@ create table if not exists project_memory_topics (
   topic_key  text not null,
   content_md text not null default '',
   revision   integer not null default 1,
+  include_in_chat boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint project_memory_topics_revision_positive check (revision >= 1),
@@ -449,6 +451,91 @@ $$;
 revoke execute on function public.update_project_memory_topic(uuid, uuid, int, text, text, text, text, jsonb)
   from public, anon, authenticated;
 grant execute on function public.update_project_memory_topic(uuid, uuid, int, text, text, text, text, jsonb)
+  to authenticated;
+
+create or replace function public.set_project_memory_topic_chat_inclusion(
+  p_user_id uuid,
+  p_project_id uuid,
+  p_topic_id uuid,
+  p_include boolean
+)
+returns table(is_included boolean, included_chars integer)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  c_max constant integer := 8000;
+  v_project_id uuid;
+  v_topic record;
+  v_others integer;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  if p_include is null then
+    raise exception 'include_in_chat is required' using errcode = 'P0001';
+  end if;
+
+  select t.project_id into v_project_id
+  from public.project_memory_topics t
+  where t.id = p_topic_id and t.user_id = p_user_id;
+
+  if not found or v_project_id is distinct from p_project_id then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  perform 1
+  from public.projects p
+  where p.id = v_project_id and p.user_id = p_user_id
+  for update;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  select t.include_in_chat, t.content_md into v_topic
+  from public.project_memory_topics t
+  where t.id = p_topic_id and t.user_id = p_user_id and t.project_id = v_project_id
+  for update;
+
+  if not found then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+
+  select coalesce(sum(char_length(t.content_md)), 0)::integer into v_others
+  from public.project_memory_topics t
+  where t.project_id = v_project_id and t.user_id = p_user_id
+    and t.include_in_chat and t.id <> p_topic_id;
+
+  if v_topic.include_in_chat = p_include then
+    return query select v_topic.include_in_chat,
+      v_others + (case when v_topic.include_in_chat then char_length(v_topic.content_md) else 0 end);
+    return;
+  end if;
+
+  if p_include then
+    if btrim(v_topic.content_md) = '' then
+      raise exception 'topic is empty' using errcode = 'P0001';
+    end if;
+    if v_others + char_length(v_topic.content_md) > c_max then
+      raise exception 'chat inclusion limit exceeded' using errcode = 'P0001';
+    end if;
+  end if;
+
+  update public.project_memory_topics as t
+  set include_in_chat = p_include
+  where t.id = p_topic_id and t.user_id = p_user_id;
+
+  return query select p_include,
+    v_others + (case when p_include then char_length(v_topic.content_md) else 0 end);
+end;
+$$;
+
+revoke execute on function public.set_project_memory_topic_chat_inclusion(uuid, uuid, uuid, boolean)
+  from public, anon, authenticated;
+grant execute on function public.set_project_memory_topic_chat_inclusion(uuid, uuid, uuid, boolean)
   to authenticated;
 
 -- ============================================================
