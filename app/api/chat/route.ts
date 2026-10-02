@@ -3,6 +3,7 @@ import { waitUntil } from "@vercel/functions"; // ✅ v62: Vercel環境でレス
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
+import { buildClaudeSystemBlocks, buildCombinedSystemPrompt, type CachedSystemBlock } from "@/lib/chat-system-blocks";
 import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
 import {
@@ -171,21 +172,13 @@ function streamClaude(
   onUsage?: (u: UsageData) => void,
   isDeepThinking?: boolean,
   cacheAnchorIndex: number = -1,
+  extraCachedSystemBlocks: CachedSystemBlock[] = [],
 ): ReadableStream<string> {
-  const systemBlocks: { type: "text"; text: string; cache_control?: { type: "ephemeral" } }[] = [];
-  if (stableSystemPrompt?.trim()) {
-    systemBlocks.push({
-      type: "text",
-      text: stableSystemPrompt.trim(),
-      cache_control: { type: "ephemeral" },
-    });
-  }
-  if (dynamicSystemPrompt?.trim()) {
-    systemBlocks.push({
-      type: "text",
-      text: dynamicSystemPrompt.trim(),
-    });
-  }
+  const systemBlocks = buildClaudeSystemBlocks({
+    stable: stableSystemPrompt,
+    cached: extraCachedSystemBlocks,
+    dynamic: dynamicSystemPrompt,
+  });
   const systemBlock = systemBlocks.length > 0 ? systemBlocks : undefined;
 
   const resolvedAnchorIndex = cacheAnchorIndex >= 0
@@ -1045,6 +1038,14 @@ export async function POST(req: NextRequest) {
     return (current ?? "") + "\n\n" + prefix + block;
   }
   let dynamicSystemText: string | undefined = undefined;
+  const cachedSystemBlocks: CachedSystemBlock[] = [];
+  let pinnedInsertionIndex: number | undefined;
+  const combinedSystemAtCurrentPosition = () => buildCombinedSystemPrompt({
+    stable: stableSystemPrompt,
+    cached: cachedSystemBlocks,
+    pre: (dynamicSystemText ?? "").slice(0, pinnedInsertionIndex),
+    post: pinnedInsertionIndex === undefined ? "" : (dynamicSystemText ?? "").slice(pinnedInsertionIndex),
+  });
 
   // NOTE: This combined search covers Lore Book injection and legacy Memory injection.
   // Both paths use the thread's canonical project_id resolved above.
@@ -1310,9 +1311,8 @@ export async function POST(req: NextRequest) {
       console.warn("[Pinned GitHub Files] warnings:", pinnedWarnings);
     }
     if (pinnedContext) {
-      dynamicSystemText = dynamicSystemText
-        ? dynamicSystemText + "\n\n" + pinnedContext
-        : pinnedContext;
+      pinnedInsertionIndex = (dynamicSystemText ?? "").length;
+      cachedSystemBlocks.push({ label: "pinned-github-files", text: pinnedContext });
     }
   }
 
@@ -1326,9 +1326,7 @@ export async function POST(req: NextRequest) {
   ) {
     try {
       const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : DEFAULT_MODELS.claude;
-      const systemPromptForGithubLoop = dynamicSystemText
-        ? stableSystemPrompt + "\n\n" + dynamicSystemText
-        : stableSystemPrompt;
+      const systemPromptForGithubLoop = combinedSystemAtCurrentPosition();
       const discovery = await runGithubToolLoop({
         anthropicKey,
         modelId: resolvedModelIdForLoop,
@@ -1358,7 +1356,7 @@ export async function POST(req: NextRequest) {
       if (discovery.contextBlock) {
         dynamicSystemText = dynamicSystemText
           ? dynamicSystemText + "\n\n" + discovery.contextBlock
-          : discovery.contextBlock;
+          : (cachedSystemBlocks.length ? "\n\n" : "") + discovery.contextBlock;
       }
       if (discovery.warnings.length > 0 && process.env.NODE_ENV === "development") {
         console.warn("[github-tool-loop] warnings:", discovery.warnings);
@@ -1405,9 +1403,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
   }
 
   // ── Context window trimming (applied after lore injection) ─────────────────
-  const combinedSystemPrompt = dynamicSystemText
-    ? stableSystemPrompt + "\n\n" + dynamicSystemText
-    : stableSystemPrompt;
+  const combinedSystemPrompt = combinedSystemAtCurrentPosition();
   const trimResult = trimContextToWindow(
     messagesForApi,
     combinedSystemPrompt,
@@ -1445,7 +1441,7 @@ Content: ${r.chunkText}`.trim()).join("\n\n");
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
       beginUsageEvent();
-      aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, manualThinkingEnabled, trimResult.cacheAnchorIndex);
+      aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, manualThinkingEnabled, trimResult.cacheAnchorIndex, cachedSystemBlocks);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {
         return chatResponse(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
