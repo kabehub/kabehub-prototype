@@ -1,10 +1,10 @@
 import { Message } from "@/types";
 import { generateMessageSummary } from "@/lib/stringUtils";
 
-export const getOrderNo = (m: Message) =>
+export const getOrderNo = (m: Pick<Message, "message_number">) =>
   typeof m.message_number === "number" ? m.message_number : null;
 
-export const compareMessagesForDisplay = (a: Message, b: Message) => {
+export const compareMessagesForDisplay = (a: Pick<Message, "message_number" | "created_at">, b: Pick<Message, "message_number" | "created_at">) => {
   const aOrder = getOrderNo(a);
   const bOrder = getOrderNo(b);
   if (aOrder != null && bOrder != null && aOrder !== bOrder) {
