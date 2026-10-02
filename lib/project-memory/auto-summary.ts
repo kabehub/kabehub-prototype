@@ -128,6 +128,9 @@ export async function selectAutoSummaryInput(db: SupabaseClient, userId: string,
       checkError(error, "messages");
       const page = (data ?? []) as unknown as MessageRow[];
       for (const message of page) {
+        if (MAX_AUTO_SUMMARY_INPUT_CHARS - inputLength < MIN_REMAINING_CHARS) {
+          current.omitted = true; stopped = true; break;
+        }
         const cut = message.content.length > MAX_AUTO_SUMMARY_MESSAGE_CHARS;
         current.messages.push({ ...message, cut, content: cut ? message.content.slice(0, MAX_AUTO_SUMMARY_MESSAGE_CHARS) + AUTO_SUMMARY_TRUNCATION_MARKER : message.content });
         const nextLength = buildAutoSummaryInput(keys, included).length;

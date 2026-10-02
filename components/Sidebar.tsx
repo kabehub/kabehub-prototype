@@ -6,6 +6,8 @@ import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useToast } from "@/components/Toast";
 import ProjectDeleteConfirmModal from "@/components/ProjectDeleteConfirmModal";
 import ProjectMemoryConsolidationModal from "@/components/ProjectMemoryConsolidationModal";
+import ProjectMemoryBootstrapModal from "@/components/ProjectMemoryBootstrapModal";
+import { useAutoSummary } from "@/lib/project-memory/use-auto-summary";
 import ProjectMemoryListModal from "@/components/ProjectMemoryListModal";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
 import {
@@ -715,6 +717,7 @@ export default function Sidebar({
     preview: ProjectMemoryConsolidationPreview;
   } | null>(null);
   const [memoryListOpen, setMemoryListOpen] = useState(false);
+  const autoSummary = useAutoSummary({ projectId: projectSettingsModal?.projectId ?? null, enabled: projectSettingsModal !== null, showToast });
 
   const handleNewThreadInFolder = useCallback((projectId: string) => {
     onNewThreadInFolder(projectId);
@@ -751,9 +754,10 @@ export default function Sidebar({
   }, []);
 
   const closeProjectSettings = useCallback(() => {
+    if (autoSummary.preview || autoSummary.isApplying) return;
     setProjectSettingsModal(null);
     setProjectRenameInput("");
-  }, []);
+  }, [autoSummary.preview, autoSummary.isApplying]);
 
   const handleOpenProjectDelete = useCallback(async () => {
     if (!projectSettingsModal?.projectId) return;
@@ -1553,6 +1557,7 @@ export default function Sidebar({
       {/* フォルダ設定ドロワー */}
       {projectSettingsModal && (
         <div
+          inert={autoSummary.preview !== null}
           onClick={closeProjectSettings}
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 200 }}
         >
@@ -1745,8 +1750,14 @@ export default function Sidebar({
               </div>
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
               <button
+                onClick={() => { void autoSummary.generate(); }}
+                disabled={!autoSummary.canGenerate || consolidationLoading}
+                title={autoSummary.error ?? undefined}
+                style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: autoSummary.canGenerate ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: autoSummary.canGenerate ? "pointer" : "not-allowed", fontWeight: 500 }}
+              >{autoSummary.buttonLabel}</button>
+              <button
                 onClick={handleOpenMemoryConsolidation}
-                disabled={!projectSettingsModal.projectId || consolidationLoading}
+                disabled={!projectSettingsModal.projectId || consolidationLoading || autoSummary.generating}
                 style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: projectSettingsModal.projectId && !consolidationLoading ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: projectSettingsModal.projectId && !consolidationLoading ? "pointer" : "not-allowed", fontWeight: 500 }}
               >
                 {consolidationLoading ? "整理案を生成中…" : "Project Memoryを整理"}
@@ -1819,6 +1830,16 @@ export default function Sidebar({
             setConsolidationModal(null);
             setConsolidationResults(null);
           }}
+        />
+      )}
+      {autoSummary.preview && (
+        <ProjectMemoryBootstrapModal
+          projectName={projectSettingsModal?.folderName ?? ""}
+          preview={autoSummary.preview}
+          isApplying={autoSummary.isApplying}
+          results={autoSummary.results}
+          onApply={autoSummary.apply}
+          onCancel={autoSummary.close}
         />
       )}
     </aside>
