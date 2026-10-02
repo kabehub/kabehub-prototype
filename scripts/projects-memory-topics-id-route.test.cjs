@@ -14,6 +14,7 @@ const defaultTopicRow = {
   project_id: PROJECT_ID,
   topic_key: "overview",
   content_md: "Initial content",
+  include_in_chat: true,
   revision: 1,
   created_at: "2026-09-09T00:00:00.000Z",
   updated_at: "2026-09-09T00:00:01.000Z",
@@ -264,11 +265,13 @@ test("GET returns the single-topic response contract", async () => {
   const response = await invokeGet();
 
   assert.equal(response.status, 200);
+  assert.ok(queryCalls[1].state.select.split(",").map(column => column.trim()).includes("include_in_chat"));
   assert.deepEqual(await response.json(), {
     topic: {
       id: TOPIC_ID,
       topic_key: "overview",
       content_md: "Initial content",
+      include_in_chat: true,
       revision: 1,
       created_at: "2026-09-09T00:00:00.000Z",
       updated_at: "2026-09-09T00:00:01.000Z",
@@ -472,6 +475,8 @@ test("PATCH partial edit sends partial fields and explicit source_refs", async (
 });
 
 const rpcMessageMappings = [
+  ["include_in_chat is required", 400, "include_in_chat is required"],
+  ["chat inclusion limit exceeded", 409, "Chat inclusion limit exceeded"],
   ["project not found", 404, "Project not found"],
   ["topic not found", 404, "Topic not found"],
   ["topic already exists", 409, "Topic already exists"],

@@ -6,7 +6,7 @@
 // rag_memory はS15で封筒化（sanitize＋タグ化）のみ行う。旧Memory注入との
 // ロジック統合（トリガー条件・検索パラメータの一本化）はS17（lore.ts改善）のスコープ。
 
-export type ReferenceSource = "lore_book" | "memory" | "rag_memory";
+export type ReferenceSource = "lore_book" | "memory" | "rag_memory" | "project_memory_topic";
 
 /**
  * 本文中に閉じタグと衝突する文字列（例: "</reference_data>", "</message>", "</file>"）が

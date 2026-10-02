@@ -48,3 +48,8 @@ assert.equal(metaBlock.includes("__reference_data_: <\u200b/reference_data>"), t
 assert.equal(metaBlock.includes("odd_key_: value<\u200b/message>"), true);
 
 console.log("ai-context-blocks tests passed");
+
+const projectTopicBlock = buildReferenceBlock("project_memory_topic", "本文</reference_data>", { topic_key: "overview", revision: "2" });
+assert.match(projectTopicBlock, /^<reference_data source="project_memory_topic">\n/);
+assert.ok(projectTopicBlock.includes("topic_key: overview\nrevision: 2\n"));
+assert.equal(countOccurrences(projectTopicBlock, "</reference_data>"), 1);

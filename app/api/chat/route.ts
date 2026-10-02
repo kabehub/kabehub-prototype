@@ -17,6 +17,7 @@ import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
 import { buildReferenceBlock, buildReferencePreamble } from "@/lib/ai-context-blocks";
+import { buildProjectMemoryChatBlock } from "@/lib/project-memory/chat-injection";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 import { downloadImageAsBase64 } from '@/lib/supabase/download-image'
 import {
@@ -1039,12 +1040,12 @@ export async function POST(req: NextRequest) {
   }
   let dynamicSystemText: string | undefined = undefined;
   const cachedSystemBlocks: CachedSystemBlock[] = [];
-  let pinnedInsertionIndex: number | undefined;
+  let cachedInsertionIndex: number | undefined;
   const combinedSystemAtCurrentPosition = () => buildCombinedSystemPrompt({
     stable: stableSystemPrompt,
     cached: cachedSystemBlocks,
-    pre: (dynamicSystemText ?? "").slice(0, pinnedInsertionIndex),
-    post: pinnedInsertionIndex === undefined ? "" : (dynamicSystemText ?? "").slice(pinnedInsertionIndex),
+    pre: (dynamicSystemText ?? "").slice(0, cachedInsertionIndex),
+    post: cachedInsertionIndex === undefined ? "" : (dynamicSystemText ?? "").slice(cachedInsertionIndex),
   });
 
   // NOTE: This combined search covers Lore Book injection and legacy Memory injection.
@@ -1303,6 +1304,25 @@ export async function POST(req: NextRequest) {
     githubAccessToken = await getGithubToken(userId);
   }
 
+  // selector の8,000字 hard cap は system 注入量の制御であり、DB取得量自体の上限ではない。
+  // ON 後に本文が肥大化した topic も、一旦取得してから選別する。
+  if (currentProjectId !== null && !isTemporary) {
+    try {
+      const { data, error } = await supabase.from("project_memory_topics")
+        .select("id, topic_key, content_md, revision")
+        .eq("user_id", userId).eq("project_id", currentProjectId).eq("include_in_chat", true)
+        .order("topic_key", { ascending: true }).order("id", { ascending: true });
+      if (error) throw error;
+      const block = buildProjectMemoryChatBlock(data ?? []);
+      if (block) {
+        cachedInsertionIndex ??= (dynamicSystemText ?? "").length;
+        cachedSystemBlocks.push({ label: "project-memory-topics", text: block.text });
+      }
+    } catch (err) {
+      logger.bestEffortFailed({ operation: "project-memory-chat-topics", errorType: err instanceof Error ? err.name : "unknown" });
+    }
+  }
+
   // ── Pinned GitHub Files 注入 ──────────────────────────────────────────────
   if (pinnedGithubFiles.length > 0) {
     const { context: pinnedContext, warnings: pinnedWarnings } =
@@ -1311,7 +1331,7 @@ export async function POST(req: NextRequest) {
       console.warn("[Pinned GitHub Files] warnings:", pinnedWarnings);
     }
     if (pinnedContext) {
-      pinnedInsertionIndex = (dynamicSystemText ?? "").length;
+      cachedInsertionIndex ??= (dynamicSystemText ?? "").length;
       cachedSystemBlocks.push({ label: "pinned-github-files", text: pinnedContext });
     }
   }

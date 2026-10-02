@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, props: RouteProps) {
 
   const { data, error } = await supabase
     .from("project_memory_topics")
-    .select("id, topic_key, content_md, revision, created_at, updated_at")
+    .select("id, topic_key, content_md, revision, include_in_chat, created_at, updated_at")
     .eq("project_id", projectId)
     .order("topic_key", { ascending: true });
 

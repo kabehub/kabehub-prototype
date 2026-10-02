@@ -28,6 +28,7 @@ interface ApiAuthRule {
  * 未登録・重複・未exportメソッドは classifyApi() が null に倒す。
  */
 export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
+  { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/[^/]+\/chat-inclusion\/?$/, methods: ["PATCH"], classification: "bearer" },
   { pattern: /^\/api\/account\/?$/, methods: ["DELETE"], classification: "bearer" },
   { pattern: /^\/api\/album\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/arena\/?$/, methods: ["POST"], classification: "bearer" },

@@ -20,6 +20,7 @@ export type ProjectMemoryTopic = {
   topic_key: string;
   content_md: string;
   revision: number;
+  include_in_chat: boolean;
   created_at: string;
   updated_at: string;
   promotion: ProjectMemoryPromotion;

@@ -236,6 +236,7 @@ test("GET requests topic_key ascending order and returns that order", async () =
     id: "topic-2",
     topic_key: "timeline",
     content_md: "Later content",
+    include_in_chat: false,
     revision: 2,
     created_at: "2026-09-09T00:00:02.000Z",
     updated_at: "2026-09-09T00:00:03.000Z",
@@ -244,6 +245,7 @@ test("GET requests topic_key ascending order and returns that order", async () =
     id: "topic-1",
     topic_key: "overview",
     content_md: "Overview content",
+    include_in_chat: true,
     revision: 1,
     created_at: "2026-09-09T00:00:00.000Z",
     updated_at: "2026-09-09T00:00:01.000Z",
@@ -260,6 +262,7 @@ test("GET requests topic_key ascending order and returns that order", async () =
     options: { ascending: true },
   });
   assert.equal(queryCalls[1].state.select.includes("content_md"), true);
+  assert.ok(queryCalls[1].state.select.split(",").map(column => column.trim()).includes("include_in_chat"));
   assert.equal(queryCalls[2].state.select, "id, metadata");
   assert.deepEqual(queryCalls[2].state.inCalls, [{ column: "metadata->>source_topic_id", values: ["topic-1", "topic-2"] }]);
   assert.deepEqual(queryCalls[2].state.isCalls, [{ column: "superseded_by", value: null }]);
