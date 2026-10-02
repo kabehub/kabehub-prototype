@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/01（Project Memory v202の再昇格確認・v203の同revision復元を反映。API・components・地雷節・認証helper・Scripts実測を更新）
+最終更新: 2026/10/02（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -133,6 +133,7 @@ Project（旧フォルダ）単位のtopic型メモリ。`project_memory_topics`
 | `app/api/projects/[projectId]/memory/topics/[topicId]/promote/route.ts` | POST：bodyは`expected_revision`必須・`acknowledged_edited_lore_ids`任意（省略時`[]`、最大100 UUID、null不可）。topic取得→revision不一致409→空topic400→同revision行確認。archivedかつ`superseded_by=null`なら`restore_archived_project_memory_promotion`（v203）をAPIキー確認・Embedding生成より前に呼ぶ。新規は編集済みLore確認→APIキー確認→Embedding→v202昇格RPC。未承認の置き換えは409 `edited_lore_needs_confirmation`＋`edited_lores:[{id,title}]`、RPC検出時も一覧を再取得して同じ409を返す。復元不可は409 `promotion_restore_unavailable`、revision conflict等は共通マッパー。成功契約は`{lore_id, created, restored?}`（復元時は`created:false`・RPCの`restored`をそのまま返す）。active/supersededの同revision行は従来経路を維持 |
 | `app/api/projects/[projectId]/memory/topics/[topicId]/edit-preview/route.ts` | POST：「AIで編集」のプレビュー。**DB書き込みなし**。`x-openai-api-key`を認証より前に確認。body`{instruction}`（trim後非空・2,000文字以下）。結果は`proposal`/`no_change`/`not_applicable`の3種（共通envelope付き）。入力上限超過413、LLM失敗・不正応答は502 |
 | `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` | POST：Project全体の整理案プレビュー（DB書き込みなし）。`current_state` topicは対象外。入力上限超過413、失敗502。適用は専用routeではなく、クライアントがtopicごとに既存PATCHを呼ぶ（`source_refs`に`consolidation_run`） |
+| `app/api/projects/[projectId]/memory/bootstrap/preview/route.ts` | POST：通常のProject内会話から未作成の標準4キーだけを生成する初回プレビュー（DB書き込みなし）。APIキーを認証前に確認。全キー作成済み／対象会話なし／根拠なしは200 `not_applicable`。DB読込失敗500、LLM失敗・不正応答502。入力超過は切り捨て、413は使わない。承認後は既存topics POSTで個別作成 |
 
 ### API Routes（GitHub連携）
 
@@ -199,7 +200,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ChatPanel.tsx` | チャット画面のメインコンポーネント。状態管理の大半がここにある |
 | `components/ChatInput.tsx` | 下部固定入力欄。ファイル添付・画像添付・Ctrl+Vスクショ貼り付け・モデルドロップダウン・送信キー設定対応 |
 | `components/ChatInputCentered.tsx` | 新規会話スタート時の中央配置入力欄（v144〜）。`ChatInput.tsx`から型・ヘルパーをimportして共通利用 |
-| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・フォルダ設定モーダル・PC専用折り畳み機能（v168）・Project Memory一覧・整理モーダルの起点 |
+| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・フォルダ設定モーダル・PC専用折り畳み機能（v168）・Project Memory一覧・整理・会話から初回生成モーダルの起点 |
 | `components/MessageBubble.tsx` | 通常モードのメッセージ表示。「👍 記憶に追加」ボタン・編集/上書き再生成モーダル（ドロップダウン方式・v173） |
 | `components/RoleplayBubble.tsx` | なりきりモード用メッセージ表示（LINEライクUI） |
 | `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
@@ -216,8 +217,9 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る）。DLは`actionsLocked`の影響を受けない |
 | `components/ProjectMemoryPromotionConfirmModal.tsx` | `/library`・Sidebar一覧で共用する編集済みLore再昇格の確認モーダル（TopicList経由）。対象Loreのタイトルと編集内容を引き継がない説明を表示し、「編集を破棄して再昇格」で承認する。フォーカス制御・Escape・送信中キャンセル禁止あり |
 | `components/ProjectMemoryInstructionEditModal.tsx` | 「AIで編集」の指示入力→差分プレビュー→適用モーダル（z-index 1200/1201） |
-| `components/ProjectMemoryDiffView.tsx` | 差分表示。整理モーダルと編集モーダルで共用 |
+| `components/ProjectMemoryDiffView.tsx` | 差分表示。整理・編集・初回生成モーダルで共用（初回生成の旧本文は空文字） |
 | `components/ProjectMemoryConsolidationModal.tsx` | Project全体整理案の選択・適用モーダル |
+| `components/ProjectMemoryBootstrapModal.tsx` | 未作成topicの選択・空本文からの差分・使用スレッド数／省略注意・個別適用結果を表示。適用中はEscape・背景・ボタンで閉じられない（z-index 1100/1101） |
 | `components/ProjectMemoryUploadConfirm.tsx` | topicファイルアップロード時の上書き／新規作成の確認ダイアログ |
 | `components/ProjectDeleteConfirmModal.tsx` | Project削除確認（Loreへ昇格するかの選択つき） |
 
@@ -273,6 +275,10 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/instruction-edit-client.ts` | edit-previewのfetchとレスポンス検証（許可キー集合まで厳格）、適用（既存PATCH・`edit_kind:"full"`） |
 | `lib/project-memory/consolidation.ts` | 整理案のLLM契約・入力構築・応答parse（入力上限20,000文字・出力8,192トークン） |
 | `lib/project-memory/consolidation-client.ts` | 整理案の適用（topicごとに既存PATCH） |
+| `lib/project-memory/auto-summary-limits.ts` | importゼロのclient-safe定数・共有型。暫定値：最終入力60,000文字、1発言8,000文字、最低user発言2件、最大100スレッド、出力16,384トークン |
+| `lib/project-memory/auto-summary.ts` | server用。thread全件ページング・並列数4のpreflight・最新発言順の候補選定・新しい側からmessageページング・JSON文字数予算・最終統計再計算・LLM strict JSON契約。入力はconsolidationと同じJSON.stringify方式、全入力をuntrusted dataとして扱う |
+| `lib/project-memory/auto-summary-client.ts` | bootstrap previewのstrict検証・取得と既存topics POSTの並列適用。source_refs配列に本文を含まない来歴を記録、201/409/その他を個別分類 |
+| `lib/project-memory/use-auto-summary.ts` | 設定を開いた際のeligibility取得、古いProject応答の破棄、APIキー取得、生成・承認・適用結果の管理。全適用結果とnot_applicableで一覧再取得。同じ生成案は再適用しない |
 
 LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を使用。
 
@@ -293,7 +299,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト80本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 9本（`git ls-files 'scripts/*.test.cjs'`・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト85本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 9本（`git ls-files 'scripts/*.test.cjs'`・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -319,6 +325,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/optional-route-auth.test.cjs` | 任意認証Routeの匿名/認証済みCookie・DB/RPC契約を検証 |
 | `scripts/pricing.test.cjs` | registry由来料金・費用計算・表示formatを検証 |
 | `scripts/project-memory-*.test.cjs` / `scripts/projects-*-route.test.cjs` / `scripts/instruction-edit-client.test.cjs` / `scripts/use-project-memory-topics.test.cjs` | Project Memory API・hook・UI・migration契約の回帰テスト |
+| `scripts/project-memory-auto-summary.test.cjs` / `scripts/project-memory-bootstrap-preview-route.test.cjs` / `scripts/auto-summary-client.test.cjs` / `scripts/use-auto-summary.test.cjs` / `scripts/project-memory-bootstrap-modal.test.cjs` | 初回生成の選定・ページング・文字数予算・LLM契約・preview Route・client strict検証・並列作成・eligibility再取得／競合応答・モーダル操作を検証（共通DBモデルは`auto-summary-test-helpers.cjs`） |
 | `scripts/verify-project-memory-*.mjs` | 実DB（test環境）向けの手動検証スクリプト。通常のテスト実行には含めない |
 | `scripts/proxy.test.cjs` | `proxy.ts`のmatcher・認証境界・redirect・CSP付与をマトリクス検証 |
 | `scripts/rate-limit.test.cjs` | rate limiter生成・制限判定・fallbackを検証 |
@@ -546,6 +553,13 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 地雷 | 説明 |
 |-|-|
 | 新Route追加時の登録 | `app/api`配下にRouteを追加したら`lib/proxy-paths.ts`の`API_AUTH_CLASSIFICATIONS`へ登録が必須。`scripts/proxy-paths.test.cjs`が全route×methodに分類がちょうど1件あることを検証するため、未登録だと確実に失敗する |
+| 自動要約の最終発言時刻 | `threads.updated_at`は通常チャットで更新されないため最終発言時刻に使わない。対象messagesの最新`created_at`をpreflightで取得して候補を並べる |
+| 自動要約のNULL扱い | `roleplay_mode`はfalseとNULLを通常スレッドとして採用（`.or("roleplay_mode.is.null,roleplay_mode.eq.false")`）。`is_active`もtrueとNULLを採用（`.or("is_active.is.null,is_active.eq.true")`）。単純なeq/neqではNULLが落ちる |
+| 自動要約の1,000行境界 | thread一覧もmessageも`.range()`でページングする。threadはid順を固定、messageはcreated_at降順＋id降順。preflightと本文取得の絞り込みは同一helperを共有する |
+| `MAX_AUTO_SUMMARY_INPUT_CHARS`の意味 | 本文合計ではなく、JSONエスケープ・topic役割・見出し・created_atを含めた最終userContent.length（暫定60,000）。最終トリム後にconsidered_threads/statsを再計算する。clientはimportゼロのauto-summary-limits.tsを参照 |
+| 自動要約の`source_refs` | 必ず`[{type:"auto_summary",run_id,model,prompt_version,considered_threads}]`という配列で送る。オブジェクト単体は400。会話本文・タイトル・指示文を入れない |
+| 自動要約の標準キー | overview / current-work / principles / referencesの未作成キーだけを生成。current-work（ハイフン）とcurrent_state（アンダースコア）は別キー。current_stateや既存topic本文は入力に含めない |
+| 自動要約apply後のeligibility | applied/conflict/failedのすべてでtopics一覧を再取得する。特に409後に古い不足キーを保持しない。not_applicableでも再取得。古いProjectの応答／再取得が新Projectの状態や進行中GETを無効化しないようにguardする |
 | `MAX_INSTRUCTION_CHARS`の置き場 | `instruction-edit-limits.ts`が正本。`instruction-edit.ts`は`@/lib/lore/openai`（→logger）をimportするため、clientから直接importするとサーバー側コードがbundleに入る |
 | `parsePreview`との同期 | edit-previewのレスポンスに項目を足す場合は`instruction-edit-client.ts`の`parsePreview`（許可キー集合）も同時に更新する。さもないとfail closedで編集不能になる |
 | AI編集のLLM契約 | `applicable:true`は`new_content_md`/`summary`のみ、`false`は`reason`のみ。未知キー・非空本文の空化・不正形式はすべて502。本文が同一なら`no_change` |
