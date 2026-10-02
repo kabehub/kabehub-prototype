@@ -8,12 +8,14 @@ const originalLoad = Module._load;
 const originalFetch = global.fetch;
 let apiKey = "key";
 let state = [], cursor = 0, deps = [], cleanups = [], pending = [];
+let stateChanges = 0;
+let onStateChange = null;
 const hooks = {
   ...React,
   useState(initial) {
     const i = cursor++;
     if (!(i in state)) state[i] = typeof initial === "function" ? initial() : initial;
-    return [state[i], (value) => { state[i] = typeof value === "function" ? value(state[i]) : value; }];
+    return [state[i], (value) => { stateChanges++; state[i] = typeof value === "function" ? value(state[i]) : value; onStateChange?.(state[i]); }];
   },
   useRef(initial) {
     const i = cursor++;
@@ -40,7 +42,7 @@ Module._load = function (request, parent, isMain) {
 installAliasResolver();
 installTsLoader({ jsx: true });
 const useTopics = require(path.join(__dirname, "..", "lib", "project-memory", "use-project-memory-topics.ts")).useProjectMemoryTopics;
-const topic = (id) => ({ id, topic_key: id, content_md: "Content", revision: 1, created_at: "", updated_at: "",
+const topic = (id) => ({ id, topic_key: id, content_md: "Content", include_in_chat: false, revision: 1, created_at: "", updated_at: "",
   promotion: { status: "not_promoted", source_revision: null, lore_id: null } });
 const render = (options = {}) => { cursor = 0; return useTopics({ projectId: "A", enabled: true, ...options }); };
 const effects = () => { const todo = pending; pending = []; todo.forEach((run) => run()); };
@@ -374,6 +376,170 @@ const header = (id = "A-topic") => `<!-- kabehub-topic:v1 ${JSON.stringify({ top
   render().openInstructionEdit(topic("A-topic"));
   assert.equal(render().instructionEdit, null, "upload blocks open");
   finishUpload(new Response(null, { status: 201 })); await uploading;
+  const { PROJECT_MEMORY_CHAT_MAX_CHARS } = require("../lib/project-memory/chat-inclusion-limits.ts");
+  const limitMessage = `チャット注入の上限（本文合計${PROJECT_MEMORY_CHAT_MAX_CHARS.toLocaleString("ja-JP")}字）を超えるため、ONにできません。`;
+  const toggleCases = [
+    [200, {}, null],
+    [409, { code: "chat_inclusion_limit_exceeded", error: "raw English" }, limitMessage],
+    [400, { error: "raw English" }, "本文が空のtopicはONにできません。"],
+    [404, { error: "raw English" }, "対象のtopicが見つかりませんでした。一覧を更新しました。"],
+    [409, { code: "unknown", error: "raw English" }, "チャット注入の設定に失敗しました"],
+    [500, { error: "raw English" }, "チャット注入の設定に失敗しました"],
+    ["network", null, "チャット注入の設定に失敗しました"],
+  ];
+  for (const [status, body, message] of toggleCases) {
+    const calls = [];
+    let reloads = 0;
+    reset(async (url, init = {}) => {
+      calls.push({ url, init });
+      if (!init.method) {
+        reloads++;
+        if (reloads > 1) assert.equal(render().error, null, "reload clears error before final Japanese error is set");
+        return Response.json({ topics: [{ ...topic("A-topic"), include_in_chat: status === 200 }] });
+      }
+      if (status === "network") throw new Error("private network failure");
+      return Response.json(body, { status });
+    });
+    render(); effects(); await flush();
+    await render().setChatInclusion(topic("A-topic"), true);
+    const patch = calls.find(call => call.init.method);
+    assert.equal(patch.url, "/api/projects/A/memory/topics/A-topic/chat-inclusion");
+    assert.equal(patch.init.method, "PATCH");
+    assert.deepEqual(JSON.parse(patch.init.body), { include: true });
+    assert.equal(reloads, 2, `${status} reloads before error`);
+    assert.equal(render().error, message);
+    assert.equal(render().chatInclusionTopicId, null);
+    assert.equal(render().topics[0].include_in_chat, status === 200);
+  }
+  let toggleCalls = [];
+  reset(async (url, init = {}) => {
+    if (!init.method) return getResponse();
+    toggleCalls.push({ url, body: JSON.parse(init.body) });
+    return Response.json({ topic: { id: "a/b", include_in_chat: false }, included_chars: 0 });
+  });
+  render(); effects(); await flush();
+  await render().setChatInclusion(topic("A-topic"), false);
+  await render().setChatInclusion({ ...topic("A-topic"), content_md: " \n\t" }, true);
+  assert.equal(toggleCalls.length, 0, "same value and empty ON are no-ops");
+  await render().setChatInclusion({ ...topic("a/b"), content_md: " \n\t", include_in_chat: true }, false);
+  assert.equal(toggleCalls[0].url, "/api/projects/A/memory/topics/a%2Fb/chat-inclusion");
+  assert.deepEqual(toggleCalls[0].body, { include: false }, "empty ON topic can turn OFF");
+  render({ enabled: false }); effects();
+  await render({ enabled: false }).setChatInclusion(topic("A-topic"), true);
+  assert.equal(toggleCalls.length, 1, "disabled hook never starts a toggle");
+
+  // Both directions share the same synchronous lock; stale upload closures must also be blocked.
+  let finishToggle;
+  let togglePatches = 0, nonToggleWrites = 0;
+  reset(async (url, init = {}) => {
+    if (!init.method) return getResponse();
+    if (!url.endsWith("/chat-inclusion")) { nonToggleWrites++; return Response.json({}); }
+    togglePatches++;
+    return new Promise(resolve => { finishToggle = () => resolve(Response.json({ topic: { id: "A-topic", include_in_chat: true }, included_chars: 7 })); });
+  });
+  render(); effects(); await flush();
+  await render().selectUploadFile(file("new.md", "New"));
+  const uploadClosure = render();
+  uploadClosure.cancelUploadConfirm();
+  const toggleClosure = render();
+  const toggling = toggleClosure.setChatInclusion(topic("A-topic"), true);
+  await toggleClosure.setChatInclusion(topic("A-topic"), true);
+  assert.equal(togglePatches, 1, "rapid clicks start one PATCH before render");
+  assert.equal(render().chatInclusionTopicId, "A-topic");
+  assert.equal(render().isActionLocked(), true);
+  assert.equal(render().topics[0].include_in_chat, false, "no optimistic update");
+  await render().promote(topic("A-topic"));
+  let reads = 0;
+  await render().selectUploadFile({ name: "new.md", async text() { reads++; return "New"; } });
+  await uploadClosure.executeUpload();
+  render().openInstructionEdit(topic("A-topic"));
+  assert.equal(nonToggleWrites, 0);
+  assert.equal(reads, 0, "toggle blocks the upload's start guard");
+  assert.equal(render().instructionEdit, null);
+  assert.equal(render().uploadConfirm, null);
+  finishToggle(); await toggling;
+  assert.equal(render().isActionLocked(), false);
+  for (const action of ["promote", "upload", "edit"]) {
+    let finishAction;
+    let patches = 0;
+    reset(async (url, init = {}) => {
+      if (!init.method) return getResponse();
+      if (url.endsWith("/chat-inclusion")) { patches++; return Response.json({}); }
+      return new Promise(resolve => { finishAction = () => resolve(new Response(null, { status: action === "upload" ? 201 : 200 })); });
+    });
+    render(); effects(); await flush();
+    let inFlight;
+    if (action === "promote") { inFlight = render().promote(topic("A-topic")); await flush(); }
+    else if (action === "upload") { await render().selectUploadFile(file("new.md", "New")); inFlight = render().executeUpload(); }
+    else render().openInstructionEdit(topic("A-topic"));
+    await render().setChatInclusion(topic("A-topic"), true);
+    assert.equal(patches, 0, `${action} blocks toggle`);
+    assert.equal(render().chatInclusionTopicId, null);
+    if (inFlight) { finishAction(); await inFlight; }
+    else render().closeInstructionEdit();
+  }
+
+  // Check each async boundary; stale completions must not even call state setters.
+  for (const boundary of ["fetch", "json", "reload"]) {
+    for (const options of [{ projectId: "B" }, { enabled: false }]) {
+      let finishLate;
+      let getCount = 0;
+      reset(async (url, init = {}) => {
+        if (!init.method) {
+          getCount++;
+          if (boundary === "reload" && getCount === 2) {
+            return new Promise(resolve => { finishLate = () => resolve(Response.json({ topics: [topic("A-late")] })); });
+          }
+          return Response.json({ topics: [topic(url.includes("/B/") ? "B-topic" : "A-topic")] });
+        }
+        if (boundary === "fetch") return new Promise(resolve => { finishLate = () => resolve(Response.json({ code: "chat_inclusion_limit_exceeded" }, { status: 409 })); });
+        if (boundary === "json") return { status: 409, json: () => new Promise(resolve => { finishLate = () => resolve({ code: "chat_inclusion_limit_exceeded" }); }) };
+        return Response.json({ code: "chat_inclusion_limit_exceeded" }, { status: 409 });
+      });
+      render(); effects(); await flush();
+      const late = render().setChatInclusion(topic("A-topic"), true);
+      await flush();
+      render(options); effects(); await flush();
+      const before = render(options);
+      const settersBefore = stateChanges;
+      finishLate(); await late;
+      assert.equal(stateChanges, settersBefore, `${boundary} stale completion does not change any state`);
+      const after = render(options);
+      assert.deepEqual(after.topics, before.topics);
+      assert.equal(after.error, before.error);
+      assert.equal(after.chatInclusionTopicId, null);
+      assert.equal(after.isActionLocked(), false);
+      if (options.projectId) assert.equal(after.topics[0].id, "B-topic");
+    }
+  }
+  // Queue the project switch while reload commits its result. The queued switch runs
+  // after reload finishes, but before setChatInclusion resumes to set the error.
+  reset(async (url, init = {}) => init.method
+    ? Response.json({ code: "chat_inclusion_limit_exceeded" }, { status: 409 })
+    : Response.json({ topics: [topic(url.includes("/B/") ? "B-topic" : "A-topic")] }));
+  render(); effects(); await flush();
+  let switchedAfterReload = false;
+  onStateChange = value => {
+    if (value?.projectId !== "A") return;
+    onStateChange = null;
+    queueMicrotask(() => { switchedAfterReload = true; render({ projectId: "B" }); effects(); });
+  };
+  await render().setChatInclusion(topic("A-topic"), true);
+  await flush();
+  assert.equal(switchedAfterReload, true);
+  assert.equal(render({ projectId: "B" }).topics[0].id, "B-topic");
+  assert.equal(render({ projectId: "B" }).error, null, "A's limit error cannot remain on B after reload");
+  assert.equal(render({ projectId: "B" }).chatInclusionTopicId, null);
+
+  let finishUnmount;
+  reset(async (_url, init = {}) => !init.method ? getResponse() : new Promise(resolve => { finishUnmount = resolve; }));
+  render(); effects(); await flush();
+  const unmounted = render().setChatInclusion(topic("A-topic"), true);
+  for (const cleanup of cleanups) cleanup?.();
+  const settersBeforeUnmount = stateChanges;
+  finishUnmount(Response.json({})); await unmounted;
+  assert.equal(stateChanges, settersBeforeUnmount, "unmount invalidates late toggle");
+  console.log("ok - chat inclusion success, errors after reload, synchronous locks, no-ops and all stale async boundaries");
   console.log("ok - instruction edit lock, transitions, cancellation, apply, invalidation, and upload race");
   console.log("ok - useProjectMemoryTopics cache, request invalidation, and reload conditions");
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {

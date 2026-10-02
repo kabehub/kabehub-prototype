@@ -17,11 +17,12 @@ const hooks = {
     }
   },
 };
-const topic = { id: "topic", topic_key: "overview", revision: 2 };
+const topic = { id: "topic", topic_key: "overview", include_in_chat: false, revision: 2 };
 const confirm = { topic, editedLores: [{ id: "old-1", title: "Edited title" }, { id: "old-2", title: "Other title" }] };
 let cancelled = 0, submitted = 0, parentClosed = 0;
 const fakeMemory = {
   topics: [], loading: false, error: null, canPromote: true, canInstructionEdit: true,
+  chatInclusionTopicId: null, setChatInclusion() {},
   promotingTopicId: null, uploading: false, uploadConfirm: null, instructionEdit: null,
   pendingConfirm: confirm, confirmPromotion() { submitted++; }, cancelPromotionConfirm() { cancelled++; },
   isActionLocked: () => true,

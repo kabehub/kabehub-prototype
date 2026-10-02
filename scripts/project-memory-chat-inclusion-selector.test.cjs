@@ -42,3 +42,22 @@ assert.deepEqual(selected.includedIds, ["small"]);
 assert.deepEqual(selected.skippedIds, ["huge"]);
 assert.ok(countProjectMemoryChatChars(selected.text) > 2, "max counts bodies, excluding preamble, tags and meta");
 console.log("ok - deterministic non-mutating code point selector, skipping and safe memory block");
+
+const { summarizeChatInclusion, PROJECT_MEMORY_CHAT_MAX_CHARS } = require("../lib/project-memory/chat-inclusion-limits.ts");
+const off = { ...topic("off", "a", "Content"), include_in_chat: false };
+assert.deepEqual(summarizeChatInclusion([off]), { usedChars: 0, max: PROJECT_MEMORY_CHAT_MAX_CHARS, notInjected: [] });
+const summaryInput = [
+  { ...topic("z", "a", "\n\t"), include_in_chat: true },
+  { ...topic("huge", "Z", "あ".repeat(PROJECT_MEMORY_CHAT_MAX_CHARS + 1)), include_in_chat: true },
+  { ...topic("a", "a", "   "), include_in_chat: true },
+  { ...topic("small", "b", "あ😀"), include_in_chat: true }, off,
+];
+const summaryBefore = structuredClone(summaryInput);
+summaryInput.forEach(Object.freeze); Object.freeze(summaryInput);
+const summary = summarizeChatInclusion(summaryInput);
+assert.equal(summary.usedChars, 2);
+assert.equal(summary.max, PROJECT_MEMORY_CHAT_MAX_CHARS);
+assert.deepEqual(ids(summary.notInjected), ["huge", "a", "z"]);
+assert.deepEqual(summaryInput, summaryBefore);
+assert.deepEqual(ids(selectChatIncludedTopics(summaryInput.filter(t => t.include_in_chat)).included), ["small"]);
+console.log("ok - summary includes skipped and whitespace-only ON topics, ordered and non-mutating");

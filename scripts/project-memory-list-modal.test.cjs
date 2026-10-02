@@ -98,7 +98,7 @@ async function flush() {
 (async () => {
   global.window = { addEventListener(_name, handler) { keyListeners.add(handler); }, removeEventListener(_name, handler) { keyListeners.delete(handler); } };
   onEscape = (event) => { for (const handler of [...keyListeners]) handler(event); };
-  const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", revision: 1,
+  const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", include_in_chat: false, revision: 1,
     created_at: "2026-09-09T00:00:00Z", updated_at: "2026-09-09T00:00:00Z",
     promotion: { status: "not_promoted", source_revision: null, lore_id: null } };
   global.fetch = async (_url, init = {}) => {
@@ -297,6 +297,39 @@ async function flush() {
   onEscape({ key: "Escape" });
   assert.equal(closes, 0, "child Escape must not close the parent in the same event");
   assert.equal(nodes(view()).find((node) => node.type === ProjectMemoryInstructionEditModal).props.edit, null);
+  let finishInclusion;
+  let inclusionGets = 0, inclusionPatches = 0;
+  closes = 0;
+  view = await setup(async (url, init = {}) => {
+    if (init.method) {
+      assert.equal(url, "/api/projects/project-1/memory/topics/topic-1/chat-inclusion");
+      assert.equal(init.method, "PATCH");
+      assert.deepEqual(JSON.parse(init.body), { include: true });
+      inclusionPatches++;
+      return new Promise(resolve => { finishInclusion = () => resolve(Response.json({ topic: { id: topic.id, include_in_chat: true }, included_chars: 7 })); });
+    }
+    inclusionGets++;
+    return Response.json({ topics: [{ ...topic, include_in_chat: inclusionGets > 1 }] });
+  }, () => { closes++; });
+  const inclusionToggle = nodes(view()).find(n => n.type === "input" && n.props.type === "checkbox");
+  assert.equal(inclusionToggle.props.checked, false);
+  inclusionToggle.props.onChange({ currentTarget: { checked: true } });
+  inclusionToggle.props.onChange({ currentTarget: { checked: true } });
+  tree = view();
+  assert.equal(element(tree, ProjectMemoryTopicList).props.chatInclusionTopicId, topic.id);
+  assert.equal(element(tree, ProjectMemoryTopicList).props.actionsLocked, true);
+  assert.equal(findButton(tree, "ファイルをアップロード").props.disabled, true);
+  assert.equal(findButton(tree, "Loreに昇格").props.disabled, true);
+  assert.equal(findButton(tree, "閉じる").props.disabled, true);
+  assert.equal(nodes(tree).find(n => n.type === "input" && n.props.type === "checkbox").props.disabled, true);
+  onEscape({ key: "Escape" });
+  assert.equal(closes, 0);
+  assert.equal(inclusionPatches, 1);
+  finishInclusion(); await flush();
+  assert.equal(inclusionGets, 2);
+  assert.equal(nodes(view()).find(n => n.type === "input" && n.props.type === "checkbox").props.checked, true);
+  assert.equal(element(view(), ProjectMemoryTopicList).props.chatInclusionTopicId, null);
+  console.log("ok - sidebar modal forwards toggles, locks actions and reloads inclusion");
   console.log("ok - ProjectMemoryListModal upload/download and promotion guards");
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   global.fetch = originalFetch;

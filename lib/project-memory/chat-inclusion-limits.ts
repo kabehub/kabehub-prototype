@@ -5,15 +5,17 @@ export function countProjectMemoryChatChars(text: string): number {
 
 export type ChatInclusionCandidate = { id: string; topic_key: string; content_md: string };
 
+function compareChatInclusionCandidates(a: ChatInclusionCandidate, b: ChatInclusionCandidate): number {
+  return a.topic_key < b.topic_key ? -1 : a.topic_key > b.topic_key ? 1 :
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 // 8,000字は topic 本文 (content_md) の合計上限。system ブロック全体の上限ではない。
 // preamble・reference_data タグ・meta 行・topic 間の区切りは、この合計に含めない。
 export function selectChatIncludedTopics<T extends ChatInclusionCandidate>(
   topics: readonly T[], max: number = PROJECT_MEMORY_CHAT_MAX_CHARS,
 ): { included: T[]; skipped: T[]; usedChars: number } {
-  const sorted = [...topics].sort((a, b) =>
-    a.topic_key < b.topic_key ? -1 : a.topic_key > b.topic_key ? 1 :
-      a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
-  );
+  const sorted = [...topics].sort(compareChatInclusionCandidates);
   const included: T[] = [];
   const skipped: T[] = [];
   let usedChars = 0;
@@ -29,4 +31,14 @@ export function selectChatIncludedTopics<T extends ChatInclusionCandidate>(
     usedChars += chars;
   }
   return { included, skipped, usedChars };
+}
+
+export function summarizeChatInclusion<T extends ChatInclusionCandidate & { include_in_chat: boolean }>(
+  topics: readonly T[],
+): { usedChars: number; max: number; notInjected: T[] } {
+  const onTopics = topics.filter(topic => topic.include_in_chat === true);
+  const { usedChars, skipped } = selectChatIncludedTopics(onTopics);
+  const notInjected = [...skipped, ...onTopics.filter(topic => !topic.content_md.trim())]
+    .sort(compareChatInclusionCandidates);
+  return { usedChars, max: PROJECT_MEMORY_CHAT_MAX_CHARS, notInjected };
 }

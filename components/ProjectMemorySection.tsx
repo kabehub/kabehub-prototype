@@ -17,7 +17,7 @@ export default function ProjectMemorySection({ projectId, projectName }: Props) 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const { topics, loading, error, canPromote, canInstructionEdit, promotingTopicId, uploading, uploadConfirm, instructionEdit,
-    pendingConfirm, confirmPromotion, cancelPromotionConfirm,
+    pendingConfirm, confirmPromotion, cancelPromotionConfirm, setChatInclusion, chatInclusionTopicId,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, isActionLocked,
     openInstructionEdit, closeInstructionEdit, setInstructionEditInstruction, generateInstructionEditPreview,
     cancelInstructionEditGeneration, backToInstructionInput, applyInstructionEditPreview } =
@@ -45,7 +45,7 @@ export default function ProjectMemorySection({ projectId, projectName }: Props) 
             {!canPromote && <p style={{ fontSize: "12px", color: "#92400e" }}>OpenAI APIキーが未設定のため、Loreへの昇格・AI編集はできません。</p>}
             {error && <p role="alert" style={{ fontSize: "12px", color: "#b91c1c" }}>{error}</p>}
             <ProjectMemoryTopicList topics={topics} loading={loading} error={error} expandedIds={expandedIds} onToggleExpanded={onToggleExpanded}
-              canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={pendingConfirm !== null || promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null}
+              canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={isActionLocked()} chatInclusionTopicId={chatInclusionTopicId} onChatInclusionChange={(topic, include) => void setChatInclusion(topic, include)}
               pendingConfirm={pendingConfirm} onConfirmPromotion={() => void confirmPromotion()} onCancelPromotion={cancelPromotionConfirm}
             onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} onInstructionEdit={openInstructionEdit} />
           </div>

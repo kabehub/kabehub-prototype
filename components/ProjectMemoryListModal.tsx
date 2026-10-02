@@ -16,7 +16,7 @@ interface Props {
 
 export default function ProjectMemoryListModal({ isOpen, projectId, projectName, onCancel }: Props) {
   const { topics, loading, error, canPromote, canInstructionEdit, promotingTopicId, uploading, uploadConfirm, instructionEdit,
-    pendingConfirm, confirmPromotion, cancelPromotionConfirm,
+    pendingConfirm, confirmPromotion, cancelPromotionConfirm, setChatInclusion, chatInclusionTopicId,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, isActionLocked,
     openInstructionEdit, closeInstructionEdit, setInstructionEditInstruction, generateInstructionEditPreview,
     cancelInstructionEditGeneration, backToInstructionInput, applyInstructionEditPreview } =
@@ -61,7 +61,7 @@ export default function ProjectMemoryListModal({ isOpen, projectId, projectName,
         </div>
         <div style={{ overflowY: "auto", padding: "18px 28px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <ProjectMemoryTopicList topics={topics} loading={loading} error={error} expandedIds={expandedIds} onToggleExpanded={onToggleExpanded}
-            canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={pendingConfirm !== null || promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null}
+            canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={isActionLocked()} chatInclusionTopicId={chatInclusionTopicId} onChatInclusionChange={(topic, include) => void setChatInclusion(topic, include)}
             pendingConfirm={pendingConfirm} onConfirmPromotion={() => void confirmPromotion()} onCancelPromotion={cancelPromotionConfirm}
             onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} onInstructionEdit={openInstructionEdit} />
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PROJECT_MEMORY_CHAT_MAX_CHARS } from "@/lib/project-memory/chat-inclusion-limits";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
 import { decodeTopicFile, deriveTopicKeyFromFilename, TopicFileHeaderError } from "@/lib/project-memory/topic-file";
 import { applyInstructionEdit, requestInstructionEditPreview } from "@/lib/project-memory/instruction-edit-client";
@@ -52,6 +53,9 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   const [pendingConfirm, setPendingConfirm] = useState<ProjectMemoryPromotionConfirm | null>(null);
   const pendingConfirmRef = useRef<ProjectMemoryPromotionConfirm | null>(null);
   const promotionRequestId = useRef(0);
+  const chatInclusionRef = useRef<string | null>(null);
+  const [chatInclusionTopicId, setChatInclusionTopicId] = useState<string | null>(null);
+  const chatInclusionRequestId = useRef(0);
   const updatePendingConfirm = (next: ProjectMemoryPromotionConfirm | null) => {
     pendingConfirmRef.current = next;
     setPendingConfirm(next);
@@ -75,6 +79,9 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
 
   useEffect(() => {
     if (!enabled) {
+      chatInclusionRequestId.current++;
+      chatInclusionRef.current = null;
+      setChatInclusionTopicId(null);
       promotionRequestId.current++;
       promotingRef.current = null;
       setPromotingTopicId(null);
@@ -87,6 +94,9 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
       updateInstructionEdit(null);
     }
     return () => {
+      chatInclusionRequestId.current++;
+      chatInclusionRef.current = null;
+      setChatInclusionTopicId(null);
       promotionRequestId.current++;
       promotingRef.current = null;
       setPromotingTopicId(null);
@@ -143,7 +153,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   }, [enabled, keepLoaded, projectId, reload]);
 
   const promote = async (topic: ProjectMemoryTopic, confirmed = false) => {
-    if (!enabled || instructionEditRef.current !== null || promotingRef.current || uploadingRef.current || uploadConfirm !== null || !canPromote || !topic.content_md.trim() || topic.promotion.status === "current") return;
+    if (chatInclusionRef.current !== null || !enabled || instructionEditRef.current !== null || promotingRef.current || uploadingRef.current || uploadConfirm !== null || !canPromote || !topic.content_md.trim() || topic.promotion.status === "current") return;
     if ((!confirmed && pendingConfirmRef.current !== null) || (confirmed && pendingConfirmRef.current?.topic !== topic)) return;
     const acknowledgedIds = confirmed ? pendingConfirmRef.current!.editedLores.map((row) => row.id) : [];
     const promotionId = ++promotionRequestId.current;
@@ -197,7 +207,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   };
 
   const selectUploadFile = async (file: File) => {
-    if (pendingConfirmRef.current !== null || instructionEditRef.current !== null || uploadingRef.current || promotingRef.current || uploadConfirm !== null) return;
+    if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || instructionEditRef.current !== null || uploadingRef.current || promotingRef.current || uploadConfirm !== null) return;
     let raw: string;
     try {
       raw = await file.text();
@@ -205,7 +215,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
       if (instructionEditRef.current === null) setError("ファイルの読み込みに失敗しました。");
       return;
     }
-    if (pendingConfirmRef.current !== null || instructionEditRef.current !== null) return;
+    if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || instructionEditRef.current !== null) return;
     try {
       const decoded = decodeTopicFile(raw);
       if (decoded.hasHeader) {
@@ -231,7 +241,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   };
 
   const executeUpload = async () => {
-    if (pendingConfirmRef.current !== null || instructionEditRef.current !== null || !uploadConfirm || uploadingRef.current || promotingRef.current) return;
+    if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || instructionEditRef.current !== null || !uploadConfirm || uploadingRef.current || promotingRef.current) return;
     const candidate = uploadConfirm;
     uploadingRef.current = true;
     setUploading(true);
@@ -267,7 +277,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
 
   const cancelUploadConfirm = () => setUploadConfirm(null);
   const openInstructionEdit = (topic: ProjectMemoryTopic) => {
-    if (pendingConfirmRef.current !== null || !enabled || !canPromote || instructionEditRef.current !== null || promotingRef.current !== null ||
+    if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || !enabled || !canPromote || instructionEditRef.current !== null || promotingRef.current !== null ||
         uploadingRef.current || uploadConfirm !== null) return;
     updateInstructionEdit({ topicId: topic.id, topicKey: topic.topic_key, topicRevision: topic.revision,
       promotionStatus: topic.promotion.status, phase: "input", instruction: "", preview: null,
@@ -370,8 +380,50 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
     updateInstructionEdit({ ...current, phase: "done", preview: null, notice: null, doneStatus: result.status });
   };
 
-  const isActionLocked = () => pendingConfirmRef.current !== null || promotingRef.current !== null || uploadingRef.current || uploadConfirm !== null || instructionEditRef.current !== null;
-  return { topics, loading, error, canPromote, promotingTopicId, uploading, uploadConfirm,
+  const isActionLocked = () => chatInclusionRef.current !== null || pendingConfirmRef.current !== null || promotingRef.current !== null || uploadingRef.current || uploadConfirm !== null || instructionEditRef.current !== null;
+  const setChatInclusion = async (topic: ProjectMemoryTopic, include: boolean) => {
+    if (!enabled || isActionLocked() || chatInclusionRef.current !== null ||
+        include === topic.include_in_chat || (include && !topic.content_md.trim())) return;
+    const id = ++chatInclusionRequestId.current;
+    // Synchronous ref guards rapid clicks before the next render.
+    chatInclusionRef.current = topic.id;
+    setChatInclusionTopicId(topic.id);
+    setError(null);
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/memory/topics/${encodeURIComponent(topic.id)}/chat-inclusion`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ include }),
+      });
+      if (id !== chatInclusionRequestId.current) return;
+      const body = await response.json().catch(() => null);
+      if (id !== chatInclusionRequestId.current) return;
+      if (response.status === 200) {
+        await reload();
+        if (id !== chatInclusionRequestId.current) return;
+        return;
+      }
+      const message = response.status === 409 && body?.code === "chat_inclusion_limit_exceeded"
+        ? `チャット注入の上限（本文合計${PROJECT_MEMORY_CHAT_MAX_CHARS.toLocaleString("ja-JP")}字）を超えるため、ONにできません。`
+        : response.status === 400 ? "本文が空のtopicはONにできません。"
+        : response.status === 404 ? "対象のtopicが見つかりませんでした。一覧を更新しました。"
+        : "チャット注入の設定に失敗しました";
+      await reload();
+      if (id !== chatInclusionRequestId.current) return;
+      setError(message);
+    } catch {
+      if (id !== chatInclusionRequestId.current) return;
+      await reload();
+      if (id !== chatInclusionRequestId.current) return;
+      setError("チャット注入の設定に失敗しました");
+    } finally {
+      if (id === chatInclusionRequestId.current) {
+        chatInclusionRef.current = null;
+        setChatInclusionTopicId(null);
+      }
+    }
+  };
+  return { topics, loading, error, setChatInclusion, chatInclusionTopicId, canPromote, promotingTopicId, uploading, uploadConfirm,
     pendingConfirm, confirmPromotion, cancelPromotionConfirm,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, reload, isActionLocked,
     instructionEdit, canInstructionEdit: canPromote, openInstructionEdit, closeInstructionEdit,

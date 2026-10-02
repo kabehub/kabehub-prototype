@@ -44,7 +44,7 @@ const Section = require(path.join(__dirname, "..", "components", "ProjectMemoryS
 const TopicList = require(path.join(__dirname, "..", "components", "ProjectMemoryTopicList.tsx")).default;
 const UploadConfirm = require(path.join(__dirname, "..", "components", "ProjectMemoryUploadConfirm.tsx")).default;
 const InstructionEditModal = require(path.join(__dirname, "..", "components", "ProjectMemoryInstructionEditModal.tsx")).default;
-const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", revision: 1, created_at: "", updated_at: "",
+const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", include_in_chat: false, revision: 1, created_at: "", updated_at: "",
   promotion: { status: "not_promoted", source_revision: null, lore_id: null } };
 const render = () => { cursor = 0; return Section({ projectId: "project-1", projectName: "Project" }); };
 const effects = () => { const todo = pending; pending = []; todo.forEach((run) => run()); };
@@ -128,6 +128,37 @@ const reset = (fetcher) => { state = []; cursor = 0; deps = []; cleanups = []; p
   assert.equal(find(tree, "button").props.disabled, true, "promotion locks header");
   assert.equal(find(tree, "button", "ファイルをアップロード").props.disabled, true);
   releasePromotion(); await flush();
+
+  let finishInclusion;
+  let inclusionGets = 0, inclusionPatches = 0;
+  reset(async (url, init = {}) => {
+    if (init.method) {
+      assert.equal(url, "/api/projects/project-1/memory/topics/topic-1/chat-inclusion");
+      assert.equal(init.method, "PATCH");
+      assert.deepEqual(JSON.parse(init.body), { include: true });
+      inclusionPatches++;
+      return new Promise(resolve => { finishInclusion = () => resolve(Response.json({ topic: { id: topic.id, include_in_chat: true }, included_chars: 7 })); });
+    }
+    inclusionGets++;
+    return Response.json({ topics: [{ ...topic, include_in_chat: inclusionGets > 1 }] });
+  });
+  render(); effects();
+  find(render(), "button").props.onClick(); render(); effects(); await flush();
+  const inclusionList = find(render(), TopicList);
+  assert.equal(inclusionList.props.chatInclusionTopicId, null);
+  inclusionList.props.onChatInclusionChange(topic, true);
+  inclusionList.props.onChatInclusionChange(topic, true);
+  tree = render();
+  assert.equal(find(tree, TopicList).props.chatInclusionTopicId, topic.id);
+  assert.equal(find(tree, TopicList).props.actionsLocked, true);
+  assert.equal(find(tree, "button").props.disabled, true);
+  assert.equal(find(tree, "button", "ファイルをアップロード").props.disabled, true);
+  assert.equal(inclusionPatches, 1);
+  finishInclusion(); await flush();
+  assert.equal(inclusionGets, 2);
+  assert.equal(find(render(), TopicList).props.topics[0].include_in_chat, true);
+  assert.equal(find(render(), TopicList).props.chatInclusionTopicId, null);
+  console.log("ok - library section forwards toggles, locks actions and reloads inclusion");
 
   key = null;
   reset(async () => new Response(null, { status: 500 }));
