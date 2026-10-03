@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/03（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新・Project Memory topicのチャット注入（`include_in_chat`）を追加。refusal時の誘導文・ログ、関連地雷を追加。メモ保存の回帰テスト・地雷を追加）
+最終更新: 2026/10/03（Project設定ドロワー Phase B：Memoryサマリ・refresh契約・保存ヒント）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -201,7 +201,9 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ChatPanel.tsx` | チャット画面のメインコンポーネント。状態管理の大半がここにある |
 | `components/ChatInput.tsx` | 下部固定入力欄。ファイル添付・画像添付・Ctrl+Vスクショ貼り付け・モデルドロップダウン・送信キー設定対応 |
 | `components/ChatInputCentered.tsx` | 新規会話スタート時の中央配置入力欄（v144〜）。`ChatInput.tsx`から型・ヘルパーをimportして共通利用 |
-| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・フォルダ設定モーダル・PC専用折り畳み機能（v168）・Project Memory一覧・整理・会話から初回生成モーダルの起点 |
+| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・指示／参照／Memoryの3タブ設定ドロワー・PC専用折り畳み機能（v168）・Project Memory一覧・整理・会話から初回生成モーダルの起点 |
+| `components/ProjectSettingsTabs.tsx` | hookなしの制御タブ。ARIAと左右矢印／Home／Endによる選択・focus移動 |
+| `components/ProjectMemoryTab.tsx` | Memory選択時のみmount。読み取り専用サマリ・自動要約／一覧の主導線・既存3ボタン。指示・参照パネルとtabpanel要素は常時mount |
 | `components/MessageBubble.tsx` | 通常モードのメッセージ表示。「👍 記憶に追加」ボタン・編集/上書き再生成モーダル（ドロップダウン方式・v173） |
 | `components/RoleplayBubble.tsx` | なりきりモード用メッセージ表示（LINEライクUI） |
 | `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
@@ -228,6 +230,9 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 
 | ファイル | 役割 |
 |-|-|
+| `lib/project-memory/summary.ts` | 純関数。標準キー集合との積集合、注入ON／現在注入、Lore登録済み／更新あり、チャット未注入・Lore未登録を集計。注入判定と使用字数は既存`summarizeChatInclusion`を再利用 |
+| `lib/project-memory/summary-client.ts` | 既存topics GETから必要な5項目のみ抽出。HTTP・配列・全件の必須型とpromotion.statusをfail-closedで検証 |
+| `lib/project-memory/use-project-memory-summary.ts` | Project IDとrefreshTokenで再取得するread-only hook。effect前も旧Projectのデータ・エラーを公開しない。未取得と0件を区別し、再取得失敗は旧データを破棄。request idとabortで古い応答を除外 |
 | `lib/chat-system-blocks.ts` | Claude systemブロックの順序・キャッシュmarker選択と、非Claude向けの旧system文字列復元（importゼロの純関数） |
 | `lib/ai-context-blocks.ts` | AI参照データの本文・属性値を無害化し、共通の参照ブロックを生成。参照元に`project_memory_topic`を含む |
 | `lib/branching.ts` | 表示順・anchor・chain block・現在laneの構築ロジック |
@@ -303,10 +308,11 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト92本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト97本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
+| `scripts/project-memory-summary.test.cjs` / `scripts/project-memory-summary-client.test.cjs` / `scripts/use-project-memory-summary.test.cjs` / `scripts/project-memory-tab.test.cjs` / `scripts/project-settings-memory-sidebar.test.cjs` | サマリ意味論・fail-closed取得・effect前のProject切替／refresh競合応答・Memory主ボタン・Sidebarのrefresh契約を検証 |
 | `scripts/ai-context-blocks.test.cjs` | AI参照ブロック生成と本文・属性値無害化の回帰テスト |
 | `scripts/api-key-handling.test.cjs` | BYOK APIキーの保存・転送・ログ露出防止を横断検証 |
 | `scripts/apply-branch-edit-route.test.cjs` | branch edit RouteのRPC契約・採番・エラー処理を検証 |
@@ -558,6 +564,9 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 | 地雷 | 説明 |
 |-|-|
+| 設定ドロワーの保存方式 | 指示・参照は「保存」で設定を反映。Memory操作は個別に適用され、「保存」は不要。フッタはmarginTop:auto＋paddingTop:16pxで下端に置き、長い内容ではパネル下に続く（stickyなし） |
+| Memoryサマリの意味 | チャット注入ONと現在注入は別概念。ONでも空本文・合計8,000字の選択から外れたtopicは現在注入に数えない。Lore登録済みはcurrent／staleの検索対象であり、会話ごとの参照を保証しない。currentを注入条件として扱わない。チャット未注入・Lore未登録は非注入かつnot_promotedのみ |
+| Memoryサマリのrefresh契約 | SidebarのrefreshTokenを+1する3か所：①一覧モーダルonCancel（無条件）②整理applyが結果を返した直後（applied件数によらず、全件failedも対象）③自動要約apply wrapperのfinally（引数・戻り値・rejectをそのまま通し、Promise完了後に更新）。既存useAutoSummary／useProjectMemoryTopicsは変更しない |
 | 新Route追加時の登録 | `app/api`配下にRouteを追加したら`lib/proxy-paths.ts`の`API_AUTH_CLASSIFICATIONS`へ登録が必須。`scripts/proxy-paths.test.cjs`が全route×methodに分類がちょうど1件あることを検証するため、未登録だと確実に失敗する |
 | 自動要約の最終発言時刻 | `threads.updated_at`は通常チャットで更新されないため最終発言時刻に使わない。対象messagesの最新`created_at`をpreflightで取得して候補を並べる |
 | 自動要約のNULL扱い | `roleplay_mode`はfalseとNULLを通常スレッドとして採用（`.or("roleplay_mode.is.null,roleplay_mode.eq.false")`）。`is_active`もtrueとNULLを採用（`.or("is_active.is.null,is_active.eq.true")`）。単純なeq/neqではNULLが落ちる |

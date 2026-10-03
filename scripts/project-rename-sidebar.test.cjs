@@ -10,6 +10,8 @@ const {
 const originalFetch = global.fetch;
 const originalLoad = Module._load;
 
+let memoryTabProps = null;
+let memoryTabRenders = 0;
 let hookState = [];
 let cursor = 0;
 let lastStateUpdateIndex = -1;
@@ -54,6 +56,12 @@ const hooks = {
 
 Module._load = function loadWithMocks(request, parent, isMain) {
   if (request === "react") return hooks;
+  if (request === "@/components/ProjectMemoryTab") {
+    return { __esModule: true, default: (props) => {
+      memoryTabProps = props; memoryTabRenders++;
+      return React.createElement("div", { "data-testid": "project-memory-tab" });
+    } };
+  }
   if (request === "@/components/Toast") {
     return {
       useToast() {
@@ -286,9 +294,21 @@ async function openSettings(nodes) {
       findButton(tabNodes, label).props.onClick();
       tabNodes = renderSidebar();
       assertTabs(tabNodes, tabIds[tabLabels.indexOf(label)]);
+      assert.equal(tabNodes.filter(node => node.props["data-testid"] === "project-memory-tab").length, label === "Memory" ? 1 : 0);
+      const expectedHint = label === "Memory" ? "このタブの操作はすぐに反映されます（『保存』は不要）" : "この内容は下の『保存』で反映されます";
+      assert.equal(tabNodes.filter(node => node.type === "div" && textContent(node.props.children) === expectedHint).length, 1);
     }
     assertTabs(tabNodes, "instructions");
+    assert.equal(memoryTabRenders, 0, "Memory tab is not mounted before selection");
     assert.equal(tabNodes.filter(node => node.type === "textarea").length, 1);
+    const promptInput = tabNodes.find(node => node.type === "textarea");
+    assert.equal(promptInput.props.style.minHeight, "260px");
+    assert.equal(promptInput.props.style.resize, "vertical");
+    assert.equal(promptInput.props.placeholder.includes("※スレッド個別"), false);
+    assert.equal(tabNodes.filter(node => node.type === "div" && textContent(node.props.children) === "💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます").length, 1);
+    const footer = tabNodes.find(node => node.props.style?.marginTop === "auto" && node.props.style?.justifyContent === "space-between");
+    assert.ok(footer);
+    assert.equal(footer.props.style.paddingTop, "16px");
     tabNodes.find(node => node.type === "textarea").props.onChange({ target: { value: "edited prompt" } });
     findRenameInput(tabNodes).props.onChange({ target: { value: "unsaved name" } });
     switchTab("参照");
@@ -310,8 +330,10 @@ async function openSettings(nodes) {
     const memoryPanel = tabNodes.find(node => node.props.id === "project-settings-panel-memory");
     const instructionsPanel = tabNodes.find(node => node.props.id === "project-settings-panel-instructions");
     const referencePanel = tabNodes.find(node => node.props.id === "project-settings-panel-reference");
-    assert.ok(textContent(memoryPanel).includes("Project Memory一覧"));
-    assert.ok(textContent(memoryPanel).includes("Project Memoryを整理"));
+    assert.ok(memoryPanel.props.children, "Memory panel lazy content");
+    assert.equal(memoryTabProps.projectId, "11111111-1111-4111-8111-111111111111");
+    assert.equal(typeof memoryTabProps.list.onOpen, "function");
+    assert.equal(typeof memoryTabProps.consolidation.onOpen, "function");
     assert.ok(textContent(instructionsPanel).includes("💡 スレッド個別のシステムプロンプト"));
     assert.ok(textContent(referencePanel).includes("Pinned Files"));
     assert.ok(textContent(referencePanel).includes("AI動的探索"));

@@ -4,6 +4,7 @@ import { Thread } from "@/types";
 import { timeAgo } from "@/lib/formatters";
 import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useToast } from "@/components/Toast";
+import ProjectMemoryTab from "@/components/ProjectMemoryTab";
 import ProjectSettingsTabs, { type ProjectSettingsTab } from "@/components/ProjectSettingsTabs";
 import ProjectDeleteConfirmModal from "@/components/ProjectDeleteConfirmModal";
 import ProjectMemoryConsolidationModal from "@/components/ProjectMemoryConsolidationModal";
@@ -719,6 +720,7 @@ export default function Sidebar({
   } | null>(null);
   const [memoryListOpen, setMemoryListOpen] = useState(false);
   const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>("instructions");
+  const [projectMemoryRefreshToken, setProjectMemoryRefreshToken] = useState<number>(0);
   const autoSummary = useAutoSummary({ projectId: projectSettingsModal?.projectId ?? null, enabled: projectSettingsModal !== null, showToast });
 
   const handleNewThreadInFolder = useCallback((projectId: string) => {
@@ -844,6 +846,7 @@ export default function Sidebar({
         consolidationModal.preview,
         topicIds,
       );
+      setProjectMemoryRefreshToken(value => value + 1);
       setConsolidationResults(results);
       const appliedCount = results.filter((result) => result.status === "applied").length;
       const conflictCount = results.filter((result) => result.status === "conflict").length;
@@ -1597,6 +1600,9 @@ export default function Sidebar({
               </button>
             </div>
             <ProjectSettingsTabs activeTab={projectSettingsTab} onChange={setProjectSettingsTab} />
+            <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "12px" }}>
+              {projectSettingsTab === "memory" ? "このタブの操作はすぐに反映されます（『保存』は不要）" : "この内容は下の『保存』で反映されます"}
+            </div>
             <div role="tabpanel" id="project-settings-panel-instructions" aria-labelledby="project-settings-tab-instructions" hidden={projectSettingsTab !== "instructions"}>
               <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "16px", fontFamily: "'JetBrains Mono', monospace" }}>
                 フォルダのシステムプロンプト
@@ -1630,9 +1636,9 @@ export default function Sidebar({
                 value={projectSettingsModal.systemPrompt}
                 onChange={(e) => setProjectSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
                 placeholder={projectSettingsModal.folderType === "novel"
-                  ? `例：あなたは優秀な小説の共同執筆者です。世界観・登場人物・文体の一貫性を保ちながら、指示された内容を執筆してください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`
-                  : `例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
-                style={{ width: "100%", minHeight: "calc(100vh - 320px)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
+                  ? `例：あなたは優秀な小説の共同執筆者です。世界観・登場人物・文体の一貫性を保ちながら、指示された内容を執筆してください。`
+                  : `例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。`}
+                style={{ width: "100%", minHeight: "260px", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
                 onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
               />
@@ -1751,38 +1757,22 @@ export default function Sidebar({
               </div>
             </div>
             <div role="tabpanel" id="project-settings-panel-memory" aria-labelledby="project-settings-tab-memory" hidden={projectSettingsTab !== "memory"}>
-              <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", background: "white" }}>
-                <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "3px" }}>
-                  Project Memory
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--ink-muted)", lineHeight: 1.6, marginBottom: "10px" }}>
-                  既存topicの重複・矛盾・古くなった記述をAIで確認し、topicごとの全文更新案を作ります。
-                </div>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                <button
-                  onClick={() => { void autoSummary.generate(); }}
+              {projectSettingsTab === "memory" && (
+                <ProjectMemoryTab
+                  projectId={projectSettingsModal.projectId}
+                  refreshToken={projectMemoryRefreshToken}
                   disabled={!autoSummary.canGenerate || consolidationLoading}
-                  title={autoSummary.error ?? undefined}
-                  style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: autoSummary.canGenerate ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: autoSummary.canGenerate ? "pointer" : "not-allowed", fontWeight: 500 }}
-                >{autoSummary.buttonLabel}</button>
-                <button
-                  onClick={handleOpenMemoryConsolidation}
-                  disabled={!projectSettingsModal.projectId || consolidationLoading || autoSummary.generating}
-                  style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: projectSettingsModal.projectId && !consolidationLoading ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: projectSettingsModal.projectId && !consolidationLoading ? "pointer" : "not-allowed", fontWeight: 500 }}
-                >
-                  {consolidationLoading ? "整理案を生成中…" : "Project Memoryを整理"}
-                </button>
-                <button
-                  onClick={() => setMemoryListOpen(true)}
-                  disabled={!projectSettingsModal.projectId}
-                  style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: "#7c3aed", fontSize: "12px", cursor: "pointer", fontWeight: 500 }}
-                >
-                  Project Memory一覧
-                </button>
-                </div>
-              </div>
+                  autoSummary={{
+                    buttonLabel: autoSummary.buttonLabel, canGenerate: autoSummary.canGenerate,
+                    error: autoSummary.error, generating: autoSummary.generating,
+                    onGenerate: () => { void autoSummary.generate(); },
+                  }}
+                  consolidation={{ onOpen: handleOpenMemoryConsolidation, loading: consolidationLoading }}
+                  list={{ onOpen: () => setMemoryListOpen(true) }}
+                />
+              )}
             </div>
-            <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "8px", marginTop: "auto", paddingTop: "16px", justifyContent: "space-between", alignItems: "center" }}>
               <button
                 onClick={handleOpenProjectDelete}
                 disabled={!projectSettingsModal.projectId || projectSettingsSaving || projectRenaming}
@@ -1815,7 +1805,10 @@ export default function Sidebar({
           isOpen={memoryListOpen}
           projectId={projectSettingsModal.projectId}
           projectName={projectSettingsModal.folderName}
-          onCancel={() => setMemoryListOpen(false)}
+          onCancel={() => {
+            setMemoryListOpen(false);
+            setProjectMemoryRefreshToken(value => value + 1);
+          }}
         />
       )}
       {projectSettingsModal && (
@@ -1849,7 +1842,13 @@ export default function Sidebar({
           preview={autoSummary.preview}
           isApplying={autoSummary.isApplying}
           results={autoSummary.results}
-          onApply={autoSummary.apply}
+          onApply={async (...args: Parameters<typeof autoSummary.apply>) => {
+            try {
+              return await autoSummary.apply(...args);
+            } finally {
+              setProjectMemoryRefreshToken(value => value + 1);
+            }
+          }}
           onCancel={autoSummary.close}
         />
       )}
