@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/03（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新・Project Memory topicのチャット注入（`include_in_chat`）を追加。refusal時の誘導文・ログ、関連地雷を追加）
+最終更新: 2026/10/03（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新・Project Memory topicのチャット注入（`include_in_chat`）を追加。refusal時の誘導文・ログ、関連地雷を追加。メモ保存の回帰テスト・地雷を追加）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -581,6 +581,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 同revisionの再昇格 | 同一user+topic+revisionのLoreはarchived/supersededを含め最大1件（unique index）。通常APIはarchivedかつ`superseded_by=null`の同revision行を専用RPC `restore_archived_project_memory_promotion`（v203）で復元し、`is_archived=false`のみ更新（編集本文・embedding・`user_edited`等は保持、Embedding再生成なし）。他active行があれば409で拒否し、RPC内で既にactiveなら`restored:false`の200。superseded同revisionは対象外で従来のEmbedding→昇格RPC→`created:false`を維持し、Embedding前の409 short-circuitは別チケット。既存昇格RPC・Project削除の経路は従来どおり |
 | 復元とOpenAIキー | v203の復元ブランチはroute単体ではOpenAIキー不要。ただし現行hookは`canPromote`が偽だと操作を開始せず、一覧もボタンを無効化する。GETはarchivedを見ず新規/復元を判別できないため、UIからキー無しで復元できる仕様にはなっていない |
 | チャット注入の方式 | `project_memory_topics.include_in_chat`（default false）で**topic単位のopt-in**。ONのtopicは、そのProjectの通常チャットのsystemに毎回入る（一時チャット・未分類チャットは対象外）。昇格Lore検索とは別経路で、**昇格済みかつONのtopicは検索経由でも同内容が参照される場合がある**（許容済みの重複） |
+| メモ保存とチャット注入 | `isMemo:true` はuser message保存後・AIコンテキスト構築前に早期returnするstorage-only経路。Project Memory topic・Lore/RAG・Pinned/GitHub・AI provider呼び出しの対象外。通常メモのほか `/image` 入力ログ・Novel Check（Web版・mobile版）の保存処理でも利用される。「メモをAIに送る」は本文を入力欄へ戻すだけで、その後は通常送信なのでProject Memory注入の対象になる |
 | 8,000字の意味 | `PROJECT_MEMORY_CHAT_MAX_CHARS`は**topic本文(`content_md`)の合計**で、system全体の大きさではない。数え方はコードポイント（JSの`[...text].length`とPostgresの`char_length`が一致）。preamble・タグ・meta・区切りは含まない |
 | ON時の上限保証 | 上限チェックはRPC（v204）側でON時点のみ（上限値はSQLに直書き）。ON後にAI編集・ULで本文が増えるのは許容し、チャット側のselector（超過topicはskipして後続を続行）が最後の防衛線。OFFは常に許可。DBの空判定は`btrim`、JSは`trim`で、差はDB側が保守的 |
 | selectorのcapはDB取得量を制限しない | チャット側の8,000字上限は注入量の制御であり、取得するDB行数・サイズの上限ではない（ON後に肥大化したtopicも一旦取得してから選別する） |

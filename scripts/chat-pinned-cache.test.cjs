@@ -365,6 +365,45 @@ async function send(provider, options) {
       { id: "topic-b", topic_key: "b", content_md: "本文😀", revision: 2 },
       { id: "topic-a", topic_key: "a", content_md: "あいう", revision: 1 },
     ];
+    // Memo storage must finish before any AI context or provider work, even with opted-in topics.
+    scenario = { memoryTopics, pinned: true, references: true, loop: true };
+    threadFixture = { folder_name: null, project_id: PROJECT_ID, user_id: USER_ID };
+    databaseCalls = []; loreCalls = []; backgroundTasks = []; upstreamBodies = [];
+    savedMessages = []; loopSystems = []; trimSystems = [];
+    const memoResponse = await POST(new NextRequest("https://www.kabehub.com/api/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-anthropic-api-key": "key", "x-openai-api-key": "key" },
+      body: JSON.stringify({
+        threadId: THREAD_ID, isMemo: true, provider: "claude", modelId: "claude-sonnet-4-5",
+        userContent: "Project Memoryには送らない保存用メモ", messages: [],
+      }),
+    }));
+    const memoResponseText = await memoResponse.text();
+    await Promise.all(backgroundTasks);
+    assert.equal(memoResponse.status, 200);
+    assert.equal(databaseCalls.filter(call => call.table === "project_memory_topics").length, 0);
+    assert.equal(loreCalls.length, 0);
+    assert.equal(upstreamBodies.length, 0);
+    assert.equal(backgroundTasks.length, 0);
+    assert.deepEqual(loopSystems, []);
+    assert.deepEqual(trimSystems, []);
+    assert.deepEqual(unexpectedUrls, []);
+    assert.equal(memoResponse.headers.get("content-type"), "application/json");
+    assert.equal(savedMessages.length, 1);
+    assert.deepEqual(savedMessages[0], {
+      id: savedMessages[0].id, thread_id: "11111111-1111-4111-8111-111111111111",
+      role: "user", content: "Project Memoryには送らない保存用メモ", provider: "memo", user_id: "user-1",
+    });
+    assert.match(savedMessages[0].id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    const memoJson = JSON.parse(memoResponseText);
+    assert.deepEqual(memoJson, {
+      userMessage: {
+        id: savedMessages[0].id, thread_id: "11111111-1111-4111-8111-111111111111",
+        role: "user", content: "Project Memoryには送らない保存用メモ", provider: "memo",
+        created_at: memoJson.userMessage.created_at,
+      },
+    });
+    assert.equal(new Date(memoJson.userMessage.created_at).toISOString(), memoJson.userMessage.created_at);
     for (const provider of ["claude", "openai", "gemini"]) {
       const memoryOnly = { memoryTopics, pinned: false, references: false, participants: false };
       const first = await send(provider, memoryOnly);
