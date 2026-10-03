@@ -241,6 +241,101 @@ async function openSettings(nodes) {
 (async () => {
   try {
 
+    // Phase A: all panels stay mounted and controls remain outside them.
+    hookState = [];
+    let tabNodes = await mountSidebar();
+    await openSettings(tabNodes);
+    tabNodes = renderSidebar();
+    const tabIds = ["instructions", "reference", "memory"];
+    const tabLabels = ["指示", "参照", "Memory"];
+    function assertTabs(nodes, activeTab) {
+      const panels = nodes.filter(node => node.props.role === "tabpanel");
+      const tabs = nodes.filter(node => node.props.role === "tab");
+      assert.equal(panels.length, 3, "all panels remain mounted");
+      assert.equal(tabs.length, 3);
+      assert.equal(nodes.filter(node => node.props.role === "tablist").length, 1);
+      for (const id of tabIds) {
+        const panel = panels.find(node => node.props.id === "project-settings-panel-" + id);
+        const tab = tabs.find(node => node.props.id === "project-settings-tab-" + id);
+        assert.ok(panel);
+        assert.ok(tab);
+        assert.equal(panel.props.hidden, id !== activeTab);
+        assert.equal(panel.props.style?.display, undefined, "hidden must control panel display");
+        assert.equal(panel.props["aria-labelledby"], tab.props.id);
+        assert.equal(tab.props["aria-controls"], panel.props.id);
+        assert.equal(tab.props["aria-selected"], id === activeTab);
+        assert.equal(tab.props.tabIndex, id === activeTab ? 0 : -1);
+      }
+      findRenameInput(nodes);
+      for (const label of ["変更", "保存", "キャンセル", "Projectを削除"]) {
+        findButton(nodes, label);
+      }
+      // Walk panel JSX without executing child hooks a second time.
+      function assertNoHeaderOrFooter(value) {
+        if (Array.isArray(value)) return value.forEach(assertNoHeaderOrFooter);
+        if (!React.isValidElement(value)) return;
+        assert.notEqual(value.props["aria-label"], "Project名");
+        if (value.type === "button") {
+          assert.equal(["変更", "保存", "キャンセル", "Projectを削除"].includes(textContent(value.props.children)), false);
+        }
+        assertNoHeaderOrFooter(value.props.children);
+      }
+      panels.forEach(panel => assertNoHeaderOrFooter(panel.props.children));
+    }
+    function switchTab(label) {
+      findButton(tabNodes, label).props.onClick();
+      tabNodes = renderSidebar();
+      assertTabs(tabNodes, tabIds[tabLabels.indexOf(label)]);
+    }
+    assertTabs(tabNodes, "instructions");
+    assert.equal(tabNodes.filter(node => node.type === "textarea").length, 1);
+    tabNodes.find(node => node.type === "textarea").props.onChange({ target: { value: "edited prompt" } });
+    findRenameInput(tabNodes).props.onChange({ target: { value: "unsaved name" } });
+    switchTab("参照");
+    const pinnedPlaceholder = "https://github.com/.../blob/main/...";
+    tabNodes.find(node => node.type === "input" && node.props.placeholder === pinnedPlaceholder)
+      .props.onChange({ target: { value: "https://github.com/unfinished" } });
+    tabNodes.find(node => node.type === "input" && node.props.placeholder === "例: owner/repo-name")
+      .props.onChange({ target: { value: "owner/edited-repo" } });
+    tabNodes.find(node => node.type === "input" && node.props.placeholder?.startsWith("例: main,"))
+      .props.onChange({ target: { value: "edited-branch" } });
+    for (const label of ["Memory", "指示", "参照", "Memory"]) {
+      switchTab(label);
+      assert.equal(tabNodes.find(node => node.type === "textarea").props.value, "edited prompt");
+      assert.equal(findRenameInput(tabNodes).props.value, "unsaved name");
+      assert.equal(tabNodes.find(node => node.props.placeholder === pinnedPlaceholder).props.value, "https://github.com/unfinished");
+      assert.equal(tabNodes.find(node => node.props.placeholder === "例: owner/repo-name").props.value, "owner/edited-repo");
+      assert.equal(tabNodes.find(node => node.props.placeholder?.startsWith("例: main,")).props.value, "edited-branch");
+    }
+    const memoryPanel = tabNodes.find(node => node.props.id === "project-settings-panel-memory");
+    const instructionsPanel = tabNodes.find(node => node.props.id === "project-settings-panel-instructions");
+    const referencePanel = tabNodes.find(node => node.props.id === "project-settings-panel-reference");
+    assert.ok(textContent(memoryPanel).includes("Project Memory一覧"));
+    assert.ok(textContent(memoryPanel).includes("Project Memoryを整理"));
+    assert.ok(textContent(instructionsPanel).includes("💡 スレッド個別のシステムプロンプト"));
+    assert.ok(textContent(referencePanel).includes("Pinned Files"));
+    assert.ok(textContent(referencePanel).includes("AI動的探索"));
+    await findButton(tabNodes, "保存").props.onClick();
+    assert.deepEqual(fetchCalls.find(call => call.method === "POST").body, {
+      project_id: "11111111-1111-4111-8111-111111111111",
+      system_prompt: "edited prompt",
+      folder_type: "novel",
+      pinned_github_files: [],
+      github_repo: "owner/edited-repo",
+      github_ref: "edited-branch",
+    });
+    tabNodes = renderSidebar();
+    await openSettings(tabNodes);
+    tabNodes = renderSidebar();
+    assertTabs(tabNodes, "instructions");
+    switchTab("Memory");
+    findButton(tabNodes, "キャンセル").props.onClick();
+    tabNodes = renderSidebar();
+    assert.equal(tabNodes.filter(node => node.props.role === "tabpanel").length, 0);
+    await openSettings(tabNodes);
+    tabNodes = renderSidebar();
+    assertTabs(tabNodes, "instructions");
+
     hookState = [];
     fetchCalls = [];
     toastCalls = [];

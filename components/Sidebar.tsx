@@ -4,6 +4,7 @@ import { Thread } from "@/types";
 import { timeAgo } from "@/lib/formatters";
 import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useToast } from "@/components/Toast";
+import ProjectSettingsTabs, { type ProjectSettingsTab } from "@/components/ProjectSettingsTabs";
 import ProjectDeleteConfirmModal from "@/components/ProjectDeleteConfirmModal";
 import ProjectMemoryConsolidationModal from "@/components/ProjectMemoryConsolidationModal";
 import ProjectMemoryBootstrapModal from "@/components/ProjectMemoryBootstrapModal";
@@ -717,6 +718,7 @@ export default function Sidebar({
     preview: ProjectMemoryConsolidationPreview;
   } | null>(null);
   const [memoryListOpen, setMemoryListOpen] = useState(false);
+  const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>("instructions");
   const autoSummary = useAutoSummary({ projectId: projectSettingsModal?.projectId ?? null, enabled: projectSettingsModal !== null, showToast });
 
   const handleNewThreadInFolder = useCallback((projectId: string) => {
@@ -729,6 +731,7 @@ export default function Sidebar({
       const res = await fetch(`/api/project-settings?project_id=${encodeURIComponent(projectId)}`);
       if (!res.ok) throw new Error("フォルダ設定の取得に失敗しました");
       const data = await res.json();
+      setProjectSettingsTab("instructions");
       setProjectSettingsModal({
         projectId,
         folderName,
@@ -740,6 +743,7 @@ export default function Sidebar({
       });
       setGithubRepoError(null);
     } catch {
+      setProjectSettingsTab("instructions");
       setProjectSettingsModal({
         projectId,
         folderName,
@@ -1592,183 +1596,190 @@ export default function Sidebar({
                 {projectRenaming ? "変更中…" : "変更"}
               </button>
             </div>
-            <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "16px", fontFamily: "'JetBrains Mono', monospace" }}>
-              フォルダのシステムプロンプト
-            </div>
-            {/* 小説プロジェクトモードトグル */}
-            <div style={{ border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", marginBottom: "12px", background: projectSettingsModal.folderType === "novel" ? "#fffbeb" : "white", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)" }}>📖 小説プロジェクトモード</div>
-                <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "2px" }}>Prompt Cachingを活用した長編執筆に最適化</div>
+            <ProjectSettingsTabs activeTab={projectSettingsTab} onChange={setProjectSettingsTab} />
+            <div role="tabpanel" id="project-settings-panel-instructions" aria-labelledby="project-settings-tab-instructions" hidden={projectSettingsTab !== "instructions"}>
+              <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "16px", fontFamily: "'JetBrains Mono', monospace" }}>
+                フォルダのシステムプロンプト
               </div>
-              <button
-                onClick={() => setProjectSettingsModal(prev => prev ? { ...prev, folderType: prev.folderType === "novel" ? null : "novel" } : null)}
-                style={{ position: "relative", width: "40px", height: "22px", borderRadius: "11px", border: "none", background: projectSettingsModal.folderType === "novel" ? "#7c3aed" : "var(--border)", cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}
-              >
-                <span style={{ position: "absolute", top: "3px", left: projectSettingsModal.folderType === "novel" ? "21px" : "3px", width: "16px", height: "16px", borderRadius: "50%", background: "white", transition: "left 0.2s", display: "block" }} />
-              </button>
-            </div>
-            {projectSettingsModal.folderType === "novel" && (
-              <button
-                onClick={() => {
-                  const template = `---\n## 世界観設定\n（地理・歴史・魔法体系・社会構造など）\n\n## 登場人物一覧\n（名前・年齢・外見・性格・動機・他キャラとの関係）\n\n## あらすじ（全体）\n（起承転結の骨格）\n\n## 現在の執筆状況\n（何章まで書いたか・未回収の伏線・次に書くシーン）\n\n## 執筆スタイル指定\n（文体・一人称/三人称・禁止表現など）\n\n---\n`;
-                  setProjectSettingsModal(prev => prev ? { ...prev, systemPrompt: template + prev.systemPrompt } : null);
-                }}
-                style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "12px", cursor: "pointer", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}
-              >
-                📋 小説テンプレートを先頭に挿入
-              </button>
-            )}
-            <textarea
-              autoFocus
-              value={projectSettingsModal.systemPrompt}
-              onChange={(e) => setProjectSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
-              placeholder={projectSettingsModal.folderType === "novel"
-                ? `例：あなたは優秀な小説の共同執筆者です。世界観・登場人物・文体の一貫性を保ちながら、指示された内容を執筆してください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`
-                : `例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
-              style={{ width: "100%", minHeight: "calc(100vh - 320px)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
-              onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
-            />
-            <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "6px", display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'DM Sans', sans-serif" }}>
-              <span>
-                {projectSettingsModal.systemPrompt.length.toLocaleString()}文字 / 約{Math.ceil(projectSettingsModal.systemPrompt.length * 1.2).toLocaleString()}トークン（概算）
-              </span>
+              {/* 小説プロジェクトモードトグル */}
+              <div style={{ border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", marginBottom: "12px", background: projectSettingsModal.folderType === "novel" ? "#fffbeb" : "white", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)" }}>📖 小説プロジェクトモード</div>
+                  <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginTop: "2px" }}>Prompt Cachingを活用した長編執筆に最適化</div>
+                </div>
+                <button
+                  onClick={() => setProjectSettingsModal(prev => prev ? { ...prev, folderType: prev.folderType === "novel" ? null : "novel" } : null)}
+                  style={{ position: "relative", width: "40px", height: "22px", borderRadius: "11px", border: "none", background: projectSettingsModal.folderType === "novel" ? "#7c3aed" : "var(--border)", cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}
+                >
+                  <span style={{ position: "absolute", top: "3px", left: projectSettingsModal.folderType === "novel" ? "21px" : "3px", width: "16px", height: "16px", borderRadius: "50%", background: "white", transition: "left 0.2s", display: "block" }} />
+                </button>
+              </div>
               {projectSettingsModal.folderType === "novel" && (
-                projectSettingsModal.systemPrompt.length >= 5000 ? (
-                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#d1fae5", color: "#065f46" }}>⚡ Caching 有効</span>
-                ) : (
-                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#fef3c7", color: "#92400e" }}>△ あと{(5000 - projectSettingsModal.systemPrompt.length).toLocaleString()}文字でCaching有効</span>
-                )
-              )}
-            </div>
-            {/* Pinned Files セクション */}
-            <div style={{ marginTop: "16px" }}>
-              <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "6px", letterSpacing: "0.05em" }}>
-                 Pinned Files
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}>
-                このフォルダで常に参照するGitHubファイル（最大{PINNED_GITHUB_FILES_MAX}件・合計約60,000文字まで）
-              </div>
-
-              {/* URL入力欄 */}
-              {(projectSettingsModal.pinnedFiles.length < PINNED_GITHUB_FILES_MAX) && (
-                <PinnedFileInput
-                  onAdd={(url) => {
-                    setProjectSettingsModal(prev =>
-                      prev ? { ...prev, pinnedFiles: [...prev.pinnedFiles, url] } : null
-                    );
+                <button
+                  onClick={() => {
+                    const template = `---\n## 世界観設定\n（地理・歴史・魔法体系・社会構造など）\n\n## 登場人物一覧\n（名前・年齢・外見・性格・動機・他キャラとの関係）\n\n## あらすじ（全体）\n（起承転結の骨格）\n\n## 現在の執筆状況\n（何章まで書いたか・未回収の伏線・次に書くシーン）\n\n## 執筆スタイル指定\n（文体・一人称/三人称・禁止表現など）\n\n---\n`;
+                    setProjectSettingsModal(prev => prev ? { ...prev, systemPrompt: template + prev.systemPrompt } : null);
                   }}
-                />
+                  style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "white", color: "var(--ink-muted)", fontSize: "12px", cursor: "pointer", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  📋 小説テンプレートを先頭に挿入
+                </button>
               )}
-              {projectSettingsModal.pinnedFiles.length >= PINNED_GITHUB_FILES_MAX && (
-                <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "6px" }}>
-                  上限（{PINNED_GITHUB_FILES_MAX}件）に達しています
-                </div>
-              )}
-
-              {/* 登録済みファイル一覧 */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "6px" }}>
-                {projectSettingsModal.pinnedFiles.map((url, i) => {
-                  const fileName = url.split("/").pop() ?? url;
-                  return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", background: "var(--sidebar-bg)", borderRadius: "5px", border: "1px solid var(--border)" }}>
-                      <span style={{ flex: 1, fontSize: "12px", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={url}>
-                         {fileName}
-                      </span>
-                      <button
-                        onClick={() => setProjectSettingsModal(prev =>
-                          prev ? { ...prev, pinnedFiles: prev.pinnedFiles.filter((_, idx) => idx !== i) } : null
-                        )}
-                        style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: "14px", padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
-                        title="削除"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* AI動的探索セクション */}
-            <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", background: "white" }}>
-              <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "2px" }}> AI動的探索（フェーズ4）</div>
-              <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "10px", fontFamily: "'DM Sans', sans-serif" }}>
-                設定するとAIが会話中に自律的にリポジトリを探索します。Claudeのみ対応。
-              </div>
-
-              {/* 対象リポジトリ入力 */}
-              <div style={{ marginBottom: "10px" }}>
-                <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>
-                  対象リポジトリ
-                </div>
-                <input
-                  type="text"
-                  value={projectSettingsModal.githubRepo}
-                  onChange={(e) => {
-                    setProjectSettingsModal(prev => prev ? { ...prev, githubRepo: e.target.value } : null);
-                    setGithubRepoError(null);
-                  }}
-                  placeholder="例: owner/repo-name"
-                  style={{ width: "100%", padding: "7px 10px", border: `1px solid ${githubRepoError ? "#e53e3e" : "var(--border)"}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = githubRepoError ? "#e53e3e" : "var(--accent-muted)"; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = githubRepoError ? "#e53e3e" : "var(--border)"; }}
-                />
-                {githubRepoError && (
-                  <div style={{ fontSize: "11px", color: "#e53e3e", marginTop: "3px", fontFamily: "'DM Sans', sans-serif" }}>
-                    {githubRepoError}
-                  </div>
+              <textarea
+                autoFocus
+                value={projectSettingsModal.systemPrompt}
+                onChange={(e) => setProjectSettingsModal((prev) => prev ? { ...prev, systemPrompt: e.target.value } : null)}
+                placeholder={projectSettingsModal.folderType === "novel"
+                  ? `例：あなたは優秀な小説の共同執筆者です。世界観・登場人物・文体の一貫性を保ちながら、指示された内容を執筆してください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`
+                  : `例：このフォルダの会話では、あなたは厳格なコードレビュアーとして振る舞ってください。\n\n※スレッド個別のシステムプロンプトがある場合はそちらが優先されます。`}
+                style={{ width: "100%", minHeight: "calc(100vh - 320px)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "13px", fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none", color: "var(--ink)", boxSizing: "border-box", lineHeight: 1.6 }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+              />
+              <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "6px", display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'DM Sans', sans-serif" }}>
+                <span>
+                  {projectSettingsModal.systemPrompt.length.toLocaleString()}文字 / 約{Math.ceil(projectSettingsModal.systemPrompt.length * 1.2).toLocaleString()}トークン（概算）
+                </span>
+                {projectSettingsModal.folderType === "novel" && (
+                  projectSettingsModal.systemPrompt.length >= 5000 ? (
+                    <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#d1fae5", color: "#065f46" }}>⚡ Caching 有効</span>
+                  ) : (
+                    <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: "#fef3c7", color: "#92400e" }}>△ あと{(5000 - projectSettingsModal.systemPrompt.length).toLocaleString()}文字でCaching有効</span>
+                  )
                 )}
               </div>
-
-              {/* ブランチ/タグ/SHA入力 */}
-              <div>
-                <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>
-                  ブランチ / タグ / SHA（省略可）
+              <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
+                💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
+              </div>
+            </div>
+            <div role="tabpanel" id="project-settings-panel-reference" aria-labelledby="project-settings-tab-reference" hidden={projectSettingsTab !== "reference"}>
+              {/* Pinned Files セクション */}
+              <div style={{ marginTop: "16px" }}>
+                <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "6px", letterSpacing: "0.05em" }}>
+                   Pinned Files
                 </div>
-                <input
-                  type="text"
-                  value={projectSettingsModal.githubRef}
-                  onChange={(e) => setProjectSettingsModal(prev => prev ? { ...prev, githubRef: e.target.value } : null)}
-                  placeholder="例: main, v1.0.0（省略時はデフォルトブランチ）"
-                  style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-muted)"; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                />
+                <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "8px", fontFamily: "'DM Sans', sans-serif" }}>
+                  このフォルダで常に参照するGitHubファイル（最大{PINNED_GITHUB_FILES_MAX}件・合計約60,000文字まで）
+                </div>
+
+                {/* URL入力欄 */}
+                {(projectSettingsModal.pinnedFiles.length < PINNED_GITHUB_FILES_MAX) && (
+                  <PinnedFileInput
+                    onAdd={(url) => {
+                      setProjectSettingsModal(prev =>
+                        prev ? { ...prev, pinnedFiles: [...prev.pinnedFiles, url] } : null
+                      );
+                    }}
+                  />
+                )}
+                {projectSettingsModal.pinnedFiles.length >= PINNED_GITHUB_FILES_MAX && (
+                  <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginBottom: "6px" }}>
+                    上限（{PINNED_GITHUB_FILES_MAX}件）に達しています
+                  </div>
+                )}
+
+                {/* 登録済みファイル一覧 */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "6px" }}>
+                  {projectSettingsModal.pinnedFiles.map((url, i) => {
+                    const fileName = url.split("/").pop() ?? url;
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", background: "var(--sidebar-bg)", borderRadius: "5px", border: "1px solid var(--border)" }}>
+                        <span style={{ flex: 1, fontSize: "12px", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={url}>
+                           {fileName}
+                        </span>
+                        <button
+                          onClick={() => setProjectSettingsModal(prev =>
+                            prev ? { ...prev, pinnedFiles: prev.pinnedFiles.filter((_, idx) => idx !== i) } : null
+                          )}
+                          style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: "14px", padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
+                          title="削除"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* AI動的探索セクション */}
+              <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "10px 12px", background: "white" }}>
+                <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "2px" }}> AI動的探索（フェーズ4）</div>
+                <div style={{ fontSize: "11px", color: "var(--ink-muted)", marginBottom: "10px", fontFamily: "'DM Sans', sans-serif" }}>
+                  設定するとAIが会話中に自律的にリポジトリを探索します。Claudeのみ対応。
+                </div>
+
+                {/* 対象リポジトリ入力 */}
+                <div style={{ marginBottom: "10px" }}>
+                  <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>
+                    対象リポジトリ
+                  </div>
+                  <input
+                    type="text"
+                    value={projectSettingsModal.githubRepo}
+                    onChange={(e) => {
+                      setProjectSettingsModal(prev => prev ? { ...prev, githubRepo: e.target.value } : null);
+                      setGithubRepoError(null);
+                    }}
+                    placeholder="例: owner/repo-name"
+                    style={{ width: "100%", padding: "7px 10px", border: `1px solid ${githubRepoError ? "#e53e3e" : "var(--border)"}`, borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = githubRepoError ? "#e53e3e" : "var(--accent-muted)"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = githubRepoError ? "#e53e3e" : "var(--border)"; }}
+                  />
+                  {githubRepoError && (
+                    <div style={{ fontSize: "11px", color: "#e53e3e", marginTop: "3px", fontFamily: "'DM Sans', sans-serif" }}>
+                      {githubRepoError}
+                    </div>
+                  )}
+                </div>
+
+                {/* ブランチ/タグ/SHA入力 */}
+                <div>
+                  <div style={{ fontSize: "11px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", marginBottom: "4px" }}>
+                    ブランチ / タグ / SHA（省略可）
+                  </div>
+                  <input
+                    type="text"
+                    value={projectSettingsModal.githubRef}
+                    onChange={(e) => setProjectSettingsModal(prev => prev ? { ...prev, githubRef: e.target.value } : null)}
+                    placeholder="例: main, v1.0.0（省略時はデフォルトブランチ）"
+                    style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", outline: "none", color: "var(--ink)", boxSizing: "border-box" }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-muted)"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                  />
+                </div>
               </div>
             </div>
-            <div style={{ fontSize: "11px", color: "var(--ink-faint)", marginTop: "8px", fontFamily: "'DM Sans', sans-serif" }}>
-              💡 スレッド個別のシステムプロンプトがある場合はそちらが優先されます
-            </div>
-            <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", background: "white" }}>
-              <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "3px" }}>
-                Project Memory
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--ink-muted)", lineHeight: 1.6, marginBottom: "10px" }}>
-                既存topicの重複・矛盾・古くなった記述をAIで確認し、topicごとの全文更新案を作ります。
-              </div>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => { void autoSummary.generate(); }}
-                disabled={!autoSummary.canGenerate || consolidationLoading}
-                title={autoSummary.error ?? undefined}
-                style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: autoSummary.canGenerate ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: autoSummary.canGenerate ? "pointer" : "not-allowed", fontWeight: 500 }}
-              >{autoSummary.buttonLabel}</button>
-              <button
-                onClick={handleOpenMemoryConsolidation}
-                disabled={!projectSettingsModal.projectId || consolidationLoading || autoSummary.generating}
-                style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: projectSettingsModal.projectId && !consolidationLoading ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: projectSettingsModal.projectId && !consolidationLoading ? "pointer" : "not-allowed", fontWeight: 500 }}
-              >
-                {consolidationLoading ? "整理案を生成中…" : "Project Memoryを整理"}
-              </button>
-              <button
-                onClick={() => setMemoryListOpen(true)}
-                disabled={!projectSettingsModal.projectId}
-                style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: "#7c3aed", fontSize: "12px", cursor: "pointer", fontWeight: 500 }}
-              >
-                Project Memory一覧
-              </button>
+            <div role="tabpanel" id="project-settings-panel-memory" aria-labelledby="project-settings-tab-memory" hidden={projectSettingsTab !== "memory"}>
+              <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", background: "white" }}>
+                <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "3px" }}>
+                  Project Memory
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--ink-muted)", lineHeight: 1.6, marginBottom: "10px" }}>
+                  既存topicの重複・矛盾・古くなった記述をAIで確認し、topicごとの全文更新案を作ります。
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => { void autoSummary.generate(); }}
+                  disabled={!autoSummary.canGenerate || consolidationLoading}
+                  title={autoSummary.error ?? undefined}
+                  style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: autoSummary.canGenerate ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: autoSummary.canGenerate ? "pointer" : "not-allowed", fontWeight: 500 }}
+                >{autoSummary.buttonLabel}</button>
+                <button
+                  onClick={handleOpenMemoryConsolidation}
+                  disabled={!projectSettingsModal.projectId || consolidationLoading || autoSummary.generating}
+                  style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: projectSettingsModal.projectId && !consolidationLoading ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: projectSettingsModal.projectId && !consolidationLoading ? "pointer" : "not-allowed", fontWeight: 500 }}
+                >
+                  {consolidationLoading ? "整理案を生成中…" : "Project Memoryを整理"}
+                </button>
+                <button
+                  onClick={() => setMemoryListOpen(true)}
+                  disabled={!projectSettingsModal.projectId}
+                  style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: "#7c3aed", fontSize: "12px", cursor: "pointer", fontWeight: 500 }}
+                >
+                  Project Memory一覧
+                </button>
+                </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "space-between", alignItems: "center" }}>
