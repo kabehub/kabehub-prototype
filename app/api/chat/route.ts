@@ -77,6 +77,9 @@ const dropTrailingUserUnconditional = (source: ChatMessage[]): ChatMessage[] => 
   return source;
 };
 
+const PROJECT_MEMORY_TOPICS_LABEL = "project-memory-topics";
+const PINNED_GITHUB_FILES_LABEL = "pinned-github-files";
+
 const DEFAULT_MODELS = buildDefaultModels("chat");
 
 const RAG_TRIGGER_KEYWORDS = [
@@ -261,7 +264,15 @@ function streamClaude(
               }
               if (parsed.delta?.stop_reason === "refusal" && !refusalHandled) {
                 refusalHandled = true;
-                enqueueText("\n\n（AIの安全基準により、この内容には回答できませんでした）");
+                const memoryTopicsInjected = extraCachedSystemBlocks.some(b => b.label === PROJECT_MEMORY_TOPICS_LABEL);
+                enqueueText(memoryTopicsInjected
+                  ? "\n\n（AIの安全基準により、この内容には回答できず、Project Memoryの「チャットに含める」がONのtopicが原因の可能性があります）"
+                  : "\n\n（AIの安全基準により、この内容には回答できませんでした）");
+                logger.claudeRefusal({
+                  memoryTopicsInjected,
+                  pinnedInjected: extraCachedSystemBlocks.some(b => b.label === PINNED_GITHUB_FILES_LABEL),
+                  modelId,
+                });
               }
             }
 
@@ -1316,7 +1327,7 @@ export async function POST(req: NextRequest) {
       const block = buildProjectMemoryChatBlock(data ?? []);
       if (block) {
         cachedInsertionIndex ??= (dynamicSystemText ?? "").length;
-        cachedSystemBlocks.push({ label: "project-memory-topics", text: block.text });
+        cachedSystemBlocks.push({ label: PROJECT_MEMORY_TOPICS_LABEL, text: block.text });
       }
     } catch (err) {
       logger.bestEffortFailed({ operation: "project-memory-chat-topics", errorType: err instanceof Error ? err.name : "unknown" });
@@ -1332,7 +1343,7 @@ export async function POST(req: NextRequest) {
     }
     if (pinnedContext) {
       cachedInsertionIndex ??= (dynamicSystemText ?? "").length;
-      cachedSystemBlocks.push({ label: "pinned-github-files", text: pinnedContext });
+      cachedSystemBlocks.push({ label: PINNED_GITHUB_FILES_LABEL, text: pinnedContext });
     }
   }
 

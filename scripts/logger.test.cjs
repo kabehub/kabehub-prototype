@@ -10,6 +10,7 @@ installAliasResolver();
 
 const {
   bestEffortFailed,
+  claudeRefusal,
   dbCompensationFailed,
   dbOperationFailed,
   dbOperationFailedBestEffort,
@@ -292,6 +293,20 @@ test("securityGuardRejected preserves a skippedCount of zero", () => {
     ],
   ]);
   assert.equal(Object.hasOwn(logs.warnings[0][1], "skippedCount"), true);
+});
+
+test("claudeRefusal preserves booleans and excludes sensitive extra fields", () => {
+  for (const memoryTopicsInjected of [true, false]) {
+    const logs = captureConsole(() => claudeRefusal({
+      memoryTopicsInjected, pinnedInjected: false, modelId: "claude-sonnet-4-5",
+      body: "private body", topic_key: "private key", title: "private title",
+      instructions: "private instructions", userInput: "private input", token: "secret",
+    }));
+    assert.deepEqual(logs.errors, []);
+    assert.deepEqual(logs.warnings, [["[claude-refusal]", {
+      memoryTopicsInjected, pinnedInjected: false, modelId: "claude-sonnet-4-5",
+    }]]);
+  }
 });
 
 (async () => {

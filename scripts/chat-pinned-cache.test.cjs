@@ -18,6 +18,7 @@ let upstreamBodies;
 let loopSystems = [];
 let trimSystems = [];
 let scenario;
+let savedMessages = [];
 
 function routeQuery(table) {
   const state = { select: null, filters: [] };
@@ -60,10 +61,12 @@ function routeQuery(table) {
     async single() {
       return { data: null, error: null };
     },
-    async insert() {
+    async insert(value) {
+      if (table === "messages") savedMessages.push(value);
       return { data: null, error: null };
     },
-    async upsert() {
+    async upsert(value) {
+      if (table === "messages") savedMessages.push(value);
       return { data: null, error: null };
     },
     then(onFulfilled, onRejected) {
@@ -233,7 +236,11 @@ global.fetch = async (url, init) => {
   if (address === "https://raw.githubusercontent.com/test/repo/main/README.md") return new Response("pinned fixture 本文");
   if (address === "https://api.anthropic.com/v1/messages") {
     upstreamBodies.push({ provider: "claude", body: JSON.parse(init.body) });
-    return sse({ type: "content_block_delta", delta: { type: "text_delta", text: "chat continued" } });
+    const events = [{ type: "content_block_delta", delta: { type: "text_delta", text: "chat continued" } }];
+    if (scenario.refusal) {
+      events.push(...Array.from({ length: 2 }, () => ({ type: "message_delta", delta: { stop_reason: "refusal" } })));
+    }
+    return new Response(events.map(event => "data: " + JSON.stringify(event) + "\n").join(""), { status: 200 });
   }
   if (address === "https://api.openai.com/v1/chat/completions") {
     upstreamBodies.push({ provider: "openai", body: JSON.parse(init.body) });
@@ -252,12 +259,13 @@ function markerCount(value) {
 }
 async function send(provider, options) {
   scenario = options;
+  savedMessages = [];
   threadFixture = { folder_name: null, project_id: options.unclassified ? null : PROJECT_ID, user_id: USER_ID };
   databaseCalls = []; loreCalls = []; backgroundTasks = []; upstreamBodies = []; loopSystems = []; trimSystems = [];
   const response = await POST(new NextRequest("https://www.kabehub.com/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json", "x-anthropic-api-key": "key", "x-openai-api-key": "key", "x-gemini-api-key": "key" },
-    body: JSON.stringify({ threadId: THREAD_ID, isTemporary: options.temporary ?? false, provider, modelId: { claude: "claude-sonnet-4-5", openai: "gpt-4o", gemini: "gemini-2.5-flash" }[provider], userContent: "このプロジェクトの記憶を使って続きを回答して", messages: options.participants ? [
+    body: JSON.stringify({ isDeepThinking: options.deepThinking ?? false, threadId: THREAD_ID, isTemporary: options.temporary ?? false, provider, modelId: { claude: "claude-sonnet-4-5", openai: "gpt-4o", gemini: "gemini-2.5-flash" }[provider], userContent: "このプロジェクトの記憶を使って続きを回答して", messages: options.participants ? [
       { role: "user", content: "hello" },
       { role: "assistant", content: "first", provider: "claude", model_id: "claude-sonnet-4-5" },
       { role: "user", content: "again" },
@@ -265,8 +273,25 @@ async function send(provider, options) {
     ] : [] }),
   }));
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /chat continued/);
+  const responseText = await response.text();
+  assert.match(responseText, /chat continued/);
   await Promise.all(backgroundTasks);
+  if (options.refusal) {
+    const suffix = memoryBlock(options)
+      ? "\n\n（AIの安全基準により、この内容には回答できず、Project Memoryの「チャットに含める」がONのtopicが原因の可能性があります）"
+      : "\n\n（AIの安全基準により、この内容には回答できませんでした）";
+    const streamText = responseText.trim().split("\n").map(line => JSON.parse(line))
+      .filter(event => event.type === "chunk").map(event => event.text).join("");
+    if (options.deepThinking) {
+      const chunks = streamText.trim().split("\n").map(line => JSON.parse(line));
+      assert.deepEqual(chunks.filter(chunk => chunk.kind === "text"), [
+        { kind: "text", text: "chat continued" }, { kind: "text", text: suffix },
+      ]);
+    } else assert.equal(streamText, "chat continued" + suffix);
+    const assistant = savedMessages.filter(message => message.role === "assistant");
+    assert.equal(assistant.length, 1);
+    assert.equal(assistant[0].content, "chat continued" + suffix);
+  }
   assert.deepEqual(unexpectedUrls, []);
   assert.equal(upstreamBodies.length, 1);
   assert.deepEqual(Buffer.from(trimSystems[0]), Buffer.from(oldSystem(options)));
@@ -360,6 +385,23 @@ async function send(provider, options) {
     }
     await send("claude", { memoryTopics, pinned: true, references: true, participants: true, loop: true });
     await send("claude", { memoryTopics, loop: true });
+    const originalWarn = console.warn;
+    try {
+      for (const deepThinking of [false, true]) {
+        for (const injected of [false, true]) {
+          const logs = [];
+          console.warn = (...args) => logs.push(args);
+          await send("claude", { refusal: true, deepThinking, pinned: injected, memoryTopics: injected ? memoryTopics : [] });
+          assert.deepEqual(logs, [["[claude-refusal]", {
+            memoryTopicsInjected: injected, pinnedInjected: injected, modelId: "claude-sonnet-4-5",
+          }]]);
+        }
+      }
+      const logs = [];
+      console.warn = (...args) => logs.push(args);
+      await send("claude", { memoryTopics });
+      assert.deepEqual(logs, [], "non-refusal responses emit no refusal log");
+    } finally { console.warn = originalWarn; }
     console.log("passed chat pinned cache and project memory route tests");
   } finally { global.fetch = originalFetch; Module._load = originalLoad; }
 })().catch(error => { console.error(error); process.exitCode = 1; });

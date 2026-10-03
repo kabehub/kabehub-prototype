@@ -124,3 +124,16 @@ export function securityGuardRejected(p: SecurityGuardParams): void {
   });
   console.warn("[security-guard-rejected]", payload);
 }
+
+/** Claude refusal の注入状況。本文やtopic識別子は受け取らず、許可フィールドのみ出力する。 */
+export function claudeRefusal(p: {
+  memoryTopicsInjected: boolean;
+  pinnedInjected: boolean;
+  modelId: import("@/types").ClaudeModel;
+}): void {
+  console.warn("[claude-refusal]", pickDefined({
+    memoryTopicsInjected: p.memoryTopicsInjected,
+    pinnedInjected: p.pinnedInjected,
+    modelId: p.modelId,
+  }));
+}
