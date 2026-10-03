@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/02（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新・Project Memory topicのチャット注入（`include_in_chat`）を追加）
+最終更新: 2026/10/03（会話から未作成の標準Project Memoryを生成するbootstrap preview・承認UI・関連地雷を追加。Scripts実測を更新・Project Memory topicのチャット注入（`include_in_chat`）を追加。refusal時の誘導文・ログ、関連地雷を追加）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -243,7 +243,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/github.ts` | GitHub連携共通処理・`buildPinnedGithubContext` |
 | `lib/inputUtils.ts` | 送信キー設定の読み込みとモバイルviewport判定の共通helper |
 | `lib/internalModels.ts` | LoreのEmbedding・抽出・統合で使う内部固定モデルID |
-| `lib/logger.ts` | DB・外部API・ベストエフォート・security guard向けの機微情報を許可リスト化した構造化logger |
+| `lib/logger.ts` | DB・外部API・ベストエフォート・security guard向けの機微情報を許可リスト化した構造化logger。Claude refusalの注入状況ログ（`claudeRefusal`） |
 | `lib/lore/`（`batchTrain.ts` / `consolidation.ts` / `consolidationLlm.ts` / `dreaming.ts` / `index.ts` / `mappers.ts` / `openai.ts` / `promotion-provenance.ts` / `search.ts` / `selects.ts` / `types.ts` / `use-lore-hash-focus.ts`） | 記憶抽出・検索・統合・Dreaming・OpenAI呼び出し・型/mapper/select定義一式・Project Memory昇格Loreの来歴解析・`#lore-{id}`ディープリンク |
 | `lib/loreMemorySelect.ts` | `LORE_MEMORY_SELECT` 定数を共通化 |
 | `lib/mcp-auth.ts` | Bearer tokenのhash化・`mcp_tokens`照合・`last_used_at`のベストエフォート更新 |
@@ -314,12 +314,12 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/branchTree.test.cjs` | 分岐laneとツリーレイアウト構築を検証 |
 | `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
-| `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・memory未使用時のpreamble単一を検証。Project Memory topic注入ブロック（memory＋Pinned＋参照の併存・取得失敗・超過topic除外・memory未使用時の旧文字列一致）も検証 |
+| `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・memory未使用時のpreamble単一を検証。Project Memory topic注入ブロック（memory＋Pinned＋参照の併存・取得失敗・超過topic除外・memory未使用時の旧文字列一致）も検証。refusal時の文言分岐（memory注入あり／なし、memoryのみ／pinnedのみ、Thinking両形式、一回限り、保存本文）とログを検証 |
 | `scripts/csp.test.cjs` | CSPヘッダー・report解析・URL無害化を検証 |
 | `scripts/fetch-github-route.test.cjs` | GitHubファイル取得Routeの認証・取得・失敗契約を検証 |
 | `scripts/formatters.test.cjs` | 相対時刻・日時フォーマットを固定時刻で検証 |
 | `scripts/loadModel.test.cjs` | モデル設定の保存/復元・fallback・registry由来snapshotを検証 |
-| `scripts/logger.test.cjs` | 構造化loggerの許可フィールドと機微情報非出力を検証 |
+| `scripts/logger.test.cjs` | 構造化loggerの許可フィールド（`claudeRefusal`を含む）と機微情報非出力を検証 |
 | `scripts/lore-dreaming-clean.test.cjs` | Dreamingの記憶cleaning・失敗時fallback・統合処理を検証 |
 | `scripts/lore-openai.test.cjs` | Lore用Embedding/Chat API wrapperのrequest・response・error契約を検証 |
 | `scripts/lore-search-policy.test.cjs` | チャットのLore検索policy定数と利用側の同期を検証 |
@@ -587,6 +587,8 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | ON/OFFとupdated_at | トグルはtrigger経由で`updated_at`を更新する（同値の再送はRPC内のearly returnで更新なし）。`revision`と履歴は変えない。`updated_at`は「行の更新時刻」であり本文の更新時刻ではない。整理(consolidate)のLLM入力にも`updated_at`が含まれる |
 | 参照ブロックの無害化 | `topic_key`は`sanitizeAttributeValue`を通す。本文は`sanitizeReferenceText`。preambleは動的な参照ブロックとmemoryブロックの両方に入るため、併存時は全プロバイダーで重複するが許容（memoryブロックのバイト決定性のため、自前でpreambleを持つ） |
 | チャット注入UIの排他 | トグル中は他の昇格・アップロード・AI編集を開始できず、逆に実行中はトグルも開始できない（hookのrefと`isActionLocked()`の双方向）。トグルは楽観更新せず、完了後に一覧を再取得する。失敗時は「reload→setError」の順（reloadがerrorをクリアするため） |
+| refusal時の誘導文 | memory注入あり（cachedSystemBlocksにラベル`project-memory-topics`のブロックがある）のClaude `stop_reason: "refusal"`では、本文末尾に原因の可能性を示す1文（「…Project Memoryの「チャットに含める」がONのtopicが原因の可能性があります」）を追記する。注入なしは従来文言のまま。判定は`streamClaude`内でラベルから導出し、`streamClaude`のシグネチャは変えない。追記文は他の本文と同様にassistantメッセージとしてDB保存され、後続の履歴に入る（履歴からの除外は未実装）。ログは`[claude-refusal]`（`logger.claudeRefusal`）で、`memoryTopicsInjected`・`pinnedInjected`・`modelId`のみ出力する。本文・topic_keyは出さない。非Claudeプロバイダーの拒否相当（OpenAIのcontent_filter、GeminiのSAFETY等）は未対応 |
+| ONのtopic内容とrefusal | ランダムな文字列の羅列など難読化に見える本文のtopicをONにすると、Claude（claude-sonnet-5で確認）が`stop_reason: "refusal"`を返し、そのProjectのClaudeチャットが送れなくなることがある。解除はトグルOFF。API側の判定基準は未確認の仮説（実装不具合ではない）。実機確認で長文topicを作るときは、自然な文章を使う |
 | `git add`のパス | `[projectId]`・`[topicId]`を含むパスは引用符で囲む。`git add`を飛ばして`git commit`すると何もコミットされない |
 
 ### チャット・UI関連

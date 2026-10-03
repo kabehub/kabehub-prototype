@@ -388,13 +388,15 @@ async function send(provider, options) {
     const originalWarn = console.warn;
     try {
       for (const deepThinking of [false, true]) {
-        for (const injected of [false, true]) {
-          const logs = [];
-          console.warn = (...args) => logs.push(args);
-          await send("claude", { refusal: true, deepThinking, pinned: injected, memoryTopics: injected ? memoryTopics : [] });
-          assert.deepEqual(logs, [["[claude-refusal]", {
-            memoryTopicsInjected: injected, pinnedInjected: injected, modelId: "claude-sonnet-4-5",
-          }]]);
+        for (const memoryInjected of [false, true]) {
+          for (const pinnedInjected of [false, true]) {
+            const logs = [];
+            console.warn = (...args) => logs.push(args);
+            await send("claude", { refusal: true, deepThinking, pinned: pinnedInjected, memoryTopics: memoryInjected ? memoryTopics : [] });
+            assert.deepEqual(logs, [["[claude-refusal]", {
+              memoryTopicsInjected: memoryInjected, pinnedInjected, modelId: "claude-sonnet-4-5",
+            }]]);
+          }
         }
       }
       const logs = [];
