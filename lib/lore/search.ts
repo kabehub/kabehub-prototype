@@ -2,16 +2,6 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { createEmbedding } from "./openai";
 import * as logger from "../logger";
 
-export interface LoreSearchOptionsV2 {
-  query: string;
-  folderName: string | null;
-  userId: string;
-  topK: number;
-  openaiKey: string;
-  timeoutMs: number;
-  matchThreshold: number;
-}
-
 export type LoreSearchV2Result = {
   id: string;
   chunkText: string;
