@@ -234,7 +234,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/summary-client.ts` | 既存topics GETから必要な5項目のみ抽出。HTTP・配列・全件の必須型とpromotion.statusをfail-closedで検証 |
 | `lib/project-memory/use-project-memory-summary.ts` | Project IDとrefreshTokenで再取得するread-only hook。effect前も旧Projectのデータ・エラーを公開しない。未取得と0件を区別し、再取得失敗は旧データを破棄。request idとabortで古い応答を除外 |
 | `lib/chat-system-blocks.ts` | Claude systemブロックの順序・キャッシュmarker選択と、非Claude向けの旧system文字列復元（importゼロの純関数） |
-| `lib/attachmentContent.ts` | 手入力とテキスト添付を従来と同じフェンス・区切りで結合。contentは保存本文、queryTextはtrimしない手入力 |
+| `lib/attachmentContent.ts` | 手入力とテキスト添付を従来と同じフェンス・区切りで結合。contentは保存本文、queryTextはtrimしない手入力。splitMessageContent / replaceQueryText で添付部分を保持して手入力だけを差し替え |
+| `lib/queryTextRetention.ts` | createQueryTextRetention factory。ページごとのメモリ内保持のみ。記録時と現在のcontentが一致しsplitが成功したときだけ手入力を再利用 |
 | `lib/lore/chat-search-plan.ts` | サーバー用・importゼロの純関数。19語のトリガーとLore Book / Memoryの検索計画・コードポイント単位のクエリ導出を集約。メモモードはrouteで計画前にearly returnする |
 | `lib/ai-context-blocks.ts` | 3ソース（lore_book / memory / project_memory_topic）の参照ブロックと、GitHub用コード封筒を生成。コードは封筒タグのみ分断し、JSX等を保持する |
 | `lib/branching.ts` | 表示順・anchor・chain block・現在laneの構築ロジック |
@@ -310,12 +311,14 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト100本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト102本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
 | `scripts/project-memory-summary.test.cjs` / `scripts/project-memory-summary-client.test.cjs` / `scripts/use-project-memory-summary.test.cjs` / `scripts/project-memory-tab.test.cjs` / `scripts/project-settings-memory-sidebar.test.cjs` | サマリ意味論・fail-closed取得・effect前のProject切替／refresh競合応答・Memory主ボタン・Sidebarのrefresh契約を検証 |
-| `scripts/attachment-content.test.cjs` | 添付結合のリテラルとのバイト一致・添付なし・raw queryTextを検証 |
+| `scripts/attachment-content.test.cjs` | 添付結合のリテラルとのバイト一致・添付なし・raw queryText・split/replaceのラウンドトリップとfail-closedを検証 |
+| `scripts/query-text-retention.test.cjs` | 空文字・添付なし・本文不一致・フェンス検証・factory独立性の保持契約を検証 |
+| `scripts/query-text-regeneration.test.cjs` | resolver配線・別走査・実コールバックのbody / 再結合 / 検証失敗時の停止 / 中断時の保持を検証 |
 | `scripts/ai-context-blocks.test.cjs` | AI参照ブロック生成と本文・属性値無害化の回帰テスト |
 | `scripts/api-key-handling.test.cjs` | BYOK APIキーの保存・転送・ログ露出防止を横断検証 |
 | `scripts/apply-branch-edit-route.test.cjs` | branch edit RouteのRPC契約・採番・エラー処理を検証 |
@@ -553,7 +556,8 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | batch-train対象 | **userメッセージのみ**。`role = 'user'` / `provider != 'memo'` / `provider != 'image_gen'` で絞り込み。AI発言の記憶化は「👍 記憶に追加」ボタンで対応 |
 | liked_ai保護 | Dreaming保護条件は `extraction_version NOT IN ('user_edited', 'user_created', 'liked_ai')`。全RPCに適用済み |
 | v_found_count カウンター | `consolidate_dreaming_batch_multi` の件数検証はFORループ内のカウンター方式。FORループ後の `GET DIAGNOSTICS` はPostgreSQLの仕様で件数が取れない |
-| チャット記憶検索の発火条件 | トリガー19語と検索条件は `lib/lore/chat-search-plan.ts` の `buildChatLoreSearchPlan` に集約済み。memory に一本化し、Lore Book とクエリが同一ならembeddingを共有、異なれば並列生成して検索する。temporary チャットでは記憶検索を行わない。通常Web送信の添付本文によるMemory誤発火・入力超過は解消済み（B2-2、2026-10-04）。再生成・分岐編集・旧クライアントではqueryTextなしで添付込み全文にフォールバックする制限が残る。 |
+| チャット記憶検索の発火条件 | トリガー19語と検索条件は `lib/lore/chat-search-plan.ts` の `buildChatLoreSearchPlan` に集約済み。memory に一本化し、Lore Book とクエリが同一ならembeddingを共有、異なれば並列生成して検索する。temporary チャットでは記憶検索を行わない。通常Web送信の添付本文によるMemory誤発火・入力超過は解消済み（B2-2、2026-10-04）。再生成・分岐編集は同一ページセッション内は保持した手入力を再利用。再読み込み後・保持前のメッセージ・本文が別経路で変わったメッセージ・mobile・旧クライアントは従来どおり userContent 全文へフォールバック。 |
+| queryText保持と編集対象 | 保持の信頼条件は「記録時の content と現在の message.content の一致」とsplit検証。lightはorderedMessagesの直前user（memoを含む）、branchはvisibleMessagesの直前非memo userを対象にするためlightEditQueryText / branchEditQueryTextを分ける。別経路の本文変更で自動的に無効化し、forgetを各経路に散らさない。 |
 | Supabase スキーマキャッシュ | RPC追加・変更後にAPIから `schema cache` エラーが出たら `NOTIFY pgrst, 'reload schema';` を実行 |
 
 ### BYOK APIキー関連（H-21）
@@ -808,4 +812,4 @@ buildChatSearchQueries の triggerText は raw queryText（空文字もそのま
 
 両検索が有効でqueryが同一ならembeddingは1回、異なるなら2回を並列生成する。片方のみ有効ならそのqueryだけを生成する。同じAbortController・combined timeout（3,000ms）を使い、一方のembeddingがnullでも成功側の検索・注入を継続する。MemoryのtopK 5・閾値0.3、Lore BookのtopK 3、systemの各ブロック形式は維持する。
 
-再生成・分岐編集・メモ系・novel-check・mobileの呼び出しはqueryTextを送らない。再生成・編集と旧クライアントでは添付込みuserContent全文でMemoryのトリガーを判定する制限が残る（embedding入力自体の上限は適用）。メモモードは検索計画前にearly returnする。
+再生成・分岐編集は同一ページセッション内は保持した手入力を再利用。再読み込み後・保持前のメッセージ・本文が別経路で変わったメッセージ・mobile・旧クライアントは従来どおり userContent 全文へフォールバック（embedding入力自体の上限は適用）。通常Web送信の添付テキストファイルがあるメッセージだけをページ所有のfactoryストアに保持し、DB・localStorage・sessionStorageには保存しない。手入力編集時は保持を検証して添付をバイト不変で再結合し、trim済みの手入力をqueryTextとして送る。全文編集はqueryTextを送らない。light編集と分岐編集は生成中断時もcommit済み本文に合わせて保持を更新し、通常送信の中断時は記録しない。temporary・メモ系・novel-check・mobileの送信経路は従来どおり。メモモードは検索計画前にearly returnする。

@@ -21,7 +21,8 @@ interface RoleplayBubbleProps {
     assistantMsg: Message,
     modelId?: string,
     mode?: "branch" | "light",
-    editedUserContent?: string
+    editedUserContent?: string,
+    editedQueryText?: string
   ) => void;
   onTrimFrom?: (message: Message) => void;
   onUpdateMessage?: (messageId: string, updates: { content?: string; is_hidden?: boolean }) => Promise<void>;

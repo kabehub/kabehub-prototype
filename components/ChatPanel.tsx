@@ -38,6 +38,7 @@ interface ChatPanelProps {
   onInputChange: (val: string) => void;
   onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => void;
   thinkingContents?: Record<string, string>;
+  getRetainedQueryText?: (message: Message) => string | null;
   onMemoSubmit: () => void;
   isLoading: boolean;
   provider: Provider;
@@ -49,13 +50,15 @@ interface ChatPanelProps {
     assistantMsg?: Message,
     modelId?: string,
     mode?: "branch" | "light",
-    editedUserContent?: string
+    editedUserContent?: string,
+    editedQueryText?: string
   ) => void;
   onEditAndRegenerate: (
     baseUserMsg: Message,
     editedContent: string,
     targetProvider: "claude" | "gemini" | "openai",
-    modelId?: string
+    modelId?: string,
+    editedQueryText?: string
   ) => void;
   onTrimFrom: (message: Message) => void;
   onDeleteMessage?: (message: Message) => void;
@@ -107,6 +110,7 @@ export default function ChatPanel({
   onThreadUpdate,
   onRegenerate,
   onEditAndRegenerate,
+  getRetainedQueryText,
   onTrimFrom,
   onDeleteMessage,
   onDeleteImage,
@@ -964,16 +968,17 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
     editedContent: string,
     targetProvider: "claude" | "gemini" | "openai",
     modelId?: string,
+    editedQueryText?: string,
   ) => {
     if (assistantOrUserMsg.role === "user") {
-      onEditAndRegenerate(assistantOrUserMsg, editedContent, targetProvider, modelId);
+      onEditAndRegenerate(assistantOrUserMsg, editedContent, targetProvider, modelId, editedQueryText);
       return;
     }
 
     const idx = visibleMessages.findIndex((m) => m.id === assistantOrUserMsg.id);
     for (let i = idx - 1; i >= 0; i--) {
       if (visibleMessages[i].role === "user" && visibleMessages[i].provider !== "memo") {
-        onEditAndRegenerate(visibleMessages[i], editedContent, targetProvider, modelId);
+        onEditAndRegenerate(visibleMessages[i], editedContent, targetProvider, modelId, editedQueryText);
         return;
       }
     }
@@ -2234,6 +2239,22 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
         provider={provider}
         onRegenerate={onRegenerate}
         onEditAndRegenerate={handleEditAndRegenerateFromBubble}
+        lightEditQueryText={(() => {
+          if (msg.role !== "assistant") return null;
+          const idx = orderedMessages.findIndex(m => m.id === msg.id);
+          for (let i = idx - 1; i >= 0; i--) {
+            if (orderedMessages[i].role === "user") return getRetainedQueryText?.(orderedMessages[i]) ?? null;
+          }
+          return null;
+        })()}
+        branchEditQueryText={(() => {
+          if (msg.role === "user") return getRetainedQueryText?.(msg) ?? null;
+          const idx = visibleMessages.findIndex(m => m.id === msg.id);
+          for (let i = idx - 1; i >= 0; i--) {
+            if (visibleMessages[i].role === "user" && visibleMessages[i].provider !== "memo") return getRetainedQueryText?.(visibleMessages[i]) ?? null;
+          }
+          return null;
+        })()}
         prevUserContent={(() => {
           const idx = orderedMessages.findIndex(m => m.id === msg.id);
           for (let i = idx - 1; i >= 0; i--) {

@@ -23,15 +23,19 @@ interface MessageBubbleProps {
     assistantMsg: Message,
     modelId?: string,
     mode?: "branch" | "light",
-    editedUserContent?: string
+    editedUserContent?: string,
+    editedQueryText?: string
   ) => void;
   onEditAndRegenerate?: (
     assistantMsg: Message,
     editedContent: string,
     targetProvider: "claude" | "gemini" | "openai",
-    modelId?: string
+    modelId?: string,
+    editedQueryText?: string
   ) => void;
   prevUserContent?: string;
+  lightEditQueryText?: string | null;
+  branchEditQueryText?: string | null;
   editRegenAssistantMsg?: Message;
   canEditAndRegenerateFromUser?: boolean;
   onTrimFrom?: (message: Message) => void;
@@ -61,6 +65,8 @@ function MessageBubble({
   onRegenerate,
   onEditAndRegenerate,
   prevUserContent,
+  lightEditQueryText,
+  branchEditQueryText,
   editRegenAssistantMsg,
   canEditAndRegenerateFromUser,
   onTrimFrom,
@@ -114,6 +120,7 @@ function MessageBubble({
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [editRegenOpen, setEditRegenOpen] = useState(false);
   const [editRegenContent, setEditRegenContent] = useState("");
+  const [editRegenRawMode, setEditRegenRawMode] = useState(false);
   const [editRegenMode, setEditRegenMode] = useState<"branch" | "light">("branch");
   const [editRegenProvider, setEditRegenProvider] = useState<"claude" | "gemini" | "openai">("claude");
   const [editRegenModelId, setEditRegenModelId] = useState<string | undefined>(undefined);
@@ -389,7 +396,9 @@ function MessageBubble({
     defaultModelSource?: Message,
     mode: "branch" | "light" = "branch",
   ) => {
-    setEditRegenContent(initialContent);
+    const queryText = mode === "light" ? lightEditQueryText : branchEditQueryText;
+    setEditRegenRawMode(typeof queryText === "string");
+    setEditRegenContent(typeof queryText === "string" ? queryText : initialContent);
     setEditRegenMode(mode);
     const src = defaultModelSource ?? (!isUser ? message : undefined);
     const srcProvider =
@@ -402,10 +411,14 @@ function MessageBubble({
   };
 
   const submitEditRegen = () => {
-    if (!editRegenContent.trim()) return;
+    if (!editRegenRawMode && !editRegenContent.trim()) return;
     if (editRegenMode === "light") {
       if (!onRegenerate) return;
-      onRegenerate(editRegenProvider, message, editRegenModelId, "light", editRegenContent.trim());
+      if (editRegenRawMode) {
+        onRegenerate(editRegenProvider, message, editRegenModelId, "light", undefined, editRegenContent.trim());
+      } else {
+        onRegenerate(editRegenProvider, message, editRegenModelId, "light", editRegenContent.trim());
+      }
       setEditRegenOpen(false);
       return;
     }
@@ -414,7 +427,11 @@ function MessageBubble({
       ? message
       : (!isUser ? message : editRegenAssistantMsg);
     if (!target) return;
-    onEditAndRegenerate(target, editRegenContent.trim(), editRegenProvider, editRegenModelId);
+    if (editRegenRawMode) {
+      onEditAndRegenerate(target, "", editRegenProvider, editRegenModelId, editRegenContent.trim());
+    } else {
+      onEditAndRegenerate(target, editRegenContent.trim(), editRegenProvider, editRegenModelId);
+    }
     setEditRegenOpen(false);
   };
 
@@ -1247,6 +1264,11 @@ function MessageBubble({
                 : "元の回答を分岐として保存し、編集後のプロンプトで再生成します。"}
             </div>
 
+            {editRegenRawMode && (
+              <div style={{ fontSize: "11px", color: "var(--ink-faint)" }}>
+                添付テキストファイルの内容はそのまま引き継がれます
+              </div>
+            )}
             <textarea
               autoFocus
               value={editRegenContent}
@@ -1396,12 +1418,12 @@ function MessageBubble({
               </button>
               <button
                 onClick={submitEditRegen}
-                disabled={!editRegenContent.trim()}
+                disabled={!editRegenRawMode && !editRegenContent.trim()}
                 style={{
                   padding: "6px 16px", borderRadius: "6px", border: "none",
-                  background: editRegenContent.trim() ? "var(--accent)" : "var(--border)",
+                  background: (editRegenRawMode || editRegenContent.trim()) ? "var(--accent)" : "var(--border)",
                   color: "white", fontSize: "12px",
-                  cursor: editRegenContent.trim() ? "pointer" : "default",
+                  cursor: (editRegenRawMode || editRegenContent.trim()) ? "pointer" : "default",
                 }}
               >
                 {editRegenMode === "light" ? "上書き再生成" : "再生成"}

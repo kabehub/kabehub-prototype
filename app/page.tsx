@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from "uuid";
 import { Thread, Message } from "@/types";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
+import { createQueryTextRetention } from "@/lib/queryTextRetention";
+import { replaceQueryText } from "@/lib/attachmentContent";
 import OutlinePane from "@/components/OutlinePane";
 import NovelSettingsPane from "@/components/NovelSettingsPane";
 import { useToast } from "@/components/Toast";
@@ -37,6 +39,8 @@ const API_KEY_PROVIDERS: readonly ApiKeyProvider[] = [
 
 export default function Home() {
   const { showToast } = useToast();
+  const [retention] = useState(() => createQueryTextRetention());
+  const getRetainedQueryText = useCallback((m: Message) => retention.get(m), []);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [displayThreads, setDisplayThreads] = useState<Thread[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -725,6 +729,10 @@ export default function Home() {
         setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
       }
 
+      if (!aborted && typeof queryText === "string") {
+        retention.remember(userMessage.id, queryText, userMessage.content);
+      }
+
       if (!isImagePinned) setImageContextId(null)
 
       if (aborted && userMessage.id && assistantMessage.id) {
@@ -971,6 +979,7 @@ export default function Home() {
     modelId?: string,
     mode: "branch" | "light" = "branch",
     editedUserContent?: string,
+    editedQueryText?: string,
   ) => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
@@ -1011,8 +1020,19 @@ export default function Home() {
       }
 
       const branchId = mode === "branch" ? crypto.randomUUID() : undefined;
-      const userContentToSend = editedUserContent ?? lastUser.content;
-      const userContentChanged = editedUserContent != null && editedUserContent !== lastUser.content;
+      let userContentToSend = editedUserContent ?? lastUser.content;
+      let queryTextToSend: string | null = editedUserContent == null ? retention.get(lastUser) : null;
+      if (typeof editedQueryText === "string") {
+        const entry = retention.get(lastUser);
+        const replacement = entry === null ? null : replaceQueryText(lastUser.content, entry, editedQueryText);
+        if (!replacement) {
+          showToast("編集内容を適用できませんでした", "error");
+          return;
+        }
+        userContentToSend = replacement.content;
+        queryTextToSend = editedQueryText;
+      }
+      const userContentChanged = userContentToSend !== lastUser.content;
       const originalAssistantContent = lastAssistant.content;
       const originalAssistantModelId = lastAssistant.model_id;
 
@@ -1047,6 +1067,7 @@ export default function Home() {
             .filter(m => m.is_active !== false)
             .map(m => ({ role: m.role, content: m.content, provider: m.provider })),
           userContent: userContentToSend,
+          ...(typeof queryTextToSend === "string" ? { queryText: queryTextToSend } : {}),
           provider: targetProvider,
           modelId: modelId,
           isRegenerate: true,
@@ -1059,6 +1080,10 @@ export default function Home() {
           setStreamingContent(accumulated);
         },
       );
+
+      if (mode === "light" && userContentChanged && typeof editedQueryText === "string") {
+        retention.remember(lastUser.id, editedQueryText, userContentToSend);
+      }
 
       if (mode === "light") {
         setMessages(prev => prev.map(m => {
@@ -1120,17 +1145,29 @@ export default function Home() {
     editedContent: string,
     targetProvider: "claude" | "gemini" | "openai",
     modelId?: string,
+    editedQueryText?: string,
   ) => {
     if (isLoading || !activeThreadId) return;
     setIsLoading(true);
     setStreamingContent("");
     try {
-      const { assistantMessage, aborted, thinkingContent } = await fetchWithStreaming(
+      let userContentToSend = editedContent;
+      if (typeof editedQueryText === "string") {
+        const entry = retention.get(baseUserMsg);
+        const replacement = entry === null ? null : replaceQueryText(baseUserMsg.content, entry, editedQueryText);
+        if (!replacement) {
+          showToast("編集内容を適用できませんでした", "error");
+          return;
+        }
+        userContentToSend = replacement.content;
+      }
+      const { userMessage, assistantMessage, aborted, thinkingContent } = await fetchWithStreaming(
         "/api/chat",
         await getApiKeyHeaders(),
         JSON.stringify({
           threadId: activeThreadId,
-          userContent: editedContent,
+          userContent: userContentToSend,
+          ...(typeof editedQueryText === "string" ? { queryText: editedQueryText } : {}),
           provider: targetProvider,
           modelId: modelId,
           branchEdit: { baseUserMessageId: baseUserMsg.id },
@@ -1143,6 +1180,10 @@ export default function Home() {
 
       if (thinkingContent && assistantMessage.id) {
         setThinkingContents(prev => ({ ...prev, [assistantMessage.id]: thinkingContent }));
+      }
+
+      if (typeof editedQueryText === "string" && userMessage.id && userMessage.content === userContentToSend) {
+        retention.remember(userMessage.id, editedQueryText, userContentToSend);
       }
 
       if (aborted && assistantMessage.id) {
@@ -1502,6 +1543,7 @@ export default function Home() {
         onProviderChange={setProvider}
         onTitleUpdate={handleTitleUpdate}
         onThreadUpdate={handleThreadUpdate}
+        getRetainedQueryText={getRetainedQueryText}
         onRegenerate={handleRegenerate}
         onEditAndRegenerate={handleEditAndRegenerate}
         onTrimFrom={handleTrimFrom}
