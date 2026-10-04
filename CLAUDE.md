@@ -217,7 +217,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/Toast.tsx` | 成功・エラー通知を表示するToast Providerと`useToast` hook |
 | `components/ProjectMemorySection.tsx` | `/library`の各Project行。折り畳み＋展開時のみlazy load（`keepLoaded: true`） |
 | `components/ProjectMemoryListModal.tsx` | Sidebarから開くProject Memory一覧モーダル（`keepLoaded: false`）。Escape・背景クリック・「閉じる」は編集モーダル表示中/操作中は無効 |
-| `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る／**チャットに含める**トグル・「チャット注入中」バッジ）。一覧上部に「Memory注入: X / 8,000字」の使用量・注入されないtopicの警告・注意書きを表示する。DLは`actionsLocked`の影響を受けない |
+| `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る／**チャットに含める**トグル・実際に注入されるtopicのみ「チャット注入中」、ONだが上限超過・本文が空のtopicは「未注入（理由）」バッジ）。一覧上部に「Memory注入: X / 8,000字」の使用量・注入されないtopicの警告・注意書きを表示する。DLは`actionsLocked`の影響を受けない |
 | `components/ProjectMemoryPromotionConfirmModal.tsx` | `/library`・Sidebar一覧で共用する編集済みLore再昇格の確認モーダル（TopicList経由）。対象Loreのタイトルと編集内容を引き継がない説明を表示し、「編集を破棄して再昇格」で承認する。フォーカス制御・Escape・送信中キャンセル禁止あり |
 | `components/ProjectMemoryInstructionEditModal.tsx` | 「AIで編集」の指示入力→差分プレビュー→適用モーダル（z-index 1200/1201） |
 | `components/ProjectMemoryDiffView.tsx` | 差分表示。整理・編集・初回生成モーダルで共用（初回生成の旧本文は空文字） |

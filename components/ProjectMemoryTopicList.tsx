@@ -25,6 +25,7 @@ interface Props {
 
 export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfirmPromotion, onCancelPromotion, topics, loading, error, expandedIds, onToggleExpanded, canPromote, canInstructionEdit, promotingTopicId, actionsLocked, chatInclusionTopicId, onChatInclusionChange, onDownload, onPromote, onInstructionEdit }: Props) {
   const summary = summarizeChatInclusion(topics);
+  const notInjectedIds = new Set(summary.notInjected.map(t => t.id));
   const maxChars = summary.max.toLocaleString("ja-JP");
   return <>
     <ProjectMemoryPromotionConfirmModal confirm={pendingConfirm} submitting={promotingTopicId !== null}
@@ -38,6 +39,7 @@ export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfir
     </div>}
     {topics.map((topic) => {
       const expanded = expandedIds.has(topic.id);
+      const notInjected = notInjectedIds.has(topic.id);
       const promoting = promotingTopicId === topic.id;
       const statusLabel = topic.promotion.status === "current" ? "昇格済み" : topic.promotion.status === "stale" ? "更新あり" : "未昇格";
       const buttonLabel = promoting ? "昇格中…" : topic.promotion.status === "current" ? "昇格済み" : topic.promotion.status === "stale" ? "Loreに再昇格" : "Loreに昇格";
@@ -46,7 +48,7 @@ export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfir
           <button type="button" aria-expanded={expanded} onClick={() => onToggleExpanded(topic.id)} style={{ background: "none", border: 0, color: "var(--ink, #111827)", cursor: "pointer", textAlign: "left" }}>
             {expanded ? "▾" : "▸"} {topic.topic_key} <span style={{ color: "var(--ink-muted, #6b7280)" }}>rev.{topic.revision}</span> <span style={{ color: topic.promotion.status === "current" ? "#047857" : "#92400e" }}>{statusLabel}</span>
           </button>
-          {topic.include_in_chat && <span style={{ padding: "2px 7px", borderRadius: "4px", background: "#dbeafe", color: "#1d4ed8", fontSize: "11px" }}>チャット注入中</span>}
+          {topic.include_in_chat && <span style={{ padding: "2px 7px", borderRadius: "4px", background: notInjected ? "#fef3c7" : "#dbeafe", color: notInjected ? "#92400e" : "#1d4ed8", fontSize: "11px" }}>{`${notInjected ? `未注入（${topic.content_md.trim() === "" ? "本文が空" : "上限超過"}）` : "チャット注入中"}`}</span>}
           <label style={{ display: "flex", gap: "6px", alignItems: "center", fontSize: "12px" }}>
             <input type="checkbox" checked={topic.include_in_chat}
               disabled={actionsLocked || chatInclusionTopicId !== null || (!topic.include_in_chat && !topic.content_md.trim())}

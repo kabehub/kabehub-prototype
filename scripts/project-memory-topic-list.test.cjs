@@ -81,7 +81,45 @@ try {
   assert.ok(textContent(usage).includes(`${maxText}字はtopic本文の合計です。`));
   assert.ok(textContent(usage).includes("Lore昇格済みのtopicをONにすると、検索経由で同じ内容が重複して参照される場合があります。"));
   assert.equal(textContent(usage).includes("ONのtopicは、このProjectのチャットに"), false);
-  assert.equal(nodes(usage).filter(n => n.type === "span" && n.props.children === "チャット注入中").length, 3);
+  const badges = tree => nodes(tree).filter(n => n.type === "span" && typeof n.props.children === "string"
+    && (n.props.children === "チャット注入中" || n.props.children.startsWith("未注入（")));
+  const badgeCount = (tree, label) => badges(tree).filter(n => n.props.children === label).length;
+  assert.equal(badgeCount(usage, "チャット注入中"), 1);
+  assert.equal(badgeCount(usage, "未注入（上限超過）"), 1);
+  assert.equal(badgeCount(usage, "未注入（本文が空）"), 1);
+  const offOnly = render({ topics: [topic(), { ...tooBig, include_in_chat: false }, { ...blank, include_in_chat: false }] });
+  assert.equal(badges(offOnly).length, 0);
+  const includedOnly = render({ topics: [on, { ...on, id: "other", topic_key: "other" }] });
+  assert.equal(badgeCount(includedOnly, "チャット注入中"), 2);
+  assert.equal(badges(includedOnly).filter(n => n.props.children.startsWith("未注入（")).length, 0);
+  for (const content_md of ["", " \n\t "]) {
+    const emptyOnly = render({ topics: [{ ...on, content_md }] });
+    assert.equal(badgeCount(emptyOnly, "未注入（本文が空）"), 1);
+    assert.equal(badgeCount(emptyOnly, "チャット注入中"), 0);
+  }
+  for (const [chars, label] of [[PROJECT_MEMORY_CHAT_MAX_CHARS, "チャット注入中"], [PROJECT_MEMORY_CHAT_MAX_CHARS + 1, "未注入（上限超過）"]]) {
+    const boundary = render({ topics: [{ ...on, content_md: "😀".repeat(chars) }] });
+    assert.equal(badges(boundary).length, 1);
+    assert.equal(badgeCount(boundary, label), 1);
+  }
+  const earlier = { ...on, id: "z-id", topic_key: "a", content_md: "字".repeat(4_000) };
+  const later = { ...on, id: "a-id", topic_key: "z", content_md: "字".repeat(4_001) };
+  const combined = render({ topics: [later, earlier] });
+  const rows = nodes(combined).filter(n => n.type === "section");
+  assert.equal(badgeCount(rows[0], "未注入（上限超過）"), 1);
+  assert.equal(badgeCount(rows[0], "チャット注入中"), 0);
+  assert.equal(badgeCount(rows[1], "チャット注入中"), 1);
+  assert.equal(badgeCount(rows[1], "未注入（上限超過）"), 0);
+  const injectedBadge = badges(usage).find(n => n.props.children === "チャット注入中");
+  assert.equal(injectedBadge.props.style.background, "#dbeafe");
+  assert.equal(injectedBadge.props.style.color, "#1d4ed8");
+  for (const badge of badges(usage).filter(n => n.props.children.startsWith("未注入（"))) {
+    assert.equal(badge.props.style.background, "#fef3c7");
+    assert.equal(badge.props.style.color, "#92400e");
+    for (const key of ["padding", "borderRadius", "fontSize"]) {
+      assert.equal(badge.props.style[key], injectedBadge.props.style[key]);
+    }
+  }
   assert.equal(checkbox(render()).props.checked, false);
   assert.equal(checkbox(render()).props.disabled, false);
   assert.equal(checkbox(render({ actionsLocked: true })).props.disabled, true);
