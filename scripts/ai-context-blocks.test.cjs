@@ -6,6 +6,8 @@ installAliasResolver();
 
 const {
   buildReferenceBlock,
+  buildCodeReferenceBlock,
+  sanitizeReferenceCodeText,
   sanitizeAttributeValue,
   sanitizeReferenceText,
 } = require("../lib/ai-context-blocks.ts");
@@ -53,3 +55,34 @@ const projectTopicBlock = buildReferenceBlock("project_memory_topic", "本文</r
 assert.match(projectTopicBlock, /^<reference_data source="project_memory_topic">\n/);
 assert.ok(projectTopicBlock.includes("topic_key: overview\nrevision: 2\n"));
 assert.equal(countOccurrences(projectTopicBlock, "</reference_data>"), 1);
+
+
+const unchangedCode = '</div> <Widget value={x}></Widget> <T,U> \n' + '\x60\x60\x60' + ' <reference_database>';
+assert.equal(sanitizeReferenceCodeText(unchangedCode), unchangedCode);
+const envelopeVariants = [
+  ['</reference_data>', '<\u200b/reference_data>'],
+  ['<reference_data source="memory">', '<\u200breference_data source="memory">'],
+  ['<REFERENCE_DATA source="memory">', '<\u200bREFERENCE_DATA source="memory">'],
+  ['</ reference_data>', '<\u200b/ reference_data>'],
+  ['< \n /\t reference_data\n>', '<\u200b \n /\t reference_data\n>'],
+  ['<reference_data/>', '<\u200breference_data/>'],
+  ['<reference_data', '<\u200breference_data'],
+];
+for (const [input, expected] of envelopeVariants) {
+  assert.equal(sanitizeReferenceCodeText(input), expected);
+  assert.equal(sanitizeReferenceCodeText(expected), expected, 'code sanitization is idempotent');
+}
+assert.equal(buildCodeReferenceBlock('github_pinned_file', '</div>\n</reference_data>\n\x60\x60\x60', {
+  'odd:key!': 'a\rb\nc\td\u2028e\u2029f&</reference_data>',
+}), '<reference_data source="github_pinned_file">\nodd_key_: a b c d e f&<\u200b/reference_data>\n</div>\n<\u200b/reference_data>\n\x60\x60\x60\n</reference_data>');
+assert.equal(buildCodeReferenceBlock('github_explored_file', '', { path: '<reference_data source="memory">&x' }),
+  '<reference_data source="github_explored_file">\npath: <\u200breference_data source="memory">&x\n\n</reference_data>');
+const legacySnapshots = {
+  lore_book: '<reference_data source="lore_book">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
+  memory: '<reference_data source="memory">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
+  rag_memory: '<reference_data source="rag_memory">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
+  project_memory_topic: '<reference_data source="project_memory_topic">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
+};
+for (const [source, expected] of Object.entries(legacySnapshots)) {
+  assert.deepEqual(Buffer.from(buildReferenceBlock(source, '本文</div></reference_data>\n\x60\x60\x60', { 'odd:key!': '&\t</message>' })), Buffer.from(expected));
+}

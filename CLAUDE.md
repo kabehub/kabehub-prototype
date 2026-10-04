@@ -234,7 +234,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/summary-client.ts` | 既存topics GETから必要な5項目のみ抽出。HTTP・配列・全件の必須型とpromotion.statusをfail-closedで検証 |
 | `lib/project-memory/use-project-memory-summary.ts` | Project IDとrefreshTokenで再取得するread-only hook。effect前も旧Projectのデータ・エラーを公開しない。未取得と0件を区別し、再取得失敗は旧データを破棄。request idとabortで古い応答を除外 |
 | `lib/chat-system-blocks.ts` | Claude systemブロックの順序・キャッシュmarker選択と、非Claude向けの旧system文字列復元（importゼロの純関数） |
-| `lib/ai-context-blocks.ts` | AI参照データの本文・属性値を無害化し、共通の参照ブロックを生成。参照元に`project_memory_topic`を含む |
+| `lib/ai-context-blocks.ts` | 既存4ソースの参照ブロックと、GitHub用コード封筒を生成。コードは封筒タグのみ分断し、JSX等を保持する |
 | `lib/branching.ts` | 表示順・anchor・chain block・現在laneの構築ロジック |
 | `lib/branchTree.ts` | 分岐ツリー構築ロジック（`scripts/branchTree.test.cjs`でテストあり） |
 | `lib/context-window.ts` | `trimContextToWindow`。コンテキストウィンドウのトリミング・キャッシュアンカー算出 |
@@ -244,8 +244,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/genres.ts` | ジャンル階層マスタ（`GENRES`）と子ジャンルID取得ヘルパー（`getChildIds`） |
 | `lib/github-token-crypto.ts` | AES-GCMによるGitHubトークンの暗号化・復号 |
 | `lib/github-token-store.ts` | `getGithubToken`。GitHubトークンの保存・取得 |
-| `lib/github-tool-loop.ts` | `runGithubToolLoop`。AI動的GitHub探索（Phase 4 AI Tool Loop） |
-| `lib/github.ts` | GitHub連携共通処理・`buildPinnedGithubContext` |
+| `lib/github-tool-loop.ts` | `runGithubToolLoop`。AI動的GitHub探索。取得成功ファイルを `github_explored_file` 封筒列に変換（preambleなし・成功0件は空文字、warningsは戻り値とdevログのみ） |
+| `lib/github.ts` | GitHub連携共通処理・取得と上限判定を行う `buildPinnedGithubContext`・自己完結した `github_pinned_file` 封筒列を生成する純関数 `buildPinnedGithubBlockText` |
 | `lib/inputUtils.ts` | 送信キー設定の読み込みとモバイルviewport判定の共通helper |
 | `lib/internalModels.ts` | LoreのEmbedding・抽出・統合で使う内部固定モデルID |
 | `lib/logger.ts` | DB・外部API・ベストエフォート・security guard向けの機微情報を許可リスト化した構造化logger。Claude refusalの注入状況ログ（`claudeRefusal`） |
@@ -308,7 +308,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト97本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト98本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -320,8 +320,9 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/branchTree.test.cjs` | 分岐laneとツリーレイアウト構築を検証 |
 | `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
-| `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・memory未使用時のpreamble単一を検証。Project Memory topic注入ブロック（memory＋Pinned＋参照の併存・取得失敗・超過topic除外・memory未使用時の旧文字列一致）も検証。refusal時の文言分岐（memory注入あり／なし、memoryのみ／pinnedのみ、Thinking両形式、一回限り、保存本文）とログを検証 |
+| `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・cached各ブロックとdynamic参照群のpreamble個数を検証。Project Memory topic注入ブロック（memory＋Pinned＋参照の併存・取得失敗・超過topic除外・memory未使用時の旧文字列一致）も検証。refusal時の文言分岐（memory注入あり／なし、memoryのみ／pinnedのみ、Thinking両形式、一回限り、保存本文）とログを検証 |
 | `scripts/csp.test.cjs` | CSPヘッダー・report解析・URL無害化を検証 |
+| `scripts/github-tool-loop.test.cjs` | Tool Loopの1ファイル1封筒・空本文・成功0件・封筒タグ分断・warnings/preamble非出力とPinned生成・取得上限を検証 |
 | `scripts/fetch-github-route.test.cjs` | GitHubファイル取得Routeの認証・取得・失敗契約を検証 |
 | `scripts/formatters.test.cjs` | 相対時刻・日時フォーマットを固定時刻で検証 |
 | `scripts/loadModel.test.cjs` | モデル設定の保存/復元・fallback・registry由来snapshotを検証 |
@@ -548,7 +549,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | batch-train対象 | **userメッセージのみ**。`role = 'user'` / `provider != 'memo'` / `provider != 'image_gen'` で絞り込み。AI発言の記憶化は「👍 記憶に追加」ボタンで対応 |
 | liked_ai保護 | Dreaming保護条件は `extraction_version NOT IN ('user_edited', 'user_created', 'liked_ai')`。全RPCに適用済み |
 | v_found_count カウンター | `consolidate_dreaming_batch_multi` の件数検証はFORループ内のカウンター方式。FORループ後の `GET DIAGNOSTICS` はPostgreSQLの仕様で件数が取れない |
-| RAG発火条件の二重管理 | `app/api/chat/route.ts` 内に `shouldSearchRagMemory`（キーワードベース・`RAG_TRIGGER_KEYWORDS`）と `MEMORY_TRIGGER_PATTERN`（正規表現）の2種類の発火判定ロジックが存在。片方だけ変更すると挙動が乖離するおそれあり |
+| RAG発火条件の二重管理 | `app/api/chat/route.ts` 内に `shouldSearchRagMemory`（キーワードベース・`RAG_TRIGGER_KEYWORDS`）と `MEMORY_TRIGGER_PATTERN`（正規表現）の2種類の発火判定ロジックが存在。片方だけ変更すると挙動が乖離するおそれあり。temporary チャットでは `rag_memory` は検索・注入対象から除外される。B2の統合は未着手。 |
 | Supabase スキーマキャッシュ | RPC追加・変更後にAPIから `schema cache` エラーが出たら `NOTIFY pgrst, 'reload schema';` を実行 |
 
 ### BYOK APIキー関連（H-21）
@@ -610,7 +611,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | upsertのtitle必須 | `threads/[id]/route.ts` のupsertがINSERTに回った場合、titleが必要。`title: thread.title \|\| "無題"` を必ず含める |
 | remark-gfm の [[text]] 誤認識 | shareページのYOUメッセージはMarkdownRendererを経由せずプレーンテキストで `.replace(/\[\[(.+?)\]\]/g, "████")` する |
 | フォルダ（Project）名変更の整合性 | 名前変更は`PATCH /api/projects/[projectId]`（`rename_project` RPC）に一本化されている。関連4テーブルの`folder_name`はRPCが同期するため、個別にUPDATEしない |
-| Claude system block | Claude system block の順序は stable(cache) → memory(cache・存在時のみ。`project-memory-topics`) → pinned(cache・存在時のみ) → dynamic(no cache)。空ブロックは作らない。Project Memory topicは複数でも**1つのcachedブロック**にまとめる（marker増加を避ける）。cache_control は message anchor を含めリクエスト全体で最大4個（system側は常に最大3、1枠をmessage anchor用に予約）。非Claude・Tool Loop・トークン見積もりは `buildCombinedSystemPrompt` と `cachedInsertionIndex` で同じ順序の文字列を復元する。memory未使用時のsystem文字列は従来とバイト一致を維持する |
+| Claude system block | Claude system block の順序は stable(cache) → memory(cache・存在時のみ。`project-memory-topics`) → pinned(cache・存在時のみ) → dynamic(no cache)。空ブロックは作らない。Project Memory topicは複数でも**1つのcachedブロック**にまとめる（marker増加を避ける）。cache_control は message anchor を含めリクエスト全体で最大4個（system側は常に最大3、1枠をmessage anchor用に予約）。非Claude・Tool Loop・トークン見積もりは `buildCombinedSystemPrompt` と `cachedInsertionIndex` で同じ順序の文字列を復元する。Pinnedは `github_pinned_file` のコード封筒列を使う。Project MemoryとPinnedの各cachedブロックは自己完結でpreambleを各1個持つ。dynamicの参照群（lore_book / memory / rag_memory / Tool Loop）はrouteの `appendReferenceBlock` で最大1個。system全体でpreambleが常に1個とは限らない |
 | Prompt Caching ヘッダー | `anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache_controlが無視される |
 | [[text]] マスク記法 | `MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする |
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |

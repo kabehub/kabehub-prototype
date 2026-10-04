@@ -1385,9 +1385,7 @@ export async function POST(req: NextRequest) {
         onProgress: (msg) => { progressMessages.push(msg); },
       });
       if (discovery.contextBlock) {
-        dynamicSystemText = dynamicSystemText
-          ? dynamicSystemText + "\n\n" + discovery.contextBlock
-          : (cachedSystemBlocks.length ? "\n\n" : "") + discovery.contextBlock;
+        dynamicSystemText = appendReferenceBlock(dynamicSystemText, discovery.contextBlock);
       }
       if (discovery.warnings.length > 0 && process.env.NODE_ENV === "development") {
         console.warn("[github-tool-loop] warnings:", discovery.warnings);
@@ -1405,7 +1403,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── RAG memory context（rule-based MVP）─────────────────────
-  if (openaiKey && shouldSearchRagMemory(userContent)) {
+  if (!isTemporary && openaiKey && shouldSearchRagMemory(userContent)) {
     try {
       const ragResults = await searchLoreV2ForProject(supabase, {
         query: userContent,

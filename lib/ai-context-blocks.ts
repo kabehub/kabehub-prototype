@@ -1,8 +1,10 @@
 // AIに「読ませるだけ」のデータ（参照データ）を、安全な形でプロンプトへ埋め込むための共通ヘルパー。
 //
 // 【今後の拡張予定・地雷メモ】
-// GitHub Pinned Files / Tool Loop をこの封筒形式に統一する作業（ご神託01-05
-// チケット3・5）は本セッションのスコープ外。
+// GitHub Pinned Files / Tool Loop はコード専用の reference_data 封筒を使う。
+// Project Memory と Pinned の各 cached ブロックは自己完結で preamble を各1個持つ。
+// dynamic の参照群（lore_book / memory / rag_memory / Tool Loop）は route の
+// appendReferenceBlock で preamble が最大1個。system 全体で常に1個とは限らない。
 // rag_memory はS15で封筒化（sanitize＋タグ化）のみ行う。旧Memory注入との
 // ロジック統合（トリガー条件・検索パラメータの一本化）はS17（lore.ts改善）のスコープ。
 
@@ -53,4 +55,32 @@ export function buildReferenceBlock(
         .join("\n") + "\n"
     : "";
   return `<reference_data source="${source}">\n${metaLines}${sanitizeReferenceText(body)}\n</reference_data>`;
+}
+
+export type CodeReferenceSource = "github_pinned_file" | "github_explored_file";
+
+/**
+ * 封筒構造を本文から偽造・閉鎖できないようにする防御であり、
+ * prompt injection の無害化ではない。命令への耐性は preamble が担う。
+ * 封筒タグだけを分断し、ソースコードの閉じタグや JSX は保持する。
+ */
+export function sanitizeReferenceCodeText(text: string): string {
+  return text.replace(/<(?=\s*\/?\s*reference_data(?:[\s/>]|$))/gi, "<\u200b");
+}
+
+export function buildCodeReferenceBlock(
+  source: CodeReferenceSource,
+  body: string,
+  meta?: Record<string, string>
+): string {
+  const metaLines = meta
+    ? Object.entries(meta)
+        .map(([k, v]) => {
+          const safeKey = k.replace(/[^a-zA-Z0-9_-]/g, "_");
+          const singleLineValue = v.replace(/[\r\n\t\u2028\u2029]/g, " ");
+          return `${safeKey}: ${sanitizeReferenceCodeText(singleLineValue)}`;
+        })
+        .join("\n") + "\n"
+    : "";
+  return `<reference_data source="${source}">\n${metaLines}${sanitizeReferenceCodeText(body)}\n</reference_data>`;
 }
