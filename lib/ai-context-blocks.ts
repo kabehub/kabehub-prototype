@@ -3,12 +3,10 @@
 // 【今後の拡張予定・地雷メモ】
 // GitHub Pinned Files / Tool Loop はコード専用の reference_data 封筒を使う。
 // Project Memory と Pinned の各 cached ブロックは自己完結で preamble を各1個持つ。
-// dynamic の参照群（lore_book / memory / rag_memory / Tool Loop）は route の
+// dynamic の参照群（lore_book / memory / Tool Loop）は route の
 // appendReferenceBlock で preamble が最大1個。system 全体で常に1個とは限らない。
-// rag_memory はS15で封筒化（sanitize＋タグ化）のみ行う。旧Memory注入との
-// ロジック統合（トリガー条件・検索パラメータの一本化）はS17（lore.ts改善）のスコープ。
 
-export type ReferenceSource = "lore_book" | "memory" | "rag_memory" | "project_memory_topic";
+export type ReferenceSource = "lore_book" | "memory" | "project_memory_topic";
 
 /**
  * 本文中に閉じタグと衝突する文字列（例: "</reference_data>", "</message>", "</file>"）が

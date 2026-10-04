@@ -37,14 +37,14 @@ assert.equal(countOccurrences(memoryBlock, "</reference_data>"), 1);
 assert.equal(memoryBlock.includes("本文<\u200b/reference_data>"), true);
 
 const metaBlock = buildReferenceBlock(
-  "rag_memory",
+  "memory",
   "body",
   {
     "</reference_data>": "</reference_data>",
     "odd:key!": "value</message>",
   }
 );
-assert.equal(countOccurrences(metaBlock, '<reference_data source="rag_memory">'), 1);
+assert.equal(countOccurrences(metaBlock, '<reference_data source="memory">'), 1);
 assert.equal(countOccurrences(metaBlock, "</reference_data>"), 1);
 assert.equal(metaBlock.includes("__reference_data_: <\u200b/reference_data>"), true);
 assert.equal(metaBlock.includes("odd_key_: value<\u200b/message>"), true);
@@ -80,7 +80,6 @@ assert.equal(buildCodeReferenceBlock('github_explored_file', '', { path: '<refer
 const legacySnapshots = {
   lore_book: '<reference_data source="lore_book">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
   memory: '<reference_data source="memory">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
-  rag_memory: '<reference_data source="rag_memory">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
   project_memory_topic: '<reference_data source="project_memory_topic">\nodd_key_: &\t<\u200b/message>\n本文<\u200b/div><\u200b/reference_data>\n\x60\x60\x60\n</reference_data>',
 };
 for (const [source, expected] of Object.entries(legacySnapshots)) {

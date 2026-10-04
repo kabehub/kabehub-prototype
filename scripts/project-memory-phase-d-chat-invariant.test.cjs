@@ -97,10 +97,6 @@ const loreMock = {
       confidenceScore: 0.9,
     }];
   },
-  async searchLoreV2ForProject() {
-    loreCalls.push("searchLoreV2ForProject");
-    return [{ chunkText: "canonical rag context", memoryKind: "fact" }];
-  },
 };
 
 const originalLoad = Module._load;
@@ -236,8 +232,7 @@ async function verifyCanonicalProjectContext() {
       "embedQuery",
       "searchLoreByEmbeddingForProject",
       "searchLoreV2ByEmbeddingForProject",
-      "searchLoreV2ForProject",
-    ], `${label}: all three memory paths run`);
+    ], `${label}: Lore Book and Memory share one embedding`);
     const projectSettingsCall = databaseCalls.find(
       (call) => call.table === "project_settings",
     );
@@ -250,7 +245,6 @@ async function verifyCanonicalProjectContext() {
     assert.match(upstreamBody, /project system prompt/);
     assert.match(upstreamBody, /canonical lore context/);
     assert.match(upstreamBody, /canonical memory context/);
-    assert.match(upstreamBody, /canonical rag context/);
     assert.equal(
       warnings.filter(
         (call) =>

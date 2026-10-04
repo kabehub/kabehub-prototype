@@ -24,10 +24,5 @@ test("CHAT_LORE_SEARCH_POLICY preserves distinct search policies", () => {
       topK: 5,
       matchThreshold: 0.3,
     },
-    rag: {
-      topK: 4,
-      timeoutMs: 3_000,
-      matchThreshold: 0.3,
-    },
   });
 });

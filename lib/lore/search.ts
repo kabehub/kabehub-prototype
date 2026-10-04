@@ -12,16 +12,6 @@ export interface LoreSearchOptionsV2 {
   matchThreshold: number;
 }
 
-export interface LoreSearchOptionsV2ForProject {
-  query: string;
-  projectId: string | null;
-  userId: string;
-  topK: number;
-  openaiKey: string;
-  timeoutMs: number;
-  matchThreshold: number;
-}
-
 export type LoreSearchV2Result = {
   id: string;
   chunkText: string;
@@ -140,31 +130,3 @@ export async function searchLoreV2ByEmbeddingForProject(
   }));
 }
 
-export async function searchLoreV2ForProject(
-  supabase: SupabaseClient,
-  opts: LoreSearchOptionsV2ForProject,
-): Promise<LoreSearchV2Result[]> {
-  const { query, projectId, userId, topK, openaiKey, timeoutMs, matchThreshold } = opts;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const embedding = await embedQuery(openaiKey, query, controller.signal);
-    if (!embedding) return [];
-    return await searchLoreV2ByEmbeddingForProject(supabase, embedding, {
-      projectId,
-      userId,
-      topK,
-      matchThreshold,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if ((err as Error).name === "AbortError") {
-      console.warn("[loreV2] search timed out after", timeoutMs, "ms — skipping injection");
-    }
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
-}

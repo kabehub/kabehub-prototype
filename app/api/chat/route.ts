@@ -10,8 +10,8 @@ import {
   embedQuery,
   searchLoreByEmbeddingForProject,
   searchLoreV2ByEmbeddingForProject,
-  searchLoreV2ForProject,
 } from "@/lib/lore";
+import { buildChatLoreSearchPlan } from "@/lib/lore/chat-search-plan";
 import { CHAT_LORE_SEARCH_POLICY } from "@/lib/lore/types";
 import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
@@ -81,16 +81,6 @@ const PROJECT_MEMORY_TOPICS_LABEL = "project-memory-topics";
 const PINNED_GITHUB_FILES_LABEL = "pinned-github-files";
 
 const DEFAULT_MODELS = buildDefaultModels("chat");
-
-const RAG_TRIGGER_KEYWORDS = [
-  "前に", "以前", "覚えて", "覚えてる", "方針", "このプロジェクト",
-  "前回", "過去ログ", "引き継ぎ", "RAG", "KabeHub", "メモリ",
-  "記憶", "これまで", "過去", "続き", "決定", "好み", "設定"
-];
-
-function shouldSearchRagMemory(content: string): boolean {
-  return RAG_TRIGGER_KEYWORDS.some(kw => content.includes(kw));
-}
 
 const { isClaudeModel, isGeminiModel, isOpenAIModel } = createModelGuards("chat");
 
@@ -1059,17 +1049,17 @@ export async function POST(req: NextRequest) {
     post: cachedInsertionIndex === undefined ? "" : (dynamicSystemText ?? "").slice(cachedInsertionIndex),
   });
 
-  // NOTE: This combined search covers Lore Book injection and legacy Memory injection.
+  // NOTE: This combined search covers Lore Book injection and Memory injection.
   // Both paths use the thread's canonical project_id resolved above.
-  const wantsLoreBook = loreEnabled && !!openaiKey && !!loreTargetProjectId;
-  const MEMORY_TRIGGER_PATTERN = /前に|以前|覚えて|記憶|方針|決定|このプロジェクト|続き|KabeHub|RAG|メモリ/;
-  const wantsMemorySearch =
-    !isTemporary &&
-    !isMemo &&
-    !!openaiKey &&
-    MEMORY_TRIGGER_PATTERN.test(userContent);
+  const { wantsLoreBook, wantsMemory } = buildChatLoreSearchPlan({
+    userContent,
+    isTemporary: !!isTemporary,
+    hasOpenaiKey: !!openaiKey,
+    loreEnabled,
+    loreTargetProjectId,
+  });
 
-  if (wantsLoreBook || wantsMemorySearch) {
+  if (wantsLoreBook || wantsMemory) {
     const combinedController = new AbortController();
     const combinedTimer = setTimeout(
       () => combinedController.abort(),
@@ -1091,7 +1081,7 @@ export async function POST(req: NextRequest) {
                 signal: combinedController.signal,
               })
             : Promise.resolve([] as string[]),
-          wantsMemorySearch
+          wantsMemory
             ? searchLoreV2ByEmbeddingForProject(supabase, embedding, {
                 projectId: currentProjectId,
                 userId,
@@ -1399,35 +1389,6 @@ export async function POST(req: NextRequest) {
           errorType: err instanceof Error ? err.name : "unknown",
         });
       }
-    }
-  }
-
-  // ── RAG memory context（rule-based MVP）─────────────────────
-  if (!isTemporary && openaiKey && shouldSearchRagMemory(userContent)) {
-    try {
-      const ragResults = await searchLoreV2ForProject(supabase, {
-        query: userContent,
-        projectId: currentProjectId,
-        userId,
-        topK: CHAT_LORE_SEARCH_POLICY.rag.topK,
-        openaiKey,
-        timeoutMs: CHAT_LORE_SEARCH_POLICY.rag.timeoutMs,
-        matchThreshold: CHAT_LORE_SEARCH_POLICY.rag.matchThreshold,
-      });
-      if (ragResults.length > 0) {
-        const ragBody = ragResults.map(r => `[Memory Kind: ${r.memoryKind}]
-Content: ${r.chunkText}`.trim()).join("\n\n");
-        dynamicSystemText = appendReferenceBlock(
-          dynamicSystemText,
-          buildReferenceBlock("rag_memory", ragBody)
-        );
-      }
-    } catch (err) {
-      // ベストエフォート: 失敗しても主処理は継続する。ユーザーへの通知は行わない。
-      logger.bestEffortFailed({
-        operation: "rag-memory-search",
-        errorType: err instanceof Error ? err.name : "unknown",
-      });
     }
   }
 
