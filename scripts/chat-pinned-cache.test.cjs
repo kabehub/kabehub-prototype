@@ -12,7 +12,8 @@ const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 let threadFixture;
 let databaseCalls;
 let loreCalls;
-let sharedEmbedding;
+let embeddingInputs;
+let embeddings;
 let sharedSignal;
 let backgroundTasks;
 let upstreamCalls;
@@ -93,20 +94,25 @@ const supabase = {
 const loreMock = {
   async embedQuery(key, query, signal) {
     loreCalls.push("embedQuery");
-    assert.equal(query, scenario.userContent ?? "このプロジェクトの記憶を使って続きを回答して");
+    embeddingInputs.push(query);
+    assert.ok(Array.from(query).length <= 2000);
+    if (sharedSignal) assert.equal(signal, sharedSignal);
     sharedSignal = signal;
-    sharedEmbedding = [1];
-    return sharedEmbedding;
+    const embedding = [embeddingInputs.length];
+    embeddings.set(query, embedding);
+    return scenario.nullQuery === query ? null : embedding;
   },
   async searchLoreByEmbeddingForProject(client, embedding, opts) {
-    assert.equal(embedding, sharedEmbedding);
+    const content = scenario.userContent ?? "このプロジェクトの記憶を使って続きを回答して";
+    assert.equal(embedding, embeddings.get(Array.from(content).slice(0, 2000).join("")));
     assert.equal(opts.signal, sharedSignal);
     assert.equal(opts.topK, 3);
     loreCalls.push("searchLoreByEmbeddingForProject");
     return scenario.references ? ["canonical lore context"] : [];
   },
   async searchLoreV2ByEmbeddingForProject(client, embedding, opts) {
-    assert.equal(embedding, sharedEmbedding);
+    const trigger = typeof scenario.queryText === "string" ? scenario.queryText : (scenario.userContent ?? "このプロジェクトの記憶を使って続きを回答して");
+    assert.equal(embedding, embeddings.get(Array.from(trigger).slice(0, 2000).join("")));
     assert.equal(opts.signal, sharedSignal);
     assert.equal(opts.topK, 5);
     assert.equal(opts.matchThreshold, 0.3);
@@ -273,13 +279,14 @@ function markerCount(value) {
 }
 async function send(provider, options) {
   scenario = options;
+  embeddingInputs = []; embeddings = new Map(); sharedSignal = undefined;
   savedMessages = [];
   threadFixture = { folder_name: null, project_id: options.unclassified ? null : PROJECT_ID, user_id: USER_ID };
   databaseCalls = []; loreCalls = []; backgroundTasks = []; upstreamBodies = []; loopSystems = []; trimSystems = [];
   const response = await POST(new NextRequest("https://www.kabehub.com/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json", "x-anthropic-api-key": "key", ...(options.noOpenaiKey ? {} : { "x-openai-api-key": "key" }), "x-gemini-api-key": "key" },
-    body: JSON.stringify({ isDeepThinking: options.deepThinking ?? false, threadId: THREAD_ID, isTemporary: options.temporary ?? false, provider, modelId: { claude: "claude-sonnet-4-5", openai: "gpt-4o", gemini: "gemini-2.5-flash" }[provider], userContent: options.userContent ?? "このプロジェクトの記憶を使って続きを回答して", messages: options.participants ? [
+    body: JSON.stringify({ isDeepThinking: options.deepThinking ?? false, threadId: THREAD_ID, isTemporary: options.temporary ?? false, provider, modelId: { claude: "claude-sonnet-4-5", openai: "gpt-4o", gemini: "gemini-2.5-flash" }[provider], queryText: options.queryText, userContent: options.userContent ?? "このプロジェクトの記憶を使って続きを回答して", messages: options.participants ? [
       { role: "user", content: "hello" },
       { role: "assistant", content: "first", provider: "claude", model_id: "claude-sonnet-4-5" },
       { role: "user", content: "again" },
@@ -308,6 +315,11 @@ async function send(provider, options) {
   }
   assert.deepEqual(unexpectedUrls, []);
   assert.equal(upstreamBodies.length, 1);
+  const storedUser = savedMessages.find(message => message.role === "user");
+  if (storedUser) {
+    assert.equal(storedUser.content, options.userContent ?? "このプロジェクトの記憶を使って続きを回答して");
+    assert.equal(Object.hasOwn(storedUser, "queryText"), false);
+  }
   assert.deepEqual(Buffer.from(trimSystems[0]), Buffer.from(oldSystem(options)));
   if (options.loop) assert.deepEqual(Buffer.from(loopSystems[0]), Buffer.from(oldSystem(options, false)));
   const body = upstreamBodies[0].body;
@@ -397,6 +409,28 @@ async function send(provider, options) {
       const system = JSON.parse(captured);
       assert.equal(system.includes('source="rag_memory"'), false);
       assert.equal(system.split('source="memory"').length - 1, fixture.expected.includes("searchLoreV2ByEmbeddingForProject") ? 1 : 0);
+    }
+    const attachmentBody = "前回の方針は？\n\n設定・過去";
+    const hugeBody = "a".repeat(1999) + "😀" + "設定".repeat(4000);
+    for (const fixture of [
+      { novel: false, userContent: "こんにちは\n\n設定", queryText: "こんにちは", loreSearch: false, memorySearch: false, inputs: [], searches: [] },
+      { novel: false, userContent: attachmentBody, queryText: "前回の方針は？", loreSearch: false, inputs: ["前回の方針は？"], searches: ["searchLoreV2ByEmbeddingForProject"] },
+      { novel: false, userContent: "設定・過去", queryText: "", loreSearch: false, memorySearch: false, inputs: [], searches: [] },
+      { userContent: "設定・過去", queryText: "", memorySearch: false, inputs: ["設定・過去"], searches: ["searchLoreByEmbeddingForProject"] },
+      { userContent: " 前回の話 ", queryText: " 前回の話 ", inputs: [" 前回の話 "], searches: ["searchLoreByEmbeddingForProject", "searchLoreV2ByEmbeddingForProject"] },
+      { userContent: attachmentBody, queryText: "前回の方針は？", inputs: [attachmentBody, "前回の方針は？"], searches: ["searchLoreByEmbeddingForProject", "searchLoreV2ByEmbeddingForProject"] },
+      { userContent: hugeBody, inputs: ["a".repeat(1999) + "😀"], searches: ["searchLoreByEmbeddingForProject", "searchLoreV2ByEmbeddingForProject"] },
+      { userContent: hugeBody, queryText: "前回 QUERY_ONLY_SENTINEL", inputs: ["a".repeat(1999) + "😀", "前回 QUERY_ONLY_SENTINEL"], searches: ["searchLoreByEmbeddingForProject", "searchLoreV2ByEmbeddingForProject"] },
+      { userContent: attachmentBody, queryText: "前回の方針は？", nullQuery: "前回の方針は？", memorySearch: false, inputs: [attachmentBody, "前回の方針は？"], searches: ["searchLoreByEmbeddingForProject"] },
+      { userContent: attachmentBody, queryText: "前回の方針は？", nullQuery: attachmentBody, loreSearch: false, inputs: [attachmentBody, "前回の方針は？"], searches: ["searchLoreV2ByEmbeddingForProject"] },
+      { userContent: "こんにちは\n\n設定", inputs: ["こんにちは\n\n設定"], searches: ["searchLoreByEmbeddingForProject", "searchLoreV2ByEmbeddingForProject"] },
+      { userContent: "こんにちは\n\n設定", queryText: 42, inputs: ["こんにちは\n\n設定"], searches: ["searchLoreByEmbeddingForProject", "searchLoreV2ByEmbeddingForProject"] },
+    ]) {
+      const system = JSON.parse(await send("gemini", { references: true, ...fixture }));
+      assert.deepEqual(embeddingInputs, fixture.inputs);
+      assert.deepEqual(loreCalls.filter(call => call !== "embedQuery"), fixture.searches);
+      assert.equal(system.includes("QUERY_ONLY_SENTINEL"), false);
+      if (fixture.inputs.length === 1 && fixture.searches.length === 2) assert.equal(embeddings.size, 1);
     }
     const memoryTopics = [
       { id: "topic-b", topic_key: "b", content_md: "本文😀", revision: 2 },

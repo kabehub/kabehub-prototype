@@ -1,5 +1,6 @@
 "use client";
 
+import { buildMessageWithTextFiles } from "@/lib/attachmentContent";
 import { useRef, useEffect, KeyboardEvent, useState } from "react";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ImageGenModel, ModelId, Provider } from "@/types";
 import {
@@ -111,7 +112,7 @@ export function canUseDeepThinking(provider: Provider, modelId: ModelId): boolea
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
@@ -637,23 +638,13 @@ export default function ChatInput({
     if (!value.trim() && attachedFiles.length === 0) return;
 
     // テキストファイルの内容をメッセージ本文に埋め込む
-    let finalContent = value;
-    if (textFiles.length > 0) {
-      const fileBlocks = textFiles.map((f) => {
-        const ext = f.name.split(".").pop()?.toLowerCase() ?? "txt";
-        const lang = ext === "csv" ? "csv" : ext === "md" ? "markdown" : "text";
-        return `\`\`\`${lang}\n${f.content}\n\`\`\``;
-      });
-      finalContent = value.trim()
-        ? `${value}\n\n${fileBlocks.join("\n\n")}`
-        : fileBlocks.join("\n\n");
-    }
+    const { content: finalContent, queryText } = buildMessageWithTextFiles(value, textFiles);
 
     const submittedImages: SubmittedAttachedImageFile[] = imageFiles.map(({ previewUrl, ...rest }) => rest);
     const effectiveDeepThinking = isDeepThinking && canUseDeepThinking(provider, selectedModel);
 
     onChange("");
-    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking);
+    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking, queryText);
     // ObjectURLを解放してからstateをクリア
     attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
       URL.revokeObjectURL((f as AttachedImageFile).previewUrl);

@@ -623,7 +623,7 @@ export default function Home() {
   }, []);
 
   // ── 通常送信 ──────────────────────────────────────────────
-  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean) => {
+  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => {
     if (!userContent.trim() || isLoading) return;
     if (provider === "image_gen") return;
     const resolvedThreadId = activeThreadId ?? uuidv4();
@@ -704,6 +704,7 @@ export default function Home() {
         await getApiKeyHeaders(),
         JSON.stringify({
           threadId: resolvedThreadId,
+          queryText,
           messages: messages
             .filter(m => m.is_active !== false)
             .map(m => ({ role: m.role, content: m.content, provider: m.provider })),

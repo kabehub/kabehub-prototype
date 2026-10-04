@@ -12,6 +12,7 @@ const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 let threadFixture;
 let databaseCalls;
 let loreCalls;
+let sharedEmbedding;
 let backgroundTasks;
 let upstreamCalls;
 let upstreamBodies;
@@ -80,15 +81,19 @@ const supabase = {
 };
 
 const loreMock = {
-  async embedQuery() {
+  async embedQuery(key, query) {
+    assert.equal(query, "このプロジェクトの記憶を使って続きを回答して");
     loreCalls.push("embedQuery");
-    return [1];
+    sharedEmbedding = [1];
+    return sharedEmbedding;
   },
-  async searchLoreByEmbeddingForProject() {
+  async searchLoreByEmbeddingForProject(client, embedding) {
+    assert.equal(embedding, sharedEmbedding);
     loreCalls.push("searchLoreByEmbeddingForProject");
     return ["canonical lore context"];
   },
-  async searchLoreV2ByEmbeddingForProject() {
+  async searchLoreV2ByEmbeddingForProject(client, embedding) {
+    assert.equal(embedding, sharedEmbedding);
     loreCalls.push("searchLoreV2ByEmbeddingForProject");
     return [{
       chunkText: "canonical memory context",

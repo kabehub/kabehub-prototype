@@ -32,6 +32,10 @@ export const LIKED_AI_DEFAULTS = {
 export const BATCH_TRAIN_UI_REQUEST_LIMIT = 100;
 
 export const CHAT_LORE_SEARCH_POLICY = {
+  // KabeHub conservative limit, independent of tokenizer and OpenAI token limits.
+  query: {
+    maxCodePoints: 2_000,
+  },
   combined: {
     timeoutMs: 3_000,
   },

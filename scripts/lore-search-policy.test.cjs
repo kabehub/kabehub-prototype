@@ -14,6 +14,7 @@ const {
 
 test("CHAT_LORE_SEARCH_POLICY preserves distinct search policies", () => {
   assert.deepEqual(CHAT_LORE_SEARCH_POLICY, {
+    query: { maxCodePoints: 2_000 },
     combined: {
       timeoutMs: 3_000,
     },

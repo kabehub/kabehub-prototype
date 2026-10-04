@@ -234,7 +234,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/summary-client.ts` | 既存topics GETから必要な5項目のみ抽出。HTTP・配列・全件の必須型とpromotion.statusをfail-closedで検証 |
 | `lib/project-memory/use-project-memory-summary.ts` | Project IDとrefreshTokenで再取得するread-only hook。effect前も旧Projectのデータ・エラーを公開しない。未取得と0件を区別し、再取得失敗は旧データを破棄。request idとabortで古い応答を除外 |
 | `lib/chat-system-blocks.ts` | Claude systemブロックの順序・キャッシュmarker選択と、非Claude向けの旧system文字列復元（importゼロの純関数） |
-| `lib/lore/chat-search-plan.ts` | サーバー用・importゼロの純関数。19語のトリガーとLore Book / Memoryの検索計画を集約。メモモードはrouteで計画前にearly returnする |
+| `lib/attachmentContent.ts` | 手入力とテキスト添付を従来と同じフェンス・区切りで結合。contentは保存本文、queryTextはtrimしない手入力 |
+| `lib/lore/chat-search-plan.ts` | サーバー用・importゼロの純関数。19語のトリガーとLore Book / Memoryの検索計画・コードポイント単位のクエリ導出を集約。メモモードはrouteで計画前にearly returnする |
 | `lib/ai-context-blocks.ts` | 3ソース（lore_book / memory / project_memory_topic）の参照ブロックと、GitHub用コード封筒を生成。コードは封筒タグのみ分断し、JSX等を保持する |
 | `lib/branching.ts` | 表示順・anchor・chain block・現在laneの構築ロジック |
 | `lib/branchTree.ts` | 分岐ツリー構築ロジック（`scripts/branchTree.test.cjs`でテストあり） |
@@ -309,11 +310,12 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト99本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト100本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
 | `scripts/project-memory-summary.test.cjs` / `scripts/project-memory-summary-client.test.cjs` / `scripts/use-project-memory-summary.test.cjs` / `scripts/project-memory-tab.test.cjs` / `scripts/project-settings-memory-sidebar.test.cjs` | サマリ意味論・fail-closed取得・effect前のProject切替／refresh競合応答・Memory主ボタン・Sidebarのrefresh契約を検証 |
+| `scripts/attachment-content.test.cjs` | 添付結合のリテラルとのバイト一致・添付なし・raw queryTextを検証 |
 | `scripts/ai-context-blocks.test.cjs` | AI参照ブロック生成と本文・属性値無害化の回帰テスト |
 | `scripts/api-key-handling.test.cjs` | BYOK APIキーの保存・転送・ログ露出防止を横断検証 |
 | `scripts/apply-branch-edit-route.test.cjs` | branch edit RouteのRPC契約・採番・エラー処理を検証 |
@@ -321,7 +323,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/branchTree.test.cjs` | 分岐laneとツリーレイアウト構築を検証 |
 | `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
-| `scripts/chat-lore-search-plan.test.cjs` | 19語全件・非トリガー・temporary・OpenAIキー・novel・対象project有無の検索計画を検証 |
+| `scripts/chat-lore-search-plan.test.cjs` | 19語全件・非トリガー・temporary・OpenAIキー・novel・対象project有無の検索計画、queryTextのフォールバック・空文字・空白・上限・サロゲート境界を検証 |
 | `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・cached各ブロックとdynamic参照群のpreamble個数を検証。Project Memory topic注入ブロック（memory＋Pinned＋参照の併存・取得失敗・超過topic除外・memory未使用時の旧文字列一致）も検証。refusal時の文言分岐（memory注入あり／なし、memoryのみ／pinnedのみ、Thinking両形式、一回限り、保存本文）とログを検証 |
 | `scripts/csp.test.cjs` | CSPヘッダー・report解析・URL無害化を検証 |
 | `scripts/github-tool-loop.test.cjs` | Tool Loopの1ファイル1封筒・空本文・成功0件・封筒タグ分断・warnings/preamble非出力とPinned生成・取得上限を検証 |
@@ -331,7 +333,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/logger.test.cjs` | 構造化loggerの許可フィールド（`claudeRefusal`を含む）と機微情報非出力を検証 |
 | `scripts/lore-dreaming-clean.test.cjs` | Dreamingの記憶cleaning・失敗時fallback・統合処理を検証 |
 | `scripts/lore-openai.test.cjs` | Lore用Embedding/Chat API wrapperのrequest・response・error契約を検証 |
-| `scripts/lore-search-policy.test.cjs` | Lore Book（topK 3）・Memory（topK 5、閾値0.3）・combined timeout（3,000ms）の検索policyを検証 |
+| `scripts/lore-search-policy.test.cjs` | Lore Book（topK 3）・Memory（topK 5、閾値0.3）・query上限（2,000コードポイント）・combined timeout（3,000ms）の検索policyを検証 |
 | `scripts/lore.test.cjs` | Loreのmapper・統合・Dreaming・batch train・関連Routeを特性化テスト |
 | `scripts/mcp-token-hash.test.cjs` | MCPトークンのSHA-256 hashを既知ベクトルで検証 |
 | `scripts/message-delete.test.cjs` | 所有メッセージ・関連Lore・Storage画像の削除契約を検証 |
@@ -551,7 +553,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | batch-train対象 | **userメッセージのみ**。`role = 'user'` / `provider != 'memo'` / `provider != 'image_gen'` で絞り込み。AI発言の記憶化は「👍 記憶に追加」ボタンで対応 |
 | liked_ai保護 | Dreaming保護条件は `extraction_version NOT IN ('user_edited', 'user_created', 'liked_ai')`。全RPCに適用済み |
 | v_found_count カウンター | `consolidate_dreaming_batch_multi` の件数検証はFORループ内のカウンター方式。FORループ後の `GET DIAGNOSTICS` はPostgreSQLの仕様で件数が取れない |
-| チャット記憶検索の発火条件 | トリガー19語と検索条件は `lib/lore/chat-search-plan.ts` の `buildChatLoreSearchPlan` に集約済み。memory に一本化し、Lore Book と embedding を共有・並列検索する。temporary チャットでは記憶検索を行わない。添付本文が検索クエリに混ざる件は未解決（B2-2）。 |
+| チャット記憶検索の発火条件 | トリガー19語と検索条件は `lib/lore/chat-search-plan.ts` の `buildChatLoreSearchPlan` に集約済み。memory に一本化し、Lore Book とクエリが同一ならembeddingを共有、異なれば並列生成して検索する。temporary チャットでは記憶検索を行わない。通常Web送信の添付本文によるMemory誤発火・入力超過は解消済み（B2-2、2026-10-04）。再生成・分岐編集・旧クライアントではqueryTextなしで添付込み全文にフォールバックする制限が残る。 |
 | Supabase スキーマキャッシュ | RPC追加・変更後にAPIから `schema cache` エラーが出たら `NOTIFY pgrst, 'reload schema';` を実行 |
 
 ### BYOK APIキー関連（H-21）
@@ -797,3 +799,13 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - TypingMindと違い、複数AIの履歴共有・引継ぎ機能・メモモード・公開スレッド一覧がある
 - 「完成した知識」でなく「考えている途中のプロセス」を共有する文化を作りたい
 - 小説執筆特化機能（プロジェクトモード・キャラDB・整合性チェック）で作家ユーザーの開拓を狙う
+
+### /api/chat の検索クエリ契約（B2-2、2026-10-04）
+
+POST /api/chat の optional queryText は文字列だけを採用し、未指定・文字列以外は400にせず userContent へフォールバックする。通常Web送信は ChatInput / ChatInputCentered → handleSubmit の第5引数から手入力 value をtrimせず別送する。temporary のbodyには含めない。保存する messages.content は従来の添付込み userContent のまま。queryText はトリガー判定・embedding入力専用で、DB・system・ログへ追加しない。
+
+buildChatSearchQueries の triggerText は raw queryText（空文字もそのまま）または userContent 全文。Memoryの19語の判定は切り詰め前の triggerText を使う。memoryQuery は triggerText の先頭、loreBookQuery は最終 userContent の先頭（手入力の後ろに添付が続く前提で、添付本文が必ず検索されるわけではない）。各queryは CHAT_LORE_SEARCH_POLICY.query.maxCodePoints の2,000コードポイントへ切り詰め、絵文字などのサロゲートペアを分断しない。2,000はOpenAIの限界値ではなく、tokenizerに依存せず余裕を取るためのKabeHub独自の保守的上限。
+
+両検索が有効でqueryが同一ならembeddingは1回、異なるなら2回を並列生成する。片方のみ有効ならそのqueryだけを生成する。同じAbortController・combined timeout（3,000ms）を使い、一方のembeddingがnullでも成功側の検索・注入を継続する。MemoryのtopK 5・閾値0.3、Lore BookのtopK 3、systemの各ブロック形式は維持する。
+
+再生成・分岐編集・メモ系・novel-check・mobileの呼び出しはqueryTextを送らない。再生成・編集と旧クライアントでは添付込みuserContent全文でMemoryのトリガーを判定する制限が残る（embedding入力自体の上限は適用）。メモモードは検索計画前にearly returnする。

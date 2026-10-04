@@ -11,7 +11,7 @@ import {
   searchLoreByEmbeddingForProject,
   searchLoreV2ByEmbeddingForProject,
 } from "@/lib/lore";
-import { buildChatLoreSearchPlan } from "@/lib/lore/chat-search-plan";
+import { buildChatLoreSearchPlan, buildChatSearchQueries } from "@/lib/lore/chat-search-plan";
 import { CHAT_LORE_SEARCH_POLICY } from "@/lib/lore/types";
 import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
@@ -627,6 +627,7 @@ export async function POST(req: NextRequest) {
     threadId?: unknown;
     messages?: ChatMessage[];
     userContent?: unknown;
+    queryText?: unknown;
     provider?: unknown;
     modelId?: ModelId;
     isRegenerate?: boolean;
@@ -652,7 +653,7 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    threadId, messages, userContent, provider, modelId,
+    threadId, messages, userContent, queryText, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
     imageContextId, branchEdit, regenerateMode, targetMessageId, targetUserMessageId,
   } = requestBody;
@@ -1051,8 +1052,13 @@ export async function POST(req: NextRequest) {
 
   // NOTE: This combined search covers Lore Book injection and Memory injection.
   // Both paths use the thread's canonical project_id resolved above.
-  const { wantsLoreBook, wantsMemory } = buildChatLoreSearchPlan({
+  const { triggerText, memoryQuery, loreBookQuery, sharedEmbedding } = buildChatSearchQueries({
     userContent,
+    queryText: typeof queryText === "string" ? queryText : undefined,
+    maxCodePoints: CHAT_LORE_SEARCH_POLICY.query.maxCodePoints,
+  });
+  const { wantsLoreBook, wantsMemory } = buildChatLoreSearchPlan({
+    triggerText,
     isTemporary: !!isTemporary,
     hasOpenaiKey: !!openaiKey,
     loreEnabled,
@@ -1067,22 +1073,31 @@ export async function POST(req: NextRequest) {
     );
 
     try {
-      const embedding = await embedQuery(openaiKey!, userContent, combinedController.signal);
+      let loreEmbedding: number[] | null;
+      let memoryEmbedding: number[] | null;
+      if (wantsLoreBook && wantsMemory && sharedEmbedding) {
+        loreEmbedding = memoryEmbedding = await embedQuery(openaiKey!, memoryQuery, combinedController.signal);
+      } else {
+        [loreEmbedding, memoryEmbedding] = await Promise.all([
+          wantsLoreBook ? embedQuery(openaiKey!, loreBookQuery, combinedController.signal) : Promise.resolve(null),
+          wantsMemory ? embedQuery(openaiKey!, memoryQuery, combinedController.signal) : Promise.resolve(null),
+        ]);
+      }
 
-      if (embedding) {
+      if (loreEmbedding || memoryEmbedding) {
         // POST前半で所有権確認済みのproject_idを再利用する。
         // 未分類スレッドでは、project_idがnullの記憶のみを検索する。
         const [loreChunks, memoryResults] = await Promise.all([
-          wantsLoreBook
-            ? searchLoreByEmbeddingForProject(supabase, embedding, {
+          loreEmbedding
+            ? searchLoreByEmbeddingForProject(supabase, loreEmbedding, {
                 projectId: loreTargetProjectId!,
                 userId,
                 topK: CHAT_LORE_SEARCH_POLICY.loreBook.topK,
                 signal: combinedController.signal,
               })
             : Promise.resolve([] as string[]),
-          wantsMemory
-            ? searchLoreV2ByEmbeddingForProject(supabase, embedding, {
+          memoryEmbedding
+            ? searchLoreV2ByEmbeddingForProject(supabase, memoryEmbedding, {
                 projectId: currentProjectId,
                 userId,
                 topK: CHAT_LORE_SEARCH_POLICY.memory.topK,

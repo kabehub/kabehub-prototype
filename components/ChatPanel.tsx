@@ -36,7 +36,7 @@ interface ChatPanelProps {
   displayName?: string | null;
   inputValue: string;
   onInputChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => void;
   thinkingContents?: Record<string, string>;
   onMemoSubmit: () => void;
   isLoading: boolean;

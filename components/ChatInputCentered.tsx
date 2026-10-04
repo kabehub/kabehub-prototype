@@ -1,5 +1,6 @@
 "use client";
 
+import { buildMessageWithTextFiles } from "@/lib/attachmentContent";
 import {
   ChangeEvent,
   ClipboardEvent,
@@ -41,7 +42,8 @@ interface ChatInputCenteredProps {
     content: string,
     modelId: ModelId,
     attachedImages?: SubmittedAttachedImageFile[],
-    isDeepThinking?: boolean
+    isDeepThinking?: boolean,
+    queryText?: string
   ) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
@@ -382,23 +384,13 @@ export default function ChatInputCentered({
     const imageFiles = attachedFiles.filter((f): f is AttachedImageFile => f.kind === "image");
     if (!value.trim() && attachedFiles.length === 0) return;
 
-    let finalContent = value;
-    if (textFiles.length > 0) {
-      const fileBlocks = textFiles.map((f) => {
-        const ext = f.name.split(".").pop()?.toLowerCase() ?? "txt";
-        const lang = ext === "csv" ? "csv" : ext === "md" ? "markdown" : "text";
-        return `\`\`\`${lang}\n${f.content}\n\`\`\``;
-      });
-      finalContent = value.trim()
-        ? `${value}\n\n${fileBlocks.join("\n\n")}`
-        : fileBlocks.join("\n\n");
-    }
+    const { content: finalContent, queryText } = buildMessageWithTextFiles(value, textFiles);
 
     const submittedImages: SubmittedAttachedImageFile[] = imageFiles.map(({ previewUrl, ...rest }) => rest);
     const effectiveDeepThinking = isDeepThinking && canUseDeepThinking(activeProvider, selectedModel);
 
     onChange("");
-    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking);
+    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking, queryText);
     attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
       URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
     });
