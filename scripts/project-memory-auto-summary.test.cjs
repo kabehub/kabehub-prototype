@@ -3,9 +3,83 @@ const assert = require('node:assert/strict');
 const { installAliasResolver, installTsLoader } = require('./testBootstrap.cjs');
 installAliasResolver(); installTsLoader();
 const { database, thread, message } = require('./auto-summary-test-helpers.cjs');
-const { selectAutoSummaryInput, finalizeAutoSummaryInput, parseAutoSummaryResponse, buildAutoSummaryInput, AUTO_SUMMARY_SYSTEM_PROMPT, AUTO_SUMMARY_PROMPT_VERSION } = require('../lib/project-memory/auto-summary.ts');
+const { selectAutoSummaryInput, finalizeAutoSummaryInput, parseAutoSummaryResponse, buildAutoSummaryInput, autoSummaryJstDate, AUTO_SUMMARY_SYSTEM_PROMPT, AUTO_SUMMARY_PROMPT_VERSION } = require('../lib/project-memory/auto-summary.ts');
 const { MAX_AUTO_SUMMARY_INPUT_CHARS, AUTO_SUMMARY_TRUNCATION_MARKER } = require('../lib/project-memory/auto-summary-limits.ts');
 const select = db => selectAutoSummaryInput(db, 'u','p',['overview']);
+const entries = thread => thread.days.flatMap(day => day.m);
+
+test('pure JST date conversion covers midnight, offsets, month and year boundaries', () => {
+  for (const [timestamp, expected] of [
+    ['2026-10-05T14:59:59.999Z','2026-10-05'],
+    ['2026-10-05T15:00:00.000Z','2026-10-06'],
+    ['2026-10-05T15:30:00Z','2026-10-06'],
+    ['2026-10-05T23:59:59+09:00','2026-10-05'],
+    ['2026-10-06T00:00:00+09:00','2026-10-06'],
+    ['2026-01-31T15:00:00Z','2026-02-01'],
+    ['2026-12-31T14:59:59Z','2026-12-31'],
+    ['2026-12-31T15:00:00Z','2027-01-01'],
+  ]) assert.equal(autoSummaryJstDate(timestamp),expected,timestamp);
+});
+
+test('compact days group independently per thread and sort dates and timestamps with display-order ties', () => {
+  const row = (n, created_at, content, extra={}) => ({...message('a',n,{created_at,content,...extra}),cut:false});
+  const threads = [
+    {thread_id:'a',title:'A',last_message_at:'2026-10-06T16:00:00Z',messages:[
+      row(4,'2026-10-06T16:00:00Z','next'),row(3,'2026-10-05T16:00:00Z','tie-last'),
+      row(1,'2026-10-05T14:59:59Z','previous'),row(2,'2026-10-05T16:00:00Z','tie-first',{role:'assistant'}),
+      row(5,'2026-10-05T15:30:00Z','early'),
+    ],omitted:false},
+    {thread_id:'b',title:'B',last_message_at:'2026-10-05T15:30:00Z',messages:[row(1,'2026-10-05T15:30:00Z','other')],omitted:false},
+  ];
+  const input=buildAutoSummaryInput(['overview'],threads);
+  assert.ok(!input.includes('created_at'));assert.ok(!input.includes('last_message_at'));
+  const byId=Object.fromEntries(JSON.parse(input).threads.map(t=>[t.thread_id,t]));
+  assert.deepEqual(byId.a,{thread_id:'a',title:'A',days:[
+    {d:'2026-10-05',m:[['user','previous']]},
+    {d:'2026-10-06',m:[['user','early'],['assistant','tie-first'],['user','tie-last']]},
+    {d:'2026-10-07',m:[['user','next']]},
+  ]});
+  assert.deepEqual(byId.b.days,[{d:'2026-10-06',m:[['user','other']]}]);
+});
+
+test('final serialization budget accepts exactly 60000 and trims one character over, recomputing stats', () => {
+  const fixture=()=>[{thread_id:'t',title:'T',last_message_at:message('t',2).created_at,omitted:false,messages:[
+    {...message('t',1,{content:'old'}),cut:true}, {...message('t',2,{content:''}),cut:false},
+  ]}];
+  for (const excess of [0,1]) {
+    const threads=fixture();
+    threads[0].messages[1].content='x'.repeat(60000-buildAutoSummaryInput(['overview'],threads).length+excess);
+    assert.equal(buildAutoSummaryInput(['overview'],threads).length,60000+excess);
+    const result=finalizeAutoSummaryInput(['overview'],threads,3,2);
+    assert.ok(result.input.length<=60000);
+    assert.equal(result.stats.input_chars,result.input.length);
+    assert.equal(result.stats.threads_total,3);assert.equal(result.stats.threads_eligible,2);
+    assert.equal(result.stats.threads_included,1);
+    assert.equal(result.stats.threads_truncated,1);
+    assert.equal(result.stats.messages_truncated,excess?0:1);
+    assert.equal(result.considered_threads[0].included_message_count,excess?1:2);
+    if (!excess) assert.equal(result.input.length,60000);
+  }
+});
+
+test('same greedy input fits at least as many messages as the legacy JSON representation', async () => {
+  const messages=Array.from({length:100},(_,n)=>message('t',n,{content:'x'.repeat(950)}));
+  const legacyInput = rows => JSON.stringify({
+    requested_topics:JSON.parse(buildAutoSummaryInput(['overview'],[])).requested_topics,
+    threads:[{thread_id:'t',title:'t',last_message_at:messages.at(-1).created_at,
+      messages:[...rows].reverse().map(({role,content,created_at})=>({role,content,created_at}))}],
+  });
+  const legacy=[];
+  for (const m of [...messages].reverse()) {
+    if (60000-(legacy.length?legacyInput(legacy).length:buildAutoSummaryInput(['overview'],[]).length)<500) break;
+    if (legacyInput([...legacy,m]).length>60000) break;
+    legacy.push(m);
+  }
+  const result=await select(database({threads:[thread('t')],messages}));
+  assert.ok(result.considered_threads[0].included_message_count>=legacy.length);
+  assert.ok(result.considered_threads[0].included_message_count>legacy.length);
+  assert.ok(result.input.length<=60000);
+});
 
 test('three-valued roleplay and active predicates, providers, ownership and user preflight', async () => {
   const tables = { threads: [thread('false'),thread('null',null),thread('true',true),thread('one'),thread('filtered')], messages: [] };
@@ -15,7 +89,7 @@ test('three-valued roleplay and active predicates, providers, ownership and user
   const result = await select(database(tables));
   assert.equal(result.stats.threads_total,4); assert.equal(result.stats.threads_eligible,2);
   assert.deepEqual(new Set(result.considered_threads.map(t=>t.thread_id)),new Set(['false','null']));
-  assert.equal(JSON.parse(result.input).threads[0].messages.length,2);
+  assert.equal(entries(JSON.parse(result.input).threads[0]).length,2);
 });
 test('paginates more than 1000 threads and prioritizes actual latest message rather than updated_at', async () => {
   const threads = Array.from({length:1101},(_,i)=>thread(String(i).padStart(4,'0')));
@@ -28,15 +102,14 @@ test('paginates more than 1000 threads and prioritizes actual latest message rat
   assert.equal(db.calls.filter(c=>c.table==='threads').length,3);
 });
 test('pages over 1000 messages, fetches newest first and restores shared display order', async () => {
-  // Two recent users qualify; tiny metadata/messages allow >1000 rows into the budget only with shorter timestamps.
-  const messages = Array.from({length:1200},(_,n)=>message('t',n,{created_at:String(n).padStart(4,'0'),role:n<2?'user':'assistant'}));
+  const messages = Array.from({length:1200},(_,n)=>message('t',n,{content:String(n),role:n<2?'user':'assistant'}));
   const db = database({threads:[thread('t')],messages});
   const result = await select(db); const input = JSON.parse(result.input);
   assert.ok(db.calls.filter(c=>c.range && c.table==='messages').length>1);
-  assert.equal(input.threads[0].messages.at(-1).created_at,'1199');
+  assert.deepEqual(entries(input.threads[0]).at(-1),['assistant','1199']);
   assert.ok(result.stats.input_chars<=60000);
-  // Separate boundary fixture with short role/content/date to fit over 1000 messages.
-  const short = messages.map((m,n)=>({...m,created_at:'1',message_number:1200-n}));
+  // Equal timestamps retain the shared display comparator's ordering.
+  const short = messages.map((m,n)=>({...m,created_at:message('t',0).created_at,message_number:1200-n}));
   const full = await select(database({threads:[thread('t')],messages:short}));
   assert.ok(full.considered_threads[0].included_message_count>1000);
   assert.ok(full.considered_threads[0].newest_included_message_id < full.considered_threads[0].oldest_included_message_id);
@@ -45,17 +118,17 @@ test('cut marker, escaping budget and no skipping an oversized next message', as
   const messages = Array.from({length:12},(_,n)=>message('t',n,{content:'"\\\n'.repeat(3000)}));
   messages[0].content='old-small';
   const result = await select(database({threads:[thread('t')],messages}));
-  const list = JSON.parse(result.input).threads[0].messages;
+  const list = entries(JSON.parse(result.input).threads[0]);
   assert.ok(result.stats.input_chars<=MAX_AUTO_SUMMARY_INPUT_CHARS);
-  assert.ok(list.every(m=>m.content.length===8000+AUTO_SUMMARY_TRUNCATION_MARKER.length));
-  assert.ok(list.every(m=>m.content.endsWith(AUTO_SUMMARY_TRUNCATION_MARKER)));
+  assert.ok(list.every(m=>m[1].length===8000+AUTO_SUMMARY_TRUNCATION_MARKER.length));
+  assert.ok(list.every(m=>m[1].endsWith(AUTO_SUMMARY_TRUNCATION_MARKER)));
   assert.equal(result.stats.messages_truncated,list.length); assert.equal(result.stats.threads_truncated,1);
-  assert.ok(!list.some(m=>m.content==='old-small'));
+  assert.ok(!list.some(m=>m[1]==='old-small'));
 });
-test('display comparator handles message_number and fallback; created_at always sent; complete threads not truncated', async () => {
-  const result=await select(database({threads:[thread('t')],messages:[message('t',1,{message_number:3}),message('t',2,{message_number:1}),message('t',3,{message_number:null})]}));
-  const list=JSON.parse(result.input).threads[0].messages;
-  assert.deepEqual(list.map(m=>m.created_at),[message('t',2).created_at,message('t',1).created_at,message('t',3).created_at]);
+test('input uses creation time while provenance retains display order; complete threads not truncated', async () => {
+  const result=await select(database({threads:[thread('t')],messages:[message('t',1,{message_number:3,content:'first'}),message('t',2,{message_number:1,content:'second'}),message('t',3,{message_number:null,content:'third'})]}));
+  const list=entries(JSON.parse(result.input).threads[0]);
+  assert.deepEqual(list.map(m=>m[1]),['first','second','third']);
   assert.equal(result.considered_threads[0].oldest_included_message_id,message('t',2).id);
   assert.equal(result.stats.threads_truncated,0);
 });
@@ -75,11 +148,12 @@ test('strict LLM parsing rejects unknown keys, duplicates, missing/extra topics,
     JSON.stringify({topics:[{...good,content_md:1}]}),JSON.stringify({topics:[{...good,topic_key:'current_state'}]})]) {
     assert.throws(()=>parseAutoSummaryResponse(body,['overview']),/^Error: Invalid auto summary response:/);
   }
-  for(const phrase of ['untrusted data','Assistant messages','explicitly approved','created_at','complete by itself','predominant language']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase));
+  for(const phrase of ['untrusted data','Assistant messages','explicitly approved','array order is chronological','complete by itself','predominant language']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase));
 });
 
-test('prompt v4 limits principles to standing Project instructions and preserves Phase A rules', () => {
-  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 4);
+test('prompt v5 preserves v4 empty evidence and principles rules', () => {
+  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 5);
+  for (const phrase of ['"days":[{"d":"YYYY-MM-DD","m":', 'Asia/Tokyo (JST)', 'Within the same thread, array order is chronological', 'Across different threads, the relative order of messages on the same date is unknown', 'explicitly retracts or corrects', 'do not infer that one overrides the other', "Never substitute a thread's last update date"]) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);
   assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('exactly an empty string'));
   assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('placeholder'));
   for (const phrase of ['actual line breaks', 'backslash + n (\\n)', 'not double escaping', 'only part of the conversations', 'observed conversation scope', 'avoid assertions about the entire Project', 'Avoid unnecessary duplication', 'allow minimal duplication']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);
