@@ -1,6 +1,6 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/10/01（v203反映済み。v196・v202・v203は本番適用済み、docs/applied/へ移動済み）
+-- 最終更新: 2026/10/06（v205まで反映済み。v205は本番適用済み、docs/applied/へ移動済み）
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -64,6 +64,7 @@
 -- docs/applied/migration_v202_project_memory_promotion_confirmation.sqlの編集済みLore再昇格確認は本文へ反映・本番適用済み（適用日不明）。
 -- 2026/10/01、docs/applied/migration_v203_project_memory_promotion_restore.sqlを本番適用・実機検証済み、スキーマ正本へ統合（同revisionの手動archived昇格Lore復元。コミット4526438）。
 -- 2026/10/02、docs/applied/migration_v204_project_memory_chat_inclusion.sqlを本番適用・実機検証済み、スキーマ正本へ統合（Project Memory topicのチャット包含opt-in include_in_chatと、ON時点で合計8,000字以内を保証する専用RPC）。
+-- 2026/10/06、Ruiからv205本番適用済みの確認を受け、docs/applied/migration_v205_delete_project_memory_topics.sqlをスキーマ正本へ統合（topic一括削除・revision CAS・履歴cascade・Lore保持）。本作業での再適用は行っていない。
 --
 -- 2026/07/10、緊急対応として以下を本番適用（ファイル化せず直接実行。
 -- 詳細はCLAUDE.md地雷表参照）：
@@ -536,6 +537,103 @@ $$;
 revoke execute on function public.set_project_memory_topic_chat_inclusion(uuid, uuid, uuid, boolean)
   from public, anon, authenticated;
 grant execute on function public.set_project_memory_topic_chat_inclusion(uuid, uuid, uuid, boolean)
+  to authenticated;
+
+-- Project Memory topicの一括削除（v205）。履歴はcascade、Loreは保持。
+create or replace function public.delete_project_memory_topics(
+  p_user_id uuid,
+  p_project_id uuid,
+  p_topics jsonb
+)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  -- lib/project-memory/topic-delete-limits.ts: PROJECT_MEMORY_BULK_DELETE_MAX_TOPICS
+  c_max constant integer := 50;
+  v_element jsonb;
+  v_revision text;
+  v_ids uuid[];
+  v_topic record;
+  v_count integer := 0;
+  v_conflict boolean := false;
+  v_deleted integer;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+  if p_topics is null or jsonb_typeof(p_topics) is distinct from 'array' then
+    raise exception 'topics must be a jsonb array' using errcode = 'P0001';
+  end if;
+  if jsonb_array_length(p_topics) = 0 or jsonb_array_length(p_topics) > c_max then
+    raise exception 'topics must contain 1 to 50 items' using errcode = 'P0001';
+  end if;
+
+  for v_element in select value from jsonb_array_elements(p_topics)
+  loop
+    if jsonb_typeof(v_element) is distinct from 'object'
+       or jsonb_typeof(v_element->'topic_id') is distinct from 'string'
+       or (v_element->>'topic_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or jsonb_typeof(v_element->'expected_revision') is distinct from 'number'
+       or (v_element->>'expected_revision') !~ '^[1-9][0-9]*$'
+    then
+      raise exception 'invalid topic element' using errcode = 'P0001';
+    end if;
+    -- Bound using text, never numeric/int casts on unbounded input.
+    v_revision := v_element->>'expected_revision';
+    if length(v_revision) > 10 or
+       (length(v_revision) = 10 and v_revision collate "C" > '2147483647' collate "C") then
+      raise exception 'invalid topic element' using errcode = 'P0001';
+    end if;
+  end loop;
+
+  select array_agg((value->>'topic_id')::uuid) into v_ids
+  from jsonb_array_elements(p_topics);
+  if cardinality(v_ids) <> (select count(distinct id) from unnest(v_ids) as ids(id)) then
+    raise exception 'duplicate topic_id' using errcode = 'P0001';
+  end if;
+
+  perform 1 from public.projects p
+  where p.id = p_project_id and p.user_id = p_user_id
+  for update;
+  if not found then
+    raise exception 'project not found' using errcode = 'P0001';
+  end if;
+
+  for v_topic in
+    select t.id, t.revision from public.project_memory_topics t
+    where t.project_id = p_project_id and t.user_id = p_user_id and t.id = any(v_ids)
+    order by t.id
+    for update
+  loop
+    v_count := v_count + 1;
+    if not exists (
+      select 1 from jsonb_array_elements(p_topics) as elements(value)
+      where (value->>'topic_id')::uuid = v_topic.id
+        and (value->>'expected_revision')::int = v_topic.revision
+    ) then
+      v_conflict := true;
+    end if;
+  end loop;
+  if v_count <> jsonb_array_length(p_topics) then
+    raise exception 'topic not found' using errcode = 'P0001';
+  end if;
+  if v_conflict then
+    raise exception 'revision conflict' using errcode = 'P0001';
+  end if;
+
+  -- project_memory_revisions.topic_id ON DELETE CASCADE removes history.
+  delete from public.project_memory_topics
+  where project_id = p_project_id and user_id = p_user_id and id = any(v_ids);
+  get diagnostics v_deleted = row_count;
+  return v_deleted;
+end;
+$$;
+revoke execute on function public.delete_project_memory_topics(uuid, uuid, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.delete_project_memory_topics(uuid, uuid, jsonb)
   to authenticated;
 
 -- ============================================================

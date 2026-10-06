@@ -56,3 +56,4 @@
 | migration_v202_project_memory_promotion_confirmation.sql | 手動編集済みLoreの再昇格確認（acknowledged ID配列・置き換え対象のロック・Project削除の4引数呼び出し互換を維持） |
 | migration_v203_project_memory_promotion_restore.sql | 同revisionの手動アーカイブ済み昇格Loreの復元RPC新設（本文・embeddingを保持・superseded/他active行の競合を拒否） |
 | migration_v204_project_memory_chat_inclusion.sql | Project Memory topicのチャット包含opt-in（include_in_chat列・revisionを進めない専用RPC・ON時点の合計8,000字契約） |
+| migration_v205_delete_project_memory_topics.sql | Project Memory topicの一括削除（最大50件・所有確認とrevision CASによる全か無か・revision履歴はCASCADE削除・昇格済みLoreは保持） |

@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/06 — 自動要約Phase A・topic一括削除Phase B（v205は未適用）
+最終更新: 2026/10/06 — 自動要約Phase A・topic一括削除Phase B（v205本番適用済み・schema反映済み）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -746,14 +746,14 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v202 | Project Memoryの手動編集済みLore再昇格確認（専用409・共通確認モーダル・RPCの承認ID再検証。コミットa0e73fb） |
 | v203 | Project Memory同revisionのarchived昇格Lore復元（専用RPC・本文/embedding保持。コミット4526438） |
 | v204 | Project Memory topicのチャット注入（`include_in_chat`列・`set_project_memory_topic_chat_inclusion` RPC・topic単位のopt-in。チャットへの注入・PATCH API・一覧のトグルと使用量表示。migration `migration_v204_project_memory_chat_inclusion.sql`。コミットc7e2eae／fac3277／72140ad） |
-| v205（未適用） | Project Memory topicの一括削除RPC（50件まで、全件所有確認＋revision CAS、Project→topic id順ロック、履歴はcascade、Lore保持）。`docs/migration_v205_delete_project_memory_topics.sql`をRuiが手動適用するまでDB機能は利用不可。適用後のapplied移動・schema反映は別作業 |
+| v205 | Project Memory一覧（Sidebar・`/library`）の一括削除（50件まで、全件所有確認＋revision CAS、Project→topic id順ロック）。revision履歴ごと削除し、昇格済みLoreは残す。「選択→削除ボタン→確認モーダルの必須チェック」の二段階確認（履歴の完全削除を常に確認し、昇格済みを含む場合はLore保持・再昇格時の重複も確認）。本番適用済み、`docs/applied/migration_v205_delete_project_memory_topics.sql`へ移動・`docs/schema.sql`反映済み。実装コミット895d681 |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。
 > v175以降はmigration番号を基準とし、`docs/applied/README.md`の台帳と対応する。v174以前は機能の変更履歴番号であり、番号体系が異なる。
 > Arena利用量記録（コミット89d9363）は当時「v182」と呼ばれたが、migration v182（Project Memory Phase A）とは別物。
 > コミット日とDB適用日は一致しない。適用状況は`docs/applied/README.md`と`docs/schema.sql`冒頭を参照。
 > migration v182・v184の冒頭コメントに残る「未適用」の記述は古く、台帳とコミット記録では適用済み。
-> v175〜v204のmigrationは、`docs/applied/`と`docs/`直下に番号が存在するものをすべて表に記載（欠番を除く）。
+> v175〜v205のmigrationは、`docs/applied/`と`docs/`直下に番号が存在するものをすべて表に記載（欠番を除く）。
 
 > v133〜v159の詳細変更履歴（RPC定義・設計判断メモ含む）は `KabeHub_引き継ぎ資料_20260615_v159.md`、v160〜v172の詳細は `KabeHub_変更履歴アーカイブ_v160-v172.md` を参照。
 
