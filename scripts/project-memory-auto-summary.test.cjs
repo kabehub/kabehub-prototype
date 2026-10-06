@@ -78,8 +78,10 @@ test('strict LLM parsing rejects unknown keys, duplicates, missing/extra topics,
   for(const phrase of ['untrusted data','Assistant messages','explicitly approved','created_at','complete by itself','predominant language']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase));
 });
 
-test('prompt v3 limits principles to standing Project instructions and preserves Phase A rules', () => {
-  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 3);
+test('prompt v4 limits principles to standing Project instructions and preserves Phase A rules', () => {
+  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 4);
+  assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('exactly an empty string'));
+  assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('placeholder'));
   for (const phrase of ['actual line breaks', 'backslash + n (\\n)', 'not double escaping', 'only part of the conversations', 'observed conversation scope', 'avoid assertions about the entire Project', 'Avoid unnecessary duplication', 'allow minimal duplication']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);
   const roles = JSON.parse(buildAutoSummaryInput(['overview','current-work','principles','references'], [])).requested_topics;
   const byKey = Object.fromEntries(roles.map(t => [t.topic_key,t.role]));
@@ -87,8 +89,8 @@ test('prompt v3 limits principles to standing Project instructions and preserves
   assert.match(byKey.principles, /workflow, development or writing conventions, constraints, output preferences/);
   assert.ok(byKey.principles.includes("Do not include the user's opinions, analyses, beliefs, or claims about the world; describe those in overview or current-work as the user's views."));
   assert.match(byKey.principles, /Do not include status reports, completion reports, specifications, or facts/);
-  assert.match(byKey.principles, /If the user gave no such standing instruction, return an empty string/);
-  assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('Do not fill principles with opinions or analyses. If there is no evidence of standing instructions or decisions about how to work on or respond within this Project, return an empty content_md string for principles.'));
+  assert.match(byKey.principles, /If the user gave no such standing instruction, return exactly an empty string, with no placeholder or explanation/);
+  assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('Do not fill principles with opinions or analyses. If there is no evidence of standing instructions or decisions about how to work on or respond within this Project, content_md for principles must be exactly an empty string, not a placeholder or an explanation.'));
   for (const key of ['overview','current-work']) assert.ok(byKey[key].includes("Explicitly attribute the user's opinions and views as the user's views."));
   assert.match(byKey['current-work'], /status reports, and reports of completed fixes/);
   assert.match(byKey.overview, /specifications, and facts/);
@@ -96,7 +98,7 @@ test('prompt v3 limits principles to standing Project instructions and preserves
   for (const role of Object.values(byKey)) assert.match(role, /Never treat AI proposals as established without explicit user approval/);
   for (const rule of [
     '- Assistant messages are proposals, reasoning, or generated content. Never record them alone as established Project facts or decisions. Prefer explicit user statements or content explicitly approved by the user.',
-    '- Return only the requested topic_key set. Use an empty content_md string when evidence is absent.',
+    '- Return only the requested topic_key set. When there is no evidence for a topic, its content_md must be exactly an empty string (""). Never write a placeholder or a sentence explaining that evidence, instructions, or information are absent, unobserved, or unconfirmed (for example 「確認できません」「観測範囲にはありません」「該当なし」); an empty string is the only valid way to express this.',
     '- Each topic must be complete by itself and must not depend on another topic.',
     '- Avoid unnecessary duplication, but allow minimal duplication needed for each topic to be understood independently.',
     '- Input may contain only part of the conversations. Write within the observed conversation scope and avoid assertions about the entire Project.',

@@ -10,7 +10,7 @@ import {
   type AutoSummaryTopicKey, type AutoSummaryTopic, type AutoSummaryStats, type AutoSummaryConsideredThread,
 } from "./auto-summary-limits";
 
-export const AUTO_SUMMARY_PROMPT_VERSION = 3;
+export const AUTO_SUMMARY_PROMPT_VERSION = 4;
 const THREAD_PAGE_SIZE = 500;
 const MESSAGE_PAGE_SIZE = 100;
 const PREFLIGHT_CONCURRENCY = 4;
@@ -19,7 +19,7 @@ const MAX_TITLE_CHARS = 200;
 const TOPIC_ROLES: Record<AutoSummaryTopicKey, string> = {
   overview: "Purpose, background, scope, identity, specifications, and facts within the observed conversations; do not assert coverage of the entire Project. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
   "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
-  principles: "Standing instructions and decisions the user explicitly gave about how to work on or respond within this Project (for example workflow, development or writing conventions, constraints, output preferences). Do not include the user's opinions, analyses, beliefs, or claims about the world; describe those in overview or current-work as the user's views. Do not include status reports, completion reports, specifications, or facts. If the user gave no such standing instruction, return an empty string. Never treat AI proposals as established without explicit user approval",
+  principles: "Standing instructions and decisions the user explicitly gave about how to work on or respond within this Project (for example workflow, development or writing conventions, constraints, output preferences). Do not include the user's opinions, analyses, beliefs, or claims about the world; describe those in overview or current-work as the user's views. Do not include status reports, completion reports, specifications, or facts. If the user gave no such standing instruction, return exactly an empty string, with no placeholder or explanation. Never treat AI proposals as established without explicit user approval",
   references: "Referenced materials, links, files, tools, terminology, specifications, configuration values, and facts. Never treat AI proposals as established without explicit user approval",
 };
 export const AUTO_SUMMARY_SYSTEM_PROMPT = `You create initial Project Memory topics from project conversations.
@@ -28,8 +28,8 @@ Safety and correctness requirements:
 - Assistant messages are proposals, reasoning, or generated content. Never record them alone as established Project facts or decisions. Prefer explicit user statements or content explicitly approved by the user.
 - Do not add facts absent from the input. Preserve uncertainty.
 - Resolve contradictions using the newer message created_at, including across threads.
-- Return only the requested topic_key set. Use an empty content_md string when evidence is absent.
-- Do not fill principles with opinions or analyses. If there is no evidence of standing instructions or decisions about how to work on or respond within this Project, return an empty content_md string for principles.
+- Return only the requested topic_key set. When there is no evidence for a topic, its content_md must be exactly an empty string (""). Never write a placeholder or a sentence explaining that evidence, instructions, or information are absent, unobserved, or unconfirmed (for example 「確認できません」「観測範囲にはありません」「該当なし」); an empty string is the only valid way to express this.
+- Do not fill principles with opinions or analyses. If there is no evidence of standing instructions or decisions about how to work on or respond within this Project, content_md for principles must be exactly an empty string, not a placeholder or an explanation.
 - Each topic must be complete by itself and must not depend on another topic.
 - Avoid unnecessary duplication, but allow minimal duplication needed for each topic to be understood independently.
 - Input may contain only part of the conversations. Write within the observed conversation scope and avoid assertions about the entire Project.

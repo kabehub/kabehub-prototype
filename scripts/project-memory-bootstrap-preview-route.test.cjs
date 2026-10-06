@@ -33,12 +33,23 @@ test('all standard topics or no eligible conversations skip LLM',async()=>{
 test('success contract, missing-only request, key trimming, completion budget, no existing body reads or writes',async()=>{
   reset([{topic_key:'overview',content_md:'PRIVATE EXISTING BODY',project_id:'p'}]);
   const response=await post(' key '); const body=await response.json();
-  assert.equal(response.status,200);assert.equal(body.result,'preview');assert.equal(body.prompt_version,3);assert.equal(typeof body.run_id,'string');
+  assert.equal(response.status,200);assert.equal(body.result,'preview');assert.equal(body.prompt_version,4);assert.equal(typeof body.run_id,'string');
   assert.deepEqual(JSON.parse(captured.input).requested_topics.map(t=>t.topic_key),keys.slice(1));
   assert.ok(!captured.input.includes('PRIVATE EXISTING BODY'));assert.equal(captured.key,'key');assert.deepEqual(captured.opts,{jsonMode:true,maxCompletionTokens:16384});
   assert.equal(body.stats.input_chars,captured.input.length);assert.equal(body.considered_threads.length,1);
   assert.ok(db.calls.every(c=>!c.select.includes('content_md')));
   // The DB test model intentionally exposes no write or RPC methods.
+});
+test('preview excludes principles when the LLM returns exactly empty content_md',async()=>{
+  reset();modelOutput=JSON.stringify({topics:[
+    {topic_key:'overview',content_md:'Project overview'},
+    {topic_key:'current-work',content_md:'Current work'},
+    {topic_key:'principles',content_md:''},
+    {topic_key:'references',content_md:'Reference materials'},
+  ]});
+  const response=await post();const body=await response.json();
+  assert.equal(response.status,200);assert.equal(body.result,'preview');
+  assert.deepEqual(body.topics.map(t=>t.topic_key),['overview','current-work','references']);
 });
 test('DB errors are 500, LLM failure and invalid responses are 502, empty evidence is not applicable',async()=>{
   for(const table of ['project_memory_topics','threads','messages']) {reset([],table);assert.equal((await post()).status,500);assert.equal(modelCalls,0);}

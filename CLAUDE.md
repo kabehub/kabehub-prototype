@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/06 — 自動要約プロンプトv3（principlesを常設指示に限定）・topic一括削除Phase B（v205本番適用済み・schema反映済み）
+最終更新: 2026/10/06 — 自動要約プロンプトv3（principlesを常設指示に限定）・v4（根拠のないtopicはcontent_mdをexactly空文字、プレースホルダ禁止）・topic一括削除Phase B（v205本番適用済み・schema反映済み）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -290,7 +290,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/consolidation.ts` | 整理案のLLM契約・入力構築・応答parse（入力上限20,000文字・出力8,192トークン） |
 | `lib/project-memory/consolidation-client.ts` | 整理案の適用（topicごとに既存PATCH） |
 | `lib/project-memory/auto-summary-limits.ts` | importゼロのclient-safe定数・共有型。暫定値：最終入力60,000文字、1発言8,000文字、最低user発言2件、最大100スレッド、出力16,384トークン |
-| `lib/project-memory/auto-summary.ts` | server用。thread全件ページング・並列数4のpreflight・最新発言順の候補選定・新しい側からmessageページング・JSON文字数予算・最終統計再計算・LLM strict JSON契約。プロンプトv3のprinciplesは、このProject内でのAIの応答・作業の進め方についてユーザーが明示した常設の指示・決定のみ（workflow・開発/執筆規約・制約・出力の好み）。ユーザーの意見・分析・信念・世界についての主張は除外し、overview/current-workでユーザーの見解として帰属を明示。該当する常設指示がなければ空文字列。改行・部分読み・ユーザー未承認のAI提案の除外・必要最小限の重複の規則は維持。strict検証後のcontent_mdを改行補正する。入力はconsolidationと同じJSON.stringify方式、全入力をuntrusted dataとして扱う |
+| `lib/project-memory/auto-summary.ts` | server用。thread全件ページング・並列数4のpreflight・最新発言順の候補選定・新しい側からmessageページング・JSON文字数予算・最終統計再計算・LLM strict JSON契約。プロンプトv4のprinciplesは、このProject内でのAIの応答・作業の進め方についてユーザーが明示した常設の指示・決定のみ（workflow・開発/執筆規約・制約・出力の好み）。ユーザーの意見・分析・信念・世界についての主張は除外し、overview/current-workでユーザーの見解として帰属を明示。該当する常設指示がなければ空文字列。空にするtopicは説明文・プレースホルダを書かず、exactly空文字列とする（route側は空topicをpreviewから除外）。改行・部分読み・ユーザー未承認のAI提案の除外・必要最小限の重複の規則は維持。strict検証後のcontent_mdを改行補正する。入力はconsolidationと同じJSON.stringify方式、全入力をuntrusted dataとして扱う |
 | `lib/project-memory/normalize-literal-newlines.ts` | importゼロの純関数。保護スパン外の文字としてのバックスラッシュ＋nを実改行へ補正。バッククォートのコード範囲・Windowsドライブパス・UNCパス・直前がバックスラッシュの対象を保持。閉じていないコード等の曖昧な範囲は保持し、冪等 |
 | `lib/project-memory/auto-summary-client.ts` | bootstrap previewのstrict検証・取得と既存topics POSTの並列適用。source_refs配列に本文を含まない来歴を記録、201/409/その他を個別分類 |
 | `lib/project-memory/use-auto-summary.ts` | 設定を開いた際のeligibility取得、古いProject応答の破棄、APIキー取得、生成・承認・適用結果の管理。全適用結果とnot_applicableで一覧再取得。同じ生成案は再適用しない |
