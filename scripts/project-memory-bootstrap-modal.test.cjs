@@ -14,8 +14,42 @@ Module._load=function(request,parent,main){
 };
 installAliasResolver();installTsLoader({jsx:true});
 const Modal=require('../components/ProjectMemoryBootstrapModal.tsx').default;
-function nodes(value){if(!value||typeof value!=='object')return[];return[value,...[].concat(value.props?.children??[]).flatMap(nodes)];}
+function nodes(value){if(Array.isArray(value))return value.flatMap(nodes);if(!value||typeof value!=='object')return[];return[value,...[].concat(value.props?.children??[]).flatMap(nodes)];}
 function strings(value){if(typeof value==='string'||typeof value==='number')return String(value);if(Array.isArray(value))return value.map(strings).join('');return value&&typeof value==='object'?strings(value.props?.children):'';}
+
+test('empty topic notes show reasons below topics without changing selection or apply counts',()=>{
+  const reasons={
+    principles:'この会話の範囲では、Projectでの作業や応答の進め方についてあなたが明示した恒常的な指示が見つからなかったため、作成案はありません',
+    other:'この会話の範囲では、根拠となる記述が見つからなかったため、作成案はありません',
+  };
+  const omitted='古いuser発言は使用していないため、そこに含まれている可能性があります';
+  for(const empty of [[],['principles'],['overview','current-work','principles'],['references']]){
+    for(const available of [2,5]){
+      state=[];cursor=0;effects=[];let applied;
+      const p=preview();p.empty_topic_keys=empty;p.topics=p.topics.filter(t=>!empty.includes(t.topic_key));p.stats.user_messages_available=available;
+      const props={projectName:'Example',preview:p,isApplying:false,results:null,onApply:keys=>applied=keys,onCancel(){}};
+      let tree=Modal(props),all=nodes(tree),text=strings(tree);
+      assert.equal(text.includes('作成案がないtopic'),empty.length>0);
+      assert.equal(text.includes(omitted),empty.length>0&&available>2);
+      const note=all.find(n=>n.type==='section'&&strings(n).includes('作成案がないtopic'));
+      if(empty.length){
+        const lines=nodes(note).filter(n=>n.type==='p').map(strings);
+        assert.deepEqual(lines,[...empty.map(key=>`${key}: ${key==='principles'?reasons.principles:reasons.other}`),...(available>2?[omitted]:[])]);
+        assert.equal(nodes(note).filter(n=>n.type==='input').length,0);
+        const sections=all.filter(n=>n.type==='section');assert.equal(sections.at(-1),note);
+      }
+      assert.equal(all.filter(n=>n.type==='input'&&n.props.checked).length,p.topics.length);
+      let button=all.find(n=>n.type==='button'&&strings(n).includes('件を作成'));
+      assert.equal(strings(button),`選択した${p.topics.length}件を作成`);
+      button.props.onClick();assert.deepEqual(applied,p.topics.map(t=>t.topic_key));
+      all.find(n=>n.type==='input').props.onChange();cursor=0;effects=[];tree=Modal(props);
+      button=nodes(tree).find(n=>n.type==='button'&&strings(n).includes('件を作成'));
+      assert.equal(strings(button),`選択した${p.topics.length-1}件を作成`);
+      cursor=0;effects=[];tree=Modal({...props,results:p.topics.map(t=>({topic_key:t.topic_key,status:'applied'}))});
+      assert.equal(strings(tree).includes('作成案がないtopic'),empty.length>0);
+    }
+  }
+});
 
 test('modal accepts prompt v7 and allows topic selection and apply',()=>{
   state=[];cursor=0;effects=[];let applied;

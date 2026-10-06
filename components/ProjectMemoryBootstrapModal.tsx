@@ -53,6 +53,15 @@ export default function ProjectMemoryBootstrapModal({ projectName, preview, isAp
             <div style={{ marginTop: "12px" }}><ProjectMemoryDiffView oldText="" newText={topic.content_md} /></div>
           </section>;
         })}
+        {preview.empty_topic_keys.length > 0 && <section style={{ fontSize: "12px", color: "var(--ink-muted, #6b7280)" }}>
+          <h3 style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>作成案がないtopic</h3>
+          {preview.empty_topic_keys.map(key => <p key={key}>
+            {key}: {key === "principles"
+              ? "この会話の範囲では、Projectでの作業や応答の進め方についてあなたが明示した恒常的な指示が見つからなかったため、作成案はありません"
+              : "この会話の範囲では、根拠となる記述が見つからなかったため、作成案はありません"}
+          </p>)}
+          {preview.stats.user_messages_included < preview.stats.user_messages_available && <p>古いuser発言は使用していないため、そこに含まれている可能性があります</p>}
+        </section>}
       </div>
       <div style={{ padding: "16px 28px 20px", borderTop: "1px solid var(--border, #e5e7eb)", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
         <button disabled={isApplying} onClick={() => { if (!isApplying) onCancel(); }} style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border, #e5e7eb)" }}>{results !== null ? "閉じる" : "キャンセル"}</button>

@@ -34,6 +34,7 @@ test('success contract, missing-only request, key trimming, completion budget, n
   reset([{topic_key:'overview',content_md:'PRIVATE EXISTING BODY',project_id:'p'}]);
   const response=await post(' key '); const body=await response.json();
   assert.equal(response.status,200);assert.equal(body.result,'preview');assert.equal(body.prompt_version,7);assert.equal(typeof body.run_id,'string');
+  assert.deepEqual(body.empty_topic_keys,[]);
   assert.deepEqual(JSON.parse(captured.input).threads, [{thread_id:'t',title:'t',days:[{d:'2026-01-01',m:['','']}]}]);
   assert.ok(!captured.input.includes('created_at'));assert.ok(!captured.input.includes('last_message_at'));
   assert.deepEqual(JSON.parse(captured.input).requested_topics.map(t=>t.topic_key),keys.slice(1));
@@ -61,6 +62,22 @@ test('preview excludes principles when the LLM returns exactly empty content_md'
   const response=await post();const body=await response.json();
   assert.equal(response.status,200);assert.equal(body.result,'preview');
   assert.deepEqual(body.topics.map(t=>t.topic_key),['overview','current-work','references']);
+  assert.deepEqual(body.empty_topic_keys,['principles']);
+});
+
+test('empty keys follow standard order and exclude existing topics',async()=>{
+  reset([{topic_key:'overview',project_id:'p'}]);
+  modelOutput=JSON.stringify({topics:[
+    {topic_key:'references',content_md:' \n '},
+    {topic_key:'principles',content_md:''},
+    {topic_key:'current-work',content_md:'Current work'},
+  ]});
+  const body=await (await post()).json();
+  assert.equal(body.result,'preview');
+  assert.deepEqual(body.empty_topic_keys,['principles','references']);
+  assert.deepEqual(body.topics.map(t=>t.topic_key),['current-work']);
+  assert.ok(!body.empty_topic_keys.includes('overview'));
+  assert.deepEqual(JSON.parse(captured.input).requested_topics.map(t=>t.topic_key),keys.slice(1));
 });
 test('DB errors are 500, LLM failure and invalid responses are 502, empty evidence is not applicable',async()=>{
   for(const table of ['project_memory_topics','threads','messages']) {reset([],table);assert.equal((await post()).status,500);assert.equal(modelCalls,0);}

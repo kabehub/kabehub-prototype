@@ -41,11 +41,14 @@ export async function POST(req: NextRequest, props: RouteProps) {
   try {
     const content = await generateAutoSummary(key, selection.input);
     if (typeof content !== "string") throw new Error("Invalid auto summary response: empty response");
-    const topics = parseAutoSummaryResponse(content, missing).filter(t => t.content_md.trim() !== "");
+    const parsedTopics = parseAutoSummaryResponse(content, missing);
+    const topics = parsedTopics.filter(t => t.content_md.trim() !== "");
+    const emptyKeys = new Set(parsedTopics.filter(t => t.content_md.trim() === "").map(t => t.topic_key));
+    const empty_topic_keys = missing.filter(k => emptyKeys.has(k));
     if (!topics.length) return finalizeJson({ result: "not_applicable", reason: "insufficient_evidence" });
     return finalizeJson({ result: "preview", run_id: randomUUID(), model: LORE_CHAT_MODEL,
       prompt_version: AUTO_SUMMARY_PROMPT_VERSION, stats: selection.stats,
-      considered_threads: selection.considered_threads, topics });
+      considered_threads: selection.considered_threads, topics, empty_topic_keys });
   } catch (error) {
     logger.externalApiFailed({ service: "openai", errorCode: error instanceof Error && error.message.startsWith("Invalid auto summary response:")
       ? "UPSTREAM_RESPONSE_INVALID" : "UPSTREAM_REQUEST_FAILED" });

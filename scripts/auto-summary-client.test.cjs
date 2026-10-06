@@ -5,6 +5,33 @@ installAliasResolver();installTsLoader();
 const {parseBootstrapPreview,applyAutoSummary,requestAutoSummaryPreview}=require('../lib/project-memory/auto-summary-client.ts');
 const {preview}=require('./auto-summary-test-helpers.cjs');
 
+test('empty topic keys are required, standard, unique, disjoint and bounded with topics',()=>{
+  const complete=preview();assert.deepEqual(parseBootstrapPreview(complete),complete);
+  const p=preview();p.topics=p.topics.filter(t=>t.topic_key!=='principles');p.empty_topic_keys=['current-work','principles'];
+  assert.deepEqual(parseBootstrapPreview(p),p);
+  const mutations=[
+    p=>delete p.empty_topic_keys,
+    ...[null,{},'principles',1].map(value=>p=>p.empty_topic_keys=value),
+    ...[['current_state'],[null],[1],['current-work','current-work'],['overview'],['current-work','overview']].map(value=>p=>p.empty_topic_keys=value),
+  ];
+  for(const mutate of mutations){const p=preview();mutate(p);assert.equal(parseBootstrapPreview(p),null,String(mutate));}
+  assert.equal(parseBootstrapPreview({result:'not_applicable',reason:'insufficient_evidence',empty_topic_keys:[]}),null);
+});
+
+test('apply never sends empty topic keys and only applies selectable nonempty topics',async()=>{
+  const p=preview();p.empty_topic_keys=['principles'];p.topics=p.topics.filter(t=>t.topic_key!=='principles');
+  const bodies=[];
+  const results=await applyAutoSummary('p',p,['overview','principles','references'],async(url,init)=>{
+    bodies.push(JSON.parse(init.body));return Response.json({},{status:201});
+  });
+  assert.deepEqual(results.map(t=>t.topic_key),['overview','references']);
+  for(const body of bodies){
+    assert.deepEqual(Object.keys(body).sort(),['content_md','source_refs','topic_key']);
+    assert.ok(!JSON.stringify(body).includes('empty_topic_keys'));
+    assert.deepEqual(body.source_refs,[{type:'auto_summary',run_id:p.run_id,model:p.model,prompt_version:p.prompt_version,considered_threads:p.considered_threads}]);
+  }
+});
+
 test('client accepts prompt v7 and carries v7 into applied provenance',async()=>{
   const p={...preview(),prompt_version:7};
   assert.deepEqual(parseBootstrapPreview(p),p);

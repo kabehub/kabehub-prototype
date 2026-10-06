@@ -17,9 +17,9 @@ export function parseBootstrapPreview(value: unknown): BootstrapPreview | null {
     if (!exact(value, ["result", "reason"]) || !["all_standard_topics_exist", "no_eligible_threads", "insufficient_evidence"].includes(value.reason as string)) return null;
     return value as BootstrapPreview;
   }
-  if (value.result !== "preview" || !exact(value, ["result", "run_id", "model", "prompt_version", "stats", "considered_threads", "topics"]) ||
+  if (value.result !== "preview" || !exact(value, ["result", "run_id", "model", "prompt_version", "stats", "considered_threads", "topics", "empty_topic_keys"]) ||
     !text(value.run_id) || !text(value.model) || !integer(value.prompt_version, 1) || !record(value.stats) ||
-    !Array.isArray(value.considered_threads) || !Array.isArray(value.topics)) return null;
+    !Array.isArray(value.considered_threads) || !Array.isArray(value.topics) || !Array.isArray(value.empty_topic_keys)) return null;
   const stats = value.stats;
   if (!exact(stats, ["threads_total", "threads_eligible", "threads_included", "threads_truncated", "messages_truncated", "input_chars", "input_chars_limit", "user_messages_included", "user_messages_available"]) ||
     !Object.values(stats).every(v => integer(v)) || stats.input_chars_limit !== MAX_AUTO_SUMMARY_INPUT_CHARS ||
@@ -41,12 +41,16 @@ export function parseBootstrapPreview(value: unknown): BootstrapPreview | null {
     ((stats.messages_truncated as number) > 0 && truncated === 0) ||
     stats.user_messages_included !== messageCount ||
     !integer(stats.user_messages_included, stats.threads_included as number, stats.user_messages_available as number)) return null;
-  if (!value.topics.length || value.topics.length > AUTO_SUMMARY_STANDARD_TOPIC_KEYS.length) return null;
+  if (!value.topics.length || value.topics.length + value.empty_topic_keys.length > AUTO_SUMMARY_STANDARD_TOPIC_KEYS.length) return null;
   const keys = new Set<string>();
   for (const t of value.topics) {
     if (!record(t) || !exact(t, ["topic_key", "content_md"]) ||
       !AUTO_SUMMARY_STANDARD_TOPIC_KEYS.includes(t.topic_key as AutoSummaryTopicKey) || keys.has(t.topic_key as string) || !text(t.content_md)) return null;
     keys.add(t.topic_key as string);
+  }
+  for (const key of value.empty_topic_keys) {
+    if (!AUTO_SUMMARY_STANDARD_TOPIC_KEYS.includes(key as AutoSummaryTopicKey) || keys.has(key)) return null;
+    keys.add(key);
   }
   return value as AutoSummaryPreview;
 }

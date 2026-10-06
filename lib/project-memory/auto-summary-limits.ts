@@ -21,5 +21,6 @@ export type AutoSummaryNotApplicableReason = "all_standard_topics_exist" | "no_e
 export type BootstrapPreview = {
   result: "preview"; run_id: string; model: string; prompt_version: number;
   stats: AutoSummaryStats; considered_threads: AutoSummaryConsideredThread[]; topics: AutoSummaryTopic[];
+  empty_topic_keys: AutoSummaryTopicKey[];
 } | { result: "not_applicable"; reason: AutoSummaryNotApplicableReason };
 export type AutoSummaryPreview = Extract<BootstrapPreview, { result: "preview" }>;
