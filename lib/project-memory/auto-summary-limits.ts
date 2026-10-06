@@ -1,7 +1,7 @@
 // Import-free: shared by server and browser.
 export const AUTO_SUMMARY_STANDARD_TOPIC_KEYS = ["overview", "current-work", "principles", "references"] as const;
 export const MAX_AUTO_SUMMARY_INPUT_CHARS = 60_000;
-export const MAX_AUTO_SUMMARY_MESSAGE_CHARS = 8_000;
+export const MAX_AUTO_SUMMARY_MESSAGE_CHARS = 1_000;
 export const MIN_AUTO_SUMMARY_USER_MESSAGES = 2;
 export const MAX_AUTO_SUMMARY_THREADS = 100;
 export const AUTO_SUMMARY_MAX_COMPLETION_TOKENS = 16_384;

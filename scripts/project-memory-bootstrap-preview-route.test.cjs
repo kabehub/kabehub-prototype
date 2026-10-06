@@ -33,8 +33,8 @@ test('all standard topics or no eligible conversations skip LLM',async()=>{
 test('success contract, missing-only request, key trimming, completion budget, no existing body reads or writes',async()=>{
   reset([{topic_key:'overview',content_md:'PRIVATE EXISTING BODY',project_id:'p'}]);
   const response=await post(' key '); const body=await response.json();
-  assert.equal(response.status,200);assert.equal(body.result,'preview');assert.equal(body.prompt_version,5);assert.equal(typeof body.run_id,'string');
-  assert.deepEqual(JSON.parse(captured.input).threads, [{thread_id:'t',title:'t',days:[{d:'2026-01-01',m:[['user',''],['user','']]}]}]);
+  assert.equal(response.status,200);assert.equal(body.result,'preview');assert.equal(body.prompt_version,6);assert.equal(typeof body.run_id,'string');
+  assert.deepEqual(JSON.parse(captured.input).threads, [{thread_id:'t',title:'t',days:[{d:'2026-01-01',m:['','']}]}]);
   assert.ok(!captured.input.includes('created_at'));assert.ok(!captured.input.includes('last_message_at'));
   assert.deepEqual(JSON.parse(captured.input).requested_topics.map(t=>t.topic_key),keys.slice(1));
   assert.ok(!captured.input.includes('PRIVATE EXISTING BODY'));assert.equal(captured.key,'key');assert.deepEqual(captured.opts,{jsonMode:true,maxCompletionTokens:16384});
