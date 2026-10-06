@@ -11,6 +11,7 @@ export type AutoSummaryTopic = { topic_key: AutoSummaryTopicKey; content_md: str
 export type AutoSummaryStats = {
   threads_total: number; threads_eligible: number; threads_included: number;
   threads_truncated: number; messages_truncated: number; input_chars: number; input_chars_limit: number;
+  user_messages_included: number; user_messages_available: number;
 };
 export type AutoSummaryConsideredThread = {
   thread_id: string; last_message_at: string; included_message_count: number; truncated: boolean;

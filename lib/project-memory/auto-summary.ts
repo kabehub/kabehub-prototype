@@ -53,9 +53,9 @@ export class AutoSummaryDbError extends Error {
   constructor(readonly table: string, readonly code?: string) { super("Failed to load auto summary input"); }
 }
 
-// The same predicate is used for user preflight, latest timestamp, and body pages.
-function targetMessages(db: SupabaseClient, userId: string, threadId: string, columns: string) {
-  return db.from("messages").select(columns).eq("thread_id", threadId).eq("user_id", userId)
+// The same predicate is used for user preflight, latest timestamp, body pages, and counts.
+function targetMessages(db: SupabaseClient, userId: string, threadId: string, columns: string, options?: { count: "exact"; head: true }) {
+  return db.from("messages").select(columns, options).eq("thread_id", threadId).eq("user_id", userId)
     .in("role", ["user", "assistant"]).neq("provider", "memo").neq("provider", "image_gen")
     .or("is_active.is.null,is_active.eq.true");
 }
@@ -146,8 +146,9 @@ export function nextAutoSummaryWaterfillThread<T extends { chars: number; done: 
 }
 
 // Recompute all provenance from the final input, including after defensive trimming.
-export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], threads: IncludedThread[], total: number, eligible: number) {
+export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], threads: IncludedThread[], total: number, eligible: number, availableCounts?: ReadonlyMap<string, number>) {
   for (const thread of threads) thread.messages = thread.messages.filter(m => m.role === "user");
+  const beforeTrimCounts = new Map(threads.map(t => [t.thread_id, t.messages.length]));
   let input = buildAutoSummaryInput(keys, threads);
   while (input.length > MAX_AUTO_SUMMARY_INPUT_CHARS) {
     const oldest = threads.flatMap(thread => thread.messages.map(message => ({ thread, message })))
@@ -167,7 +168,10 @@ export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], t
   const stats: AutoSummaryStats = { threads_total: total, threads_eligible: eligible,
     threads_included: included.length, threads_truncated: considered_threads.filter(t => t.truncated).length,
     messages_truncated: included.flatMap(t => t.messages).filter(m => m.cut).length,
-    input_chars: input.length, input_chars_limit: MAX_AUTO_SUMMARY_INPUT_CHARS };
+    input_chars: input.length, input_chars_limit: MAX_AUTO_SUMMARY_INPUT_CHARS,
+    user_messages_included: included.reduce((sum, t) => sum + t.messages.length, 0),
+    user_messages_available: included.reduce((sum, t) => sum + Math.max(
+      availableCounts?.get(t.thread_id) ?? beforeTrimCounts.get(t.thread_id)!, t.messages.length), 0) };
   return { input, stats, considered_threads };
 }
 
@@ -234,7 +238,18 @@ export async function selectAutoSummaryInput(db: SupabaseClient, userId: string,
     inputLength += increment;
     if (state.index === state.page.length && state.exhausted) state.done = true;
   }
-  return finalizeAutoSummaryInput(keys, included, threads.length, eligible.length);
+  // Trim first so count queries never include a thread absent from the final input.
+  const finalized = finalizeAutoSummaryInput(keys, included, threads.length, eligible.length);
+  const availableCounts = new Map<string, number>();
+  for (let offset = 0; offset < finalized.considered_threads.length; offset += PREFLIGHT_CONCURRENCY) {
+    await Promise.all(finalized.considered_threads.slice(offset, offset + PREFLIGHT_CONCURRENCY).map(async thread => {
+      const { count, error } = await targetMessages(db, userId, thread.thread_id, "id", { count: "exact", head: true }).eq("role", "user");
+      checkError(error, "messages");
+      if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) throw new AutoSummaryDbError("messages");
+      availableCounts.set(thread.thread_id, count);
+    }));
+  }
+  return finalizeAutoSummaryInput(keys, included, threads.length, eligible.length, availableCounts);
 }
 
 function invalid(message: string): never { throw new Error(`Invalid auto summary response: ${message}`); }

@@ -19,10 +19,10 @@ function strings(value){if(typeof value==='string'||typeof value==='number')retu
 test('modal selects topics, uses empty old diff, displays stats/truncation/results and locks every close path while applying',()=>{
   const original=global.window;const listeners=new Map();global.window={addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key)};
   try {
-    state=[];cursor=0;effects=[];let applied,cancelled=0;const p=preview();p.stats.threads_truncated=1;
+    state=[];cursor=0;effects=[];let applied,cancelled=0;const p=preview();p.stats.threads_truncated=1;p.stats.user_messages_available=4;
     const props={projectName:'Example',preview:p,isApplying:false,results:null,onApply:keys=>applied=keys,onCancel:()=>cancelled++};
     let tree=Modal(props);effects.forEach(fn=>fn());
-    assert.match(strings(tree),/2件のスレッドのうち1件を使用/);assert.match(strings(tree),/使用したスレッド内にも省略があります/);
+    assert.match(strings(tree),/2件のスレッドのうち1件を使用/);assert.match(strings(tree),/古いuser発言2件は使用していません/);
     let all=nodes(tree);assert.equal(all.filter(n=>n.type==='input'&&n.props.checked).length,3);
     assert.equal(all.filter(n=>n.props.oldText==='').length,3);
     all.find(n=>n.type==='input').props.onChange();cursor=0;effects=[];tree=Modal(props);
@@ -37,16 +37,23 @@ test('modal selects topics, uses empty old diff, displays stats/truncation/resul
   }finally{global.window=original;}
 });
 
-test('partial coverage uses eligible denominator, truncation adds warning, and OFF guidance always appears',()=>{
-  for (const [included, eligible, threadsCut, messagesCut, coverage, omission] of [
-    [1,3,0,0,true,false], [1,3,1,0,true,true], [1,3,0,1,true,true],
-    [3,3,0,0,false,false], [3,3,1,0,false,true],
+test('thread coverage wording stays fixed; user coverage and independent omission/cut warnings are precise',()=>{
+  for (const [included, eligible, threadsCut, messagesCut, x, y] of [
+    [1,3,0,0,2,2], [1,3,1,0,2,5], [1,3,1,1,2,2], [1,3,1,2,2,3000],
+    [3,3,0,0,6,6], [3,3,1,0,6,9], [3,3,1,0,6,6],
   ]) {
     state=[];cursor=0;effects=[];
-    const p=preview();Object.assign(p.stats,{threads_total:5,threads_included:included,threads_eligible:eligible,threads_truncated:threadsCut,messages_truncated:messagesCut});
-    const text=strings(Modal({projectName:'Example',preview:p,isApplying:false,results:null,onApply(){},onCancel(){}}));
-    assert.equal(text.includes(`対象${eligible}件中${included}件のみ使用しています。Project全体を網羅していません`),coverage);
-    assert.equal(text.includes('使用したスレッド内にも省略があります'),omission);
+    const p=preview();Object.assign(p.stats,{threads_total:5,threads_included:included,threads_eligible:eligible,threads_truncated:threadsCut,messages_truncated:messagesCut,user_messages_included:x,user_messages_available:y});
+    const tree=Modal({projectName:'Example',preview:p,isApplying:false,results:null,onApply(){},onCancel(){}});
+    const text=strings(tree);
+    assert.equal(text.includes(`対象${eligible}件中${included}件のみ使用しています。Project全体を網羅していません`),included<eligible);
+    assert.ok(text.includes(`使用したスレッド内のuser発言: ${x} / ${y}件`));
+    assert.equal(text.includes('古いuser発言'),x<y);
+    assert.equal(text.includes('長文のuser発言'),messagesCut>0);
+    if (x<y) assert.ok(text.includes(`古いuser発言${y-x}件は使用していません`));
+    if (messagesCut>0) assert.ok(text.includes(`長文のuser発言${messagesCut}件は一部を中略しています`));
+    for (const p of nodes(tree).filter(n=>n.type==='p' && /古いuser発言|長文のuser発言/.test(strings(n)))) assert.equal(p.props.style.color,'#b45309');
+    assert.ok(!text.includes('使用したスレッド内にも省略があります'));
     assert.ok(text.includes(`5件のスレッドのうち${included}件を使用（対象条件を満たすスレッド: ${eligible}件）`));
     assert.ok(text.includes('作成したtopicは、デフォルトでは『チャットに含める』がOFFです。Project Memory一覧でONにすると、チャットに注入されます。'));
     assert.ok(!text.includes('一部省略されています'));

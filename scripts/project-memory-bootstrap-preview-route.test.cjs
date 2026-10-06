@@ -39,8 +39,17 @@ test('success contract, missing-only request, key trimming, completion budget, n
   assert.deepEqual(JSON.parse(captured.input).requested_topics.map(t=>t.topic_key),keys.slice(1));
   assert.ok(!captured.input.includes('PRIVATE EXISTING BODY'));assert.equal(captured.key,'key');assert.deepEqual(captured.opts,{jsonMode:true,maxCompletionTokens:16384});
   assert.equal(body.stats.input_chars,captured.input.length);assert.equal(body.considered_threads.length,1);
+  assert.equal(body.stats.user_messages_included,2);assert.equal(body.stats.user_messages_available,2);
   assert.ok(db.calls.every(c=>!c.select.includes('content_md')));
   // The DB test model intentionally exposes no write or RPC methods.
+});
+
+test('head count errors and invalid counts fail closed as 500 before calling LLM',async()=>{
+  for (const headResult of [{error:{code:'HEAD_ERROR'}},... [null,undefined,-1,0.5,Number.MAX_SAFE_INTEGER+1,NaN,Infinity,'2'].map(count=>({count}))]) {
+    reset();db=database({project_memory_topics:[],threads:[thread('t')],messages:[message('t',1),message('t',2)]},undefined,headResult);
+    const response=await post();assert.equal(response.status,500);assert.equal(modelCalls,0);
+    assert.equal(db.calls.filter(c=>c.head).length,1);
+  }
 });
 test('preview excludes principles when the LLM returns exactly empty content_md',async()=>{
   reset();modelOutput=JSON.stringify({topics:[

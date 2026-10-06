@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { installAliasResolver, installTsLoader } = require('./testBootstrap.cjs');
 installAliasResolver(); installTsLoader();
 const { database, thread, message } = require('./auto-summary-test-helpers.cjs');
-const { selectAutoSummaryInput, finalizeAutoSummaryInput, parseAutoSummaryResponse, buildAutoSummaryInput, autoSummaryJstDate, truncateAutoSummaryMessage, selectAutoSummaryThreads, autoSummaryMessageIncrement, nextAutoSummaryWaterfillThread, MIN_THREAD_MESSAGE_BUDGET, AUTO_SUMMARY_SYSTEM_PROMPT, AUTO_SUMMARY_PROMPT_VERSION } = require('../lib/project-memory/auto-summary.ts');
+const { selectAutoSummaryInput, finalizeAutoSummaryInput, parseAutoSummaryResponse, buildAutoSummaryInput, autoSummaryJstDate, truncateAutoSummaryMessage, selectAutoSummaryThreads, autoSummaryMessageIncrement, nextAutoSummaryWaterfillThread, MIN_THREAD_MESSAGE_BUDGET, AutoSummaryDbError, AUTO_SUMMARY_SYSTEM_PROMPT, AUTO_SUMMARY_PROMPT_VERSION } = require('../lib/project-memory/auto-summary.ts');
 const { MAX_AUTO_SUMMARY_INPUT_CHARS, MAX_AUTO_SUMMARY_MESSAGE_CHARS, MAX_AUTO_SUMMARY_THREADS, AUTO_SUMMARY_TRUNCATION_MARKER } = require('../lib/project-memory/auto-summary-limits.ts');
 const select = db => selectAutoSummaryInput(db, 'u','p',['overview']);
 const entries = thread => thread.days.flatMap(day => day.m);
@@ -60,6 +60,8 @@ test('final serialization budget accepts exactly 60000 and trims one character o
     assert.equal(result.stats.threads_truncated,1);
     assert.equal(result.stats.messages_truncated,excess?0:1);
     assert.equal(result.considered_threads[0].included_message_count,excess?1:2);
+    assert.equal(result.stats.user_messages_included,excess?1:2);
+    assert.equal(result.stats.user_messages_available,2);
     if (!excess) assert.equal(result.input.length,60000);
   }
 });
@@ -154,6 +156,15 @@ test('assistant rows never enter input, user preflight/latest/body share all pre
   assert.ok(!JSON.stringify(input.threads).includes('"role"'));
   assert.ok(!JSON.stringify(input.threads).includes('"user"'));
   assert.equal(result.considered_threads[0].last_message_at,message('a',2).created_at);
+  assert.equal(result.stats.user_messages_included,4);assert.equal(result.stats.user_messages_available,4);
+  for (const head of db.calls.filter(c=>c.head)) {
+    assert.equal(head.count,'exact');assert.equal(head.select,'id');
+    const id=head.filters.find(([op,key])=>op==='eq' && key==='thread_id')[2];
+    const body=db.calls.find(c=>c.table==='messages' && c.range && c.filters.some(([op,key,value])=>op==='eq' && key==='thread_id' && value===id));
+    assert.deepEqual(head.filters,body.filters);
+    assert.deepEqual(head.filters,[['eq','thread_id',id],['eq','user_id','u'],['in','role',['user','assistant']],
+      ['neq','provider','memo'],['neq','provider','image_gen'],['or','is_active.is.null,is_active.eq.true'],['eq','role','user']]);
+  }
   for (const call of db.calls.filter(c=>c.table==='messages')) {
     assert.ok(call.filters.some(([op,key,value])=>op==='eq' && key==='role' && value==='user'));
     assert.ok(call.filters.some(([op,key])=>op==='eq' && key==='user_id'));
@@ -173,11 +184,14 @@ test('thousands of long messages cannot starve adopted short threads; pages stay
   assert.equal(huge.oldest_included_message_id,message('huge',13000-huge.included_message_count).id);
   assert.equal(huge.newest_included_message_id,message('huge',12999).id);assert.equal(huge.truncated,true);
   assert.equal(result.stats.messages_truncated,huge.included_message_count);
+  assert.equal(result.stats.user_messages_included,huge.included_message_count+50);
+  assert.equal(result.stats.user_messages_available,3050);
   for (const t of result.considered_threads.filter(t=>t.thread_id!=='huge')) {
     assert.equal(t.included_message_count,2);assert.equal(t.truncated,false);
   }
   const pages=db.calls.filter(c=>c.table==='messages' && c.range);
   assert.equal(pages.length,26);assert.ok(pages.every(c=>c.range[0]===0));
+  assert.equal(db.calls.filter(c=>c.head).length,26);
 });
 
 test('actual selection accepts exact budget and rejects one-over only for that thread, continuing other threads', async () => {
@@ -244,6 +258,11 @@ test('paginates more than 1000 threads and prioritizes actual latest message rat
   assert.equal(result.considered_threads.at(-1).thread_id,'1100');
   assert.equal(result.considered_threads[0].thread_id,String(1101-count).padStart(4,'0'));
   assert.equal(db.calls.filter(c=>c.table==='threads').length,3);
+  const headIds=db.calls.filter(c=>c.head).map(c=>c.filters.find(([op,key])=>op==='eq' && key==='thread_id')[2]);
+  assert.deepEqual(new Set(headIds),new Set(result.considered_threads.map(t=>t.thread_id)));
+  assert.equal(headIds.length,count);
+  assert.equal(result.stats.user_messages_available,count*2);
+  assert.equal(result.stats.user_messages_included,count*2);
 });
 test('pages over 1000 messages, fetches newest first and restores shared display order', async () => {
   const messages = Array.from({length:1200},(_,n)=>message('t',n,{content:String(n)}));
@@ -285,6 +304,43 @@ test('final trim removes empty threads and recomputes canonical counts and cut f
   const result=finalizeAutoSummaryInput(['overview'],threads,2,2);
   assert.equal(result.stats.threads_included,1); assert.equal(result.stats.messages_truncated,0);
   assert.equal(result.stats.threads_truncated,0); assert.equal(result.considered_threads[0].thread_id,'new');
+  assert.equal(result.stats.user_messages_included,1);assert.equal(result.stats.user_messages_available,1);
+});
+
+test('finalize coverage retains pre-trim fallback, clamps deleted counts, and excludes removed/unused threads', () => {
+  const fixture=()=>[
+    {...includedThread('t'),messages:[{...message('t',1,{content:'x'.repeat(60000)}),cut:true},{...message('t',2),cut:false}]},
+    {...includedThread('empty')},
+  ];
+  for (const counts of [undefined,new Map(),new Map([['t',0],['empty',999]]),new Map([['t',3000],['empty',999]])]) {
+    const result=finalizeAutoSummaryInput(['overview'],fixture(),2,2,counts);
+    assert.equal(result.stats.user_messages_included,1);
+    assert.equal(result.stats.user_messages_available,counts?.has('t')?Math.max(counts.get('t'),1):2);
+    assert.equal(result.considered_threads[0].included_message_count,1);
+    assert.equal(result.stats.messages_truncated,0);assert.equal(result.stats.threads_truncated,1);
+  }
+  const threads=fixture();threads[0].messages.pop();
+  const empty=finalizeAutoSummaryInput(['overview'],threads,2,2,new Map([['t',3000],['empty',999]]));
+  assert.equal(empty.stats.user_messages_included,0);assert.equal(empty.stats.user_messages_available,0);
+});
+
+test('head query model counts filtered rows ignoring range/limit and coverage uses the same predicates', async () => {
+  const messages=[message('t',1,{is_active:null}),message('t',2),
+    ...[{role:'assistant'},{role:'system'},{provider:'memo'},{provider:'image_gen'},{provider:null},{is_active:false},{user_id:'other'}].map((extra,n)=>message('t',3+n,extra))];
+  const db=database({threads:[thread('t')],messages});
+  const result=await select(db);
+  assert.equal(result.stats.user_messages_available,2);assert.equal(result.stats.user_messages_included,2);
+  const head=await db.from('messages').select('id',{head:true,count:'exact'}).eq('thread_id','t').eq('role','user').limit(1).range(0,0);
+  assert.equal(head.data,null);assert.equal(head.count,7);assert.equal(head.error,null);
+});
+
+test('head-only errors or invalid counts throw AutoSummaryDbError; deleted counts stay at least included', async () => {
+  const tables={threads:[thread('t')],messages:[message('t',1),message('t',2)]};
+  for (const headResult of [{error:{code:'HEAD_ERROR'}},...[null,undefined,-1,0.5,Number.MAX_SAFE_INTEGER+1,NaN,Infinity,'2'].map(count=>({count}))]) {
+    await assert.rejects(select(database(tables,undefined,headResult)),e=>e instanceof AutoSummaryDbError && e.table==='messages' && e.code===headResult.error?.code);
+  }
+  const result=await select(database(tables,undefined,{count:0}));
+  assert.equal(result.stats.user_messages_included,2);assert.equal(result.stats.user_messages_available,2);
 });
 test('strict LLM parsing rejects unknown keys, duplicates, missing/extra topics, wrong types and invalid JSON; permits empty evidence', () => {
   const good={topic_key:'overview',content_md:''};

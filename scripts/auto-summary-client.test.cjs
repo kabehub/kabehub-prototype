@@ -29,9 +29,31 @@ test('apply posts provenance array and independently handles 201,409 and failure
     assert.equal(call.url,'/api/projects/a%2Fb/memory/topics');assert.equal(call.init.method,'POST');
     assert.deepEqual(call.body.source_refs,[{type:'auto_summary',run_id:'run',model:'model',prompt_version:1,considered_threads:p.considered_threads}]);
     assert.ok(!JSON.stringify(call.body.source_refs).includes('content_md'));
+    assert.ok(!JSON.stringify(call.body.source_refs).includes('stats'));
+    assert.ok(!JSON.stringify(call.body.source_refs).includes('user_messages_'));
   }
   for(const status of [200,400,502]) assert.equal((await applyAutoSummary('p',p,['overview'],async()=>Response.json({},{status})))[0].status,'failed');
   assert.equal((await applyAutoSummary('p',p,['overview'],async()=>{throw new Error('network')}))[0].status,'failed');
+});
+
+test('coverage is exact, safe, consistent with provenance and bounded by available messages',()=>{
+  const complete=preview();assert.deepEqual(parseBootstrapPreview(complete),complete);
+  const partial=preview();partial.stats.user_messages_available=3000;
+  assert.deepEqual(parseBootstrapPreview(partial),partial);
+  const mutations=[
+    p=>p.stats.user_messages_available=1,
+    p=>p.stats.user_messages_included=3,
+    p=>p.stats.user_messages_included=1,
+    p=>p.stats.user_messages_included=0,
+    p=>delete p.stats.user_messages_included,
+    p=>delete p.stats.user_messages_available,
+    p=>p.stats.user_messages_unknown=2,
+    p=>{p.stats.threads_included=2;p.stats.threads_eligible=2;p.considered_threads.push({...p.considered_threads[0],thread_id:'other'});p.stats.user_messages_included=1;},
+  ];
+  for (const key of ['user_messages_included','user_messages_available']) {
+    for (const invalid of [-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1,null,undefined,'2']) mutations.push(p=>p.stats[key]=invalid);
+  }
+  for (const mutate of mutations) {const p=preview();mutate(p);assert.equal(parseBootstrapPreview(p),null,String(mutate));}
 });
 test('preview request fails closed and forwards API key and cancellation signal',async()=>{
   const controller=new AbortController();let captured;

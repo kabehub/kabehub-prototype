@@ -21,7 +21,7 @@ export function parseBootstrapPreview(value: unknown): BootstrapPreview | null {
     !text(value.run_id) || !text(value.model) || !integer(value.prompt_version, 1) || !record(value.stats) ||
     !Array.isArray(value.considered_threads) || !Array.isArray(value.topics)) return null;
   const stats = value.stats;
-  if (!exact(stats, ["threads_total", "threads_eligible", "threads_included", "threads_truncated", "messages_truncated", "input_chars", "input_chars_limit"]) ||
+  if (!exact(stats, ["threads_total", "threads_eligible", "threads_included", "threads_truncated", "messages_truncated", "input_chars", "input_chars_limit", "user_messages_included", "user_messages_available"]) ||
     !Object.values(stats).every(v => integer(v)) || stats.input_chars_limit !== MAX_AUTO_SUMMARY_INPUT_CHARS ||
     !integer(stats.input_chars, 1, MAX_AUTO_SUMMARY_INPUT_CHARS) || !integer(stats.threads_included, 1, MAX_AUTO_SUMMARY_THREADS) ||
     !integer(stats.threads_eligible, stats.threads_included as number, stats.threads_total as number) ||
@@ -38,7 +38,9 @@ export function parseBootstrapPreview(value: unknown): BootstrapPreview | null {
     ids.add(t.thread_id); messageCount += t.included_message_count; if (t.truncated) truncated++;
   }
   if (truncated !== stats.threads_truncated || !integer(stats.messages_truncated, 0, messageCount) ||
-    ((stats.messages_truncated as number) > 0 && truncated === 0)) return null;
+    ((stats.messages_truncated as number) > 0 && truncated === 0) ||
+    stats.user_messages_included !== messageCount ||
+    !integer(stats.user_messages_included, stats.threads_included as number, stats.user_messages_available as number)) return null;
   if (!value.topics.length || value.topics.length > AUTO_SUMMARY_STANDARD_TOPIC_KEYS.length) return null;
   const keys = new Set<string>();
   for (const t of value.topics) {
