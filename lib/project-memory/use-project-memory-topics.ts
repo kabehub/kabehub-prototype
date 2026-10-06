@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PROJECT_MEMORY_CHAT_MAX_CHARS } from "@/lib/project-memory/chat-inclusion-limits";
+import { PROJECT_MEMORY_BULK_DELETE_MAX_TOPICS } from "@/lib/project-memory/topic-delete-limits";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
 import { decodeTopicFile, deriveTopicKeyFromFilename, TopicFileHeaderError } from "@/lib/project-memory/topic-file";
 import { applyInstructionEdit, requestInstructionEditPreview } from "@/lib/project-memory/instruction-edit-client";
@@ -30,6 +31,11 @@ export type ProjectMemoryUploadCandidate =
   | { kind: "overwrite"; topicId: string; topicKey: string; currentRevision: number; expectedRevision: number; contentMd: string }
   | { kind: "create"; topicKey: string; contentMd: string };
 
+export type ProjectMemoryDeleteTopic = Pick<ProjectMemoryTopic, "id" | "topic_key" | "revision" | "include_in_chat"> & {
+  chars: number;
+  promotion: Pick<ProjectMemoryPromotion, "status">;
+};
+
 export type InstructionEditState = {
   topicId: string;
   topicKey: string;
@@ -48,6 +54,17 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canPromote, setCanPromote] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const selectionModeRef = useRef(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIdsRef = useRef<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<ProjectMemoryDeleteTopic[] | null>(null);
+  const pendingDeleteRef = useRef<ProjectMemoryDeleteTopic[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
+  const deleteRequestId = useRef(0);
+  const deleteScopeRef = useRef({ projectId, enabled });
+  deleteScopeRef.current = { projectId, enabled };
   const [promotingTopicId, setPromotingTopicId] = useState<string | null>(null);
   const promotingRef = useRef<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<ProjectMemoryPromotionConfirm | null>(null);
@@ -72,6 +89,24 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   const requestId = useRef(0);
   const topics = loaded?.projectId === projectId ? loaded.topics : [];
 
+  const updateSelectedIds = (next: Set<string>) => {
+    selectedIdsRef.current = next;
+    setSelectedIds(next);
+  };
+  const updatePendingDelete = (next: ProjectMemoryDeleteTopic[] | null) => {
+    pendingDeleteRef.current = next;
+    setPendingDelete(next);
+  };
+  const resetDeletion = () => {
+    deleteRequestId.current++;
+    deletingRef.current = false;
+    setDeleting(false);
+    selectionModeRef.current = false;
+    setSelectionMode(false);
+    updateSelectedIds(new Set());
+    updatePendingDelete(null);
+  };
+
   const updateInstructionEdit = (next: InstructionEditState | null) => {
     instructionEditRef.current = next;
     setInstructionEdit(next);
@@ -79,6 +114,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
 
   useEffect(() => {
     if (!enabled) {
+      resetDeletion();
       chatInclusionRequestId.current++;
       chatInclusionRef.current = null;
       setChatInclusionTopicId(null);
@@ -94,6 +130,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
       updateInstructionEdit(null);
     }
     return () => {
+      resetDeletion();
       chatInclusionRequestId.current++;
       chatInclusionRef.current = null;
       setChatInclusionTopicId(null);
@@ -124,6 +161,10 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
         const next = { projectId, topics: body.topics as ProjectMemoryTopic[] };
         loadedRef.current = next;
         setLoaded(next);
+        const existing = new Set(next.topics.map(topic => topic.id));
+        const selected = new Set([...selectedIdsRef.current].filter(topicId => existing.has(topicId)));
+        selectedIdsRef.current = selected;
+        setSelectedIds(selected);
       }
     } catch (cause) {
       if (id === requestId.current) setError(cause instanceof Error ? cause.message : "Project Memoryを読み込めませんでした");
@@ -153,6 +194,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   }, [enabled, keepLoaded, projectId, reload]);
 
   const promote = async (topic: ProjectMemoryTopic, confirmed = false) => {
+    if (deletingRef.current || pendingDeleteRef.current !== null || selectionModeRef.current) return;
     if (chatInclusionRef.current !== null || !enabled || instructionEditRef.current !== null || promotingRef.current || uploadingRef.current || uploadConfirm !== null || !canPromote || !topic.content_md.trim() || topic.promotion.status === "current") return;
     if ((!confirmed && pendingConfirmRef.current !== null) || (confirmed && pendingConfirmRef.current?.topic !== topic)) return;
     const acknowledgedIds = confirmed ? pendingConfirmRef.current!.editedLores.map((row) => row.id) : [];
@@ -207,6 +249,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   };
 
   const selectUploadFile = async (file: File) => {
+    if (deletingRef.current || pendingDeleteRef.current !== null || selectionModeRef.current) return;
     if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || instructionEditRef.current !== null || uploadingRef.current || promotingRef.current || uploadConfirm !== null) return;
     let raw: string;
     try {
@@ -215,6 +258,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
       if (instructionEditRef.current === null) setError("ファイルの読み込みに失敗しました。");
       return;
     }
+    if (deletingRef.current || pendingDeleteRef.current !== null || selectionModeRef.current) return;
     if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || instructionEditRef.current !== null) return;
     try {
       const decoded = decodeTopicFile(raw);
@@ -241,6 +285,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
   };
 
   const executeUpload = async () => {
+    if (deletingRef.current || pendingDeleteRef.current !== null || selectionModeRef.current) return;
     if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || instructionEditRef.current !== null || !uploadConfirm || uploadingRef.current || promotingRef.current) return;
     const candidate = uploadConfirm;
     uploadingRef.current = true;
@@ -277,6 +322,7 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
 
   const cancelUploadConfirm = () => setUploadConfirm(null);
   const openInstructionEdit = (topic: ProjectMemoryTopic) => {
+    if (deletingRef.current || pendingDeleteRef.current !== null || selectionModeRef.current) return;
     if (chatInclusionRef.current !== null || pendingConfirmRef.current !== null || !enabled || !canPromote || instructionEditRef.current !== null || promotingRef.current !== null ||
         uploadingRef.current || uploadConfirm !== null) return;
     updateInstructionEdit({ topicId: topic.id, topicKey: topic.topic_key, topicRevision: topic.revision,
@@ -380,9 +426,80 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
     updateInstructionEdit({ ...current, phase: "done", preview: null, notice: null, doneStatus: result.status });
   };
 
-  const isActionLocked = () => chatInclusionRef.current !== null || pendingConfirmRef.current !== null || promotingRef.current !== null || uploadingRef.current || uploadConfirm !== null || instructionEditRef.current !== null;
+  const isActionLocked = () => deletingRef.current || pendingDeleteRef.current !== null || chatInclusionRef.current !== null || pendingConfirmRef.current !== null || promotingRef.current !== null || uploadingRef.current || uploadConfirm !== null || instructionEditRef.current !== null;
+  const startSelection = () => {
+    if (!enabled || isActionLocked() || loading) return;
+    selectionModeRef.current = true;
+    setSelectionMode(true);
+    updateSelectedIds(new Set());
+    setError(null);
+  };
+  const stopSelection = () => {
+    if (isActionLocked()) return;
+    selectionModeRef.current = false;
+    setSelectionMode(false);
+    updateSelectedIds(new Set());
+  };
+  const toggleSelected = (topicId: string) => {
+    if (!enabled || !selectionModeRef.current || isActionLocked() || !topics.some(t => t.id === topicId)) return;
+    const next = new Set(selectedIdsRef.current);
+    if (next.has(topicId)) next.delete(topicId);
+    else if (next.size < PROJECT_MEMORY_BULK_DELETE_MAX_TOPICS) next.add(topicId);
+    updateSelectedIds(next);
+  };
+  const openDeleteConfirm = () => {
+    if (!enabled || !selectionModeRef.current || isActionLocked() || loading) return;
+    const snapshot = topics.filter(t => selectedIdsRef.current.has(t.id)).map(t => ({
+      id: t.id, topic_key: t.topic_key, revision: t.revision, chars: [...t.content_md].length,
+      promotion: { status: t.promotion.status }, include_in_chat: t.include_in_chat,
+    }));
+    if (!snapshot.length || snapshot.length > PROJECT_MEMORY_BULK_DELETE_MAX_TOPICS) return;
+    setError(null);
+    updatePendingDelete(snapshot);
+  };
+  const cancelDeleteConfirm = () => {
+    if (!deletingRef.current) { updatePendingDelete(null); setError(null); }
+  };
+  const executeDelete = async (): Promise<boolean> => {
+    const snapshot = pendingDeleteRef.current;
+    if (!enabled || !snapshot || deletingRef.current || chatInclusionRef.current !== null ||
+        pendingConfirmRef.current !== null || promotingRef.current !== null || uploadingRef.current ||
+        uploadConfirm !== null || instructionEditRef.current !== null) return false;
+    const id = ++deleteRequestId.current;
+    const current = () => id === deleteRequestId.current && deleteScopeRef.current.projectId === projectId && deleteScopeRef.current.enabled;
+    deletingRef.current = true;
+    setDeleting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/memory/topics/bulk-delete`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topics: snapshot.map(t => ({ id: t.id, expected_revision: t.revision })) }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!current()) return false;
+      if (response.status === 200 || response.status === 404 || response.status === 409) {
+        await reload();
+        if (!current()) return false;
+        updatePendingDelete(null);
+        updateSelectedIds(new Set());
+        selectionModeRef.current = false;
+        setSelectionMode(false);
+        if (response.status !== 200) {
+          setError("選択後にtopicが変更または削除されました。一覧を更新したので、選び直してください");
+          return false;
+        }
+        return true;
+      }
+      setError(typeof body?.error === "string" ? body.error : "Project Memoryの削除に失敗しました。再試行してください");
+    } catch {
+      if (current()) setError("Project Memoryの削除に失敗しました。再試行してください");
+    } finally {
+      if (current()) { deletingRef.current = false; setDeleting(false); }
+    }
+    return false;
+  };
   const setChatInclusion = async (topic: ProjectMemoryTopic, include: boolean) => {
-    if (!enabled || isActionLocked() || chatInclusionRef.current !== null ||
+    if (!enabled || deletingRef.current || selectionModeRef.current || isActionLocked() || chatInclusionRef.current !== null ||
         include === topic.include_in_chat || (include && !topic.content_md.trim())) return;
     const id = ++chatInclusionRequestId.current;
     // Synchronous ref guards rapid clicks before the next render.
@@ -424,6 +541,8 @@ export function useProjectMemoryTopics({ projectId, enabled, keepLoaded = false 
     }
   };
   return { topics, loading, error, setChatInclusion, chatInclusionTopicId, canPromote, promotingTopicId, uploading, uploadConfirm,
+    selectionMode, selectedIds, pendingDelete, deleting, startSelection, stopSelection, toggleSelected,
+    openDeleteConfirm, cancelDeleteConfirm, executeDelete,
     pendingConfirm, confirmPromotion, cancelPromotionConfirm,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, reload, isActionLocked,
     instructionEdit, canInstructionEdit: canPromote, openInstructionEdit, closeInstructionEdit,

@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/06 — 自動要約Phase A（改行補正・プロンプトv2・部分読み警告・デフォルトOFF案内）
+最終更新: 2026/10/06 — 自動要約Phase A・topic一括削除Phase B（v205は未適用）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -219,6 +219,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ProjectMemoryListModal.tsx` | Sidebarから開くProject Memory一覧モーダル（`keepLoaded: false`）。Escape・背景クリック・「閉じる」は編集モーダル表示中/操作中は無効 |
 | `components/ProjectMemoryTopicList.tsx` | topic行の共通表示（DL／AIで編集／Loreに昇格／Loreで見る／**チャットに含める**トグル・実際に注入されるtopicのみ「チャット注入中」、ONだが上限超過・本文が空のtopicは「未注入（理由）」バッジ）。一覧上部に「Memory注入: X / 8,000字」の使用量・注入されないtopicの警告・注意書きを表示する。DLは`actionsLocked`の影響を受けない |
 | `components/ProjectMemoryPromotionConfirmModal.tsx` | `/library`・Sidebar一覧で共用する編集済みLore再昇格の確認モーダル（TopicList経由）。対象Loreのタイトルと編集内容を引き継がない説明を表示し、「編集を破棄して再昇格」で承認する。フォーカス制御・Escape・送信中キャンセル禁止あり |
+| `components/ProjectMemoryDeleteConfirmModal.tsx` | 両一覧からの一括削除確認。対象revision・コードポイント字数・昇格/注入バッジ、履歴の完全削除とLore保持を明示。履歴の必須チェックと、昇格済み時のみLore重複の必須チェック。開くたび・対象変更で未チェックに戻り、キャンセルへ初期focus。送信中は全閉じる操作を禁止 |
 | `components/ProjectMemoryInstructionEditModal.tsx` | 「AIで編集」の指示入力→差分プレビュー→適用モーダル（z-index 1200/1201） |
 | `components/ProjectMemoryDiffView.tsx` | 差分表示。整理・編集・初回生成モーダルで共用（初回生成の旧本文は空文字） |
 | `components/ProjectMemoryConsolidationModal.tsx` | Project全体整理案の選択・適用モーダル |
@@ -279,7 +280,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/map-rpc-error.ts` | RPCエラーメッセージ→HTTPステータスの対応表（`42501`は403、未知は500）。チャット注入の400/409を含む |
 | `lib/project-memory/topic-file.ts` | DL/UL用Markdown入出力。先頭行ヘッダー`<!-- kabehub-topic:v1 {topic_id, topic_key, revision} -->`のencode/decode |
 | `lib/project-memory/download-topic-file.ts` | topicのMarkdownファイルダウンロード |
-| `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・再昇格確認（`pendingConfirm`）・アップロード・AI編集の状態を一括管理するhook。確認409の対象IDを承認リクエストへ送信し、成功後は一覧を再取得する。チャット注入のON/OFF（`setChatInclusion`・`chatInclusionTopicId`）も管理し、他の操作と相互排他 |
+| `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・再昇格確認（`pendingConfirm`）・アップロード・AI編集・チャット注入ON/OFF・一括削除を管理するhook。削除は確認時点のrevisionをCAS送信、reloadで消えた選択IDを掃除。200で終了、404/409で選び直し、その他は確認内容を保持して再試行。同期refで操作を相互排他にし、古いProject応答を破棄。selectionModeだけでは親の開閉をlockしないが、両一覧のactionsLockedとULはlockする |
+| `lib/project-memory/topic-delete-limits.ts` | importゼロのclient-safeな一括削除上限（50件）。v205のSQL値との一致を静的テストで保証 |
 | `lib/project-memory/chat-inclusion-limits.ts` | チャット注入の正本。`PROJECT_MEMORY_CHAT_MAX_CHARS`（8,000）・コードポイント数の`countProjectMemoryChatChars`・topic_key→idのlocale非依存比較による`selectChatIncludedTopics`・UI用の`summarizeChatInclusion`。**importゼロのclient-safeファイル**。8,000は本文(`content_md`)の合計上限で、preamble・タグ・meta行は含まない |
 | `lib/project-memory/chat-injection.ts` | `buildProjectMemoryChatBlock`。注入対象topicを`buildReferencePreamble()`＋topicごとの参照ブロック（`source="project_memory_topic"`、metaは`topic_key`と`revision`）として1つの文字列にまとめる。対象がなければ`null` |
 | `lib/project-memory/instruction-edit.ts` | AI編集のLLM契約（strict JSON）・system prompt・サーバー側定数（`MAX_INSTRUCTION_EDIT_INPUT_CHARS`=20,000、`INSTRUCTION_EDIT_MAX_COMPLETION_TOKENS`=65,536） |
@@ -312,7 +314,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト103本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト106本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 11本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -348,6 +350,8 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/project-memory-*.test.cjs` / `scripts/projects-*-route.test.cjs` / `scripts/instruction-edit-client.test.cjs` / `scripts/use-project-memory-topics.test.cjs` | Project Memory API・hook・UI・migration契約の回帰テスト |
 | `scripts/project-memory-auto-summary.test.cjs` / `scripts/project-memory-bootstrap-preview-route.test.cjs` / `scripts/auto-summary-client.test.cjs` / `scripts/use-auto-summary.test.cjs` / `scripts/project-memory-bootstrap-modal.test.cjs` | 初回生成の選定・ページング・文字数予算・LLM契約・preview Route・client strict検証・並列作成・eligibility再取得／競合応答・モーダル操作を検証（共通DBモデルは`auto-summary-test-helpers.cjs`） |
 | `scripts/normalize-literal-newlines.test.cjs` | 改行補正の固定入出力・コード/パス/連続バックスラッシュのバイト保持・フェンス内外混在・曖昧なコード範囲の保持・冪等性を検証（14ケース） |
+| `scripts/project-memory-delete-topics-migrations.test.cjs` / `scripts/projects-memory-topics-bulk-delete-route.test.cjs` / `scripts/project-memory-delete-confirm-modal.test.cjs` | v205のcast前検証・ロック/削除順・権限・50件契約、bulk-delete APIのfail-closed検証・エラー写像、必須チェック・Lore保持案内・focus・送信中ロックを検証。既存hook/両一覧/Sidebar/proxyテストにも一括削除の回帰を追加 |
+| `scripts/verify-project-memory-delete-topics.mjs` | test DB固定の手動検証。v205手動適用後に実行し、CASの全か無か・revision cascade・昇格済みLore保持・不正入力P0001・認証42501を検証。通常テスト外、migration適用機能なし |
 | `scripts/verify-project-memory-*.mjs` | 実DB（test環境）向けの手動検証スクリプト。通常のテスト実行には含めない |
 | `scripts/proxy.test.cjs` | `proxy.ts`のmatcher・認証境界・redirect・CSP付与をマトリクス検証 |
 | `scripts/rate-limit.test.cjs` | rate limiter生成・制限判定・fallbackを検証 |
@@ -742,6 +746,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v202 | Project Memoryの手動編集済みLore再昇格確認（専用409・共通確認モーダル・RPCの承認ID再検証。コミットa0e73fb） |
 | v203 | Project Memory同revisionのarchived昇格Lore復元（専用RPC・本文/embedding保持。コミット4526438） |
 | v204 | Project Memory topicのチャット注入（`include_in_chat`列・`set_project_memory_topic_chat_inclusion` RPC・topic単位のopt-in。チャットへの注入・PATCH API・一覧のトグルと使用量表示。migration `migration_v204_project_memory_chat_inclusion.sql`。コミットc7e2eae／fac3277／72140ad） |
+| v205（未適用） | Project Memory topicの一括削除RPC（50件まで、全件所有確認＋revision CAS、Project→topic id順ロック、履歴はcascade、Lore保持）。`docs/migration_v205_delete_project_memory_topics.sql`をRuiが手動適用するまでDB機能は利用不可。適用後のapplied移動・schema反映は別作業 |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。
 > v175以降はmigration番号を基準とし、`docs/applied/README.md`の台帳と対応する。v174以前は機能の変更履歴番号であり、番号体系が異なる。

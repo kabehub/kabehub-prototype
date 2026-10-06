@@ -170,6 +170,15 @@ test("Bearer parser distinguishes absent, empty, and populated credentials", () 
   });
 });
 
+test('bulk-delete has an independent exact bearer POST rule', () => {
+  const pathname='/api/projects/p/memory/topics/bulk-delete';
+  const matches=API_AUTH_CLASSIFICATIONS.filter(rule=>rule.pattern.test(pathname)&&rule.methods.includes('POST'));
+  assert.equal(matches.length,1);assert.deepEqual(matches[0].methods,['POST']);
+  assert.equal(classifyApi(pathname,'POST'),'bearer');
+  assert.equal(classifyApi(pathname+'/extra','POST'),null);
+  assert.equal(classifyApi(pathname+'-other','POST'),null);
+  assert.equal(classifyApi(pathname,'DELETE'),null);
+});
 for (const { name, fn } of pendingTests) {
   try {
     fn();

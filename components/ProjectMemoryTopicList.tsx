@@ -1,9 +1,17 @@
 import { summarizeChatInclusion } from "@/lib/project-memory/chat-inclusion-limits";
+import { PROJECT_MEMORY_BULK_DELETE_MAX_TOPICS } from "@/lib/project-memory/topic-delete-limits";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import ProjectMemoryPromotionConfirmModal from "@/components/ProjectMemoryPromotionConfirmModal";
 import type { ProjectMemoryPromotionConfirm, ProjectMemoryTopic } from "@/lib/project-memory/use-project-memory-topics";
 
 interface Props {
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  selectionLocked?: boolean;
+  onStartSelection?: () => void;
+  onStopSelection?: () => void;
+  onToggleSelected?: (id: string) => void;
+  onDeleteSelected?: () => void;
   pendingConfirm?: ProjectMemoryPromotionConfirm | null;
   onConfirmPromotion?: () => void;
   onCancelPromotion?: () => void;
@@ -23,7 +31,7 @@ interface Props {
   onInstructionEdit: (topic: ProjectMemoryTopic) => void;
 }
 
-export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfirmPromotion, onCancelPromotion, topics, loading, error, expandedIds, onToggleExpanded, canPromote, canInstructionEdit, promotingTopicId, actionsLocked, chatInclusionTopicId, onChatInclusionChange, onDownload, onPromote, onInstructionEdit }: Props) {
+export default function ProjectMemoryTopicList({ selectionMode = false, selectedIds = new Set(), selectionLocked = false, onStartSelection, onStopSelection, onToggleSelected, onDeleteSelected, pendingConfirm = null, onConfirmPromotion, onCancelPromotion, topics, loading, error, expandedIds, onToggleExpanded, canPromote, canInstructionEdit, promotingTopicId, actionsLocked, chatInclusionTopicId, onChatInclusionChange, onDownload, onPromote, onInstructionEdit }: Props) {
   const summary = summarizeChatInclusion(topics);
   const notInjectedIds = new Set(summary.notInjected.map(t => t.id));
   const maxChars = summary.max.toLocaleString("ja-JP");
@@ -31,6 +39,9 @@ export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfir
     <ProjectMemoryPromotionConfirmModal confirm={pendingConfirm} submitting={promotingTopicId !== null}
       error={error} onConfirm={onConfirmPromotion ?? (() => {})} onCancel={onCancelPromotion ?? (() => {})} />
     {loading && <p>読み込み中…</p>}
+    {onStartSelection && topics.length > 0 && <button type="button" aria-pressed={selectionMode} disabled={selectionLocked || loading}
+      onClick={selectionMode ? onStopSelection : onStartSelection}>選択して削除</button>}
+    {selectionMode && <p style={{ fontSize: "12px" }}>一度に{PROJECT_MEMORY_BULK_DELETE_MAX_TOPICS}件まで選択できます。</p>}
     {!loading && topics.length === 0 && !error && <p>Project Memoryのtopicはありません。</p>}
     {topics.length > 0 && <div style={{ fontSize: "12px", color: "var(--ink-muted, #6b7280)" }}>
       <p>Memory注入: {summary.usedChars.toLocaleString("ja-JP")} / {maxChars}字</p>
@@ -45,6 +56,9 @@ export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfir
       const buttonLabel = promoting ? "昇格中…" : topic.promotion.status === "current" ? "昇格済み" : topic.promotion.status === "stale" ? "Loreに再昇格" : "Loreに昇格";
       return <section key={topic.id} style={{ border: "1px solid var(--border, #e5e7eb)", borderRadius: "9px", padding: "14px", background: "var(--color-background-secondary, #f9fafb)" }}>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+          {selectionMode && <input type="checkbox" aria-label={`${topic.topic_key}を削除対象に選択`} checked={selectedIds.has(topic.id)}
+            disabled={selectionLocked || (!selectedIds.has(topic.id) && selectedIds.size >= PROJECT_MEMORY_BULK_DELETE_MAX_TOPICS)}
+            onChange={() => onToggleSelected?.(topic.id)} />}
           <button type="button" aria-expanded={expanded} onClick={() => onToggleExpanded(topic.id)} style={{ background: "none", border: 0, color: "var(--ink, #111827)", cursor: "pointer", textAlign: "left" }}>
             {expanded ? "▾" : "▸"} {topic.topic_key} <span style={{ color: "var(--ink-muted, #6b7280)" }}>rev.{topic.revision}</span> <span style={{ color: topic.promotion.status === "current" ? "#047857" : "#92400e" }}>{statusLabel}</span>
           </button>
@@ -68,5 +82,9 @@ export default function ProjectMemoryTopicList({ pendingConfirm = null, onConfir
         {expanded && <div style={{ marginTop: "12px", overflowWrap: "anywhere" }}><MarkdownRenderer content={topic.content_md} /></div>}
       </section>;
     })}
+    {selectionMode && <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+      <button type="button" disabled={selectionLocked || loading || selectedIds.size === 0} onClick={onDeleteSelected}>{selectedIds.size}件を削除…</button>
+      <button type="button" disabled={selectionLocked} onClick={onStopSelection}>選択をやめる</button>
+    </div>}
   </>;
 }

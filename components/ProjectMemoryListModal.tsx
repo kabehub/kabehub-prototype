@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import ProjectMemoryTopicList from "@/components/ProjectMemoryTopicList";
+import ProjectMemoryDeleteConfirmModal from "@/components/ProjectMemoryDeleteConfirmModal";
 import ProjectMemoryInstructionEditModal from "@/components/ProjectMemoryInstructionEditModal";
 import ProjectMemoryUploadConfirm from "@/components/ProjectMemoryUploadConfirm";
 import { downloadTopicFile } from "@/lib/project-memory/download-topic-file";
@@ -12,10 +13,13 @@ interface Props {
   projectId: string;
   projectName: string;
   onCancel: () => void;
+  onTopicsChanged?: () => void;
 }
 
-export default function ProjectMemoryListModal({ isOpen, projectId, projectName, onCancel }: Props) {
+export default function ProjectMemoryListModal({ isOpen, projectId, projectName, onCancel, onTopicsChanged }: Props) {
   const { topics, loading, error, canPromote, canInstructionEdit, promotingTopicId, uploading, uploadConfirm, instructionEdit,
+    selectionMode, selectedIds, pendingDelete, deleting, startSelection, stopSelection, toggleSelected,
+    openDeleteConfirm, cancelDeleteConfirm, executeDelete,
     pendingConfirm, confirmPromotion, cancelPromotionConfirm, setChatInclusion, chatInclusionTopicId,
     promote, selectUploadFile, executeUpload, cancelUploadConfirm, isActionLocked,
     openInstructionEdit, closeInstructionEdit, setInstructionEditInstruction, generateInstructionEditPreview,
@@ -61,16 +65,20 @@ export default function ProjectMemoryListModal({ isOpen, projectId, projectName,
         </div>
         <div style={{ overflowY: "auto", padding: "18px 28px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <ProjectMemoryTopicList topics={topics} loading={loading} error={error} expandedIds={expandedIds} onToggleExpanded={onToggleExpanded}
-            canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={isActionLocked()} chatInclusionTopicId={chatInclusionTopicId} onChatInclusionChange={(topic, include) => void setChatInclusion(topic, include)}
+            canPromote={canPromote} canInstructionEdit={canInstructionEdit} promotingTopicId={promotingTopicId} actionsLocked={isActionLocked() || selectionMode} chatInclusionTopicId={chatInclusionTopicId} onChatInclusionChange={(topic, include) => void setChatInclusion(topic, include)}
+            selectionMode={selectionMode} selectedIds={selectedIds} selectionLocked={isActionLocked()}
+            onStartSelection={startSelection} onStopSelection={stopSelection} onToggleSelected={toggleSelected} onDeleteSelected={openDeleteConfirm}
             pendingConfirm={pendingConfirm} onConfirmPromotion={() => void confirmPromotion()} onCancelPromotion={cancelPromotionConfirm}
             onDownload={downloadTopicFile} onPromote={(topic) => void promote(topic)} onInstructionEdit={openInstructionEdit} />
         </div>
         <div style={{ padding: "16px 28px 20px", borderTop: "1px solid var(--border, #e5e7eb)", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <input ref={uploadInputRef} type="file" accept=".md,.txt" onChange={selectUpload} style={{ display: "none" }} />
-          <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={isActionLocked()} style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border, #e5e7eb)", background: "white", cursor: "pointer" }}>ファイルをアップロード</button>
+          <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={isActionLocked() || selectionMode} style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border, #e5e7eb)", background: "white", cursor: "pointer" }}>ファイルをアップロード</button>
           <button onClick={() => { if (instructionEdit === null && !isActionLocked()) onCancel(); }} disabled={promotingTopicId !== null || uploading || uploadConfirm !== null || instructionEdit !== null || isActionLocked()} style={{ padding: "8px 16px", borderRadius: "7px", border: "1px solid var(--border, #e5e7eb)", background: "white", cursor: "pointer" }}>閉じる</button>
         </div>
       </div>
+      <ProjectMemoryDeleteConfirmModal confirm={pendingDelete} submitting={deleting} error={error}
+        onCancel={cancelDeleteConfirm} onConfirm={() => void executeDelete().then(success => { if (success) onTopicsChanged?.(); })} />
       <ProjectMemoryUploadConfirm confirm={uploadConfirm} uploading={uploading} onCancel={cancelUploadConfirm} onExecute={() => void executeUpload()} />
       <ProjectMemoryInstructionEditModal edit={instructionEdit} onInstructionChange={setInstructionEditInstruction}
         onGenerate={(instruction) => void generateInstructionEditPreview(instruction)}

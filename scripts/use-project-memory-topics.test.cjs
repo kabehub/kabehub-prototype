@@ -542,6 +542,95 @@ const header = (id = "A-topic") => `<!-- kabehub-topic:v1 ${JSON.stringify({ top
   console.log("ok - chat inclusion success, errors after reload, synchronous locks, no-ops and all stale async boundaries");
   console.log("ok - instruction edit lock, transitions, cancellation, apply, invalidation, and upload race");
   console.log("ok - useProjectMemoryTopics cache, request invalidation, and reload conditions");
+
+  let rows = [{...topic('A-topic'), content_md:'日😀', revision:3, include_in_chat:true, promotion:{status:'stale'}}], deleteBodies=[];
+  reset(async (_url,init={}) => { if(!init.method)return Response.json({topics:rows});deleteBodies.push(JSON.parse(init.body));return Response.json({deleted_count:1}); });
+  render();effects();await flush();
+  render().startSelection();assert.equal(render().selectionMode,true);assert.equal(render().isActionLocked(),false,'selection alone allows closing parent');
+  render().toggleSelected('A-topic');render().toggleSelected('missing');assert.deepEqual([...render().selectedIds],['A-topic']);
+  render().stopSelection();assert.equal(render().selectedIds.size,0);assert.equal(render().selectionMode,false);
+  render().startSelection();render().toggleSelected('A-topic');render().openDeleteConfirm();
+  assert.deepEqual(render().pendingDelete,[{id:'A-topic',topic_key:'A-topic',revision:3,chars:2,promotion:{status:'stale'},include_in_chat:true}]);
+  rows=[{...rows[0],revision:4}];await render().reload();assert.equal(render().pendingDelete[0].revision,3,'confirmation snapshot does not follow reload');
+  assert.equal(await render().executeDelete(),true);assert.deepEqual(deleteBodies,[{topics:[{id:'A-topic',expected_revision:3}]}]);
+  assert.equal(render().pendingDelete,null);assert.equal(render().selectionMode,false);assert.equal(render().selectedIds.size,0);
+
+  rows=[topic('A-topic'),topic('other')];
+  reset(async()=>Response.json({topics:rows}));render();effects();await flush();
+  render().startSelection();render().toggleSelected('A-topic');render().toggleSelected('other');
+  rows=[topic('other')];await render().reload();assert.deepEqual([...render().selectedIds],['other'],'reload prunes vanished IDs');
+  render({enabled:false});effects();assert.equal(render({enabled:false}).selectionMode,false);assert.equal(render({enabled:false}).selectedIds.size,0);
+
+  for(const status of [200,404,409,400,500,'network']) {
+    let count=0, requests=0;
+    reset(async(_url,init={})=>{if(!init.method){count++;return Response.json({topics:[topic('A-topic')]});}requests++;if(status==='network')throw Error('offline');return Response.json({error:'failed'}, {status});});
+    render();effects();await flush();render().startSelection();render().toggleSelected('A-topic');render().openDeleteConfirm();
+    const snapshot=render().pendingDelete;
+    assert.equal(await render().executeDelete(),status===200);
+    assert.equal(count,[200,404,409].includes(status)?2:1);
+    assert.equal(render().deleting,false);
+    if([200,404,409].includes(status)) {
+      assert.equal(render().pendingDelete,null);assert.equal(render().selectedIds.size,0);
+      if(status!==200)assert.equal(render().error,'選択後にtopicが変更または削除されました。一覧を更新したので、選び直してください');
+    } else {
+      assert.equal(render().pendingDelete,snapshot);assert.ok(render().error);assert.equal(render().selectedIds.size,1);
+      await render().executeDelete();assert.equal(requests,2,'same snapshot can retry');
+      render().cancelDeleteConfirm();assert.equal(render().pendingDelete,null);
+    }
+  }
+
+  let finishDelete, mutations=0;
+  reset(async(_url,init={})=>{if(!init.method)return Response.json({topics:[topic('A-topic')]});mutations++;return new Promise(resolve=>{finishDelete=resolve;});});
+  render();effects();await flush();
+  const beforeSelection=render();beforeSelection.startSelection();
+  // Existing closures must observe the synchronous selection and deletion refs.
+  await beforeSelection.promote(topic('A-topic'));await beforeSelection.selectUploadFile(file('new.md','new'));
+  beforeSelection.openInstructionEdit(topic('A-topic'));await beforeSelection.setChatInclusion(topic('A-topic'),true);
+  assert.equal(mutations,0);
+  render().toggleSelected('A-topic');render().openDeleteConfirm();const deletingView=render();const runningDelete=deletingView.executeDelete();
+  assert.equal(await deletingView.executeDelete(),false);assert.equal(deletingView.isActionLocked(),true);
+  deletingView.cancelDeleteConfirm();deletingView.stopSelection();deletingView.startSelection();deletingView.toggleSelected('A-topic');
+  await deletingView.promote(topic('A-topic'));await deletingView.selectUploadFile(file('new.md','new'));await deletingView.executeUpload();
+  deletingView.openInstructionEdit(topic('A-topic'));await deletingView.setChatInclusion(topic('A-topic'),true);
+  assert.equal(mutations,1);assert.ok(render().pendingDelete);assert.equal(render().instructionEdit,null);assert.equal(render().uploadConfirm,null);
+  finishDelete(Response.json({deleted_count:1}));await runningDelete;
+
+  // Delete cannot start selection during any other operation/confirmation.
+  for(const action of ['promote','upload','instruction','inclusion']) {
+    let release;
+    reset(async(_url,init={})=> !init.method ? Response.json({topics:[topic('A-topic')]}) : new Promise(resolve=>{release=resolve;}));
+    render();effects();await flush();let operation;
+    if(action==='promote')operation=render().promote(topic('A-topic'));
+    if(action==='upload')await render().selectUploadFile(file('new.md','new'));
+    if(action==='instruction')render().openInstructionEdit(topic('A-topic'));
+    if(action==='inclusion')operation=render().setChatInclusion(topic('A-topic'),true);
+    await flush();render().startSelection();render().openDeleteConfirm();assert.equal(render().selectionMode,false);assert.equal(render().pendingDelete,null);
+    if(action==='upload'){render().cancelUploadConfirm();await render().selectUploadFile(file('new.md','new'));operation=render().executeUpload();render().startSelection();assert.equal(render().selectionMode,false);}
+    if(operation){release(Response.json({}, {status:action==='upload'?201:200}));await operation;}
+  }
+
+  // Stale delete response, including switching during its reload, cannot clear B's selection.
+  for(const boundary of ['fetch','reload','disabled','unmount']) {
+    let finish, getA=0;
+    reset(async(url,init={})=>{
+      if(init.method)return boundary==='reload'?Response.json({deleted_count:1}):new Promise(resolve=>{finish=resolve;});
+      if(url.includes('/A/') && ++getA===2 && boundary==='reload')return new Promise(resolve=>{finish=resolve;});
+      return Response.json({topics:[topic(url.includes('/B/')?'B-topic':'A-topic')]});
+    });
+    render();effects();await flush();render().startSelection();render().toggleSelected('A-topic');render().openDeleteConfirm();const running=render().executeDelete();await flush();
+    if(boundary==='unmount')for(const cleanup of cleanups)cleanup?.();
+    else if(boundary==='disabled'){render({enabled:false});effects();}
+    else {render({projectId:'B'});effects();await flush();render({projectId:'B'}).startSelection();render({projectId:'B'}).toggleSelected('B-topic');}
+    const changes=stateChanges;finish(Response.json(boundary==='reload'?{topics:[topic('A-topic')]}:{deleted_count:1}));assert.equal(await running,false);
+    assert.equal(stateChanges,changes,'late delete must not set state');
+    if(['fetch','reload'].includes(boundary))assert.deepEqual([...render({projectId:'B'}).selectedIds],['B-topic']);
+  }
+  console.log('ok - bulk delete selection, snapshots, guards, all result branches, retry and stale boundaries');
+  reset(async()=>Response.json({topics:Array.from({length:51},(_,i)=>topic(String(i)))}));
+  render();effects();await flush();render().startSelection();
+  for(let i=0;i<51;i++)render().toggleSelected(String(i));
+  assert.equal(render().selectedIds.size,50);assert.equal(render().selectedIds.has('50'),false);
+  render().toggleSelected('0');render().toggleSelected('50');assert.equal(render().selectedIds.size,50);
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   global.fetch = originalFetch;
   Module._load = originalLoad;

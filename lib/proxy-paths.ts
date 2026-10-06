@@ -28,6 +28,7 @@ interface ApiAuthRule {
  * 未登録・重複・未exportメソッドは classifyApi() が null に倒す。
  */
 export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
+  { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/bulk-delete\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/[^/]+\/chat-inclusion\/?$/, methods: ["PATCH"], classification: "bearer" },
   { pattern: /^\/api\/account\/?$/, methods: ["DELETE"], classification: "bearer" },
   { pattern: /^\/api\/album\/?$/, methods: ["GET"], classification: "bearer" },
@@ -78,7 +79,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/projects\/[^/]+\/memory\/consolidate\/preview\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/memory\/bootstrap\/preview\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/?$/, methods: ["GET", "POST"], classification: "bearer" },
-  { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/[^/]+\/?$/, methods: ["GET", "PATCH"], classification: "bearer" },
+  { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/(?!bulk-delete(?:\/|$))[^/]+\/?$/, methods: ["GET", "PATCH"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/[^/]+\/edit-preview\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/projects\/[^/]+\/memory\/topics\/[^/]+\/promote\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/reports\/?$/, methods: ["POST"], classification: "bearer" },

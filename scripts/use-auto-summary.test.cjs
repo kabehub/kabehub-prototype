@@ -88,3 +88,17 @@ test('not_applicable refreshes with distinct Japanese notices; missing key displ
     await render().generate();assert.equal(requests,1);assert.equal(notices[0][1],'error');assert.match(notices[0][0],/OpenAI APIキー/);
   }finally{global.fetch=original;}
 });
+
+test('eligibility reload after deletion changes standard-topic button labels',async()=>{
+  const original=global.fetch;
+  try {
+    let keys=['overview','current-work','principles','references'];
+    reset(async()=>Response.json({topics:keys.map(topic_key=>({topic_key}))}));
+    render();effects();await flush();assert.equal(render().canGenerate,false);
+    keys=['overview'];await render().reload();
+    assert.equal(render().buttonLabel,'不足分を会話から作る');assert.equal(render().missingStandardTopicKeys.length,3);
+    keys=[];await render().reload();
+    assert.equal(render().buttonLabel,'会話からMemoryを作る');assert.equal(render().missingStandardTopicKeys.length,4);
+    assert.equal(render().canGenerate,true);
+  }finally{global.fetch=original;}
+});

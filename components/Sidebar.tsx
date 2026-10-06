@@ -1805,8 +1805,13 @@ export default function Sidebar({
           isOpen={memoryListOpen}
           projectId={projectSettingsModal.projectId}
           projectName={projectSettingsModal.folderName}
+          onTopicsChanged={() => {
+            void autoSummary.reload();
+            setProjectMemoryRefreshToken(value => value + 1);
+          }}
           onCancel={() => {
             setMemoryListOpen(false);
+            void autoSummary.reload();
             setProjectMemoryRefreshToken(value => value + 1);
           }}
         />

@@ -44,6 +44,7 @@ const Section = require(path.join(__dirname, "..", "components", "ProjectMemoryS
 const TopicList = require(path.join(__dirname, "..", "components", "ProjectMemoryTopicList.tsx")).default;
 const UploadConfirm = require(path.join(__dirname, "..", "components", "ProjectMemoryUploadConfirm.tsx")).default;
 const InstructionEditModal = require(path.join(__dirname, "..", "components", "ProjectMemoryInstructionEditModal.tsx")).default;
+const DeleteConfirm = require('../components/ProjectMemoryDeleteConfirmModal.tsx').default;
 const topic = { id: "topic-1", topic_key: "overview", content_md: "Content", include_in_chat: false, revision: 1, created_at: "", updated_at: "",
   promotion: { status: "not_promoted", source_revision: null, lore_id: null } };
 const render = () => { cursor = 0; return Section({ projectId: "project-1", projectName: "Project" }); };
@@ -159,6 +160,23 @@ const reset = (fetcher) => { state = []; cursor = 0; deps = []; cleanups = []; p
   assert.equal(find(render(), TopicList).props.topics[0].include_in_chat, true);
   assert.equal(find(render(), TopicList).props.chatInclusionTopicId, null);
   console.log("ok - library section forwards toggles, locks actions and reloads inclusion");
+
+  let deleted=false,deleteRequests=0;
+  reset(async(url,init={})=>{
+    if(init.method){assert.ok(url.endsWith('/bulk-delete'));deleteRequests++;assert.deepEqual(JSON.parse(init.body),{topics:[{id:topic.id,expected_revision:1}]});deleted=true;return Response.json({deleted_count:1});}
+    return Response.json({topics:deleted?[]:[topic]});
+  });
+  render();effects();find(render(),'button').props.onClick();render();effects();await flush();
+  find(render(),TopicList).props.onStartSelection();tree=render();
+  assert.equal(find(tree,TopicList).props.actionsLocked,true);assert.equal(find(tree,TopicList).props.selectionLocked,false);
+  assert.equal(find(tree,'button').props.disabled,false,'selection allows collapsing library section');
+  assert.equal(find(tree,'button','ファイルをアップロード').props.disabled,true);
+  find(tree,TopicList).props.onToggleSelected(topic.id);find(render(),TopicList).props.onDeleteSelected();
+  assert.equal(find(render(),DeleteConfirm).props.confirm[0].chars,7);
+  assert.equal(find(render(),'button').props.disabled,true);
+  find(render(),DeleteConfirm).props.onConfirm();await flush();
+  assert.equal(deleteRequests,1);assert.equal(find(render(),DeleteConfirm).props.confirm,null);
+  assert.equal(find(render(),TopicList).props.selectionMode,false);assert.deepEqual(find(render(),TopicList).props.topics,[]);
 
   key = null;
   reset(async () => new Response(null, { status: 500 }));

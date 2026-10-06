@@ -6,7 +6,7 @@ const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs")
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 let state = [], cursor = 0, mounting = false, pendingEffects = [], modalProps = {}, memoryProps = null;
-let consolidationResult = [], consolidationCalls = [], toasts = [], auto = {}, generateCalls = 0;
+let consolidationResult = [], consolidationCalls = [], toasts = [], auto = {}, generateCalls = 0, autoReloads = 0;
 const hooks = { ...React,
   useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === "function" ? initial() : initial; return [state[i], value => { state[i] = typeof value === "function" ? value(state[i]) : value; }]; },
   useRef(initial) { return { current: initial }; },
@@ -65,11 +65,12 @@ function button(nodes, label) {
   assert.equal(matches.length, 1, label); return matches[0];
 }
 async function setup() {
-  state = []; pendingEffects = []; consolidationCalls = []; toasts = []; generateCalls = 0;
+  state = []; pendingEffects = []; consolidationCalls = []; toasts = []; generateCalls = 0; autoReloads = 0;
   auto = {
     buttonLabel: "会話からMemoryを作る", canGenerate: true, error: null, generating: false,
     preview: null, isApplying: false, results: null,
     async generate() { generateCalls++; }, async apply() {}, close() {},
+    async reload() { autoReloads++; },
   };
   global.fetch = async (url) => {
     if (url === "/api/projects") return Response.json({ projects: [{ id: projectId, name: "Project" }] });
@@ -97,8 +98,12 @@ test("Sidebar lazy mounts only the Memory tab and closing its list increments re
     memoryProps.autoSummary.onGenerate(); assert.equal(generateCalls, 1);
     memoryProps.list.onOpen(); render(); assert.equal(modalProps.ProjectMemoryListModal.isOpen, true);
     modalProps.ProjectMemoryListModal.onCancel(); render();
+    assert.equal(autoReloads, 1);
     assert.equal(memoryProps.refreshToken, 1); assert.equal(modalProps.ProjectMemoryListModal.isOpen, false);
     modalProps.ProjectMemoryListModal.onCancel(); render(); assert.equal(memoryProps.refreshToken, 2);
+    assert.equal(autoReloads, 2);
+    modalProps.ProjectMemoryListModal.onTopicsChanged(); render();
+    assert.equal(autoReloads, 3); assert.equal(memoryProps.refreshToken, 3);
     button(nodes, "指示").props.onClick(); nodes = render(); assert.equal(memoryProps, null);
     assert.equal(nodes.find(node => node.props.id === "project-settings-panel-memory").props.hidden, true);
   } finally { global.fetch = original; }

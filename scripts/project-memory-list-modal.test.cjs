@@ -67,6 +67,7 @@ const Modal = require(path.join(__dirname, "..", "components", "ProjectMemoryLis
 const ProjectMemoryTopicList = require(path.join(__dirname, "..", "components", "ProjectMemoryTopicList.tsx")).default;
 const ProjectMemoryUploadConfirm = require(path.join(__dirname, "..", "components", "ProjectMemoryUploadConfirm.tsx")).default;
 const ProjectMemoryInstructionEditModal = require(path.join(__dirname, "..", "components", "ProjectMemoryInstructionEditModal.tsx")).default;
+const DeleteConfirm = require('../components/ProjectMemoryDeleteConfirmModal.tsx').default;
 
 function render() {
   cursor = 0;
@@ -146,7 +147,7 @@ async function flush() {
   const findButton = (root, label) => nodes(root).find((node) => node.type === "button" && node.props.children === label);
   const uploadInput = (root) => nodes(root).find((node) => node.type === "input" && node.props.type === "file");
   const alert = (root) => nodes(root).find((node) => node.props?.role === "alert")?.props.children;
-  const setup = async (handler, onCancel = () => {}) => {
+  const setup = async (handler, onCancel = () => {}, onTopicsChanged = () => {}) => {
     keyListeners.clear();
     state = []; cursor = 0; effects = []; effectDeps = []; effectCleanups = []; firstRender = true;
     global.fetch = handler;
@@ -155,7 +156,7 @@ async function flush() {
     await flush();
     return () => {
       cursor = 0;
-      return Modal({ isOpen: true, projectId: "project-1", projectName: "Project", onCancel });
+      return Modal({ isOpen: true, projectId: "project-1", projectName: "Project", onCancel, onTopicsChanged });
     };
   };
   const choose = async (root, name, content) => {
@@ -331,6 +332,26 @@ async function flush() {
   assert.equal(element(view(), ProjectMemoryTopicList).props.chatInclusionTopicId, null);
   console.log("ok - sidebar modal forwards toggles, locks actions and reloads inclusion");
   console.log("ok - ProjectMemoryListModal upload/download and promotion guards");
+  let changed=0,deleted=false,deleteRequests=0;
+  closes=0;
+  view=await setup(async(url,init={})=>{
+    if(init.method){assert.ok(url.endsWith('/bulk-delete'));deleteRequests++;assert.deepEqual(JSON.parse(init.body),{topics:[{id:topic.id,expected_revision:1}]});deleted=true;return Response.json({deleted_count:1});}
+    return Response.json({topics:deleted?[]:[topic]});
+  },()=>closes++,()=>changed++);
+  element(view(),ProjectMemoryTopicList).props.onStartSelection();tree=view();
+  assert.equal(element(tree,ProjectMemoryTopicList).props.actionsLocked,true);
+  assert.equal(findButton(tree,'ファイルをアップロード').props.disabled,true);
+  assert.equal(findButton(tree,'閉じる').props.disabled,false,'selection does not lock parent');
+  assert.equal(findButton(tree,'DL').props.disabled,undefined);
+  assert.equal(nodes(tree).find(n=>n.type==='button' && String(n.props.children).includes('件を削除')).props.disabled,true);
+  element(tree,ProjectMemoryTopicList).props.onToggleSelected(topic.id);element(view(),ProjectMemoryTopicList).props.onDeleteSelected();tree=view();
+  const deletion=element(tree,DeleteConfirm);assert.equal(deletion.props.confirm[0].revision,1);
+  assert.equal(findButton(tree,'閉じる').props.disabled,true);
+  onEscape({key:'Escape'});assert.equal(closes,0);
+  deletion.props.onConfirm();await flush();
+  assert.equal(deleteRequests,1);assert.equal(changed,1);assert.equal(element(view(),DeleteConfirm).props.confirm,null);
+  assert.equal(element(view(),ProjectMemoryTopicList).props.selectionMode,false);
+  assert.equal(element(view(),ProjectMemoryTopicList).props.topics.length,0);
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   global.fetch = originalFetch;
   global.window = originalWindow;

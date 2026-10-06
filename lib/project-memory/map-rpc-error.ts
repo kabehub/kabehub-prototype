@@ -1,4 +1,8 @@
 const MESSAGE_STATUS_MAP: Record<string, { status: number; error: string }> = {
+  "topics must be a jsonb array": { status: 400, error: "topics must be a jsonb array" },
+  "topics must contain 1 to 50 items": { status: 400, error: "topics must contain 1 to 50 items" },
+  "invalid topic element": { status: 400, error: "invalid topic element" },
+  "duplicate topic_id": { status: 400, error: "duplicate topic_id" },
   "project not found": { status: 404, error: "Project not found" },
   "topic not found": { status: 404, error: "Topic not found" },
   "topic is empty": { status: 400, error: "Topic is empty" },
