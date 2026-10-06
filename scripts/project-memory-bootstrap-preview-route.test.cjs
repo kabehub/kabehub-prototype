@@ -33,7 +33,7 @@ test('all standard topics or no eligible conversations skip LLM',async()=>{
 test('success contract, missing-only request, key trimming, completion budget, no existing body reads or writes',async()=>{
   reset([{topic_key:'overview',content_md:'PRIVATE EXISTING BODY',project_id:'p'}]);
   const response=await post(' key '); const body=await response.json();
-  assert.equal(response.status,200);assert.equal(body.result,'preview');assert.equal(body.prompt_version,2);assert.equal(typeof body.run_id,'string');
+  assert.equal(response.status,200);assert.equal(body.result,'preview');assert.equal(body.prompt_version,3);assert.equal(typeof body.run_id,'string');
   assert.deepEqual(JSON.parse(captured.input).requested_topics.map(t=>t.topic_key),keys.slice(1));
   assert.ok(!captured.input.includes('PRIVATE EXISTING BODY'));assert.equal(captured.key,'key');assert.deepEqual(captured.opts,{jsonMode:true,maxCompletionTokens:16384});
   assert.equal(body.stats.input_chars,captured.input.length);assert.equal(body.considered_threads.length,1);

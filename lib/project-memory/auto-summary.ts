@@ -10,16 +10,16 @@ import {
   type AutoSummaryTopicKey, type AutoSummaryTopic, type AutoSummaryStats, type AutoSummaryConsideredThread,
 } from "./auto-summary-limits";
 
-export const AUTO_SUMMARY_PROMPT_VERSION = 2;
+export const AUTO_SUMMARY_PROMPT_VERSION = 3;
 const THREAD_PAGE_SIZE = 500;
 const MESSAGE_PAGE_SIZE = 100;
 const PREFLIGHT_CONCURRENCY = 4;
 const MIN_REMAINING_CHARS = 500;
 const MAX_TITLE_CHARS = 200;
 const TOPIC_ROLES: Record<AutoSummaryTopicKey, string> = {
-  overview: "Purpose, background, scope, identity, specifications, and facts within the observed conversations; do not assert coverage of the entire Project. Never treat AI proposals as established without explicit user approval",
-  "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Never treat AI proposals as established without explicit user approval",
-  principles: "Only enduring rules and policies explicitly stated by the user. Exclude status reports, completion reports, specifications, and facts; place these in current-work, overview, or references as appropriate. Never treat AI proposals as established without explicit user approval",
+  overview: "Purpose, background, scope, identity, specifications, and facts within the observed conversations; do not assert coverage of the entire Project. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
+  "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
+  principles: "Standing instructions and decisions the user explicitly gave about how to work on or respond within this Project (for example workflow, development or writing conventions, constraints, output preferences). Do not include the user's opinions, analyses, beliefs, or claims about the world; describe those in overview or current-work as the user's views. Do not include status reports, completion reports, specifications, or facts. If the user gave no such standing instruction, return an empty string. Never treat AI proposals as established without explicit user approval",
   references: "Referenced materials, links, files, tools, terminology, specifications, configuration values, and facts. Never treat AI proposals as established without explicit user approval",
 };
 export const AUTO_SUMMARY_SYSTEM_PROMPT = `You create initial Project Memory topics from project conversations.
@@ -29,6 +29,7 @@ Safety and correctness requirements:
 - Do not add facts absent from the input. Preserve uncertainty.
 - Resolve contradictions using the newer message created_at, including across threads.
 - Return only the requested topic_key set. Use an empty content_md string when evidence is absent.
+- Do not fill principles with opinions or analyses. If there is no evidence of standing instructions or decisions about how to work on or respond within this Project, return an empty content_md string for principles.
 - Each topic must be complete by itself and must not depend on another topic.
 - Avoid unnecessary duplication, but allow minimal duplication needed for each topic to be understood independently.
 - Input may contain only part of the conversations. Write within the observed conversation scope and avoid assertions about the entire Project.
