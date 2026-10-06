@@ -7,6 +7,12 @@ const { normalizeLiteralNewlines: normalize } = require('../lib/project-memory/n
 const cases = [
   ['prose', '一行目\\n二行目', '一行目\n二行目'],
   ['Windows path', 'C:\\new\\file.txt', 'C:\\new\\file.txt'],
+  ['English heading Goal', 'Goal:\\n- a\\n- b', 'Goal:\n- a\n- b'],
+  ['English heading references', 'references:\\n- x', 'references:\n- x'],
+  ['path after whitespace', 'URL: C:\\new\\f.txt 後\\n末尾', 'URL: C:\\new\\f.txt 後\n末尾'],
+  ['drive after digit is prose', '1C:\\n末尾', '1C:\n末尾'],
+  ['drive after punctuation', '(C:\\new\\file.txt) 後\\n末尾', '(C:\\new\\file.txt) 後\n末尾'],
+  ['drive after full-width character', '先C:\\new\\file.txt 後\\n末尾', '先C:\\new\\file.txt 後\n末尾'],
   ['UNC path', '\\\\server\\new\\share', '\\\\server\\new\\share'],
   ['fenced code', '```js\nconst s = "\\n";\n```', '```js\nconst s = "\\n";\n```'],
   ['inline code', '`\\n`', '`\\n`'],

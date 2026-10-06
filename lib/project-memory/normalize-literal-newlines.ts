@@ -15,7 +15,8 @@ export function normalizeLiteralNewlines(content: string): string {
         while (content[cursor] === "`") cursor++;
         if (cursor - start === width) { end = cursor; break; }
       }
-    } else if (/^[A-Za-z]:\\/.test(content.slice(i, i + 3)) || content.startsWith("\\\\", i)) {
+    } else if ((/^[A-Za-z]:\\/.test(content.slice(i, i + 3)) &&
+      (i === 0 || !/[A-Za-z0-9]/.test(content[i - 1]))) || content.startsWith("\\\\", i)) {
       while (end < content.length && !/\s/.test(content[end])) end++;
     }
     if (end > i) {
