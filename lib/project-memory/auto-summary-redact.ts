@@ -33,12 +33,12 @@ export function maskAutoSummarySecrets(content: string): string {
   return maskPrivateKeys(content)
     // The left boundary prevents retrying a long non-email run at every character.
     .replace(/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, REDACTED)
-    .replace(/sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, REDACTED)
+    .replace(/(?<![A-Za-z0-9])sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, REDACTED)
     .replace(/gh[pousr]_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,}/g, REDACTED)
-    .replace(/AIza[A-Za-z0-9_-]{35,}/g, REDACTED)
-    .replace(/(?:AKIA|ASIA)[A-Z0-9]{16,}/g, REDACTED)
+    .replace(/(?<![A-Za-z0-9])AIza[A-Za-z0-9_-]{35,}/g, REDACTED)
+    .replace(/(?<![A-Za-z0-9])(?:AKIA|ASIA)[A-Z0-9]{16,}/g, REDACTED)
     .replace(/Bearer +[A-Za-z0-9._~+\/-]{20,}=*/gi, REDACTED)
-    .replace(/xox[baprs]-[A-Za-z0-9_-]+/g, REDACTED)
+    .replace(/(?<![A-Za-z0-9])xox[baprs]-[A-Za-z0-9_-]+/g, REDACTED)
     // Split each run once rather than retrying every eyJ prefix in a failed JWT.
     .replace(/[A-Za-z0-9_.-]+/g, run => {
       const segments = run.split(".");

@@ -18,7 +18,18 @@ test('known email and credential formats are replaced in full, including mixed i
 
 test('ordinary text, excluded identifier formats and empty input stay unchanged',()=>{
   for(const value of ['', '日本語の通常文です。task-listを確認する。', '電話03-1234-5678、住所東京都、口座1234567',
-    'sk-short ghp_short github_pat_short Bearer short', 'hello@localhost'])assert.equal(mask(value),value);
+    'sk-short ghp_short github_pat_short Bearer short', 'hello@localhost',
+    'task-management-system-overview', 'risk-adjusted-return-model', 'disk-based-storage-engine'])assert.equal(mask(value),value);
+});
+
+test('bounded secret masks accept delimiters and preserve alphanumeric-prefixed text',()=>{
+  const secrets=['sk-'+'a'.repeat(20),'sk-ant-'+'a'.repeat(20),
+    'AKIA'+'A1'.repeat(8),'ASIA'+'B2'.repeat(8),'AIza'+'a'.repeat(35),
+    ...'baprs'.split('').map(c=>'xox'+c+'-123-abc')];
+  for(const secret of secrets){
+    for(const prefix of ['', ' ', '"', "'", '='])assert.equal(mask(prefix+secret),prefix+'[redacted]');
+    for(const prefix of ['a','Z','0'])assert.equal(mask(prefix+secret),prefix+secret);
+  }
 });
 
 test('private key blocks include newlines; missing END replaces only BEGIN line',()=>{
