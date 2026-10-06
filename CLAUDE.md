@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/05 — 課題B完了・バッジ厳密化・再生成のqueryText保持
+最終更新: 2026/10/06 — 自動要約Phase A（改行補正・プロンプトv2・部分読み警告・デフォルトOFF案内）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -288,7 +288,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/consolidation.ts` | 整理案のLLM契約・入力構築・応答parse（入力上限20,000文字・出力8,192トークン） |
 | `lib/project-memory/consolidation-client.ts` | 整理案の適用（topicごとに既存PATCH） |
 | `lib/project-memory/auto-summary-limits.ts` | importゼロのclient-safe定数・共有型。暫定値：最終入力60,000文字、1発言8,000文字、最低user発言2件、最大100スレッド、出力16,384トークン |
-| `lib/project-memory/auto-summary.ts` | server用。thread全件ページング・並列数4のpreflight・最新発言順の候補選定・新しい側からmessageページング・JSON文字数予算・最終統計再計算・LLM strict JSON契約。入力はconsolidationと同じJSON.stringify方式、全入力をuntrusted dataとして扱う |
+| `lib/project-memory/auto-summary.ts` | server用。thread全件ページング・並列数4のpreflight・最新発言順の候補選定・新しい側からmessageページング・JSON文字数予算・最終統計再計算・LLM strict JSON契約。プロンプトv2は改行・部分読み・4分類の境界・ユーザー未承認のAI提案の除外・必要最小限の重複を明示。strict検証後のcontent_mdを改行補正する。入力はconsolidationと同じJSON.stringify方式、全入力をuntrusted dataとして扱う |
+| `lib/project-memory/normalize-literal-newlines.ts` | importゼロの純関数。保護スパン外の文字としてのバックスラッシュ＋nを実改行へ補正。バッククォートのコード範囲・Windowsドライブパス・UNCパス・直前がバックスラッシュの対象を保持。閉じていないコード等の曖昧な範囲は保持し、冪等 |
 | `lib/project-memory/auto-summary-client.ts` | bootstrap previewのstrict検証・取得と既存topics POSTの並列適用。source_refs配列に本文を含まない来歴を記録、201/409/その他を個別分類 |
 | `lib/project-memory/use-auto-summary.ts` | 設定を開いた際のeligibility取得、古いProject応答の破棄、APIキー取得、生成・承認・適用結果の管理。全適用結果とnot_applicableで一覧再取得。同じ生成案は再適用しない |
 
@@ -311,7 +312,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-テスト102本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
+テスト103本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 10本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -346,6 +347,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/pricing.test.cjs` | registry由来料金・費用計算・表示formatを検証 |
 | `scripts/project-memory-*.test.cjs` / `scripts/projects-*-route.test.cjs` / `scripts/instruction-edit-client.test.cjs` / `scripts/use-project-memory-topics.test.cjs` | Project Memory API・hook・UI・migration契約の回帰テスト |
 | `scripts/project-memory-auto-summary.test.cjs` / `scripts/project-memory-bootstrap-preview-route.test.cjs` / `scripts/auto-summary-client.test.cjs` / `scripts/use-auto-summary.test.cjs` / `scripts/project-memory-bootstrap-modal.test.cjs` | 初回生成の選定・ページング・文字数予算・LLM契約・preview Route・client strict検証・並列作成・eligibility再取得／競合応答・モーダル操作を検証（共通DBモデルは`auto-summary-test-helpers.cjs`） |
+| `scripts/normalize-literal-newlines.test.cjs` | 改行補正の固定入出力・コード/パス/連続バックスラッシュのバイト保持・フェンス内外混在・曖昧なコード範囲の保持・冪等性を検証（14ケース） |
 | `scripts/verify-project-memory-*.mjs` | 実DB（test環境）向けの手動検証スクリプト。通常のテスト実行には含めない |
 | `scripts/proxy.test.cjs` | `proxy.ts`のmatcher・認証境界・redirect・CSP付与をマトリクス検証 |
 | `scripts/rate-limit.test.cjs` | rate limiter生成・制限判定・fallbackを検証 |

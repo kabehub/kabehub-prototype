@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { installAliasResolver, installTsLoader } = require('./testBootstrap.cjs');
 installAliasResolver(); installTsLoader();
 const { database, thread, message } = require('./auto-summary-test-helpers.cjs');
-const { selectAutoSummaryInput, finalizeAutoSummaryInput, parseAutoSummaryResponse, AUTO_SUMMARY_SYSTEM_PROMPT } = require('../lib/project-memory/auto-summary.ts');
+const { selectAutoSummaryInput, finalizeAutoSummaryInput, parseAutoSummaryResponse, buildAutoSummaryInput, AUTO_SUMMARY_SYSTEM_PROMPT, AUTO_SUMMARY_PROMPT_VERSION } = require('../lib/project-memory/auto-summary.ts');
 const { MAX_AUTO_SUMMARY_INPUT_CHARS, AUTO_SUMMARY_TRUNCATION_MARKER } = require('../lib/project-memory/auto-summary-limits.ts');
 const select = db => selectAutoSummaryInput(db, 'u','p',['overview']);
 
@@ -69,10 +69,24 @@ test('final trim removes empty threads and recomputes canonical counts and cut f
 test('strict LLM parsing rejects unknown keys, duplicates, missing/extra topics, wrong types and invalid JSON; permits empty evidence', () => {
   const good={topic_key:'overview',content_md:''};
   assert.deepEqual(parseAutoSummaryResponse(JSON.stringify({topics:[good]}),['overview']),[good]);
+  assert.deepEqual(parseAutoSummaryResponse(JSON.stringify({topics:[{...good,content_md:'一行目\\n二行目'}]}),['overview']),[{...good,content_md:'一行目\n二行目'}]);
   for(const body of ['bad','[]',JSON.stringify({topics:[good],extra:1}),JSON.stringify({topics:[]}),
     JSON.stringify({topics:[good,good]}),JSON.stringify({topics:[{...good,extra:1}]}),
     JSON.stringify({topics:[{...good,content_md:1}]}),JSON.stringify({topics:[{...good,topic_key:'current_state'}]})]) {
     assert.throws(()=>parseAutoSummaryResponse(body,['overview']),/^Error: Invalid auto summary response:/);
   }
   for(const phrase of ['untrusted data','Assistant messages','explicitly approved','created_at','complete by itself','predominant language']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase));
+});
+
+test('prompt v2 states newline, partial input, independent topics and role boundaries', () => {
+  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 2);
+  for (const phrase of ['actual line breaks', 'backslash + n (\\n)', 'not double escaping', 'only part of the conversations', 'observed conversation scope', 'avoid assertions about the entire Project', 'Avoid unnecessary duplication', 'allow minimal duplication']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);
+  const roles = JSON.parse(buildAutoSummaryInput(['overview','current-work','principles','references'], [])).requested_topics;
+  const byKey = Object.fromEntries(roles.map(t => [t.topic_key,t.role]));
+  assert.match(byKey.principles, /Only enduring rules and policies explicitly stated by the user/);
+  assert.match(byKey.principles, /Exclude status reports, completion reports, specifications, and facts/);
+  assert.match(byKey['current-work'], /status reports, and reports of completed fixes/);
+  assert.match(byKey.overview, /specifications, and facts/);
+  assert.match(byKey.references, /terminology, specifications, configuration values, and facts/);
+  for (const role of Object.values(byKey)) assert.match(role, /Never treat AI proposals as established without explicit user approval/);
 });

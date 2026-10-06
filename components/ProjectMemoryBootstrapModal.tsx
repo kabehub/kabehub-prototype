@@ -30,7 +30,9 @@ export default function ProjectMemoryBootstrapModal({ projectName, preview, isAp
         <h2 id="project-memory-bootstrap-title" style={{ fontSize: "17px", fontWeight: 600 }}>「{projectName}」のMemory作成案</h2>
         <p style={{ fontSize: "12px", color: "var(--ink-muted, #6b7280)" }}>採用するtopicを選択してください。</p>
         <p style={{ fontSize: "12px" }}>{preview.stats.threads_total}件のスレッドのうち{preview.stats.threads_included}件を使用（対象条件を満たすスレッド: {preview.stats.threads_eligible}件）</p>
-        {(preview.stats.threads_truncated > 0 || preview.stats.messages_truncated > 0) && <p style={{ color: "#b45309", fontSize: "12px" }}>一部省略されています</p>}
+        {preview.stats.threads_included < preview.stats.threads_eligible && <p style={{ color: "#b45309", fontSize: "12px" }}>対象{preview.stats.threads_eligible}件中{preview.stats.threads_included}件のみ使用しています。Project全体を網羅していません</p>}
+        {(preview.stats.threads_truncated > 0 || preview.stats.messages_truncated > 0) && <p style={{ color: "#b45309", fontSize: "12px" }}>使用したスレッド内にも省略があります</p>}
+        <p style={{ fontSize: "12px", color: "var(--ink-muted, #6b7280)" }}>作成したtopicは、デフォルトでは『チャットに含める』がOFFです。Project Memory一覧でONにすると、チャットに注入されます。</p>
       </div>
       <div style={{ overflowY: "auto", padding: "18px 28px", display: "flex", flexDirection: "column", gap: "16px" }}>
         {preview.topics.map(topic => {

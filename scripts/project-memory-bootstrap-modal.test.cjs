@@ -22,7 +22,7 @@ test('modal selects topics, uses empty old diff, displays stats/truncation/resul
     state=[];cursor=0;effects=[];let applied,cancelled=0;const p=preview();p.stats.threads_truncated=1;
     const props={projectName:'Example',preview:p,isApplying:false,results:null,onApply:keys=>applied=keys,onCancel:()=>cancelled++};
     let tree=Modal(props);effects.forEach(fn=>fn());
-    assert.match(strings(tree),/2件のスレッドのうち1件を使用/);assert.match(strings(tree),/一部省略されています/);
+    assert.match(strings(tree),/2件のスレッドのうち1件を使用/);assert.match(strings(tree),/使用したスレッド内にも省略があります/);
     let all=nodes(tree);assert.equal(all.filter(n=>n.type==='input'&&n.props.checked).length,3);
     assert.equal(all.filter(n=>n.props.oldText==='').length,3);
     all.find(n=>n.type==='input').props.onChange();cursor=0;effects=[];tree=Modal(props);
@@ -35,4 +35,20 @@ test('modal selects topics, uses empty old diff, displays stats/truncation/resul
     assert.match(strings(tree),/作成済み/);assert.match(strings(tree),/別の操作/);assert.match(strings(tree),/表示用エラー/);assert.ok(nodes(tree).filter(n=>n.type==='input').every(n=>n.props.disabled));
     const sidebar=fs.readFileSync(require.resolve('../components/Sidebar.tsx'),'utf8');assert.match(sidebar,/useAutoSummary/);assert.match(sidebar,/disabled=\{!autoSummary.canGenerate/);assert.match(sidebar,/inert=\{autoSummary.preview !== null\}/);
   }finally{global.window=original;}
+});
+
+test('partial coverage uses eligible denominator, truncation adds warning, and OFF guidance always appears',()=>{
+  for (const [included, eligible, threadsCut, messagesCut, coverage, omission] of [
+    [1,3,0,0,true,false], [1,3,1,0,true,true], [1,3,0,1,true,true],
+    [3,3,0,0,false,false], [3,3,1,0,false,true],
+  ]) {
+    state=[];cursor=0;effects=[];
+    const p=preview();Object.assign(p.stats,{threads_total:5,threads_included:included,threads_eligible:eligible,threads_truncated:threadsCut,messages_truncated:messagesCut});
+    const text=strings(Modal({projectName:'Example',preview:p,isApplying:false,results:null,onApply(){},onCancel(){}}));
+    assert.equal(text.includes(`対象${eligible}件中${included}件のみ使用しています。Project全体を網羅していません`),coverage);
+    assert.equal(text.includes('使用したスレッド内にも省略があります'),omission);
+    assert.ok(text.includes(`5件のスレッドのうち${included}件を使用（対象条件を満たすスレッド: ${eligible}件）`));
+    assert.ok(text.includes('作成したtopicは、デフォルトでは『チャットに含める』がOFFです。Project Memory一覧でONにすると、チャットに注入されます。'));
+    assert.ok(!text.includes('一部省略されています'));
+  }
 });

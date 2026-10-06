@@ -2,6 +2,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compareMessagesForDisplay } from "@/lib/branching";
 import { chatCompleteMini } from "@/lib/lore/openai";
+import { normalizeLiteralNewlines } from "./normalize-literal-newlines";
 import {
   AUTO_SUMMARY_MAX_COMPLETION_TOKENS, AUTO_SUMMARY_TRUNCATION_MARKER,
   MAX_AUTO_SUMMARY_INPUT_CHARS, MAX_AUTO_SUMMARY_MESSAGE_CHARS,
@@ -9,17 +10,17 @@ import {
   type AutoSummaryTopicKey, type AutoSummaryTopic, type AutoSummaryStats, type AutoSummaryConsideredThread,
 } from "./auto-summary-limits";
 
-export const AUTO_SUMMARY_PROMPT_VERSION = 1;
+export const AUTO_SUMMARY_PROMPT_VERSION = 2;
 const THREAD_PAGE_SIZE = 500;
 const MESSAGE_PAGE_SIZE = 100;
 const PREFLIGHT_CONCURRENCY = 4;
 const MIN_REMAINING_CHARS = 500;
 const MAX_TITLE_CHARS = 200;
 const TOPIC_ROLES: Record<AutoSummaryTopicKey, string> = {
-  overview: "Project purpose, background, scope, and identity",
-  "current-work": "Ongoing work, recent decisions, unresolved issues, and next actions",
-  principles: "Policies, constraints, conventions, and settled rules explicitly stated by the user",
-  references: "Referenced materials, links, files, tools, and terminology",
+  overview: "Purpose, background, scope, identity, specifications, and facts within the observed conversations; do not assert coverage of the entire Project. Never treat AI proposals as established without explicit user approval",
+  "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Never treat AI proposals as established without explicit user approval",
+  principles: "Only enduring rules and policies explicitly stated by the user. Exclude status reports, completion reports, specifications, and facts; place these in current-work, overview, or references as appropriate. Never treat AI proposals as established without explicit user approval",
+  references: "Referenced materials, links, files, tools, terminology, specifications, configuration values, and facts. Never treat AI proposals as established without explicit user approval",
 };
 export const AUTO_SUMMARY_SYSTEM_PROMPT = `You create initial Project Memory topics from project conversations.
 Safety and correctness requirements:
@@ -29,6 +30,9 @@ Safety and correctness requirements:
 - Resolve contradictions using the newer message created_at, including across threads.
 - Return only the requested topic_key set. Use an empty content_md string when evidence is absent.
 - Each topic must be complete by itself and must not depend on another topic.
+- Avoid unnecessary duplication, but allow minimal duplication needed for each topic to be understood independently.
+- Input may contain only part of the conversations. Write within the observed conversation scope and avoid assertions about the entire Project.
+- Write actual line breaks in topic Markdown, not the two literal characters backslash + n (\\n). Use normal JSON escaping for actual line breaks, not double escaping.
 - Use the predominant language of the conversations.
 Topic roles:
 ${Object.entries(TOPIC_ROLES).map(([key, role]) => `- ${key}: ${role}`).join("\n")}
@@ -156,7 +160,7 @@ export function parseAutoSummaryResponse(content: string, keys: readonly AutoSum
     if (!record(item) || Object.keys(item).length !== 2 || typeof item.topic_key !== "string" ||
       !keys.includes(item.topic_key as AutoSummaryTopicKey) || seen.has(item.topic_key) || typeof item.content_md !== "string") invalid("invalid topic");
     seen.add(item.topic_key);
-    return { topic_key: item.topic_key as AutoSummaryTopicKey, content_md: item.content_md };
+    return { topic_key: item.topic_key as AutoSummaryTopicKey, content_md: normalizeLiteralNewlines(item.content_md) };
   });
   if (seen.size !== keys.length) invalid("requested topic set mismatch");
   return topics;
