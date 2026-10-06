@@ -4,6 +4,14 @@ const {installAliasResolver,installTsLoader}=require('./testBootstrap.cjs');
 installAliasResolver();installTsLoader();
 const {parseBootstrapPreview,applyAutoSummary,requestAutoSummaryPreview}=require('../lib/project-memory/auto-summary-client.ts');
 const {preview}=require('./auto-summary-test-helpers.cjs');
+
+test('client accepts prompt v7 and carries v7 into applied provenance',async()=>{
+  const p={...preview(),prompt_version:7};
+  assert.deepEqual(parseBootstrapPreview(p),p);
+  let body;
+  await applyAutoSummary('p',p,['overview'],async(url,init)=>{body=JSON.parse(init.body);return Response.json({},{status:201});});
+  assert.equal(body.source_refs[0].prompt_version,7);
+});
 test('strict client rejects unknown fields at all levels, types, duplicates, invalid numbers and nonstandard/empty topics',()=>{
   assert.ok(parseBootstrapPreview(preview()));
   const mutations=[p=>p.extra=true,p=>p.prompt_version=0,p=>p.prompt_version=Infinity,p=>p.run_id='',p=>p.model=null,

@@ -8,6 +8,66 @@ const { MAX_AUTO_SUMMARY_INPUT_CHARS, MAX_AUTO_SUMMARY_MESSAGE_CHARS, MAX_AUTO_S
 const select = db => selectAutoSummaryInput(db, 'u','p',['overview']);
 const entries = thread => thread.days.flatMap(day => day.m);
 
+test('v7 adds exactly two sensitive-content rules to the verbatim v6 prompt snapshot',()=>{
+  const fs=require('node:fs'),path=require('node:path');
+  const rules=[
+    '- Never record secrets (API keys, tokens, passwords, private keys) or personal identifiers (email addresses, phone numbers, postal addresses, government IDs, bank or card numbers) in any topic, even if they appear in the input. Omit them entirely; do not write masked forms, placeholders, or a note that something was omitted.',
+    '- The token "[redacted]" in a message marks removed sensitive content. Do not mention it, and do not infer what it replaced.',
+  ];
+  const source=fs.readFileSync(require.resolve('../lib/project-memory/auto-summary.ts'),'utf8').replace(/\r\n/g,'\n');
+  let prompt=source.slice(source.indexOf('const TOPIC_ROLES:'),source.indexOf('\ntype ThreadRow'));
+  for(const rule of rules){assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(rule));assert.equal(prompt.split(rule).length,2);prompt=prompt.replace(rule+'\n','');}
+  assert.equal(prompt,fs.readFileSync(path.join(__dirname,'fixtures/auto-summary-prompt-v6.txt'),'utf8').replace(/\r\n/g,'\n'));
+});
+
+test('DB input masks bodies and titles before cuts, with exact masked JSON budgets and coverage', async()=>{
+  const email='person@example.com', key='sk-ant-'+'SECRETFRAGMENT'.repeat(12);
+  const titleEmail='title@example.com';
+  const rows=Array.from({length:120},(_,i)=>message('s',i,{
+    content: '前'.repeat(560)+email+' '+key+'後'.repeat(1500)+key+'末'.repeat(300),
+  }));
+  const result=await select(database({threads:[{...thread('s'),title:'題'.repeat(70)+titleEmail}],messages:rows}));
+  const input=JSON.parse(result.input);
+  assert.equal(input.threads[0].title,'題'.repeat(70)+'[redacted]');
+  assert.ok(result.input.includes('[redacted]'));
+  for(const secret of [email,titleEmail,key,'sk-ant-','SECRETFRAGMENT'])assert.ok(!result.input.includes(secret),secret);
+  assert.equal(result.stats.input_chars,JSON.stringify(input).length);
+  assert.ok(result.stats.input_chars<=60000);
+  assert.equal(Object.keys(result.stats).length,9);
+  assert.equal(result.stats.user_messages_available,120);
+  assert.equal(result.stats.user_messages_included,entries(input.threads[0]).length);
+  assert.equal(result.stats.user_messages_included,result.considered_threads.reduce((n,t)=>n+t.included_message_count,0));
+  assert.ok(result.stats.user_messages_included<120);
+});
+
+test('masking protects both truncation edges and the original 1000-character boundary',async()=>{
+  const key='sk-ant-'+'UNIQUESECRET'.repeat(20);
+  for(const prefix of [550,990,1500]){
+    const content='前'.repeat(prefix)+key+'後'.repeat(prefix===1500?350:1500);
+    const result=await select(database({threads:[thread('s')],messages:[message('s',1,{content}),message('s',2,{content})]}));
+    for(const text of entries(JSON.parse(result.input).threads[0])){
+      assert.ok(!text.includes('sk-ant-'));assert.ok(!text.includes('UNIQUESECRET'));
+      assert.ok(Array.from(text).length<=1000);
+      assert.ok(text.includes(AUTO_SUMMARY_TRUNCATION_MARKER));
+      if(prefix!==990)assert.ok(text.includes('[redacted]'));
+    }
+  }
+});
+
+test('JSON increments and final budgets use masked content for both shrinking and growing replacements',()=>{
+  const {maskAutoSummarySecrets}=require('../lib/project-memory/auto-summary-redact.ts');
+  const t={thread_id:'s',title:maskAutoSummarySecrets('a@b.co'),messages:[],omitted:false,last_message_at:message('s',2).created_at};
+  let length=buildAutoSummaryInput(['overview'],[t]).length;
+  for(const [i,raw] of ['a@b.co','sk-ant-'+'a'.repeat(100),'"\\\n😀 person@example.com'].entries()){
+    const m={...message('s',i,{content:maskAutoSummarySecrets(raw)}),cut:false};
+    length+=autoSummaryMessageIncrement(t,m,i>0,i>0?1:0);t.messages.push(m);
+    assert.equal(length,buildAutoSummaryInput(['overview'],[t]).length);
+  }
+  const result=finalizeAutoSummaryInput(['overview'],[t],1,1);
+  assert.equal(result.stats.input_chars,length);assert.equal(Object.keys(result.stats).length,9);
+  assert.equal(result.stats.user_messages_included,3);assert.equal(result.stats.user_messages_available,3);
+});
+
 test('pure JST date conversion covers midnight, offsets, month and year boundaries', () => {
   for (const [timestamp, expected] of [
     ['2026-10-05T14:59:59.999Z','2026-10-05'],
@@ -354,8 +414,8 @@ test('strict LLM parsing rejects unknown keys, duplicates, missing/extra topics,
   for(const phrase of ['untrusted data','Assistant messages','explicit user approval','array order is chronological','complete by itself','predominant language']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase),phrase);
 });
 
-test('prompt v6 preserves v4 empty evidence and principles rules and C-1 chronology verbatim', () => {
-  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 6);
+test('prompt v7 preserves v4 empty evidence and principles rules and C-1 chronology verbatim', () => {
+  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 7);
   assert.ok(!AUTO_SUMMARY_SYSTEM_PROMPT.includes('Assistant messages are proposals'));
   for (const phrase of ['each m entry is a user message content string', 'Assistant messages are not included in the input', 'Do not infer or reconstruct what the assistant said', '"それで" or "いいね"', 'referent is absent', 'pasted AI output or external materials', 'unless the user explicitly adopted or approved it', AUTO_SUMMARY_TRUNCATION_MARKER, 'content at that location has been omitted']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase),phrase);
   for (const phrase of ['"days":[{"d":"YYYY-MM-DD","m":', 'Asia/Tokyo (JST)', 'Within the same thread, array order is chronological', 'Across different threads, the relative order of messages on the same date is unknown', 'explicitly retracts or corrects', 'do not infer that one overrides the other', "Never substitute a thread's last update date"]) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);

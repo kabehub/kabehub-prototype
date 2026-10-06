@@ -16,6 +16,15 @@ installAliasResolver();installTsLoader({jsx:true});
 const Modal=require('../components/ProjectMemoryBootstrapModal.tsx').default;
 function nodes(value){if(!value||typeof value!=='object')return[];return[value,...[].concat(value.props?.children??[]).flatMap(nodes)];}
 function strings(value){if(typeof value==='string'||typeof value==='number')return String(value);if(Array.isArray(value))return value.map(strings).join('');return value&&typeof value==='object'?strings(value.props?.children):'';}
+
+test('modal accepts prompt v7 and allows topic selection and apply',()=>{
+  state=[];cursor=0;effects=[];let applied;
+  const tree=Modal({projectName:'Example',preview:{...preview(),prompt_version:7},isApplying:false,results:null,
+    onApply:keys=>applied=keys,onCancel(){}});
+  const button=nodes(tree).find(n=>n.type==='button'&&strings(n).includes('件を作成'));
+  assert.equal(button.props.disabled,false);button.props.onClick();
+  assert.deepEqual(applied,['overview','principles','references']);
+});
 test('modal selects topics, uses empty old diff, displays stats/truncation/results and locks every close path while applying',()=>{
   const original=global.window;const listeners=new Map();global.window={addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key)};
   try {
