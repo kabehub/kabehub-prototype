@@ -827,6 +827,9 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ### 自動要約の差分 update preview（Phase 1b、2026-10-08）
 
+追記: updateのthread probeを共有PREFLIGHT_CONCURRENCY=4のbatchでPromise.allSettledし、元のthread順で結果・最初の例外を処理。MAX_TITLE_CHARS=80もbootstrapからexportして共用し、query内容・返却値・選抜・promptは維持。deferred制御の7テスト追加、npm test 423件/test:all 455件全通過、型チェック通過。
+追記: update prompt_versionを2へ更新。自分のtopic_keyを含む新規発言に根拠がない、または既存内容を変える必要がないtopicはneeds_update:falseとする1文をsystem promptに追加。routeのversion期待値のみ更新し、文面・定数の回帰テストを追加。
+
 - 新規ファイル: `lib/project-memory/auto-summary-update-limits.ts`（独立した60,000 UTF-16入力予算、16,384 completion tokens、prompt version 1、response/checkpoint型）、`lib/project-memory/auto-summary-update.ts`（読み取り・cursor解決・FIFO selector・最小パッチprompt・厳密parser）、`app/api/projects/[projectId]/memory/update/preview/route.ts`（POST）、`scripts/project-memory-auto-summary-update.test.cjs`（node:test 40件）。proxyのbearer POST登録と境界テストも追加。
 - standard 4 topicのみ。既存本文は出自を問わず権威あるbaselineとして全文入力する。最新revisionのoriginは表示用。空本文、cursorなしでrevision 1なし、cursorなしでrevision 1がauto_summary以外、provenance矛盾はtopicごとに除外する。
 - v206 cursorの保存済み `(message_created_at, message_id)` を直接使用し、message本体を再検索しない。cursorがないthreadはrevision 1のauto_summary参照messageをIDで取得し、thread/role/project/userを検証する（is_activeでは絞らない）。物理削除された参照はconsidered_threadsのlast_message_at最大値に後退。保存済みcursorがありrevision 1 provenanceが利用不能な場合、未記録threadは全履歴から読む保守的fallbackとする。

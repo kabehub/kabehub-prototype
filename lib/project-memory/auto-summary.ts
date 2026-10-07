@@ -14,9 +14,9 @@ import {
 export const AUTO_SUMMARY_PROMPT_VERSION = 8;
 const THREAD_PAGE_SIZE = 500;
 const MESSAGE_PAGE_SIZE = 100;
-const PREFLIGHT_CONCURRENCY = 4;
+export const PREFLIGHT_CONCURRENCY = 4;
 export const MIN_THREAD_MESSAGE_BUDGET = 1_500;
-const MAX_TITLE_CHARS = 80;
+export const MAX_TITLE_CHARS = 80;
 export const TOPIC_ROLES: Record<AutoSummaryTopicKey, string> = {
   overview: "Purpose, background, scope, and identity of the Project within the observed conversations, at a high level. Summarize stable high-level context here. Put detailed specifications, configuration values, terminology, files, links, and tool-specific details in references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
   "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Do not restate background from overview or detailed reference information from references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",

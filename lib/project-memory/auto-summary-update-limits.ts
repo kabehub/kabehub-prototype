@@ -2,7 +2,7 @@ import type { AutoSummaryTopicKey } from "./auto-summary-limits";
 
 export const MAX_AUTO_SUMMARY_UPDATE_INPUT_CHARS = 60_000;
 export const AUTO_SUMMARY_UPDATE_MAX_COMPLETION_TOKENS = 16_384;
-export const AUTO_SUMMARY_UPDATE_PROMPT_VERSION = 1;
+export const AUTO_SUMMARY_UPDATE_PROMPT_VERSION = 2;
 export type RevisionOrigin = "auto_summary" | "auto_summary_update" | "consolidation_run" | "instruction_edit" | "manual_or_unknown";
 export type AutoSummaryUpdateExcludedReason = "no_baseline" | "no_auto_summary_history" | "provenance_mismatch" | "empty_topic";
 export type AutoSummaryUpdateNotApplicableReason = "no_updatable_topics" | "no_new_messages";

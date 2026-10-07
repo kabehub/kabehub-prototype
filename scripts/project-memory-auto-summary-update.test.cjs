@@ -246,7 +246,7 @@ test('exclusions distinguish no baseline, non-auto history and empty body; custo
 
 test('route preview includes shared contracts, authoritative baseline and no writes', async () => {
   reset();const response=await invoke(), body=await response.json();assert.equal(response.status,200);assert.equal(body.result,'preview');
-  assert.match(body.run_id,/^[\da-f-]{36}$/);assert.equal(typeof body.model,'string');assert.equal(body.prompt_version,1);
+  assert.match(body.run_id,/^[\da-f-]{36}$/);assert.equal(typeof body.model,'string');assert.equal(body.prompt_version,2);
   assert.equal(body.proposals[0].current_content_md,'Original');assert.equal(body.proposals[0].origin,'manual_or_unknown');
   assert.equal(body.checkpoint_topics[0].cursors[0].message_id,position(1).id);assert.equal(body.considered_threads.length,1);
   assert.equal(body.stats.user_messages_available,1);assert.deepEqual(body.excluded_topics,[]);
@@ -297,4 +297,163 @@ test('route DB errors map to 500 without LLM or writes', async () => {
   for (const table of ['projects','project_memory_topics','project_memory_revisions','project_memory_auto_summary_cursors','threads','messages']) {
     reset(tables(),table);assert.equal((await invoke()).status,500);assert.equal(llmCalls.length,0);
   }
+});
+
+// Gate count completions explicitly: no timers, randomness or wall-clock assertions.
+function controlledProbes(data, completionOrder, outcomes = {}) {
+  const db = database(data);
+  const from = db.from.bind(db);
+  const ids = data.threads.map(t => t.id).sort();
+  const batches = new Map();
+  const state = { active: 0, maximum: 0, started: [], completed: [] };
+  db.from = table => {
+    const query = from(table), call = db.calls[db.calls.length - 1];
+    const then = query.then.bind(query);
+    query.then = (resolve, reject) => {
+      const id = call.filters.find(f => f[0] === 'eq' && f[1] === 'thread_id')?.[2];
+      const first = table === 'messages' && call.limit === 1;
+      const head = table === 'messages' && call.options?.head;
+      if (first) {
+        state.started.push(id); state.active++;
+        state.maximum = Math.max(state.maximum, state.active);
+      }
+      return then(async result => {
+        if (!head) return result;
+        const batchIndex = Math.floor(ids.indexOf(id) / 4);
+        let batch = batches.get(batchIndex);
+        if (!batch) { batch = new Map(); batches.set(batchIndex, batch); }
+        const gate = new Promise(release => batch.set(id, release));
+        const batchIds = ids.slice(batchIndex * 4, batchIndex * 4 + 4);
+        if (batch.size === batchIds.length) {
+          queueMicrotask(async () => {
+            for (const index of completionOrder) {
+              const next = batchIds[index];
+              if (next !== undefined) {
+                batch.get(next)();
+                await new Promise(resume => queueMicrotask(resume));
+              }
+            }
+          });
+        }
+        await gate;
+        state.active--; state.completed.push(id);
+        const outcome = outcomes[id];
+        if (outcome?.reject) throw outcome.reject;
+        if (outcome?.error) return { ...result, error: outcome.error };
+        if (outcome && 'count' in outcome) return { ...result, count: outcome.count };
+        return result;
+      }, reject).then(resolve, reject);
+    };
+    return query;
+  };
+  return { db, state };
+}
+
+test('probe batches overlap at most four threads and preserve first-then-count queries', async () => {
+  const threads = Array.from({ length: 9 }, (_, i) => thread(`probe-${i}`));
+  const controlled = controlledProbes({ threads, messages: threads.map(t => message(t.id, 1)) }, [3, 1, 2, 0]);
+  const result = await select(controlled.db);
+  assert.equal(controlled.state.maximum, 4);
+  assert.equal(controlled.state.active, 0);
+  assert.deepEqual(controlled.state.started, threads.map(t => t.id));
+  assert.deepEqual(controlled.state.completed, ['probe-3','probe-1','probe-2','probe-0','probe-7','probe-5','probe-6','probe-4','probe-8']);
+  assert.equal(result.stats.user_messages_available, 9);
+  for (const t of threads) {
+    const calls = controlled.db.calls.filter(c => c.table === 'messages' && c.filters.some(f => f[1] === 'thread_id' && f[2] === t.id));
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].limit, 1);
+    assert.deepEqual(calls[0].orders, [['created_at', true], ['id', true]]);
+    assert.deepEqual(calls[1].options, { count: 'exact', head: true });
+    assert.deepEqual(calls[0].filters, calls[1].filters);
+  }
+});
+
+test('fixed probe completion permutations preserve all returned values and oldest 100 selection', async () => {
+  const threads = Array.from({ length: 105 }, (_, i) => thread(`ordered-${String(i).padStart(3, '0')}`));
+  // Duplicate message positions across threads force the existing thread-id tie-break.
+  const messages = threads.map((t, i) => message(t.id, 1, {
+    id: `shared-${String(Math.floor((104 - i) / 2)).padStart(3, '0')}`,
+    content: `Fact for ${t.id}`,
+  }));
+  const data = { threads: [...threads].reverse(), messages };
+  const expected = await select(database(data));
+  const expectedIds = [...messages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : a.thread_id.localeCompare(b.thread_id))
+    .slice(0, 100).map(m => m.thread_id);
+  assert.deepEqual(expected.considered_threads.map(t => t.thread_id), expectedIds);
+  for (const order of [[3, 1, 2, 0], [0, 2, 3, 1]]) {
+    const controlled = controlledProbes(data, order);
+    const actual = await select(controlled.db);
+    assert.deepEqual(actual, expected);
+    assert.equal(actual.input, expected.input);
+    assert.equal(actual.stats.threads_eligible, 105);
+    assert.equal(actual.considered_threads.length, 100);
+    assert.equal(controlled.state.maximum, 4);
+    assert.deepEqual(controlled.state.completed.slice(0, 4), order.map(i => threads[i].id));
+  }
+});
+
+test('multiple probe DB failures choose earliest thread despite reverse rejection order; later batches never start', async () => {
+  const threads = Array.from({ length: 7 }, (_, i) => thread(`failure-${i}`));
+  const controlled = controlledProbes({ threads, messages: threads.map(t => message(t.id, 1)) }, [3, 2, 1, 0], {
+    'failure-1': { error: { code: 'FIRST_THREAD_FAILURE' } },
+    'failure-3': { error: { code: 'EARLY_COMPLETION_FAILURE' } },
+  });
+  await assert.rejects(select(controlled.db), error => {
+    assert.ok(error instanceof update.AutoSummaryUpdateDbError);
+    assert.equal(error.table, 'messages'); assert.equal(error.code, 'FIRST_THREAD_FAILURE');
+    return true;
+  });
+  assert.deepEqual(controlled.state.completed, ['failure-3','failure-2','failure-1','failure-0']);
+  assert.deepEqual(controlled.state.started, threads.slice(0, 4).map(t => t.id));
+  assert.equal(controlled.state.active, 0);
+});
+
+test('probe rejects with the original reason object in thread order', async () => {
+  const threads = Array.from({ length: 5 }, (_, i) => thread(`reject-${i}`));
+  const first = new update.AutoSummaryUpdateDbError('messages', 'FIRST');
+  const later = new update.AutoSummaryUpdateDbError('messages', 'LATER');
+  const controlled = controlledProbes({ threads, messages: threads.map(t => message(t.id, 1)) }, [3, 2, 1, 0], {
+    'reject-0': { reject: first }, 'reject-2': { reject: later },
+  });
+  await assert.rejects(select(controlled.db), error => error === first);
+  assert.equal(controlled.state.started.length, 4);
+});
+
+test('invalid counts keep messages DB error and precede later-thread failures', async () => {
+  for (const count of [null, undefined, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, '1']) {
+    const threads = Array.from({ length: 5 }, (_, i) => thread(`count-${i}`));
+    const controlled = controlledProbes({ threads, messages: threads.map(t => message(t.id, 1)) }, [3, 2, 1, 0], {
+      'count-0': { count }, 'count-3': { error: { code: 'LATER_FAILURE' } },
+    });
+    await assert.rejects(select(controlled.db), error => {
+      assert.ok(error instanceof update.AutoSummaryUpdateDbError);
+      assert.equal(error.table, 'messages'); assert.equal(error.code, undefined); return true;
+    });
+    assert.equal(controlled.state.started.length, 4);
+  }
+});
+
+test('threads without a first message issue no count query', async () => {
+  const threads = Array.from({ length: 5 }, (_, i) => thread(`empty-${i}`));
+  const db = database({ threads, messages: [message('empty-4', 1)] });
+  const result = await select(db);
+  assert.equal(result.stats.threads_eligible, 1);
+  assert.equal(db.calls.filter(c => c.options?.head).length, 1);
+});
+
+test('shared title limit truncates by code point without splitting surrogate pairs', async () => {
+  const { MAX_TITLE_CHARS, PREFLIGHT_CONCURRENCY } = require('../lib/project-memory/auto-summary.ts');
+  assert.equal(MAX_TITLE_CHARS, 80); assert.equal(PREFLIGHT_CONCURRENCY, 4);
+  const title = 'x'.repeat(MAX_TITLE_CHARS - 1) + '😀' + 'trailing';
+  const result = await select(database({ threads: [{ ...thread('t'), title }], messages: [message('t', 1)] }));
+  const actual = JSON.parse(result.input).threads[0].title;
+  assert.equal(actual, 'x'.repeat(MAX_TITLE_CHARS - 1) + '😀');
+  assert.equal(Array.from(actual).length, MAX_TITLE_CHARS);
+});
+
+test('update prompt v2 explicitly leaves topics unchanged without relevant new evidence or a needed change', () => {
+  assert.equal(limits.AUTO_SUMMARY_UPDATE_PROMPT_VERSION, 2);
+  assert.ok(update.AUTO_SUMMARY_UPDATE_SYSTEM_PROMPT.includes(
+    'Return needs_update:false for any topic with no supporting evidence in new messages whose topic_keys include its own key, or whose existing content does not need to change.'
+  ));
 });
