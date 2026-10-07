@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
+    "test": "node --test --test-reporter=tap \"scripts/*.test.cjs\"",
+    "test:all": "node --test",
     "start": "next start"
   },
   "dependencies": {

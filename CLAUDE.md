@@ -315,6 +315,10 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-07時点で354件。
+- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。`apps/mobile/tests/` の2026-10-07時点の32件が加わる）。
+- 件数はテスト追加に伴って増えるため、上記は時点の値。
+
 テスト106本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 11本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
 
 | ファイル | 目的 |
