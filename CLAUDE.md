@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/07 — 自動要約Phase C-3（使用スレッド内のuser発言カバレッジと具体的な省略警告、プロンプトv7＋切り詰め前の入力マスク・空topicの理由表示）・topic一括削除Phase B（v205本番適用済み・schema反映済み）
+最終更新: 2026/10/07 — 自動要約Phase C-3（使用スレッド内のuser発言カバレッジと具体的な省略警告、プロンプトv8＋切り詰め前の入力マスク・空topicの理由表示）・topic一括削除Phase B（v205本番適用済み・schema反映済み）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -291,7 +291,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/consolidation-client.ts` | 整理案の適用（topicごとに既存PATCH） |
 | `lib/project-memory/auto-summary-redact.ts` | import-freeの入力マスク純関数。既知形式のメール・キー・トークン・JWT・秘密鍵を固定文字列`[redacted]`へ置換。区切り走査と線形時間のパターンで長文にも対応 |
 | `lib/project-memory/auto-summary-limits.ts` | importゼロのclient-safe定数・共有型。AutoSummaryStatsは既存7キーにuser_messages_included（最終採用user発言数）とuser_messages_available（使用スレッド内の対象user発言総数）の2キーを追加。暫定値：最終入力60,000文字（JSON.stringify後のUTF-16長）、1発言1,000文字（マーカー込みのコードポイント数）、最低user発言2件、最大100スレッド、出力16,384トークン |
-| `lib/project-memory/auto-summary.ts` | server用。thread全件ページング・並列数4のpreflight・最新user発言順の候補選定・userのみ100件ずつ遅延ページング・骨格込みのN決定とウォーターフィリング・JSON文字数予算・最終統計再計算・LLM strict JSON契約。最終使用スレッドのみ同一述語でhead exact countを並列度4で取得し、user_messages_availableは使用スレッド内だけの対象user発言総数とする（未使用スレッドを除外、削除競合時は採用件数を下限）。user本文・タイトルの既知形式メール／APIキー／トークン／JWT／秘密鍵をimport-free純関数maskAutoSummarySecretsで[redacted]に置換してから切り詰め、予算もマスク後の文字列で計算する。電話・住所・口座番号は入力側の対象外。ENDのない秘密鍵はBEGIN行のみ置換。タイトルは80コードポイント、1発言は1,000コードポイント以内（超過時は先頭約6：末尾約4で中略、マーカー込み）。入力をスレッドごとのJST日付別daysとuser本文文字列配列に圧縮し、同一スレッドと別スレッドの時系列規則を明示。assistant発言の推測・復元を禁止し、指示対象のない短い返答を決定扱いしない。貼り付けAI出力は明示的採用・承認が必要で、中略マーカーは欠落を表す。principlesは、このProject内でのAIの応答・作業の進め方についてユーザーが明示した常設の指示・決定のみ（workflow・開発/執筆規約・制約・出力の好み）。ユーザーの意見・分析・信念・世界についての主張は除外し、overview/current-workでユーザーの見解として帰属を明示。該当する常設指示がなければ空文字列。空にするtopicは説明文・プレースホルダを書かず、exactly空文字列とする（route側は空topicをpreviewから除外）。改行・部分読み・ユーザー未承認のAI提案の除外・必要最小限の重複の規則は維持。strict検証後のcontent_mdを改行補正する。入力はconsolidationと同じJSON.stringify方式、全入力をuntrusted dataとして扱う |
+| `lib/project-memory/auto-summary.ts` | server用。thread全件ページング・並列数4のpreflight・最新user発言順の候補選定・userのみ100件ずつ遅延ページング・骨格込みのN決定とウォーターフィリング・JSON文字数予算・最終統計再計算・LLM strict JSON契約。入力確定はtrimAutoSummaryInput 1回→使用スレッドのcount取得→summarizeAutoSummaryInput 1回に分離し、finalizeAutoSummaryInputは従来シグネチャと副作用を維持する互換wrapper。最終使用スレッドのみ同一述語でhead exact countを並列度4で取得し、user_messages_availableは使用スレッド内だけの対象user発言総数とする（未使用スレッドを除外、削除競合時は採用件数を下限）。user本文・タイトルの既知形式メール／APIキー／トークン／JWT／秘密鍵をimport-free純関数maskAutoSummarySecretsで[redacted]に置換してから切り詰め、予算もマスク後の文字列で計算する。電話・住所・口座番号は入力側の対象外。ENDのない秘密鍵はBEGIN行のみ置換。タイトルは80コードポイント、1発言は1,000コードポイント以内（超過時は先頭約6：末尾約4で中略、マーカー込み）。入力をスレッドごとのJST日付別daysとuser本文文字列配列に圧縮し、同一スレッドと別スレッドの時系列規則を明示。assistant発言の推測・復元を禁止し、指示対象のない短い返答を決定扱いしない。貼り付けAI出力は明示的採用・承認が必要で、中略マーカーは欠落を表す。principlesは、このProject内でのAIの応答・作業の進め方についてユーザーが明示した常設の指示・決定のみ（workflow・開発/執筆規約・制約・出力の好み）。ユーザーの意見・分析・信念・世界についての主張は除外し、overview/current-workでユーザーの見解として帰属を明示。該当する常設指示がなければ空文字列。空にするtopicは説明文・プレースホルダを書かず、exactly空文字列とする（route側は空topicをpreviewから除外）。改行・部分読み・ユーザー未承認のAI提案の除外・必要最小限の重複の規則は維持。strict検証後のcontent_mdを改行補正する。入力はconsolidationと同じJSON.stringify方式、全入力をuntrusted dataとして扱う |
 | `lib/project-memory/normalize-literal-newlines.ts` | importゼロの純関数。保護スパン外の文字としてのバックスラッシュ＋nを実改行へ補正。バッククォートのコード範囲・Windowsドライブパス・UNCパス・直前がバックスラッシュの対象を保持。閉じていないコード等の曖昧な範囲は保持し、冪等 |
 | `lib/project-memory/auto-summary-client.ts` | bootstrap previewのstrict検証・取得と既存topics POSTの並列適用。empty_topic_keysは必須配列としてexactキー集合に追加し、標準キーのみ・重複なし・topicsと非交差・合計4件以内を検証。statsはカバレッジ2キー込みのexact検証（欠落・余分は拒否）、新件数は非負の安全整数でincludedがconsidered_threadsの合計と一致し、threads_included以上・available以下であることを検証。source_refs配列に本文を含まない来歴を記録し、statsは含めない。201/409/その他を個別分類 |
 | `lib/project-memory/use-auto-summary.ts` | 設定を開いた際のeligibility取得、古いProject応答の破棄、APIキー取得、生成・承認・適用結果の管理。全適用結果とnot_applicableで一覧再取得。同じ生成案は再適用しない |
@@ -315,8 +315,8 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-07時点で354件。
-- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。`apps/mobile/tests/` の2026-10-07時点の32件が加わる）。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-07時点で357件。
+- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。`apps/mobile/tests/` の2026-10-07時点の32件が加わり、合計389件）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
 テスト106本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 11本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
@@ -593,9 +593,9 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 自動要約の1,000行境界 | thread一覧もmessageも`.range()`でページングする。threadはid順を固定、messageはcreated_at降順＋id降順。preflightと本文取得の絞り込みは同一helperを共有する |
 | `MAX_AUTO_SUMMARY_INPUT_CHARS`の意味 | 本文合計ではなく、JSONエスケープ・topic役割・タイトル・JST日付と配列を含めたJSON.stringify後の最終userContent.length（暫定60,000）。最終トリム後にconsidered_threads/statsを再計算する。clientはimportゼロのauto-summary-limits.tsを参照 |
 | 自動要約のuser発言カバレッジ | auto-summary.tsはウォーターフィリングと防御的トリム後に1件以上残った使用スレッドのみ、本文/preflightと同じtargetMessages述語＋role=userでhead:true・count:"exact"を並列度4で取得する。エラーと不正countはAutoSummaryDbErrorで失敗させる。user_messages_includedは最終considered_threadsのincluded_message_count合計。user_messages_availableは使用スレッド内の対象user発言総数だけで、未使用スレッドを含めない。削除競合では各スレッドの最終採用件数を下限とする。finalizeの件数Map省略時はトリム前件数へfallback。statsの9キー構成・カバレッジ整合・source_refsは維持 |
-| 自動要約の入力形式・プロンプトv7 | `{requested_topics,threads:[{thread_id,title,days:[{d:"YYYY-MM-DD",m:["userの本文","userの本文"]}]}]}`。mはuser本文の文字列配列（roleラッパーなし）、assistantは入力に含めない。dはcreated_atをAsia/Tokyoに変換した日付。daysは日付昇順、同日内はcreated_at昇順（同時刻は既存表示順）。last_message_atとメッセージごとのcreated_atはLLM入力から除外し、出典のconsidered_threadsは維持。同一スレッドの配列順は時系列、別スレッド同日の前後関係は不明として明示的な撤回・訂正以外で上書きを推定しない。日付をスレッド最終更新日で代用しない。v7では秘密情報・個人識別子を全topicから除外し、マスク形・プレースホルダ・省略注記も禁止。[redacted]への言及・復元推測も禁止する2行を追加。v4の空文字・プレースホルダ禁止・principles定義とC-1の時系列ルールは文言を維持 |
+| 自動要約の入力形式・プロンプトv8 | `{requested_topics,threads:[{thread_id,title,days:[{d:"YYYY-MM-DD",m:["userの本文","userの本文"]}]}]}`。mはuser本文の文字列配列（roleラッパーなし）、assistantは入力に含めない。dはcreated_atをAsia/Tokyoに変換した日付。daysは日付昇順、同日内はcreated_at昇順（同時刻は既存表示順）。last_message_atとメッセージごとのcreated_atはLLM入力から除外し、出典のconsidered_threadsは維持。同一スレッドの配列順は時系列、別スレッド同日の前後関係は不明として明示的な撤回・訂正以外で上書きを推定しない。日付をスレッド最終更新日で代用しない。v7で追加した秘密情報・個人識別子を全topicから除外し、マスク形・プレースホルダ・省略注記も禁止。[redacted]への言及・復元推測も禁止する2行を維持。v8では各項目の詳細を最も適した主topicに置き、他topicには独立して理解するための最小限の文脈のみを記載する。overviewは安定した高水準の背景、current-workは進行中の作業や現状、referencesは詳細仕様・設定・参照情報を担当し、重複を抑える。v4の空文字・プレースホルダ禁止・principles定義とC-1の時系列ルールは文言を維持 |
 | 自動要約の採用数と配分 | 最新user発言順・最大100候補から、requested_topicsと各thread_id/title/days:[]を実シリアライズしたskeleton(N)にN×MIN_THREAD_MESSAGE_BUDGET（1,500）を加えて60,000以内となる最大Nを採用。初回ページのみ並列数4で先読みし、以降は必要なスレッドだけ100件ずつ取得。未完了スレッドの採用本文.length合計が最小のもの（同点は新しいスレッド）へ次に新しいuser発言を1件追加するウォーターフィリング。JSONの正確な増分で判定し、超過時はそのスレッドのみ完了・omitted=true、他は続行。発言が尽きたら完了。新しい側から連続区間を採用し、最終buildAutoSummaryInputの実長確認と防御的トリムを維持 |
-| 自動要約の空topic | previewのempty_topic_keysはmissingのうちLLMがcontent_md.trim() === ""を返したキーのみを標準キー順で保持する。既存topicのキーは含めず、非空topicsと非交差。preview時は空配列でも必須。全件空のnot_applicable: insufficient_evidenceには追加しない。statsの9キー・プロンプトv7は維持 |
+| 自動要約の空topic | previewのempty_topic_keysはmissingのうちLLMがcontent_md.trim() === ""を返したキーのみを標準キー順で保持する。既存topicのキーは含めず、非空topicsと非交差。preview時は空配列でも必須。全件空のnot_applicable: insufficient_evidenceには追加しない。statsの9キー・プロンプトv8は維持 |
 | 自動要約の`source_refs` | 必ず`[{type:"auto_summary",run_id,model,prompt_version,considered_threads}]`という配列で送る。オブジェクト単体は400。会話本文・タイトル・指示文・empty_topic_keysを入れない。empty_topic_keysはapplyのリクエストボディにも含めない |
 | 自動要約の標準キー | overview / current-work / principles / referencesの未作成キーだけを生成。current-work（ハイフン）とcurrent_state（アンダースコア）は別キー。current_stateや既存topic本文は入力に含めない |
 | 自動要約apply後のeligibility | applied/conflict/failedのすべてでtopics一覧を再取得する。特に409後に古い不足キーを保持しない。not_applicableでも再取得。古いProjectの応答／再取得が新Projectの状態や進行中GETを無効化しないようにguardする |

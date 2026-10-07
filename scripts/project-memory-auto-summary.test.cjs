@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { installAliasResolver, installTsLoader } = require('./testBootstrap.cjs');
 installAliasResolver(); installTsLoader();
 const { database, thread, message } = require('./auto-summary-test-helpers.cjs');
-const { selectAutoSummaryInput, finalizeAutoSummaryInput, parseAutoSummaryResponse, buildAutoSummaryInput, autoSummaryJstDate, truncateAutoSummaryMessage, selectAutoSummaryThreads, autoSummaryMessageIncrement, nextAutoSummaryWaterfillThread, MIN_THREAD_MESSAGE_BUDGET, AutoSummaryDbError, AUTO_SUMMARY_SYSTEM_PROMPT, AUTO_SUMMARY_PROMPT_VERSION } = require('../lib/project-memory/auto-summary.ts');
+const { selectAutoSummaryInput, finalizeAutoSummaryInput, trimAutoSummaryInput, summarizeAutoSummaryInput, parseAutoSummaryResponse, buildAutoSummaryInput, autoSummaryJstDate, truncateAutoSummaryMessage, selectAutoSummaryThreads, autoSummaryMessageIncrement, nextAutoSummaryWaterfillThread, MIN_THREAD_MESSAGE_BUDGET, AutoSummaryDbError, AUTO_SUMMARY_SYSTEM_PROMPT, AUTO_SUMMARY_PROMPT_VERSION } = require('../lib/project-memory/auto-summary.ts');
 const { MAX_AUTO_SUMMARY_INPUT_CHARS, MAX_AUTO_SUMMARY_MESSAGE_CHARS, MAX_AUTO_SUMMARY_THREADS, AUTO_SUMMARY_TRUNCATION_MARKER } = require('../lib/project-memory/auto-summary-limits.ts');
 const select = db => selectAutoSummaryInput(db, 'u','p',['overview']);
 const entries = thread => thread.days.flatMap(day => day.m);
@@ -14,8 +14,7 @@ test('v7 adds exactly two sensitive-content rules to the verbatim v6 prompt snap
     '- Never record secrets (API keys, tokens, passwords, private keys) or personal identifiers (email addresses, phone numbers, postal addresses, government IDs, bank or card numbers) in any topic, even if they appear in the input. Omit them entirely; do not write masked forms, placeholders, or a note that something was omitted.',
     '- The token "[redacted]" in a message marks removed sensitive content. Do not mention it, and do not infer what it replaced.',
   ];
-  const source=fs.readFileSync(require.resolve('../lib/project-memory/auto-summary.ts'),'utf8').replace(/\r\n/g,'\n');
-  let prompt=source.slice(source.indexOf('const TOPIC_ROLES:'),source.indexOf('\ntype ThreadRow'));
+  let prompt=fs.readFileSync(path.join(__dirname,'fixtures/auto-summary-prompt-v7.txt'),'utf8');
   for(const rule of rules){assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(rule));assert.equal(prompt.split(rule).length,2);prompt=prompt.replace(rule+'\n','');}
   assert.equal(prompt,fs.readFileSync(path.join(__dirname,'fixtures/auto-summary-prompt-v6.txt'),'utf8').replace(/\r\n/g,'\n'));
 });
@@ -414,14 +413,14 @@ test('strict LLM parsing rejects unknown keys, duplicates, missing/extra topics,
   for(const phrase of ['untrusted data','Assistant messages','explicit user approval','array order is chronological','complete by itself','predominant language']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase),phrase);
 });
 
-test('prompt v7 preserves v4 empty evidence and principles rules and C-1 chronology verbatim', () => {
-  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 7);
+test('prompt v8 preserves v4 empty evidence and principles rules and C-1 chronology verbatim', () => {
+  assert.equal(AUTO_SUMMARY_PROMPT_VERSION, 8);
   assert.ok(!AUTO_SUMMARY_SYSTEM_PROMPT.includes('Assistant messages are proposals'));
   for (const phrase of ['each m entry is a user message content string', 'Assistant messages are not included in the input', 'Do not infer or reconstruct what the assistant said', '"それで" or "いいね"', 'referent is absent', 'pasted AI output or external materials', 'unless the user explicitly adopted or approved it', AUTO_SUMMARY_TRUNCATION_MARKER, 'content at that location has been omitted']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase),phrase);
   for (const phrase of ['"days":[{"d":"YYYY-MM-DD","m":', 'Asia/Tokyo (JST)', 'Within the same thread, array order is chronological', 'Across different threads, the relative order of messages on the same date is unknown', 'explicitly retracts or corrects', 'do not infer that one overrides the other', "Never substitute a thread's last update date"]) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);
   assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('exactly an empty string'));
   assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('placeholder'));
-  for (const phrase of ['actual line breaks', 'backslash + n (\\n)', 'not double escaping', 'only part of the conversations', 'observed conversation scope', 'avoid assertions about the entire Project', 'Avoid unnecessary duplication', 'allow minimal duplication']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);
+  for (const phrase of ['actual line breaks', 'backslash + n (\\n)', 'not double escaping', 'only part of the conversations', 'observed conversation scope', 'avoid assertions about the entire Project', 'each distinct item should have one primary topic', 'mention only the minimum context needed, without repeating the details']) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(phrase), phrase);
   const roles = JSON.parse(buildAutoSummaryInput(['overview','current-work','principles','references'], [])).requested_topics;
   const byKey = Object.fromEntries(roles.map(t => [t.topic_key,t.role]));
   assert.match(byKey.principles, /Standing instructions and decisions the user explicitly gave about how to work on or respond within this Project/);
@@ -432,17 +431,107 @@ test('prompt v7 preserves v4 empty evidence and principles rules and C-1 chronol
   assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes('Do not fill principles with opinions or analyses. If there is no evidence of standing instructions or decisions about how to work on or respond within this Project, content_md for principles must be exactly an empty string, not a placeholder or an explanation.'));
   for (const key of ['overview','current-work']) assert.ok(byKey[key].includes("Explicitly attribute the user's opinions and views as the user's views."));
   assert.match(byKey['current-work'], /status reports, and reports of completed fixes/);
-  assert.match(byKey.overview, /specifications, and facts/);
-  assert.match(byKey.references, /terminology, specifications, configuration values, and facts/);
+  assert.match(byKey.overview, /Purpose, background, scope, and identity of the Project within the observed conversations, at a high level/);
+  assert.match(byKey.overview, /Put detailed specifications, configuration values, terminology, files, links, and tool-specific details in references/);
+  assert.match(byKey.references, /terminology, detailed specifications, configuration values, and concrete details needed to identify or use those references/);
+  assert.match(byKey.references, /Do not restate general Project background or current status here/);
+  assert.match(byKey['current-work'], /Do not restate background from overview or detailed reference information from references/);
   for (const role of Object.values(byKey)) assert.match(role, /Never treat AI proposals as established without explicit user approval/);
   for (const rule of [
     '- Within the same thread, array order is chronological: days are in ascending date order and messages within each day are in ascending creation time order.',
     '- Across different threads, the relative order of messages on the same date is unknown. Unless a statement explicitly retracts or corrects another statement, do not infer that one overrides the other.',
     "- Never substitute a thread's last update date for the date of a thread or message.",
     '- Return only the requested topic_key set. When there is no evidence for a topic, its content_md must be exactly an empty string (""). Never write a placeholder or a sentence explaining that evidence, instructions, or information are absent, unobserved, or unconfirmed (for example 「確認できません」「観測範囲にはありません」「該当なし」); an empty string is the only valid way to express this.',
-    '- Each topic must be complete by itself and must not depend on another topic.',
-    '- Avoid unnecessary duplication, but allow minimal duplication needed for each topic to be understood independently.',
+    "- Each topic must be understandable on its own (complete by itself), but each distinct item should have one primary topic: the topic whose role fits it best. Do not repeat its details in another topic. If another topic needs the item to remain understandable on its own, mention only the minimum context needed, without repeating the details.",
     '- Input may contain only part of the conversations. Write within the observed conversation scope and avoid assertions about the entire Project.',
     '- Write actual line breaks in topic Markdown, not the two literal characters backslash + n (\\n). Use normal JSON escaping for actual line breaks, not double escaping.',
   ]) assert.ok(AUTO_SUMMARY_SYSTEM_PROMPT.includes(rule), rule);
+});
+
+
+test('split finalization retains normalized pre-trim coverage with fallback and database counts (#9)', () => {
+  const fixture=()=>[{...includedThread('t'),messages:[
+    {...message('t',0,{role:'assistant',content:'assistant'}),cut:false},
+    {...message('t',1,{content:'x'.repeat(60000)}),cut:true},
+    {...message('t',2,{content:'remaining'}),cut:false},
+  ]}];
+  for (const counts of [undefined,new Map([['t',3000]])]) {
+    const wrappedThreads=fixture(),splitThreads=fixture();
+    const wrapped=finalizeAutoSummaryInput(['overview'],wrappedThreads,1,1,counts);
+    const trimmed=trimAutoSummaryInput(['overview'],splitThreads);
+    assert.equal(trimmed.beforeTrimCounts.get('t'),2);
+    assert.equal(trimmed.included[0].messages.length,1);
+    const split=summarizeAutoSummaryInput(trimmed,1,1,counts);
+    for (const result of [wrapped,split]) {
+      assert.equal(result.stats.user_messages_included,1);
+      assert.equal(result.stats.user_messages_available,counts?3000:2);
+      assert.equal(Object.keys(result.stats).length,9);
+    }
+    assert.deepEqual(split,wrapped);
+    assert.deepEqual(splitThreads,wrappedThreads);
+    assert.equal(splitThreads[0].omitted,true);
+    assert.deepEqual(splitThreads[0].messages.map(m=>m.id),[message('t',2).id]);
+  }
+});
+
+test('reserved candidates can exceed final included threads while provenance stays consistent (#8)', async () => {
+  // Known accepted edge: MIN_THREAD_MESSAGE_BUDGET is a reservation, not a guarantee that every selected candidate contributes a message.（v11 §7 #8）
+  const threads=Array.from({length:50},(_,n)=>thread('edge-'+String(n).padStart(2,'0')));
+  const content='"'.repeat(1000);
+  assert.ok(JSON.stringify(content).length>MIN_THREAD_MESSAGE_BUDGET);
+  const messages=threads.flatMap((t,n)=>[message(t.id,n*2,{content}),message(t.id,n*2+1,{content})]);
+  const candidates=threads.map((t,n)=>({...includedThread(t.id),last_message_at:messages[n*2+1].created_at})).reverse();
+  const reserved=selectAutoSummaryThreads(['overview'],candidates).length;
+  const db=database({threads,messages});
+  const result=await select(db);
+  const input=JSON.parse(result.input);
+  assert.ok(result.stats.threads_included<reserved);
+  assert.equal(input.threads.length,result.stats.threads_included);
+  assert.equal(result.stats.threads_included,result.considered_threads.length);
+  assert.equal(result.considered_threads.reduce((sum,t)=>sum+t.included_message_count,0),result.stats.user_messages_included);
+  const considered=new Map(result.considered_threads.map(t=>[t.thread_id,t]));
+  for (const t of input.threads) assert.equal(entries(t).length,considered.get(t.thread_id).included_message_count);
+  assert.ok(result.considered_threads.every(t=>t.included_message_count>0));
+  assert.equal(result.stats.input_chars,result.input.length);
+  assert.ok(result.input.length<=60000);
+  const heads=db.calls.filter(c=>c.head);
+  assert.equal(heads.length,result.stats.threads_included);
+  assert.ok(heads.every(c=>c.count==='exact'));
+  assert.deepEqual(new Set(heads.map(c=>c.filters.find(([op,key])=>op==='eq' && key==='thread_id')[2])),new Set(considered.keys()));
+});
+
+
+test('v8 changes only four permitted blocks in the verbatim v7 prompt snapshot',()=>{
+  const fs=require('node:fs'),path=require('node:path');
+  const v7=fs.readFileSync(path.join(__dirname,'fixtures/auto-summary-prompt-v7.txt'),'utf8');
+  const source=fs.readFileSync(require.resolve('../lib/project-memory/auto-summary.ts'),'utf8');
+  assert.ok(!v7.includes('\r'));assert.ok(!source.includes('\r'));
+  const v8=source.slice(source.indexOf('const TOPIC_ROLES:'),source.indexOf('\ntype ThreadRow'));
+  const blocks=[
+  [
+    "  overview: \"Purpose, background, scope, identity, specifications, and facts within the observed conversations; do not assert coverage of the entire Project. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval\",",
+    "  overview: \"Purpose, background, scope, and identity of the Project within the observed conversations, at a high level. Summarize stable high-level context here. Put detailed specifications, configuration values, terminology, files, links, and tool-specific details in references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval\","
+  ],
+  [
+    "  \"current-work\": \"Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval\",",
+    "  \"current-work\": \"Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Do not restate background from overview or detailed reference information from references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval\","
+  ],
+  [
+    "  references: \"Referenced materials, links, files, tools, terminology, specifications, configuration values, and facts. Never treat AI proposals as established without explicit user approval\",",
+    "  references: \"Referenced materials, links, files, tools, terminology, detailed specifications, configuration values, and concrete details needed to identify or use those references. Do not restate general Project background or current status here. Never treat AI proposals as established without explicit user approval\","
+  ],
+  [
+    "- Each topic must be complete by itself and must not depend on another topic.\n- Avoid unnecessary duplication, but allow minimal duplication needed for each topic to be understood independently.",
+    "- Each topic must be understandable on its own (complete by itself), but each distinct item should have one primary topic: the topic whose role fits it best. Do not repeat its details in another topic. If another topic needs the item to remain understandable on its own, mention only the minimum context needed, without repeating the details."
+  ]
+];
+  const mask=(prompt,column)=>{
+    for(const [index,pair] of blocks.entries()){
+      const block=pair[column];
+      assert.equal(prompt.split(block).length,2,'permitted block '+index);
+      prompt=prompt.replace(block,'<permitted-block-'+index+'>');
+    }
+    return prompt;
+  };
+  assert.equal(mask(v8,1),mask(v7,0));
 });

@@ -11,17 +11,17 @@ import {
   type AutoSummaryTopicKey, type AutoSummaryTopic, type AutoSummaryStats, type AutoSummaryConsideredThread,
 } from "./auto-summary-limits";
 
-export const AUTO_SUMMARY_PROMPT_VERSION = 7;
+export const AUTO_SUMMARY_PROMPT_VERSION = 8;
 const THREAD_PAGE_SIZE = 500;
 const MESSAGE_PAGE_SIZE = 100;
 const PREFLIGHT_CONCURRENCY = 4;
 export const MIN_THREAD_MESSAGE_BUDGET = 1_500;
 const MAX_TITLE_CHARS = 80;
 const TOPIC_ROLES: Record<AutoSummaryTopicKey, string> = {
-  overview: "Purpose, background, scope, identity, specifications, and facts within the observed conversations; do not assert coverage of the entire Project. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
-  "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
+  overview: "Purpose, background, scope, and identity of the Project within the observed conversations, at a high level. Summarize stable high-level context here. Put detailed specifications, configuration values, terminology, files, links, and tool-specific details in references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
+  "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Do not restate background from overview or detailed reference information from references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
   principles: "Standing instructions and decisions the user explicitly gave about how to work on or respond within this Project (for example workflow, development or writing conventions, constraints, output preferences). Do not include the user's opinions, analyses, beliefs, or claims about the world; describe those in overview or current-work as the user's views. Do not include status reports, completion reports, specifications, or facts. If the user gave no such standing instruction, return exactly an empty string, with no placeholder or explanation. Never treat AI proposals as established without explicit user approval",
-  references: "Referenced materials, links, files, tools, terminology, specifications, configuration values, and facts. Never treat AI proposals as established without explicit user approval",
+  references: "Referenced materials, links, files, tools, terminology, detailed specifications, configuration values, and concrete details needed to identify or use those references. Do not restate general Project background or current status here. Never treat AI proposals as established without explicit user approval",
 };
 export const AUTO_SUMMARY_SYSTEM_PROMPT = `You create initial Project Memory topics from project conversations.
 Input JSON: {"requested_topics":[{"topic_key":"...","role":"..."}],"threads":[{"thread_id":"...","title":"...","days":[{"d":"YYYY-MM-DD","m":["user message content","user message content"]}]}]}. Each d is the message date in Asia/Tokyo (JST); each m entry is a user message content string. Assistant messages are not included in the input.
@@ -39,8 +39,7 @@ Safety and correctness requirements:
 - Never substitute a thread's last update date for the date of a thread or message.
 - Return only the requested topic_key set. When there is no evidence for a topic, its content_md must be exactly an empty string (""). Never write a placeholder or a sentence explaining that evidence, instructions, or information are absent, unobserved, or unconfirmed (for example 「確認できません」「観測範囲にはありません」「該当なし」); an empty string is the only valid way to express this.
 - Do not fill principles with opinions or analyses. If there is no evidence of standing instructions or decisions about how to work on or respond within this Project, content_md for principles must be exactly an empty string, not a placeholder or an explanation.
-- Each topic must be complete by itself and must not depend on another topic.
-- Avoid unnecessary duplication, but allow minimal duplication needed for each topic to be understood independently.
+- Each topic must be understandable on its own (complete by itself), but each distinct item should have one primary topic: the topic whose role fits it best. Do not repeat its details in another topic. If another topic needs the item to remain understandable on its own, mention only the minimum context needed, without repeating the details.
 - Input may contain only part of the conversations. Write within the observed conversation scope and avoid assertions about the entire Project.
 - Write actual line breaks in topic Markdown, not the two literal characters backslash + n (\\n). Use normal JSON escaping for actual line breaks, not double escaping.
 - Use the predominant language of the conversations.
@@ -148,8 +147,8 @@ export function nextAutoSummaryWaterfillThread<T extends { chars: number; done: 
   return next;
 }
 
-// Recompute all provenance from the final input, including after defensive trimming.
-export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], threads: IncludedThread[], total: number, eligible: number, availableCounts?: ReadonlyMap<string, number>) {
+// Normalize and defensively trim in place, retaining counts before the trim.
+export function trimAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], threads: IncludedThread[]) {
   for (const thread of threads) thread.messages = thread.messages.filter(m => m.role === "user");
   const beforeTrimCounts = new Map(threads.map(t => [t.thread_id, t.messages.length]));
   let input = buildAutoSummaryInput(keys, threads);
@@ -168,6 +167,12 @@ export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], t
       included_message_count: ordered.length, truncated: t.omitted || ordered.some(m => m.cut),
       oldest_included_message_id: ordered[0].id, newest_included_message_id: ordered[ordered.length - 1].id };
   });
+  return { input, included, considered_threads, beforeTrimCounts };
+}
+
+// Compute coverage from the trimmed input and optional database counts.
+export function summarizeAutoSummaryInput(trimResult: ReturnType<typeof trimAutoSummaryInput>, total: number, eligible: number, availableCounts?: ReadonlyMap<string, number>) {
+  const { input, included, considered_threads, beforeTrimCounts } = trimResult;
   const stats: AutoSummaryStats = { threads_total: total, threads_eligible: eligible,
     threads_included: included.length, threads_truncated: considered_threads.filter(t => t.truncated).length,
     messages_truncated: included.flatMap(t => t.messages).filter(m => m.cut).length,
@@ -176,6 +181,11 @@ export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], t
     user_messages_available: included.reduce((sum, t) => sum + Math.max(
       availableCounts?.get(t.thread_id) ?? beforeTrimCounts.get(t.thread_id)!, t.messages.length), 0) };
   return { input, stats, considered_threads };
+}
+
+// Compatibility wrapper preserves in-place normalization and trimming.
+export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], threads: IncludedThread[], total: number, eligible: number, availableCounts?: ReadonlyMap<string, number>) {
+  return summarizeAutoSummaryInput(trimAutoSummaryInput(keys, threads), total, eligible, availableCounts);
 }
 
 export async function selectAutoSummaryInput(db: SupabaseClient, userId: string, projectId: string, keys: readonly AutoSummaryTopicKey[]) {
@@ -242,17 +252,17 @@ export async function selectAutoSummaryInput(db: SupabaseClient, userId: string,
     if (state.index === state.page.length && state.exhausted) state.done = true;
   }
   // Trim first so count queries never include a thread absent from the final input.
-  const finalized = finalizeAutoSummaryInput(keys, included, threads.length, eligible.length);
+  const trimmed = trimAutoSummaryInput(keys, included);
   const availableCounts = new Map<string, number>();
-  for (let offset = 0; offset < finalized.considered_threads.length; offset += PREFLIGHT_CONCURRENCY) {
-    await Promise.all(finalized.considered_threads.slice(offset, offset + PREFLIGHT_CONCURRENCY).map(async thread => {
+  for (let offset = 0; offset < trimmed.considered_threads.length; offset += PREFLIGHT_CONCURRENCY) {
+    await Promise.all(trimmed.considered_threads.slice(offset, offset + PREFLIGHT_CONCURRENCY).map(async thread => {
       const { count, error } = await targetMessages(db, userId, thread.thread_id, "id", { count: "exact", head: true }).eq("role", "user");
       checkError(error, "messages");
       if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) throw new AutoSummaryDbError("messages");
       availableCounts.set(thread.thread_id, count);
     }));
   }
-  return finalizeAutoSummaryInput(keys, included, threads.length, eligible.length, availableCounts);
+  return summarizeAutoSummaryInput(trimmed, threads.length, eligible.length, availableCounts);
 }
 
 function invalid(message: string): never { throw new Error(`Invalid auto summary response: ${message}`); }
