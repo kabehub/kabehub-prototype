@@ -282,7 +282,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/download-topic-file.ts` | topicのMarkdownファイルダウンロード |
 | `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・再昇格確認（`pendingConfirm`）・アップロード・AI編集・チャット注入ON/OFF・一括削除を管理するhook。削除は確認時点のrevisionをCAS送信、reloadで消えた選択IDを掃除。200で終了、404/409で選び直し、その他は確認内容を保持して再試行。同期refで操作を相互排他にし、古いProject応答を破棄。selectionModeだけでは親の開閉をlockしないが、両一覧のactionsLockedとULはlockする |
 | `lib/project-memory/topic-delete-limits.ts` | importゼロのclient-safeな一括削除上限（50件）。v205のSQL値との一致を静的テストで保証 |
-| `lib/project-memory/chat-inclusion-limits.ts` | チャット注入の正本。`PROJECT_MEMORY_CHAT_MAX_CHARS`（8,000）・コードポイント数の`countProjectMemoryChatChars`・topic_key→idのlocale非依存比較による`selectChatIncludedTopics`・UI用の`summarizeChatInclusion`。**importゼロのclient-safeファイル**。8,000は本文(`content_md`)の合計上限で、preamble・タグ・meta行は含まない |
+| `lib/project-memory/chat-inclusion-limits.ts` | チャット注入の正本。`PROJECT_MEMORY_CHAT_MAX_CHARS`（8,000）・コードポイント数の`countProjectMemoryChatChars`・標準4キー（principles → current-work → overview → references）を優先し、その他はtopic_key昇順→id昇順（同一標準キーもid昇順）のlocale非依存比較による`selectChatIncludedTopics`・UI用の`summarizeChatInclusion`。**importゼロのclient-safeファイル**。8,000は本文(`content_md`)の合計上限で、preamble・タグ・meta行は含まない |
 | `lib/project-memory/chat-injection.ts` | `buildProjectMemoryChatBlock`。注入対象topicを`buildReferencePreamble()`＋topicごとの参照ブロック（`source="project_memory_topic"`、metaは`topic_key`と`revision`）として1つの文字列にまとめる。対象がなければ`null` |
 | `lib/project-memory/instruction-edit.ts` | AI編集のLLM契約（strict JSON）・system prompt・サーバー側定数（`MAX_INSTRUCTION_EDIT_INPUT_CHARS`=20,000、`INSTRUCTION_EDIT_MAX_COMPLETION_TOKENS`=65,536） |
 | `lib/project-memory/instruction-edit-limits.ts` | `MAX_INSTRUCTION_CHARS`（2,000）の正本。**importゼロのclient-safeファイル** |
@@ -315,8 +315,8 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-07時点で357件。
-- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。`apps/mobile/tests/` の2026-10-07時点の32件が加わり、合計389件）。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-07時点で364件。
+- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。`apps/mobile/tests/` の2026-10-07時点の32件が加わり、合計396件）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
 テスト106本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 11本（`scripts/*.test.cjs` の作業ツリー実測・`git ls-files 'scripts/verify-*.mjs'`による更新時点の実測）。
@@ -615,7 +615,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 復元とOpenAIキー | v203の復元ブランチはroute単体ではOpenAIキー不要。ただし現行hookは`canPromote`が偽だと操作を開始せず、一覧もボタンを無効化する。GETはarchivedを見ず新規/復元を判別できないため、UIからキー無しで復元できる仕様にはなっていない |
 | チャット注入の方式 | `project_memory_topics.include_in_chat`（default false）で**topic単位のopt-in**。ONのtopicは、そのProjectの通常チャットのsystemに毎回入る（一時チャット・未分類チャットは対象外）。昇格Lore検索とは別経路で、**昇格済みかつONのtopicは検索経由でも同内容が参照される場合がある**（許容済みの重複） |
 | メモ保存とチャット注入 | `isMemo:true` はuser message保存後・AIコンテキスト構築前に早期returnするstorage-only経路。Project Memory topic・Lore/RAG・Pinned/GitHub・AI provider呼び出しの対象外。通常メモのほか `/image` 入力ログ・Novel Check（Web版・mobile版）の保存処理でも利用される。「メモをAIに送る」は本文を入力欄へ戻すだけで、その後は通常送信なのでProject Memory注入の対象になる |
-| 8,000字の意味 | `PROJECT_MEMORY_CHAT_MAX_CHARS`は**topic本文(`content_md`)の合計**で、system全体の大きさではない。数え方はコードポイント（JSの`[...text].length`とPostgresの`char_length`が一致）。preamble・タグ・meta・区切りは含まない |
+| 8,000字の意味 | `PROJECT_MEMORY_CHAT_MAX_CHARS`は**topic本文(`content_md`)の合計**で、system全体の大きさではない。数え方はコードポイント（JSの`[...text].length`とPostgresの`char_length`が一致）。preamble・タグ・meta・区切りは含まない。選択順は principles → current-work → overview → references → その他（topic_key昇順→id昇順、locale非依存）。標準キーは大文字小文字・末尾空白を含め完全一致のみ（Mapで判定）。同じtopic_keyはid昇順。空白のみの本文は除外し、入らないtopicは丸ごとskipして後続を続ける（skip-and-continue）。未注入一覧も同じ比較順 |
 | ON時の上限保証 | 上限チェックはRPC（v204）側でON時点のみ（上限値はSQLに直書き）。ON後にAI編集・ULで本文が増えるのは許容し、チャット側のselector（超過topicはskipして後続を続行）が最後の防衛線。OFFは常に許可。DBの空判定は`btrim`、JSは`trim`で、差はDB側が保守的 |
 | selectorのcapはDB取得量を制限しない | チャット側の8,000字上限は注入量の制御であり、取得するDB行数・サイズの上限ではない（ON後に肥大化したtopicも一旦取得してから選別する） |
 | ON/OFFとupdated_at | トグルはtrigger経由で`updated_at`を更新する（同値の再送はRPC内のearly returnで更新なし）。`revision`と履歴は変えない。`updated_at`は「行の更新時刻」であり本文の更新時刻ではない。整理(consolidate)のLLM入力にも`updated_at`が含まれる |

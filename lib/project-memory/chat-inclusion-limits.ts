@@ -5,7 +5,17 @@ export function countProjectMemoryChatChars(text: string): number {
 
 export type ChatInclusionCandidate = { id: string; topic_key: string; content_md: string };
 
+const CHAT_TOPIC_PRIORITY = new Map<string, number>([
+  ["principles", 0],
+  ["current-work", 1],
+  ["overview", 2],
+  ["references", 3],
+]);
+
 function compareChatInclusionCandidates(a: ChatInclusionCandidate, b: ChatInclusionCandidate): number {
+  const priorityDiff = (CHAT_TOPIC_PRIORITY.get(a.topic_key) ?? 4) -
+    (CHAT_TOPIC_PRIORITY.get(b.topic_key) ?? 4);
+  if (priorityDiff !== 0) return priorityDiff;
   return a.topic_key < b.topic_key ? -1 : a.topic_key > b.topic_key ? 1 :
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

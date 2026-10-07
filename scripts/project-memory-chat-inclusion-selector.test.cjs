@@ -61,3 +61,65 @@ assert.deepEqual(ids(summary.notInjected), ["huge", "a", "z"]);
 assert.deepEqual(summaryInput, summaryBefore);
 assert.deepEqual(ids(selectChatIncludedTopics(summaryInput.filter(t => t.include_in_chat)).included), ["small"]);
 console.log("ok - summary includes skipped and whitespace-only ON topics, ordered and non-mutating");
+
+const { test } = require("node:test");
+const priorityKeys = ["principles", "current-work", "overview", "references"];
+const priorityTopics = priorityKeys.map(key => topic(key, key, key));
+
+test("standard keys follow priority regardless of input order", () => {
+  for (const order of [[...priorityTopics].reverse(), [priorityTopics[2], priorityTopics[0], priorityTopics[3], priorityTopics[1]]]) {
+    assert.deepEqual(ids(selectChatIncludedTopics(order).included), priorityKeys);
+  }
+});
+
+test("custom keys follow all standard keys in locale-independent key order", () => {
+  const custom = [topic("a", "a", "x"), topic("Z", "Z", "x")];
+  assert.deepEqual(ids(selectChatIncludedTopics([...custom, ...priorityTopics].reverse()).included), [...priorityKeys, "Z", "a"]);
+});
+
+test("priority selection skips oversized topics and continues", () => {
+  const bodies = ["123", "12345", "1234", "12"];
+  const result = selectChatIncludedTopics(priorityKeys.map((key, i) => topic(key, key, bodies[i])).reverse(), 10);
+  assert.deepEqual(ids(result.included), ["principles", "current-work", "references"]);
+  assert.deepEqual(ids(result.skipped), ["overview"]);
+  assert.equal(result.usedChars, 10);
+});
+
+test("only exact standard keys receive priority, including prototype-like custom keys", () => {
+  const customKeys = ["Principles", "principles ", "constructor", "toString", "__proto__", "hasOwnProperty"];
+  const custom = customKeys.map(key => topic(key, key, "x"));
+  assert.deepEqual(ids(selectChatIncludedTopics([...custom, ...priorityTopics].reverse()).included),
+    [...priorityKeys, "Principles", "__proto__", "constructor", "hasOwnProperty", "principles ", "toString"]);
+});
+
+test("equal standard and custom keys retain locale-independent id order", () => {
+  const duplicates = [topic("z", "principles", "x"), topic("A", "principles", "x"), topic("b", "a", "x"), topic("B", "a", "x")];
+  assert.deepEqual(ids(selectChatIncludedTopics(duplicates).included), ["A", "z", "B", "b"]);
+});
+
+test("memory block has identical bytes and priority ids for reordered standard topics", () => {
+  const expected = buildProjectMemoryChatBlock(priorityTopics);
+  for (const order of [[...priorityTopics].reverse(), [priorityTopics[1], priorityTopics[3], priorityTopics[0], priorityTopics[2]]]) {
+    const actual = buildProjectMemoryChatBlock(order);
+    assert.deepEqual(Buffer.from(actual.text), Buffer.from(expected.text));
+    assert.deepEqual(actual.includedIds, priorityKeys);
+  }
+});
+
+test("summary drops lower priority topics and orders notInjected with the same comparator", () => {
+  const on = (key, body) => ({ ...topic(key, key, body), include_in_chat: true });
+  const topics = [on("a", "x"), on("references", "xx"), on("overview", "xx"), on("current-work", "x"), on("principles", "x".repeat(7999))];
+  const result = summarizeChatInclusion(topics);
+  assert.equal(result.usedChars, 8000);
+  assert.deepEqual(ids(result.notInjected), ["overview", "references", "a"]);
+});
+
+test("priority selection and consumers accept frozen input without mutation", () => {
+  const topics = [...priorityTopics].reverse().map(t => Object.freeze({ ...t, include_in_chat: true }));
+  const before = structuredClone(topics);
+  Object.freeze(topics);
+  assert.deepEqual(ids(selectChatIncludedTopics(topics).included), priorityKeys);
+  assert.deepEqual(buildProjectMemoryChatBlock(topics).includedIds, priorityKeys);
+  assert.deepEqual(summarizeChatInclusion(topics).notInjected, []);
+  assert.deepEqual(topics, before);
+});
