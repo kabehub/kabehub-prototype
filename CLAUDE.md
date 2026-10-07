@@ -825,6 +825,18 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - 「完成した知識」でなく「考えている途中のプロセス」を共有する文化を作りたい
 - 小説執筆特化機能（プロジェクトモード・キャラDB・整合性チェック）で作家ユーザーの開拓を狙う
 
+### 自動要約の差分 update preview（Phase 1b、2026-10-08）
+
+- 新規ファイル: `lib/project-memory/auto-summary-update-limits.ts`（独立した60,000 UTF-16入力予算、16,384 completion tokens、prompt version 1、response/checkpoint型）、`lib/project-memory/auto-summary-update.ts`（読み取り・cursor解決・FIFO selector・最小パッチprompt・厳密parser）、`app/api/projects/[projectId]/memory/update/preview/route.ts`（POST）、`scripts/project-memory-auto-summary-update.test.cjs`（node:test 40件）。proxyのbearer POST登録と境界テストも追加。
+- standard 4 topicのみ。既存本文は出自を問わず権威あるbaselineとして全文入力する。最新revisionのoriginは表示用。空本文、cursorなしでrevision 1なし、cursorなしでrevision 1がauto_summary以外、provenance矛盾はtopicごとに除外する。
+- v206 cursorの保存済み `(message_created_at, message_id)` を直接使用し、message本体を再検索しない。cursorがないthreadはrevision 1のauto_summary参照messageをIDで取得し、thread/role/project/userを検証する（is_activeでは絞らない）。物理削除された参照はconsidered_threadsのlast_message_at最大値に後退。保存済みcursorがありrevision 1 provenanceが利用不能な場合、未記録threadは全履歴から読む保守的fallbackとする。
+- thread/cursorを500行ずつ取得し、messagesは100行ずつkeyset paging。project/user一致・roleplay null/false、user role・memo/image_gen除外・is_active null/true。topic群のthread別min cursor以降を `(created_at,id)` 昇順に読み、next unprocessedが古い100 threadにwater-fillingで配分する。共有入力の各messageのtopic_keysで、その発言が新規となるtopicを明示。mask→1,000 code point truncate→JST化は既存helperを再利用。
+- 入力は `JSON.stringify({ existing_topics, threads }).length` で正確に計測し、system promptを含めない。既存本文は切り詰めず、FIFOで入らない先頭発言を飛ばさない。既存本文だけで過大、または新規ありで1件も入らない場合413。6,000 code pointはstandard全体の目安であり有用な既存情報を削除する制約ではない。7,000/8,000字判定や8,000字警告は本フェーズで追加しない。
+- responseは共通run_id/model/prompt_version付きのpreview、checkpoint_only、not_applicable。preview/checkpoint_onlyは必ずcheckpoint_topics/considered_threads/stats/excluded_topicsを返す。checkpointは各topicの入力に実際に含めたthread別最終messageのみで、開始位置以下のcursorを返さない。statsのuser_messages_availableは全候補threadの新規発言総数（topic間重複は1件）、user_messages_includedは採用入力件数。not_applicableはno_updatable_topics/no_new_messagesのみでLLM未実行。
+- parserは要求topic集合を過不足・重複なく検証し、falseはtopic_key/needs_updateだけ、trueは非空reason/content_md必須。trueで現本文と完全一致ならfalseへ正規化。部分採用なし。413はupdate_input_too_large、不正JSON/形/集合は502 invalid_llm_response、LLM失敗502、DB失敗500。本文・revision・cursorの書き込み、cursor RPC、migration、UI/applyは追加していない。bootstrapの差分はTOPIC_ROLES/targetMessagesのexportのみ。
+- Phase 2契約（今回は型・コメントのみ）: needs_update=true採用はPATCH(full, expected_revision)成功後に新revisionでcursor前進。checkbox OFFはdismissとして本文を変更せずbase_revisionで前進し、共有入力のstarvationを防ぐ。needs_update=falseもbase_revisionで前進。空cursor配列はRPC不要。モーダルCancelは一切前進せず、409 conflictのtopicも前進させない。
+- 検証: 作業前test:all 408件全通過。変更後npm test 416件、npm run test:all 448件、いずれもfail 0。追加updateテスト40件全通過、既存bootstrapテスト/assertionは無変更。`npx tsc --noEmit --incremental false` と `git diff --check` も通過。commit/pushなし。
+
 ### /api/chat の検索クエリ契約（B2-2、2026-10-04）
 
 POST /api/chat の optional queryText は文字列だけを採用し、未指定・文字列以外は400にせず userContent へフォールバックする。通常Web送信は ChatInput / ChatInputCentered → handleSubmit の第5引数から手入力 value をtrimせず別送する。temporary のbodyには含めない。保存する messages.content は従来の添付込み userContent のまま。queryText はトリガー判定・embedding入力専用で、DB・system・ログへ追加しない。

@@ -179,6 +179,14 @@ test('bulk-delete has an independent exact bearer POST rule', () => {
   assert.equal(classifyApi(pathname+'-other','POST'),null);
   assert.equal(classifyApi(pathname,'DELETE'),null);
 });
+test('update preview has an exact bearer POST boundary', () => {
+  const pathname = '/api/projects/p/memory/update/preview';
+  assert.equal(classifyApi(pathname, 'POST'), 'bearer');
+  assert.equal(classifyApi(pathname + '/', 'POST'), 'bearer');
+  assert.equal(classifyApi(pathname, 'GET'), null);
+  assert.equal(classifyApi(pathname + '/extra', 'POST'), null);
+  assert.equal(classifyApi(pathname + '-other', 'POST'), null);
+});
 for (const { name, fn } of pendingTests) {
   try {
     fn();

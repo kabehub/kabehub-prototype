@@ -17,7 +17,7 @@ const MESSAGE_PAGE_SIZE = 100;
 const PREFLIGHT_CONCURRENCY = 4;
 export const MIN_THREAD_MESSAGE_BUDGET = 1_500;
 const MAX_TITLE_CHARS = 80;
-const TOPIC_ROLES: Record<AutoSummaryTopicKey, string> = {
+export const TOPIC_ROLES: Record<AutoSummaryTopicKey, string> = {
   overview: "Purpose, background, scope, and identity of the Project within the observed conversations, at a high level. Summarize stable high-level context here. Put detailed specifications, configuration values, terminology, files, links, and tool-specific details in references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
   "current-work": "Ongoing work, recent decisions, unresolved issues, next actions, status reports, and reports of completed fixes. Do not restate background from overview or detailed reference information from references. Explicitly attribute the user's opinions and views as the user's views. Never treat AI proposals as established without explicit user approval",
   principles: "Standing instructions and decisions the user explicitly gave about how to work on or respond within this Project (for example workflow, development or writing conventions, constraints, output preferences). Do not include the user's opinions, analyses, beliefs, or claims about the world; describe those in overview or current-work as the user's views. Do not include status reports, completion reports, specifications, or facts. If the user gave no such standing instruction, return exactly an empty string, with no placeholder or explanation. Never treat AI proposals as established without explicit user approval",
@@ -56,7 +56,7 @@ export class AutoSummaryDbError extends Error {
 }
 
 // The same predicate is used for user preflight, latest timestamp, body pages, and counts.
-function targetMessages(db: SupabaseClient, userId: string, threadId: string, columns: string, options?: { count: "exact"; head: true }) {
+export function targetMessages(db: SupabaseClient, userId: string, threadId: string, columns: string, options?: { count: "exact"; head: true }) {
   return db.from("messages").select(columns, options).eq("thread_id", threadId).eq("user_id", userId)
     .in("role", ["user", "assistant"]).neq("provider", "memo").neq("provider", "image_gen")
     .or("is_active.is.null,is_active.eq.true");
