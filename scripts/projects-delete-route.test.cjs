@@ -303,6 +303,14 @@ test("topic lookup errors stop before embedding and deletion", async () => {
 });
 
 for (const [message, expectedStatus, expectedError] of [
+  ["cursors must be a jsonb array", 400, "cursors must be a jsonb array"],
+  ["cursors must contain 1 to 100 items", 400, "cursors must contain 1 to 100 items"],
+  ["invalid cursor element", 400, "invalid cursor element"],
+  ["duplicate thread_id", 400, "duplicate thread_id"],
+  ["duplicate topic_id", 400, "duplicate topic_id"],
+  ["expected_revision must be a positive integer", 400, "expected_revision must be a positive integer"],
+  ["topic not found", 404, "Topic not found"],
+  ["revision conflict", 409, "Revision conflict"],
   ["project not found", 404, "Project not found"],
   ["promote_to_lore is required", 400, "promote_to_lore is required"],
   ["lore_promotions must be a jsonb array", 400, "lore_promotions must be a jsonb array"],

@@ -187,6 +187,24 @@ test('update preview has an exact bearer POST boundary', () => {
   assert.equal(classifyApi(pathname + '/extra', 'POST'), null);
   assert.equal(classifyApi(pathname + '-other', 'POST'), null);
 });
+test('checkpoint has a unique exact bearer POST rule and keeps existing classifications', () => {
+  const pathname = '/api/projects/p/memory/update/checkpoint';
+  for (const suffix of ['', '/']) {
+    const matches = API_AUTH_CLASSIFICATIONS.filter(rule => rule.pattern.test(pathname + suffix));
+    assert.equal(matches.length, 1);
+    assert.deepEqual(matches[0].methods, ['POST']);
+    assert.equal(classifyApi(pathname + suffix, 'POST'), 'bearer');
+    for (const method of ['GET', 'PATCH', 'DELETE']) assert.equal(classifyApi(pathname + suffix, method), null);
+  }
+  for (const suffix of ['/extra', '-other']) assert.equal(classifyApi(pathname + suffix, 'POST'), null);
+  for (const [path, method] of [
+    ['/api/projects/p/memory/update/preview', 'POST'],
+    ['/api/projects/p/memory/topics', 'GET'],
+    ['/api/projects/p/memory/topics/t', 'PATCH'],
+    ['/api/projects/p/memory/topics/t/chat-inclusion', 'PATCH'],
+    ['/api/projects/p/memory/topics/bulk-delete', 'POST'],
+  ]) assert.equal(classifyApi(path, method), 'bearer');
+});
 for (const { name, fn } of pendingTests) {
   try {
     fn();
