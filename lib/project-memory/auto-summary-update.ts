@@ -103,7 +103,8 @@ export async function loadAutoSummaryUpdateTopics(db: SupabaseClient, userId: st
       const { data: thread, error: threadError } = await db.from("threads").select("id, project_id, user_id")
         .eq("id", message.thread_id).maybeSingle();
       check(threadError, "threads");
-      if (message.thread_id !== t.thread_id || message.role !== "user" || message.user_id !== userId ||
+      // Legacy bootstrap used both user and assistant messages as input, so an assistant may be the starting message.
+      if (message.thread_id !== t.thread_id || (message.role !== "user" && message.role !== "assistant") || message.user_id !== userId ||
         !thread || thread.project_id !== projectId || thread.user_id !== userId) { mismatch = true; break; }
       starts.set(t.thread_id, { created_at: message.created_at, id: message.id });
     }

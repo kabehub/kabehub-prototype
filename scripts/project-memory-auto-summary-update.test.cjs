@@ -213,6 +213,21 @@ test('revision 1 fallback finds inactive user source message and validates ident
   const db=database(data), loaded=await load(db);assert.deepEqual(loaded.topics[0].starts.get('t'),position(0));
   assert.deepEqual(db.calls.find(c=>c.table==='messages').filters,[['eq','id',position(0).id]]);
 });
+test('revision 1 assistant source remains updatable and starts at its exact position with only later user messages', async () => {
+  const data=tables();data.project_memory_auto_summary_cursors=[];
+  const source=message('t',0,{role:'assistant',is_active:false});
+  data.messages.push(source, message('t',-1),
+    message('t',0,{id:source.id+'0',content:'Later user at the same timestamp'}),
+    message('t',2,{role:'assistant'}));
+  const db=database(data), loaded=await load(db);
+  assert.deepEqual(loaded.excluded_topics,[]);assert.equal(loaded.topics.length,1);
+  assert.deepEqual(loaded.topics[0].starts.get('t'),{created_at:source.created_at,id:source.id});
+  const selected=await select(db,loaded.topics);
+  assert.deepEqual(inputMessages(selected).map(m=>m.id),[source.id+'0',position(1).id]);
+  assert.ok(db.calls.filter(c=>c.table==='messages'&&!c.single)
+    .every(c=>c.filters.some(f=>f[0]==='eq'&&f[1]==='role'&&f[2]==='user')));
+});
+
 test('deleted revision 1 message and unconsidered threads fall back to maximum last_message_at', async () => {
   const data=tables();data.project_memory_auto_summary_cursors=[];
   data.project_memory_revisions[0].source_refs[0].considered_threads.push({thread_id:'old',last_message_at:position(4).created_at,newest_included_message_id:'deleted'});
@@ -222,7 +237,8 @@ test('deleted revision 1 message and unconsidered threads fall back to maximum l
   assert.deepEqual(inputMessages(s).map(m=>m.id),[position(5).id]);
 });
 for (const [name, edit] of [
-  ['thread',m=>m.thread_id='other'], ['role',m=>m.role='assistant'], ['user',m=>m.user_id='other'],
+  ['thread',m=>m.thread_id='other'], ['system role',m=>m.role='system'], ['tool role',m=>m.role='tool'],
+  ['null role',m=>m.role=null], ['undefined role',m=>m.role=undefined], ['unknown role',m=>m.role='unknown'], ['user',m=>m.user_id='other'],
   ['project',(m,data)=>data.threads[0].project_id='other'], ['thread owner',(m,data)=>data.threads[0].user_id='other'],
 ]) test(`revision 1 ${name} contradiction excludes only that topic`, async () => {
   const data=tables();data.project_memory_auto_summary_cursors=[];const m=message('t',0);edit(m,data);data.messages.push(m);
@@ -232,6 +248,21 @@ for (const [name, edit] of [
   const loaded=await load(database(data));assert.deepEqual(loaded.excluded_topics,[{topic_key:'overview',reason:'provenance_mismatch'}]);
   assert.deepEqual(loaded.topics.map(t=>t.topic_key),['references']);
 });
+for (const [name, edit] of [
+  ['thread',m=>m.thread_id='other'], ['user',m=>m.user_id='other'],
+  ['project',(m,data)=>data.threads[0].project_id='other'], ['thread owner',(m,data)=>data.threads[0].user_id='other'],
+  ['missing thread',(m,data)=>data.threads=[]],
+]) test(`revision 1 assistant ${name} contradiction excludes only that topic`, async () => {
+  const data=tables();data.project_memory_auto_summary_cursors=[];
+  const m=message('t',0,{role:'assistant'});edit(m,data);data.messages.push(m);
+  data.threads.push(thread('other'));
+  data.project_memory_topics.push({...data.project_memory_topics[0],id:'references',topic_key:'references'});
+  data.project_memory_auto_summary_cursors.push(cursor('references'));
+  const loaded=await load(database(data));
+  assert.deepEqual(loaded.excluded_topics,[{topic_key:'overview',reason:'provenance_mismatch'}]);
+  assert.deepEqual(loaded.topics.map(t=>t.topic_key),['references']);
+});
+
 test('exclusions distinguish no baseline, non-auto history and empty body; custom/foreign topics excluded by query', async () => {
   const data=tables();data.project_memory_auto_summary_cursors=[];data.project_memory_revisions=[];
   assert.deepEqual((await load(database(data))).excluded_topics,[{topic_key:'overview',reason:'no_baseline'}]);
