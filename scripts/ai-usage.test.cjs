@@ -7,6 +7,7 @@ installAliasResolver();
 const {
   calculateImageUsageCost,
   calculateTextUsageCost,
+  getPricingPromptTokens,
   recordUsageEvent,
 } = require("../lib/aiUsage.ts");
 
@@ -15,6 +16,78 @@ function approx(actual, expected, label) {
 }
 
 const pricedAt = new Date("2026-08-15T00:00:00.000Z");
+
+// Tier selection uses Claude's full prompt; other providers already include cache tokens.
+const combinedUsage = { inputTokens: 10_000, cacheCreationInputTokens: 40_000, cacheReadInputTokens: 50_001 };
+assert.equal(getPricingPromptTokens("claude", combinedUsage), 100_001);
+assert.equal(getPricingPromptTokens("claude", { inputTokens: 10_000 }), 10_000);
+assert.equal(getPricingPromptTokens("claude", { inputTokens: -1, cacheCreationInputTokens: 100, cacheReadInputTokens: -2 }), 100);
+assert.equal(getPricingPromptTokens("claude", { inputTokens: 10, cacheCreationInputTokens: null, cacheReadInputTokens: null }), 10);
+for (const provider of ["claude", "gemini", "openai"]) {
+  for (const inputTokens of [null, undefined]) {
+    assert.equal(getPricingPromptTokens(provider, { ...combinedUsage, inputTokens }), undefined);
+  }
+}
+for (const provider of ["gemini", "openai"]) {
+  assert.equal(getPricingPromptTokens(provider, combinedUsage), 10_000);
+  assert.equal(getPricingPromptTokens(provider, { ...combinedUsage, inputTokens: -1 }), -1);
+}
+
+// Test-only model: exercise real getPricing without changing registry source files.
+const { MODEL_REGISTRY } = require("../lib/modelRegistry.ts");
+const tierFixture = {
+  kind: "text", id: "claude-usage-tier-fixture", provider: "claude",
+  label: "Usage tier fixture", badge: "", status: "active",
+  surfaces: { chat: true, arena: false }, thinking: { control: "unsupported" },
+  pricing: [{ tiers: [
+    { inputPerMTok: 0.1, outputPerMTok: 0.5, cachedInputPerMTok: 0.01 },
+    { promptTokensAbove: 100_000, inputPerMTok: 0.5, outputPerMTok: 2.5, cachedInputPerMTok: 0.02 },
+  ] }],
+};
+MODEL_REGISTRY.push(tierFixture);
+try {
+  const cases = [
+    ["100K stays on base tier", { inputTokens: 10_000, cacheReadInputTokens: 90_000 }, 0.0024],
+    ["100K+1 uses high tier cache rate", { inputTokens: 10_000, cacheReadInputTokens: 90_001 }, 0.00930002],
+    ["creation crosses boundary", { inputTokens: 1_000, cacheCreationInputTokens: 100_000 }, 0.0655],
+    ["creation and read cross boundary", combinedUsage, 0.03350002],
+  ];
+  for (const [label, usage, expected] of cases) {
+    const result = calculateTextUsageCost("claude", tierFixture.id, { outputTokens: 1_000, ...usage }, pricedAt);
+    assert.equal(result.costSource, "computed", label);
+    approx(result.estimatedCostUsd, expected, label);
+  }
+  // Missing input still selects the base tier even when cache alone exceeds 100K.
+  for (const inputTokens of [null, undefined]) {
+    const result = calculateTextUsageCost("claude", tierFixture.id, {
+      inputTokens, outputTokens: 0, cacheReadInputTokens: 100_001,
+    }, pricedAt);
+    assert.equal(result.costSource, "computed");
+    approx(result.estimatedCostUsd, 0.00100001, "missing input uses base tier");
+    assert.deepEqual(calculateTextUsageCost("claude", tierFixture.id, {
+      inputTokens, outputTokens: null,
+    }, pricedAt), { estimatedCostUsd: null, costSource: "unavailable" });
+  }
+  // Passing other providers proves their tier still uses inputTokens alone.
+  for (const [provider, usage, expected] of [
+    ["gemini", { inputTokens: 100_000, cacheReadInputTokens: 90_000 }, 0.0024],
+    ["openai", { inputTokens: 100_000, cachedInputTokens: 90_000, cacheReadInputTokens: 90_000, cacheCreationInputTokens: 40_000 }, 0.0024],
+  ]) {
+    const result = calculateTextUsageCost(provider, tierFixture.id, { outputTokens: 1_000, ...usage }, pricedAt);
+    assert.equal(result.costSource, "computed");
+    approx(result.estimatedCostUsd, expected, `${provider} keeps input-only tier`);
+  }
+  // Removing only the fixture's explicit rate must retain the 0.1x fallback.
+  delete tierFixture.pricing[0].tiers[1].cachedInputPerMTok;
+  const fallback = calculateTextUsageCost("claude", tierFixture.id, {
+    inputTokens: 10_000, outputTokens: 1_000, cacheReadInputTokens: 90_001,
+  }, pricedAt);
+  assert.equal(fallback.costSource, "computed");
+  approx(fallback.estimatedCostUsd, 0.01200005, "high tier fallback cache read multiplier");
+} finally {
+  MODEL_REGISTRY.splice(MODEL_REGISTRY.indexOf(tierFixture), 1);
+}
+assert.ok(!MODEL_REGISTRY.includes(tierFixture));
 
 // Claude response fixture: input + cache creation + cache read + output.
 const claude = calculateTextUsageCost("claude", "claude-sonnet-4-5", {

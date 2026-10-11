@@ -76,6 +76,18 @@ function hasAnyToken(usage: TextUsage): boolean {
   ].some((value) => value != null);
 }
 
+export function getPricingPromptTokens(
+  provider: "claude" | "gemini" | "openai",
+  usage: Pick<TextUsage, "inputTokens" | "cacheCreationInputTokens" | "cacheReadInputTokens">,
+): number | undefined {
+  // Missing input usage must continue to select the base tier.
+  if (usage.inputTokens == null) return undefined;
+  if (provider !== "claude") return usage.inputTokens;
+  return Math.max(0, usage.inputTokens ?? 0)
+    + Math.max(0, usage.cacheCreationInputTokens ?? 0)
+    + Math.max(0, usage.cacheReadInputTokens ?? 0);
+}
+
 export function calculateTextUsageCost(
   provider: "claude" | "gemini" | "openai",
   modelId: string,
@@ -86,7 +98,7 @@ export function calculateTextUsageCost(
     return { estimatedCostUsd: null, costSource: "unavailable" };
   }
 
-  const tier = getPricing(modelId, pricedAt, usage.inputTokens ?? undefined);
+  const tier = getPricing(modelId, pricedAt, getPricingPromptTokens(provider, usage));
   if (!tier) {
     return { estimatedCostUsd: null, costSource: "unavailable" };
   }
