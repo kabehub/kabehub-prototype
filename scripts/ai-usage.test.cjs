@@ -195,6 +195,18 @@ const openaiImage = calculateImageUsageCost("gpt-image-2", {
 assert.equal(openaiImage.costSource, "computed");
 approx(openaiImage.estimatedCostUsd, 0.87, "openai image modalities");
 
+const openaiSunburstImage = calculateImageUsageCost("gpt-image-2.5-sunburst", {
+  inputTokens: 150_000,
+  outputTokens: 1_000,
+  textInputTokens: 100_000,
+  imageInputTokens: 50_000,
+  cachedImageInputTokens: 10_000,
+  imageOutputTokens: 1_000,
+  imageCount: 1,
+});
+assert.equal(openaiSunburstImage.costSource, "computed");
+approx(openaiSunburstImage.estimatedCostUsd, 0.87, "openai sunburst image modalities");
+
 const ideogram = calculateImageUsageCost("ideogram-v3", {
   inputTokens: null,
   outputTokens: null,

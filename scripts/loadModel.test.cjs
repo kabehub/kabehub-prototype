@@ -96,7 +96,7 @@ assert.equal(MODEL_CONFIG.gemini.defaultModel, "gemini-3.8-flash");
 assert.equal(MODEL_CONFIG.gemini.lsKey, "kabehub_gemini_model");
 assert.equal(MODEL_CONFIG.openai.defaultModel, "gpt-5.4-mini");
 assert.equal(MODEL_CONFIG.openai.lsKey, "kabehub_openai_model");
-assert.equal(MODEL_CONFIG.image_gen.defaultModel, "gpt-image-2");
+assert.equal(MODEL_CONFIG.image_gen.defaultModel, "gpt-image-2.5-sunburst");
 assert.equal(MODEL_CONFIG.image_gen.lsKey, "kabehub_image_provider");
 
 // ────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ assert.deepEqual(modelIdsByProvider, {
   gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"],
   openai: ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol"],
   image_gen: [
-    "gpt-image-2",
+    "gpt-image-2.5-sunburst",
     "gemini-2.5-flash-image",
     "ideogram-v3",
     "black-forest-labs/flux.2-pro",

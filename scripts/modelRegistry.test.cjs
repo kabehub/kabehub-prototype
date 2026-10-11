@@ -64,12 +64,12 @@ const expectedLegacyModelConfig = {
   image_gen: {
     label: "画像生成",
     models: [
-      { id: "gpt-image-2", label: "GPT Image 2", badge: "OpenAI" },
+      { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5", badge: "OpenAI" },
       { id: "gemini-2.5-flash-image", label: "Gemini Image", badge: "Google" },
       { id: "ideogram-v3", label: "Ideogram V3", badge: "Ideogram" },
       { id: "black-forest-labs/flux.2-pro", label: "Flux 2 Pro", badge: "OpenRouter" },
     ],
-    defaultModel: "gpt-image-2",
+    defaultModel: "gpt-image-2.5-sunburst",
     lsKey: "kabehub_image_provider",
   },
 };
@@ -177,13 +177,29 @@ for (const modelId of ["gemini-3.1-flash-image", "gemini-3-pro-image"]) {
 for (const apiProvider of ["openai", "gemini", "ideogram", "openrouter"]) {
   assert.ok(registry.getDefaultImageModel(apiProvider), apiProvider);
 }
-assert.deepEqual(registry.resolveImageModel("gpt-image-2").imagePricing, {
-  kind: "token_modalities",
-  textInputPerMTok: 5,
-  imageInputPerMTok: 8,
-  cachedImageInputPerMTok: 2,
-  imageOutputPerMTok: 30,
-});
+for (const source of [registry, sharedRegistry]) {
+  assert.equal(source.getDefaultImageModel("openai"), "gpt-image-2.5-sunburst");
+  assert.equal(source.PROVIDER_CONFIG.image_gen.defaultModelId, "gpt-image-2.5-sunburst");
+  for (const [id, status, label, badge] of [
+    ["gpt-image-2.5-sunburst", "active", "GPT Image 2.5", "OpenAI"],
+    ["gpt-image-2", "hidden", "(UI非表示)", "—"],
+  ]) {
+    const model = source.resolveImageModel(id);
+    assert.equal(model.id, id);
+    assert.equal(model.status, status);
+    assert.equal(model.label, label);
+    assert.equal(model.badge, badge);
+    assert.equal(model.apiProvider, "openai");
+    assert.equal(model.img2img, false);
+    assert.deepEqual(model.imagePricing, {
+      kind: "token_modalities",
+      textInputPerMTok: 5,
+      imageInputPerMTok: 8,
+      cachedImageInputPerMTok: 2,
+      imageOutputPerMTok: 30,
+    });
+  }
+}
 assert.deepEqual(registry.resolveImageModel("ideogram-v3").imagePricing, {
   kind: "per_image",
   usdPerImage: 0.03,

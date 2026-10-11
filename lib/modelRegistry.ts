@@ -188,7 +188,8 @@ export const MODEL_REGISTRY = [
     ] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", reasoningEffort: "medium", supportsCacheWrite: true } },
 
-  { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2", badge: "OpenAI", status: "active", img2img: false, imagePricing: { kind: "token_modalities", textInputPerMTok: 5.00, imageInputPerMTok: 8.00, cachedImageInputPerMTok: 2.00, imageOutputPerMTok: 30.00 } },
+  { kind: "image", id: "gpt-image-2.5-sunburst", provider: "image_gen", apiProvider: "openai", label: "GPT Image 2.5", badge: "OpenAI", status: "active", img2img: false, imagePricing: { kind: "token_modalities", textInputPerMTok: 5.00, imageInputPerMTok: 8.00, cachedImageInputPerMTok: 2.00, imageOutputPerMTok: 30.00 } },
+  { kind: "image", id: "gpt-image-2", provider: "image_gen", apiProvider: "openai", label: "(UI非表示)", badge: "—", status: "hidden", img2img: false, imagePricing: { kind: "token_modalities", textInputPerMTok: 5.00, imageInputPerMTok: 8.00, cachedImageInputPerMTok: 2.00, imageOutputPerMTok: 30.00 } },
   { kind: "image", id: "gemini-2.5-flash-image", provider: "image_gen", apiProvider: "gemini", label: "Gemini Image", badge: "Google", status: "active", img2img: true, imagePricing: { kind: "token_modalities", textInputPerMTok: 0.30, imageInputPerMTok: 0.30, textOutputPerMTok: 2.50, imageOutputPerMTok: 30.00 }, imagePage: { label: "2.5 Flash Image", badge: "既存" } },
   { kind: "image", id: "ideogram-v3", provider: "image_gen", apiProvider: "ideogram", label: "Ideogram V3", badge: "Ideogram", status: "active", img2img: true, imagePricing: { kind: "per_image", usdPerImage: 0.03 } },
   { kind: "image", id: "black-forest-labs/flux.2-pro", provider: "image_gen", apiProvider: "openrouter", label: "Flux 2 Pro", badge: "OpenRouter", status: "active", img2img: false, imagePricing: { kind: "provider_reported" } },
@@ -221,7 +222,7 @@ export const PROVIDER_CONFIG: Record<TextProvider | "image_gen", ProviderConfig 
   claude: { label: "Claude", uiDefaultModelId: "claude-sonnet-5-5", chatFallbackModelId: "claude-sonnet-5-5", arenaFallbackModelId: "claude-sonnet-5-5", lsKey: "kabehub_claude_model" },
   gemini: { label: "Gemini", uiDefaultModelId: "gemini-3.8-flash", chatFallbackModelId: "gemini-3.8-flash", arenaFallbackModelId: "gemini-3.8-flash", lsKey: "kabehub_gemini_model" },
   openai: { label: "ChatGPT", uiDefaultModelId: "gpt-5.4-mini", chatFallbackModelId: "gpt-5.4-mini", arenaFallbackModelId: "gpt-5.4-mini", lsKey: "kabehub_openai_model" },
-  image_gen: { label: "画像生成", defaultModelId: "gpt-image-2", lsKey: "kabehub_image_provider" },
+  image_gen: { label: "画像生成", defaultModelId: "gpt-image-2.5-sunburst", lsKey: "kabehub_image_provider" },
 } as const;
 
 export const LEGACY_PRICING: Record<string, ModelPricing> = {

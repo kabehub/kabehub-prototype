@@ -181,7 +181,7 @@ async function handleOpenAI(req: NextRequest, prompt: string, imageInput?: Image
     return handlerError('openai', 'OpenAI APIから画像データが返されませんでした', 502, openaiModel, true)
   }
 
-  // GPT Image 2 の公式リファレンスにはレスポンスusage内訳の完全なschemaが
+  // GPT Image 2.5 の公式リファレンスにはレスポンスusage内訳の完全なschemaが
   // 掲載されていないため、実運用例のprompt/completion名と従来Images APIの
   // input/output名の両方を受け付ける。どちらも無ければcostはunavailableになる。
   const responseUsage = data?.usage
