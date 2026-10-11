@@ -413,6 +413,7 @@ test("model IDs agree in INSERT, response and usage for explicit and default mod
     const response = await invokeArena(requestBody({ modelId }), { "x-anthropic-api-key": "key" });
     const body = await response.json();
     assert.equal(body.saved, true);
+    assert.equal(sent.model, modelId ?? "claude-sonnet-5-5");
     assert.equal(body.message.model_id, sent.model);
     assert.equal(insertedMessages[0].model_id, sent.model);
     assert.equal(recordCalls[0].params.modelId, sent.model);

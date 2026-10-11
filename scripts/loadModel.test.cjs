@@ -69,8 +69,15 @@ assert.equal(loadModel("claude"), "claude-opus-4-8");
 
 // providerごとに独立したLSキーで管理されている
 global.localStorage.setItem(MODEL_CONFIG.gemini.lsKey, "gemini-3.5-flash");
-assert.equal(loadModel("gemini"), "gemini-3.5-flash");
+assert.equal(loadModel("gemini"), "gemini-3.8-flash");
+assert.equal(global.localStorage.getItem(MODEL_CONFIG.gemini.lsKey), "gemini-3.5-flash");
+global.localStorage.setItem(MODEL_CONFIG.gemini.lsKey, "gemini-3.7-flash");
+assert.equal(loadModel("gemini"), "gemini-3.8-flash");
+assert.equal(global.localStorage.getItem(MODEL_CONFIG.gemini.lsKey), "gemini-3.7-flash");
 assert.equal(loadModel("claude"), "claude-opus-4-8"); // 他providerの変更に影響されない
+global.localStorage.setItem(MODEL_CONFIG.claude.lsKey, "claude-sonnet-5");
+assert.equal(loadModel("claude"), "claude-sonnet-5");
+assert.equal(global.localStorage.getItem(MODEL_CONFIG.claude.lsKey), "claude-sonnet-5");
 
 // ────────────────────────────────────────────────────────────
 // saveModel
@@ -83,9 +90,9 @@ assert.equal(loadModel("openai"), "gpt-5.5-pro");
 // MODEL_CONFIG スナップショット（registry移行時の意図しない値変化を検出するための固定）
 // defaultModel / lsKey
 // ────────────────────────────────────────────────────────────
-assert.equal(MODEL_CONFIG.claude.defaultModel, "claude-sonnet-5");
+assert.equal(MODEL_CONFIG.claude.defaultModel, "claude-sonnet-5-5");
 assert.equal(MODEL_CONFIG.claude.lsKey, "kabehub_claude_model");
-assert.equal(MODEL_CONFIG.gemini.defaultModel, "gemini-2.5-flash");
+assert.equal(MODEL_CONFIG.gemini.defaultModel, "gemini-3.8-flash");
 assert.equal(MODEL_CONFIG.gemini.lsKey, "kabehub_gemini_model");
 assert.equal(MODEL_CONFIG.openai.defaultModel, "gpt-5.4-mini");
 assert.equal(MODEL_CONFIG.openai.lsKey, "kabehub_openai_model");
@@ -120,7 +127,7 @@ assert.deepEqual(modelIdsByProvider, {
     "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
   ],
-  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"],
+  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"],
   openai: ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol"],
   image_gen: [
     "gpt-image-2",

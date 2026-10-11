@@ -26,7 +26,7 @@ const expectedLegacyModelConfig = {
       { id: "claude-sonnet-4-6", label: "Sonnet 4.6", badge: "高性能" },
       { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", badge: "軽量・爆速" },
     ],
-    defaultModel: "claude-sonnet-5",
+    defaultModel: "claude-sonnet-5-5",
     lsKey: "kabehub_claude_model",
   },
   gemini: {
@@ -34,14 +34,12 @@ const expectedLegacyModelConfig = {
     models: [
       { id: "gemini-2.5-flash", label: "2.5 Flash", badge: "標準" },
       { id: "gemini-2.5-pro", label: "2.5 Pro", badge: "高性能" },
-      { id: "gemini-3.5-flash", label: "3.5 Flash", badge: "高性能" },
       { id: "gemini-3.1-flash-lite", label: "3.1 Flash Lite", badge: "軽量・爆速" },
       { id: "gemini-3.6-flash", label: "3.6 Flash", badge: "高性能" },
-      { id: "gemini-3.7-flash", label: "3.7 Flash", badge: "高性能" },
       { id: "gemini-3.8-flash", label: "3.8 Flash", badge: "高性能" },
       { id: "gemini-3.5-flash-lite", label: "3.5 Flash Lite", badge: "軽量・爆速" },
     ],
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-3.8-flash",
     lsKey: "kabehub_gemini_model",
   },
   openai: {
@@ -118,7 +116,7 @@ for (const source of [registry, sharedRegistry]) {
       supportsCacheWrite: true,
     });
   }
-  for (const [provider, id] of [["claude", "claude-sonnet-5"], ["gemini", "gemini-2.5-flash"], ["openai", "gpt-5.4-mini"]]) {
+  for (const [provider, id] of [["claude", "claude-sonnet-5-5"], ["gemini", "gemini-3.8-flash"], ["openai", "gpt-5.4-mini"]]) {
     for (const key of ["uiDefaultModelId", "chatFallbackModelId", "arenaFallbackModelId"]) {
       assert.equal(source.PROVIDER_CONFIG[provider][key], id);
     }
@@ -201,10 +199,14 @@ assert.equal(registry.supportsOpenAICacheWrite("gpt-5.5"), false);
 assert.equal(registry.supportsOpenAICacheWrite("gpt-5.5-pro"), false);
 
 const expectedNovelCheckModels = [
-  { id: "gemini-2.5-flash", label: "2.5 Flash", estimatedInputPerMTok: 0.075 },
+  { id: "gemini-2.5-flash", label: "2.5 Flash", estimatedInputPerMTok: 0.30 },
   { id: "gemini-2.5-pro", label: "2.5 Pro", estimatedInputPerMTok: 1.25 },
+  { id: "gemini-3.8-flash", label: "3.8 Flash", estimatedInputPerMTok: 0.75 },
 ];
 assert.deepEqual(registry.getNovelCheckModels(), expectedNovelCheckModels);
+assert.deepEqual(sharedRegistry.getNovelCheckModels(), expectedNovelCheckModels);
+assert.equal(registry.NOVEL_CHECK_CONFIG.defaultModelId, "gemini-3.8-flash");
+assert.equal(sharedRegistry.NOVEL_CHECK_CONFIG.defaultModelId, "gemini-3.8-flash");
 assert.deepEqual(
   registry.MODEL_REGISTRY
     .filter((model) => model.features?.novelCheck !== undefined)
@@ -283,9 +285,9 @@ for (const provider of ["claude", "gemini", "openai"]) {
   }
 }
 
-assert.equal(registry.PROVIDER_CONFIG.claude.uiDefaultModelId, "claude-sonnet-5");
-assert.equal(registry.PROVIDER_CONFIG.claude.chatFallbackModelId, "claude-sonnet-5");
-assert.equal(registry.PROVIDER_CONFIG.claude.arenaFallbackModelId, "claude-sonnet-5");
+assert.equal(registry.PROVIDER_CONFIG.claude.uiDefaultModelId, "claude-sonnet-5-5");
+assert.equal(registry.PROVIDER_CONFIG.claude.chatFallbackModelId, "claude-sonnet-5-5");
+assert.equal(registry.PROVIDER_CONFIG.claude.arenaFallbackModelId, "claude-sonnet-5-5");
 
 for (const modelId of ["claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-fable-5-1"]) {
   assert.deepEqual(
@@ -422,13 +424,49 @@ const newModels = [
   ["openai", "gpt-5.6-sol", { inputPerMTok: 5, cachedInputPerMTok: 0.5, outputPerMTok: 30 }],
   ["openai", "gpt-5.6-terra", { inputPerMTok: 2, cachedInputPerMTok: 0.2, outputPerMTok: 12 }],
   ["openai", "gpt-5.6-luna", { inputPerMTok: 0.2, cachedInputPerMTok: 0.02, outputPerMTok: 1.2 }],
-  ["gemini", "gemini-3.7-flash", { inputPerMTok: 0.75, outputPerMTok: 3.75 }],
   ["gemini", "gemini-3.5-flash-lite", { inputPerMTok: 0.3, outputPerMTok: 2.5 }],
 ];
 for (const [provider, modelId, pricing] of newModels) {
   assert.equal(registry.isAllowedModel(provider, modelId, "chat"), true, `${modelId}/chat`);
   assert.equal(registry.isAllowedModel(provider, modelId, "arena"), true, `${modelId}/arena`);
   assert.deepEqual(registry.getPricing(modelId), pricing, `${modelId}/pricing`);
+}
+
+for (const source of [registry, sharedRegistry]) {
+  assert.deepEqual(source.EXTRACT_SETTINGS_CONFIG, {
+    claude: "claude-sonnet-5", gemini: "gemini-3.8-flash", openai: "gpt-4o",
+  });
+  for (const [id, before, after] of [
+    ["gemini-3.5-flash", { inputPerMTok: 1.5, outputPerMTok: 9 }, { inputPerMTok: 1.5, outputPerMTok: 9 }],
+    ["gemini-3.7-flash", { inputPerMTok: 0.75, outputPerMTok: 3.75 }, { inputPerMTok: 1.5, outputPerMTok: 7.5 }],
+  ]) {
+    assert.equal(source.MODEL_REGISTRY.find(model => model.id === id).status, "deprecated");
+    assert.ok(!source.buildLegacyModelConfig().gemini.models.some(model => model.id === id));
+    assert.ok(!source.getArenaModels("gemini").some(model => model.id === id));
+    for (const surface of ["chat", "arena"]) assert.equal(source.isAllowedModel("gemini", id, surface), false);
+    assert.ok(!source.getNovelCheckModels().some(model => model.id === id));
+    assert.equal(source.isAllowedNovelCheckModel(id), false);
+    assert.deepEqual(source.getPricing(id, new Date("2026-12-31T23:59:59.999Z")), before);
+    assert.deepEqual(source.getPricing(id, new Date("2027-01-01T00:00:00.000Z")), after);
+  }
+  for (const id of ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]) {
+    assert.equal(source.MODEL_REGISTRY.find(model => model.id === id).status, "active");
+  }
+  // Prove status filtering also applies when a deprecated model has novelCheck metadata.
+  const fixture = {
+    kind: "text", id: "novel-check-deprecated-fixture", provider: "gemini",
+    label: "Fixture", badge: "", status: "active", surfaces: { chat: true, arena: true },
+    thinking: { control: "unsupported" }, pricing: [],
+    features: { novelCheck: { label: "Fixture", estimatedInputPerMTok: 1 } },
+  };
+  source.MODEL_REGISTRY.push(fixture);
+  try {
+    assert.ok(source.getNovelCheckModels().some(model => model.id === fixture.id));
+    fixture.status = "deprecated";
+    assert.ok(!source.getNovelCheckModels().some(model => model.id === fixture.id));
+  } finally {
+    source.MODEL_REGISTRY.splice(source.MODEL_REGISTRY.indexOf(fixture), 1);
+  }
 }
 
 for (const surface of ["chat", "arena"]) {

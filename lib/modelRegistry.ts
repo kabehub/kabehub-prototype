@@ -126,27 +126,27 @@ export const MODEL_REGISTRY = [
   { kind: "text", id: "claude-sonnet-4-6", provider: "claude", label: "Sonnet 4.6", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(3.00, 15.00) },
   { kind: "text", id: "claude-haiku-4-5-20251001", provider: "claude", label: "Haiku 4.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(1.00, 5.00) },
 
-  { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50), features: { novelCheck: { label: "2.5 Flash", estimatedInputPerMTok: 0.075 } } },
+  { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50), features: { novelCheck: { label: "2.5 Flash", estimatedInputPerMTok: 0.30 } } },
   { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [
       { inputPerMTok: 1.25, outputPerMTok: 10.00 },
       { promptTokensAbove: 200_000, inputPerMTok: 2.50, outputPerMTok: 15.00 },
     ] },
   ], features: { novelCheck: { label: "2.5 Pro", estimatedInputPerMTok: 1.25 } } },
-  { kind: "text", id: "gemini-3.5-flash", provider: "gemini", label: "3.5 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 9.00) },
+  { kind: "text", id: "gemini-3.5-flash", provider: "gemini", label: "3.5 Flash", badge: "高性能", status: "deprecated", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(1.50, 9.00) },
   { kind: "text", id: "gemini-3.1-flash-lite", provider: "gemini", label: "3.1 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.25, 1.50) },
   { kind: "text", id: "gemini-3.6-flash", provider: "gemini", label: "3.6 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { note: "導入価格（〜2026-12-31）", tiers: [{ inputPerMTok: 0.75, outputPerMTok: 3.75 }] },
     { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
   ] },
-  { kind: "text", id: "gemini-3.7-flash", provider: "gemini", label: "3.7 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gemini-3.7-flash", provider: "gemini", label: "3.7 Flash", badge: "高性能", status: "deprecated", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { note: "導入価格（〜2026-12-31）", tiers: [{ inputPerMTok: 0.75, outputPerMTok: 3.75 }] },
     { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
   ] },
   { kind: "text", id: "gemini-3.8-flash", provider: "gemini", label: "3.8 Flash", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { note: "導入価格（〜2026-12-31）", tiers: [{ inputPerMTok: 0.75, outputPerMTok: 3.75 }] },
     { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
-  ] },
+  ], features: { novelCheck: { label: "3.8 Flash", estimatedInputPerMTok: 0.75 } } },
   { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
 
   { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00, 1.25), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
@@ -218,8 +218,8 @@ export type ImageProviderConfig = {
 };
 
 export const PROVIDER_CONFIG: Record<TextProvider | "image_gen", ProviderConfig | ImageProviderConfig> = {
-  claude: { label: "Claude", uiDefaultModelId: "claude-sonnet-5", chatFallbackModelId: "claude-sonnet-5", arenaFallbackModelId: "claude-sonnet-5", lsKey: "kabehub_claude_model" },
-  gemini: { label: "Gemini", uiDefaultModelId: "gemini-2.5-flash", chatFallbackModelId: "gemini-2.5-flash", arenaFallbackModelId: "gemini-2.5-flash", lsKey: "kabehub_gemini_model" },
+  claude: { label: "Claude", uiDefaultModelId: "claude-sonnet-5-5", chatFallbackModelId: "claude-sonnet-5-5", arenaFallbackModelId: "claude-sonnet-5-5", lsKey: "kabehub_claude_model" },
+  gemini: { label: "Gemini", uiDefaultModelId: "gemini-3.8-flash", chatFallbackModelId: "gemini-3.8-flash", arenaFallbackModelId: "gemini-3.8-flash", lsKey: "kabehub_gemini_model" },
   openai: { label: "ChatGPT", uiDefaultModelId: "gpt-5.4-mini", chatFallbackModelId: "gpt-5.4-mini", arenaFallbackModelId: "gpt-5.4-mini", lsKey: "kabehub_openai_model" },
   image_gen: { label: "画像生成", defaultModelId: "gpt-image-2", lsKey: "kabehub_image_provider" },
 } as const;
@@ -352,7 +352,7 @@ export function isAllowedModel(provider: TextProvider, modelId: string, surface:
 }
 
 export const NOVEL_CHECK_CONFIG = {
-  defaultModelId: "gemini-2.5-flash",
+  defaultModelId: "gemini-3.8-flash",
   estimatedTokensPerCharacter: 1.2,
   maxOutputTokens: 8192,
 } as const;
@@ -364,6 +364,7 @@ export function getNovelCheckModels(): { id: string; label: string; estimatedInp
   return MODEL_REGISTRY
     .filter((model): model is NovelCheckRegistryModel =>
       model.kind === "text" &&
+      model.status === "active" &&
       "features" in model &&
       model.features?.novelCheck !== undefined
     )
@@ -490,7 +491,7 @@ type TextModelByProvider = {
 
 export const EXTRACT_SETTINGS_CONFIG = {
   claude: "claude-sonnet-5",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.8-flash",
   openai: "gpt-4o",
 } as const satisfies TextModelByProvider;
 

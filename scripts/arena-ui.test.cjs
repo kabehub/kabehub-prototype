@@ -65,7 +65,11 @@ global.alert = message => { throw new Error(message); };
     const { ArenaBubble, getArenaMessageLabel } = require(prefix + "/components/ArenaTimeline.tsx");
     const render = () => { cursor = 0; return page.default(); };
     let tree = render();
-    assert.equal(select(tree, "AI 1のモデル").props.value, "claude-sonnet-5");
+    assert.equal(select(tree, "AI 1のモデル").props.value, "claude-sonnet-5-5");
+    assert.equal(select(tree, "AI 2のモデル").props.value, "gemini-3.8-flash");
+    for (const id of ["gemini-3.5-flash", "gemini-3.7-flash"]) {
+      assert.ok(!nodes(select(tree, "AI 2のモデル")).some(node => node.props?.value === id));
+    }
     change(select(tree, "AI 1のモデル"), "claude-fable-5-1");
     page.controls.setConfig(config => ({ ...config, ai3Enabled: true }));
     tree = render();
@@ -83,7 +87,7 @@ global.alert = message => { throw new Error(message); };
       assert.equal(select(tree, "AI " + slot + "のモデル").props.value, "gpt-5.4-mini");
       change(select(tree, "AI " + slot + "のモデル"), "gpt-6-astra");
       change(providerSelect, "claude"); tree = render();
-      assert.equal(select(tree, "AI " + slot + "のモデル").props.value, "claude-sonnet-5");
+      assert.equal(select(tree, "AI " + slot + "のモデル").props.value, "claude-sonnet-5-5");
     }
     const messages = [];
     for (let turn = 0; turn < 13; turn++) {
