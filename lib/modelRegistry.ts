@@ -68,7 +68,7 @@ type TextModelBase = {
 };
 
 type OpenAICacheCapability = { supportsCacheWrite?: boolean };
-type ChatCompletionsReasoningEffort = "low" | "medium" | "high" | "xhigh";
+type ChatCompletionsReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
 
 export type OpenAICapability = OpenAICacheCapability & (
   | { api: "chat_completions"; tokenParam: "max_tokens" | "max_completion_tokens"; reasoningEffort?: ChatCompletionsReasoningEffort }
@@ -105,6 +105,14 @@ const price = (
 ];
 
 export const MODEL_REGISTRY = [
+  { kind: "text", id: "claude-sonnet-5-5", provider: "claude", label: "Sonnet 5.5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5.5はAdaptive Thinkingが標準で有効です" }, pricing: price(2.00, 10.00, 0.10) },
+  { kind: "text", id: "claude-opus-5-5", provider: "claude", label: "Opus 5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Opus 5.5はAdaptive Thinkingが自動適用されます" }, pricing: price(4.00, 20.00, 0.20) },
+  { kind: "text", id: "claude-haiku-5-5", provider: "claude", label: "Haiku 5.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: false }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true }, pricing: [
+    { tiers: [
+      { inputPerMTok: 0.10, cachedInputPerMTok: 0.01, outputPerMTok: 0.50 },
+      { promptTokensAbove: 100_000, inputPerMTok: 0.50, cachedInputPerMTok: 0.05, outputPerMTok: 2.50 },
+    ] },
+  ] },
   { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00) },
   { kind: "text", id: "claude-fable-5-1", provider: "claude", label: "Fable 5.1", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5.1はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00, 0.25) },
   { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5はAdaptive Thinkingが標準で有効です" }, pricing: [
@@ -159,6 +167,24 @@ export const MODEL_REGISTRY = [
     { tiers: [
       { inputPerMTok: 10.00, cachedInputPerMTok: 1.00, outputPerMTok: 50.00 },
       { promptTokensAbove: 272_000, inputPerMTok: 20.00, cachedInputPerMTok: 2.00, outputPerMTok: 75.00 },
+    ] },
+  ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", reasoningEffort: "medium", supportsCacheWrite: true } },
+
+  { kind: "text", id: "gpt-6-luna", provider: "openai", label: "GPT-6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { tiers: [
+      { inputPerMTok: 0.10, cachedInputPerMTok: 0.01, outputPerMTok: 0.50 },
+      { promptTokensAbove: 272_000, inputPerMTok: 0.20, cachedInputPerMTok: 0.02, outputPerMTok: 0.75 },
+    ] },
+  ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
+  { kind: "text", id: "gpt-6-sol", provider: "openai", label: "GPT-6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { tiers: [
+      { inputPerMTok: 2.00, cachedInputPerMTok: 0.20, outputPerMTok: 10.00 },
+    ] },
+  ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", reasoningEffort: "medium", supportsCacheWrite: true } },
+  { kind: "text", id: "gpt-6.1-sol", provider: "openai", label: "GPT-6.1 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+    { tiers: [
+      { inputPerMTok: 2.00, cachedInputPerMTok: 0.10, outputPerMTok: 10.00 },
+      { promptTokensAbove: 272_000, inputPerMTok: 4.00, cachedInputPerMTok: 0.20, outputPerMTok: 15.00 },
     ] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", reasoningEffort: "medium", supportsCacheWrite: true } },
 

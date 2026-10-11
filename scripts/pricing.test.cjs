@@ -85,6 +85,30 @@ for (const modelId of ["claude-sonnet-5", "claude-sonnet-5-20260615"]) {
 }
 
 // ────────────────────────────────────────────────────────────
+// 新モデルの基本料金・cache単価・境界（日時によらない）
+// ────────────────────────────────────────────────────────────
+const newModelTiers = [
+  ["claude-sonnet-5-5", undefined, { inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10 }],
+  ["claude-opus-5-5", undefined, { inputPerMTok: 4, cachedInputPerMTok: 0.2, outputPerMTok: 20 }],
+  ["claude-haiku-5-5", 100_000, { inputPerMTok: 0.1, cachedInputPerMTok: 0.01, outputPerMTok: 0.5 }],
+  ["claude-haiku-5-5", 100_001, { promptTokensAbove: 100_000, inputPerMTok: 0.5, cachedInputPerMTok: 0.05, outputPerMTok: 2.5 }],
+  ["gpt-6-luna", 272_000, { inputPerMTok: 0.1, cachedInputPerMTok: 0.01, outputPerMTok: 0.5 }],
+  ["gpt-6-luna", 272_001, { promptTokensAbove: 272_000, inputPerMTok: 0.2, cachedInputPerMTok: 0.02, outputPerMTok: 0.75 }],
+  ["gpt-6-sol", 272_000, { inputPerMTok: 2, cachedInputPerMTok: 0.2, outputPerMTok: 10 }],
+  // 6 Solの超tierは公式料金表で確認できるまで未登録。
+  ["gpt-6-sol", 272_001, { inputPerMTok: 2, cachedInputPerMTok: 0.2, outputPerMTok: 10 }],
+  ["gpt-6.1-sol", 272_000, { inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10 }],
+  ["gpt-6.1-sol", 272_001, { promptTokensAbove: 272_000, inputPerMTok: 4, cachedInputPerMTok: 0.2, outputPerMTok: 15 }],
+];
+const sharedPricing = require("../packages/shared/src/pricing.ts");
+for (const [id, promptTokens, expected] of newModelTiers) {
+  for (const at of [new Date("2026-08-15T00:00:00.000Z"), new Date("2027-01-01T00:00:00.000Z")]) {
+    assert.deepEqual(getPricing(id, at, promptTokens), expected);
+    assert.deepEqual(sharedPricing.getPricing(id, at, promptTokens), expected);
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 // calcCost
 // ────────────────────────────────────────────────────────────
 assert.equal(calcCost(null, 100, "gpt-4o"), null); // v92以前データ（inputTokens null）

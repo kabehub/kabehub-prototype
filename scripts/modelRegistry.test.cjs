@@ -12,6 +12,9 @@ const expectedLegacyModelConfig = {
   claude: {
     label: "Claude",
     models: [
+      { id: "claude-sonnet-5-5", label: "Sonnet 5.5", badge: "新標準" },
+      { id: "claude-opus-5-5", label: "Opus 5.5", badge: "最高精度" },
+      { id: "claude-haiku-5-5", label: "Haiku 5.5", badge: "軽量・爆速" },
       { id: "claude-fable-5", label: "Fable 5", badge: "最高精度" },
       { id: "claude-fable-5-1", label: "Fable 5.1", badge: "最高精度" },
       { id: "claude-sonnet-5", label: "Sonnet 5", badge: "新標準" },
@@ -53,6 +56,9 @@ const expectedLegacyModelConfig = {
       { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", badge: "高性能" },
       { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", badge: "軽量・爆速" },
       { id: "gpt-6-astra", label: "GPT-6 Astra", badge: "最高性能" },
+      { id: "gpt-6-luna", label: "GPT-6 Luna", badge: "軽量・爆速" },
+      { id: "gpt-6-sol", label: "GPT-6 Sol", badge: "最高精度" },
+      { id: "gpt-6.1-sol", label: "GPT-6.1 Sol", badge: "最高精度" },
     ],
     defaultModel: "gpt-5.4-mini",
     lsKey: "kabehub_openai_model",
@@ -71,6 +77,53 @@ const expectedLegacyModelConfig = {
 };
 
 assert.deepEqual(registry.buildLegacyModelConfig(), expectedLegacyModelConfig);
+assert.deepEqual(sharedRegistry.buildLegacyModelConfig(), expectedLegacyModelConfig);
+
+const newModelPricing = [
+  ["claude-sonnet-5-5", "claude", { inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10 }],
+  ["claude-opus-5-5", "claude", { inputPerMTok: 4, cachedInputPerMTok: 0.2, outputPerMTok: 20 }],
+  ["claude-haiku-5-5", "claude", { inputPerMTok: 0.1, cachedInputPerMTok: 0.01, outputPerMTok: 0.5 }],
+  ["gpt-6-luna", "openai", { inputPerMTok: 0.1, cachedInputPerMTok: 0.01, outputPerMTok: 0.5 }],
+  ["gpt-6-sol", "openai", { inputPerMTok: 2, cachedInputPerMTok: 0.2, outputPerMTok: 10 }],
+  ["gpt-6.1-sol", "openai", { inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10 }],
+];
+for (const source of [registry, sharedRegistry]) {
+  for (const [id, provider, pricing] of newModelPricing) {
+    const model = source.MODEL_REGISTRY.find(model => model.id === id);
+    assert.equal(model.status, "active");
+    assert.equal(model.provider, provider);
+    assert.deepEqual(model.surfaces, { chat: true, arena: id !== "claude-haiku-5-5" });
+    assert.deepEqual(source.getPricing(id), pricing);
+    assert.equal(source.isAllowedModel(provider, id, "chat"), true);
+    assert.equal(source.getArenaModels(provider).some(model => model.id === id), id !== "claude-haiku-5-5");
+    assert.equal(source.isAllowedModel(provider, id, "arena"), id !== "claude-haiku-5-5");
+  }
+  for (const id of ["claude-sonnet-5-5", "claude-haiku-5-5"]) {
+    const thinking = source.getThinkingSupport(id);
+    assert.equal(thinking.control, "toggleable");
+    assert.equal(thinking.requestType, "adaptive");
+    assert.equal(thinking.defaultOn, true);
+  }
+  assert.equal(source.getThinkingSupport("claude-opus-5-5").control, "always_on");
+  for (const id of ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]) {
+    for (const requested of [undefined, false, true]) {
+      assert.deepEqual(source.resolveClaudeRequestOverrides(id, requested), { max_tokens: 16000 });
+    }
+  }
+  for (const id of ["gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol"]) {
+    assert.deepEqual(source.getThinkingSupport(id), { control: "unsupported" });
+    assert.deepEqual(source.getOpenAICapability(id), {
+      api: "chat_completions", tokenParam: "max_completion_tokens",
+      ...(id === "gpt-6-luna" ? {} : { reasoningEffort: "medium" }),
+      supportsCacheWrite: true,
+    });
+  }
+  for (const [provider, id] of [["claude", "claude-sonnet-5"], ["gemini", "gemini-2.5-flash"], ["openai", "gpt-5.4-mini"]]) {
+    for (const key of ["uiDefaultModelId", "chatFallbackModelId", "arenaFallbackModelId"]) {
+      assert.equal(source.PROVIDER_CONFIG[provider][key], id);
+    }
+  }
+}
 assert.deepEqual(
   registry.MODEL_REGISTRY,
   sharedRegistry.MODEL_REGISTRY,

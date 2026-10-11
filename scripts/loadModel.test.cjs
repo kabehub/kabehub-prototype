@@ -106,6 +106,9 @@ const modelIdsByProvider = Object.fromEntries(
 
 assert.deepEqual(modelIdsByProvider, {
   claude: [
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "claude-haiku-5-5",
     "claude-fable-5",
     "claude-fable-5-1",
     "claude-sonnet-5",
@@ -118,7 +121,7 @@ assert.deepEqual(modelIdsByProvider, {
     "claude-haiku-4-5-20251001",
   ],
   gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"],
-  openai: ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra"],
+  openai: ["gpt-4o", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol"],
   image_gen: [
     "gpt-image-2",
     "gemini-2.5-flash-image",
@@ -132,7 +135,7 @@ assert.deepEqual(modelIdsByProvider, {
 // ────────────────────────────────────────────────────────────
 assert.deepEqual(
   [...THINKING_UNSUPPORTED_MODELS].sort(),
-  ["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5"].sort()
+  ["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"].sort()
 );
 assert.equal(isThinkingUnsupported("claude-haiku-4-5-20251001"), false);
 assert.equal(isThinkingUnsupported("claude-fable-5"), true);

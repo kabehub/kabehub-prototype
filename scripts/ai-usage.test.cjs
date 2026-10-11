@@ -89,6 +89,23 @@ try {
 }
 assert.ok(!MODEL_REGISTRY.includes(tierFixture));
 
+// Real Haiku 5.5 tiers must agree with the Phase 1B prompt-token helper.
+for (const [label, usage, promptTokens, expectedCacheRate, expectedCost] of [
+  ["100K", { inputTokens: 10_000, cacheReadInputTokens: 90_000 }, 100_000, 0.01, 0.0024],
+  ["100K+1", { inputTokens: 10_000, cacheReadInputTokens: 90_001 }, 100_001, 0.05, 0.01200005],
+  ["creation", { inputTokens: 1_000, cacheCreationInputTokens: 100_000 }, 101_000, 0.05, 0.0655],
+  ["creation and read", combinedUsage, 100_001, 0.05, 0.03500005],
+]) {
+  const { getPricing } = require("../lib/modelRegistry.ts");
+  assert.equal(getPricingPromptTokens("claude", usage), promptTokens, label);
+  const tier = getPricing("claude-haiku-5-5", pricedAt, promptTokens);
+  assert.equal(tier.cachedInputPerMTok, expectedCacheRate, label);
+  assert.equal(tier.inputPerMTok, promptTokens > 100_000 ? 0.5 : 0.1, label);
+  const result = calculateTextUsageCost("claude", "claude-haiku-5-5", { ...usage, outputTokens: 1_000 }, pricedAt);
+  assert.equal(result.costSource, "computed", label);
+  approx(result.estimatedCostUsd, expectedCost, `haiku-5-5/${label}`);
+}
+
 // Claude response fixture: input + cache creation + cache read + output.
 const claude = calculateTextUsageCost("claude", "claude-sonnet-4-5", {
   inputTokens: 1_000_000,
