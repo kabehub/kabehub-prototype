@@ -108,8 +108,7 @@ export const MODEL_REGISTRY = [
   { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00) },
   { kind: "text", id: "claude-fable-5-1", provider: "claude", label: "Fable 5.1", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5.1はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00, 0.25) },
   { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5はAdaptive Thinkingが標準で有効です" }, pricing: [
-    { note: "導入価格", tiers: [{ inputPerMTok: 2.00, outputPerMTok: 10.00 }] },
-    { from: "2026-09-01T00:00:00.000Z", tiers: [{ inputPerMTok: 3.00, outputPerMTok: 15.00 }] },
+    { tiers: [{ inputPerMTok: 2.00, outputPerMTok: 10.00 }] },
   ] },
   { kind: "text", id: "claude-opus-5", provider: "claude", label: "Opus 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Opus 5はAdaptive Thinkingが標準で有効です" }, pricing: price(5.00, 25.00) },
   { kind: "text", id: "claude-opus-4-8", provider: "claude", label: "Opus 4.8", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },

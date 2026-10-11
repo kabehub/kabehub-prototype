@@ -69,14 +69,20 @@ assert.equal(getPricing("gemini-2.5-flash-image"), null);
 assert.equal(getPricing("gemini/gemini-2.5-flash-image"), null);
 
 // ────────────────────────────────────────────────────────────
-// claude-sonnet-5 の日付分岐（now引数を明示して実行日に依存させない）
+// claude-sonnet-5 は日時・snapshot IDによらず同じ単価を返す
 // ────────────────────────────────────────────────────────────
 const introPriceEnd = new Date("2026-08-31T23:59:59.999Z");
 const regularPriceStart = new Date("2026-09-01T00:00:00.000Z");
 assert.deepEqual(getPricing("claude-sonnet-5", introPriceEnd), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
 assert.deepEqual(getPricing("claude-sonnet-5-20260615", introPriceEnd), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
-assert.deepEqual(getPricing("claude-sonnet-5", regularPriceStart), { inputPerMTok: 3.0, outputPerMTok: 15.0 });
-assert.deepEqual(getPricing("claude-sonnet-5-20260615", regularPriceStart), { inputPerMTok: 3.0, outputPerMTok: 15.0 });
+assert.deepEqual(getPricing("claude-sonnet-5", regularPriceStart), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
+assert.deepEqual(getPricing("claude-sonnet-5-20260615", regularPriceStart), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
+for (const modelId of ["claude-sonnet-5", "claude-sonnet-5-20260615"]) {
+  for (const at of [new Date("2000-01-01T00:00:00.000Z"), new Date("2100-01-01T00:00:00.000Z")]) {
+    assert.deepEqual(getPricing(modelId, at), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
+  }
+  assert.deepEqual(getPricing(modelId), { inputPerMTok: 2.0, outputPerMTok: 10.0 });
+}
 
 // ────────────────────────────────────────────────────────────
 // calcCost

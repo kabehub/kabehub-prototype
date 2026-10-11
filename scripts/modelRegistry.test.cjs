@@ -280,10 +280,11 @@ const intro = new Date("2026-08-31T23:59:59.999Z");
 const regular = new Date("2026-09-01T00:00:00.000Z");
 const later = new Date("2026-10-01T00:00:00.000Z");
 assert.deepEqual(registry.getPricing("claude-sonnet-5", intro), { inputPerMTok: 2, outputPerMTok: 10 });
-assert.deepEqual(registry.getPricing("claude-sonnet-5", regular), { inputPerMTok: 3, outputPerMTok: 15 });
-assert.deepEqual(registry.getPricing("claude-sonnet-5", later), { inputPerMTok: 3, outputPerMTok: 15 });
+assert.deepEqual(registry.getPricing("claude-sonnet-5", regular), { inputPerMTok: 2, outputPerMTok: 10 });
+assert.deepEqual(registry.getPricing("claude-sonnet-5", later), { inputPerMTok: 2, outputPerMTok: 10 });
 assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", intro), { inputPerMTok: 2, outputPerMTok: 10 });
-assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", regular), { inputPerMTok: 3, outputPerMTok: 15 });
+assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", regular), { inputPerMTok: 2, outputPerMTok: 10 });
+assert.deepEqual(registry.getPricing("claude-sonnet-5-20260615", later), { inputPerMTok: 2, outputPerMTok: 10 });
 assert.equal(registry.getPricing("gemini/gemini-2.5-flash-image"), null);
 assert.deepEqual(registry.getPricing("claude-opus-4-8"), { inputPerMTok: 5, outputPerMTok: 25 });
 assert.deepEqual(registry.getPricing("gemini-3.6-flash", new Date("2026-12-31T23:59:59.999Z")), {
