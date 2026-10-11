@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）
+最終更新: 2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -68,7 +68,7 @@ git pull origin main
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2.5-sunburst、旧gpt-image-2はhiddenで価格定義を維持） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |
 | ファイルストレージ | Supabase Storage（generated-imagesバケット） |
-| デプロイ | Vercel（kabehub.com） |
+| デプロイ | Vercel（kabehub.com）。Function Regionは引継ぎ記録ではTokyo（hnd1）をダッシュボードで設定（現行ダッシュボード値は要確認）。`vercel.json`にはregionsを記載していない。regionsを追加するとダッシュボード設定より優先される（[Vercel公式設定仕様](https://vercel.com/docs/project-configuration/vercel-json#regions)） |
 | Markdown | react-markdown + remark-gfm + @tailwindcss/typography |
 
 モデルIDのUnion型は `lib/modelRegistry.ts` の `MODEL_REGISTRY` から導出され、`types/index.ts` はその型を参照するため手動更新は不要。実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金も `lib/modelRegistry.ts` で管理する。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` / `resolveClaudeRequestOverrides` をimportして使い、手動Thinking UIの可否は `canToggleDeepThinking` から導出する。モデル追加・削除時は `lib/modelRegistry.ts` と `packages/shared/src/modelRegistry.ts` を同一内容で更新する（`loadModel` / `saveModel` はlibのみ）。画像生成の標準モデルを置き換える際は `PROVIDER_CONFIG.image_gen.defaultModelId` と3つのテスト（`modelRegistry` / `ai-usage` / `loadModel`）も更新し、旧モデルのID・料金互換性が必要なら価格定義を変えず `hidden` で残す。
@@ -124,7 +124,7 @@ git pull origin main
 
 Project（旧フォルダ）単位のtopic型メモリ。`project_memory_topics`（現行本文・`revision`）と`project_memory_revisions`（履歴）を、RPC（SECURITY DEFINER）経由で更新する。認証は全routeで`requireRouteUser`。所有確認はMemory routeで`getOwnedProject`、Project一覧は`user_id`で絞り込み、Project作成・名前変更・削除はRPC内で行う。`proxy-paths.ts`には全routeが`bearer`で登録済み。
 
-v206（Phase 1a、未適用）は `project_memory_auto_summary_cursors` にtopic×threadごとの消費位置を保持する（PK: topic_id/thread_id、message_idはFKなし、message_created_at、updated_at）。topic/thread削除でcascade。user_id列は持たず、topic所有者にSELECTのみをRLSで許可する。書き込み専用RPC `advance_project_memory_auto_summary_cursors(p_user_id uuid, p_topic_id uuid, p_expected_revision integer, p_cursors jsonb) returns integer` はSECURITY DEFINER・search_path空・authenticatedのみ実行可。auth→正のexpected_revision→1〜100件のJSON/UUID/重複検証→所有topicの行ロック→存在/非NULL project→revision CAS→thread/message所有・Project・user role・provider照合→DBのcreated_at取得→(created_at,message_id)が前進する場合のみupsert→前進行数を返す。不適格候補はskip、is_activeは再検証しない。戻り値は診断用で成功判定には使わない。topic本文・revision・履歴は変更しない。アプリからの呼び出しはPhase 1bで実装する。
+v206（Phase 1a、適用済み。`docs/applied/migration_v206_project_memory_auto_summary_cursors.sql`に保管）は `project_memory_auto_summary_cursors` にtopic×threadごとの消費位置を保持する（PK: topic_id/thread_id、message_idはFKなし、message_created_at、updated_at）。topic/thread削除でcascade。user_id列は持たず、topic所有者にSELECTのみをRLSで許可する。書き込み専用RPC `advance_project_memory_auto_summary_cursors(p_user_id uuid, p_topic_id uuid, p_expected_revision integer, p_cursors jsonb) returns integer` はSECURITY DEFINER・search_path空・authenticatedのみ実行可。auth→正のexpected_revision→1〜100件のJSON/UUID/重複検証→所有topicの行ロック→存在/非NULL project→revision CAS→thread/message所有・Project・user role・provider照合→DBのcreated_at取得→(created_at,message_id)が前進する場合のみupsert→前進行数を返す。不適格候補はskip、is_activeは再検証しない。戻り値は診断用で成功判定には使わない。topic本文・revision・履歴は変更しない。アプリからの呼び出しはPhase 2aのcheckpoint routeとPhase 2bのclient／hookで実装済み。`docs/schema.sql`には定義が統合されているが、冒頭・v206見出しの適用状態コメントは旧記述のまま。適用日は確認できないため記載しない。
 
 | ファイル | 役割 |
 |-|-|
@@ -137,6 +137,8 @@ v206（Phase 1a、未適用）は `project_memory_auto_summary_cursors` にtopic
 | `app/api/projects/[projectId]/memory/topics/[topicId]/edit-preview/route.ts` | POST：「AIで編集」のプレビュー。**DB書き込みなし**。`x-openai-api-key`を認証より前に確認。body`{instruction}`（trim後非空・2,000文字以下）。結果は`proposal`/`no_change`/`not_applicable`の3種（共通envelope付き）。入力上限超過413、LLM失敗・不正応答は502 |
 | `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` | POST：Project全体の整理案プレビュー（DB書き込みなし）。`current_state` topicは対象外。入力上限超過413、失敗502。適用は専用routeではなく、クライアントがtopicごとに既存PATCHを呼ぶ（`source_refs`に`consolidation_run`） |
 | `app/api/projects/[projectId]/memory/bootstrap/preview/route.ts` | POST：通常のProject内会話から未作成の標準4キーだけを生成する初回プレビュー（DB書き込みなし）。APIキーを認証前に確認。全キー作成済み／対象会話なし／根拠なしは200 `not_applicable`。DB読込失敗500、LLM失敗・不正応答502。入力超過は切り捨て、413は使わない。previewでは空本文の未作成キーを標準キー順のempty_topic_keysで常に返す（空配列可）。全件空なら従来どおりinsufficient_evidence。承認後は既存topics POSTで個別作成 |
+| `app/api/projects/[projectId]/memory/update/preview/route.ts` | POST：既存標準topicの差分プレビュー。DB書き込みなし。trimしたx-openai-api-keyを認証前に確認（欠落400）→requireRouteUser→getOwnedProject→topic／cursor読込と入力選抜→LLM。共通run_id/model/prompt_version付きのpreview／checkpoint_only／not_applicable。前2種はproposals・checkpoint_topics・considered_threads・stats・excluded_topicsを返す。更新対象なしはno_updatable_topics、新規発言なしはno_new_messages（200、LLM未実行）。入力超過413 update_input_too_large、DB読込失敗500、不正応答502 invalid_llm_response、LLM失敗502 llm_failed。認証・Project確認の失敗は既存応答を維持。bearer POST登録済み |
+| `app/api/projects/[projectId]/memory/update/checkpoint/route.ts` | POST：bodyは{topic_id, expected_revision, cursors:[{thread_id, message_id}]}、成功は{advanced:number}（RPCの非number値は0）。OpenAIキー不要。requireRouteUser→JSON／非配列object→topic UUID→expected_revision整数1〜2147483647→cursors配列1〜100件→各要素のexact 2キー／UUID→thread_idの大小文字を無視した重複検証→getOwnedProject→topic id＋project idの存在確認→advance_project_memory_auto_summary_cursors RPC。body／cursor不正400、RPC権限42501は403、所有Projectなし／別Project含むtopicなし404、revision conflict409、DB読込・未知RPCエラー500。認証失敗はauth.responseをそのまま返す。bodyの余分なキーは拒否せず、cursor要素の余分なキーは拒否。bearer POST登録済み |
 
 ### API Routes（GitHub連携）
 
@@ -203,9 +205,10 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ChatPanel.tsx` | チャット画面のメインコンポーネント。状態管理の大半がここにある |
 | `components/ChatInput.tsx` | 下部固定入力欄。ファイル添付・画像添付・Ctrl+Vスクショ貼り付け・モデルドロップダウン・送信キー設定対応 |
 | `components/ChatInputCentered.tsx` | 新規会話スタート時の中央配置入力欄（v144〜）。`ChatInput.tsx`から型・ヘルパーをimportして共通利用 |
-| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・指示／参照／Memoryの3タブ設定ドロワー・PC専用折り畳み機能（v168）・Project Memory一覧・整理・会話から初回生成モーダルの起点 |
+| `components/Sidebar.tsx` | スレッド一覧・フォルダ管理・指示／参照／Memoryの3タブ設定ドロワー・PC専用折り畳み（v168）・Project Memory一覧／整理／初回生成／会話から更新の起点。ドロワー表示中にuseAutoSummaryUpdateをenabledにし、更新と既存3操作の双方向排他、Project保存／名前変更／削除中の更新開始ガード、closeProjectSettingsとドロワー全体inertによる保護を行う。更新モーダルはinert領域外 |
 | `components/ProjectSettingsTabs.tsx` | hookなしの制御タブ。ARIAと左右矢印／Home／Endによる選択・focus移動 |
-| `components/ProjectMemoryTab.tsx` | Memory選択時のみmount。読み取り専用サマリ・自動要約／一覧の主導線・既存3ボタン。指示・参照パネルとtabpanel要素は常時mount |
+| `components/ProjectMemoryTab.tsx` | Memory選択時のみmount。読み取り専用サマリと初回生成／整理／会話からMemoryを更新／一覧の4ボタン。標準未作成かつ生成可能ならautoPrimary、4/4作成済みかつ更新可能ならupdatePrimary、それ以外はサマリ取得済み／エラー時にlistPrimary（同時に主ボタンは最大1つ）。更新の有効条件はbootstrapのdisabledと独立。生成中は「更新案を生成中…」。指示・参照パネルとtabpanel要素は常時mount |
+| `components/ProjectMemoryAutoUpdateModal.tsx` | 会話からの反映案（z-index 1100/1101、dialog／aria-modal）。ProjectMemoryDiffViewでtopicごとの差分・revision・origin・reasonを全選択から確認。user発言の使用件数・除外理由・見送りの確認位置記録を明示。警告用topic GET・選択に応じた注入量／Lore警告、すべて見送るの2段階確認、results全topic（unchangedを含む）の表示。0件選択の適用と結果表示後の再実行は禁止、適用中は閉じる／Escape／背景クリックを無効化 |
 | `components/MessageBubble.tsx` | 通常モードのメッセージ表示。「👍 記憶に追加」ボタン・編集/上書き再生成モーダル（ドロップダウン方式・v173） |
 | `components/RoleplayBubble.tsx` | なりきりモード用メッセージ表示（LINEライクUI） |
 | `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
@@ -223,7 +226,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ProjectMemoryPromotionConfirmModal.tsx` | `/library`・Sidebar一覧で共用する編集済みLore再昇格の確認モーダル（TopicList経由）。対象Loreのタイトルと編集内容を引き継がない説明を表示し、「編集を破棄して再昇格」で承認する。フォーカス制御・Escape・送信中キャンセル禁止あり |
 | `components/ProjectMemoryDeleteConfirmModal.tsx` | 両一覧からの一括削除確認。対象revision・コードポイント字数・昇格/注入バッジ、履歴の完全削除とLore保持を明示。履歴の必須チェックと、昇格済み時のみLore重複の必須チェック。開くたび・対象変更で未チェックに戻り、キャンセルへ初期focus。送信中は全閉じる操作を禁止 |
 | `components/ProjectMemoryInstructionEditModal.tsx` | 「AIで編集」の指示入力→差分プレビュー→適用モーダル（z-index 1200/1201） |
-| `components/ProjectMemoryDiffView.tsx` | 差分表示。整理・編集・初回生成モーダルで共用（初回生成の旧本文は空文字） |
+| `components/ProjectMemoryDiffView.tsx` | 差分表示。整理・編集・初回生成・会話から更新モーダルで共用（初回生成の旧本文は空文字） |
 | `components/ProjectMemoryConsolidationModal.tsx` | Project全体整理案の選択・適用モーダル |
 | `components/ProjectMemoryBootstrapModal.tsx` | 未作成topicの選択・空本文からの差分・使用スレッド数・個別適用結果を表示。empty_topic_keysが非空なら一覧の下に「作成案がないtopic」と各キーの理由を表示（principlesは明示的な恒常指示、その他は根拠記述がこの会話の範囲で見つからなかったため）。user発言が未使用なら古い発言に含まれている可能性を追記。チェックボックスなしで選択件数に影響せず、適用後も表示を維持。「使用したスレッド内のuser発言: x / y件」は常時表示。x<yなら「古いuser発言N件は使用していません」、messages_truncated>0なら「長文のuser発言N件は一部を中略しています」を警告色で個別表示。スレッド数行・Project全体を網羅していない警告・チャット注入OFF案内は維持。適用中はEscape・背景・ボタンで閉じられない（z-index 1100/1101） |
 | `components/ProjectMemoryUploadConfirm.tsx` | topicファイルアップロード時の上書き／新規作成の確認ダイアログ |
@@ -279,7 +282,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/validationLimits.ts` | handle・tag・Pinned GitHub Files・一括archiveの入力制限と正規化 |
 | `lib/project-memory/get-owned-project.ts` | 所有Project確認（なし404・DBエラー500） |
 | `lib/project-memory/resolve-owned-project-id.ts` | Project名から所有`project_id`を解決 |
-| `lib/project-memory/map-rpc-error.ts` | RPCエラーメッセージ→HTTPステータスの対応表（`42501`は403、未知は500）。チャット注入の400/409を含む |
+| `lib/project-memory/map-rpc-error.ts` | RPCエラーメッセージ→HTTPステータスの対応表（42501は403、未知は500）。チャット注入の400/409に加え、cursors must be a jsonb array／cursors must contain 1 to 100 items／invalid cursor element／duplicate thread_idは400。expected_revision不正400、topicなし404、revision conflict409はcheckpointでも共用 |
 | `lib/project-memory/topic-file.ts` | DL/UL用Markdown入出力。先頭行ヘッダー`<!-- kabehub-topic:v1 {topic_id, topic_key, revision} -->`のencode/decode |
 | `lib/project-memory/download-topic-file.ts` | topicのMarkdownファイルダウンロード |
 | `lib/project-memory/use-project-memory-topics.ts` | topic一覧・昇格・再昇格確認（`pendingConfirm`）・アップロード・AI編集・チャット注入ON/OFF・一括削除を管理するhook。削除は確認時点のrevisionをCAS送信、reloadで消えた選択IDを掃除。200で終了、404/409で選び直し、その他は確認内容を保持して再試行。同期refで操作を相互排他にし、古いProject応答を破棄。selectionModeだけでは親の開閉をlockしないが、両一覧のactionsLockedとULはlockする |
@@ -297,6 +300,11 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/normalize-literal-newlines.ts` | importゼロの純関数。保護スパン外の文字としてのバックスラッシュ＋nを実改行へ補正。バッククォートのコード範囲・Windowsドライブパス・UNCパス・直前がバックスラッシュの対象を保持。閉じていないコード等の曖昧な範囲は保持し、冪等 |
 | `lib/project-memory/auto-summary-client.ts` | bootstrap previewのstrict検証・取得と既存topics POSTの並列適用。empty_topic_keysは必須配列としてexactキー集合に追加し、標準キーのみ・重複なし・topicsと非交差・合計4件以内を検証。statsはカバレッジ2キー込みのexact検証（欠落・余分は拒否）、新件数は非負の安全整数でincludedがconsidered_threadsの合計と一致し、threads_included以上・available以下であることを検証。source_refs配列に本文を含まない来歴を記録し、statsは含めない。201/409/その他を個別分類 |
 | `lib/project-memory/use-auto-summary.ts` | 設定を開いた際のeligibility取得、古いProject応答の破棄、APIキー取得、生成・承認・適用結果の管理。全適用結果とnot_applicableで一覧再取得。同じ生成案は再適用しない |
+| `lib/project-memory/auto-summary-update-limits.ts` | client-safe共有型・独立した入力上限MAX_AUTO_SUMMARY_UPDATE_INPUT_CHARS=60,000 UTF-16文字、出力16,384 tokens、AUTO_SUMMARY_UPDATE_PROMPT_VERSION=2。origin 5種、excluded理由4種、not_applicable理由2種、proposal／checkpoint／considered_threads／7キーstats、preview／checkpoint_only／not_applicableの判別型 |
+| `lib/project-memory/auto-summary-update.ts` | 読み取り専用server実装。loadAutoSummaryUpdateTopicsで標準topic・revision 1 provenance・保存cursorを解決し、最新revisionのoriginを分類。selectAutoSummaryUpdateInputでthread／cursorを500行ずつ、messageを100行ずつkeyset取得し、最も古い未処理発言を持つ最大100threadへwater-filling。共有PREFLIGHT_CONCURRENCY=4のPromise.allSettled probeはthread順で結果・最初の例外を処理し、MAX_TITLE_CHARS=80／targetMessages／mask／1,000コードポイントtruncate／JST helperを初回生成と共用。buildAutoSummaryUpdateInputのJSON実長で予算を測り、既存本文は全文維持。generateAutoSummaryUpdateは最小局所修正prompt v2（自topic_keyの新規根拠なし／変更不要はneeds_update:false）。parseAutoSummaryUpdateResponseは要求topic集合・exactキー・非空reason/content_mdを厳密検証し、現本文との完全一致をfalseへ正規化（部分採用なし） |
+| `lib/project-memory/auto-summary-update-client.ts` | parseUpdatePreviewは3結果のexact envelope／nestedキー・UUID・標準キー・重複／非交差・origin・revision・日時・7キーstatsと件数整合・checkpointとproposalの対応・cursorのthread別最終message一致を検証。prompt_versionは正の安全整数を許可し現行2に固定しない。requestUpdatePreviewはkey／signalを渡してエラーを表示用へ写像。applyUpdateは1件以上の重複なしproposal idを要求し、skipAllUpdates／checkpointOnlyもmutation前に検証。processTopicsはcheckpoint_topics全件を並列処理、選択proposalは既存PATCH(full)成功とtopic id／base_revision+1の応答確認後に新revisionでcheckpoint。source_refsはauto_summary_updateのrun／model／prompt_version／base_revision／considered_threads（本文・statsは含めない）。PATCH再試行なし、checkpointのみネットワーク／5xxで1回再試行 |
+| `lib/project-memory/auto-summary-update-warning.ts` | computeUpdateWarningは選択proposalだけを仮置換し、注入ONかつ非空の標準4topic本文をcountProjectMemoryChatCharsで計算。7,000字超のstandardOverLimit、summarizeChatInclusionの8,000字・既存優先順位に基づくnewlyNotInjected（beforeとの差分id）とusedCharsAfter／maxを返す。入力を変更せず、Lore状態の警告はモーダルが取得したpromotion.statusから表示 |
+| `lib/project-memory/use-auto-summary-update.ts` | useAutoSummaryUpdate({projectId, enabled, showToast, onApplied})。APIキー取得・生成／適用の同期refロック、Project／enabled／epoch照合・AbortControllerで旧応答を破棄。previewだけをモーダルへ、checkpoint_onlyは自動記録完了までgeneratingを維持し、not_applicableと共にoutcome／toastのみ。apply／skipAllはrunを共有して消費済みの再実行を拒否し、results取得後にonAppliedを1回await（失敗してもrunは消費済み）。mutation前のclient検証例外だけは再試行可。closeは適用中以外でpreview／resultsを閉じ、checkpointしない |
 
 LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を使用。
 
@@ -317,15 +325,15 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-07時点で376件。
-- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。`apps/mobile/tests/` の2026-10-07時点の32件が加わり、合計408件）。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-12実測で638件、全件成功。
+- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
-テスト108本（`*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（`scripts/*.test.cjs` の作業ツリー実測・`scripts/verify-*.mjs` の作業ツリーによる更新時点の実測（v206新規ファイルを含む））。
+テスト115本（`scripts/*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（2026-10-12、`git ls-files`の追跡済みファイルで実測）。
 
 | ファイル | 目的 |
 |-|-|
-| `scripts/project-memory-summary.test.cjs` / `scripts/project-memory-summary-client.test.cjs` / `scripts/use-project-memory-summary.test.cjs` / `scripts/project-memory-tab.test.cjs` / `scripts/project-settings-memory-sidebar.test.cjs` | サマリ意味論・fail-closed取得・effect前のProject切替／refresh競合応答・Memory主ボタン・Sidebarのrefresh契約を検証 |
+| `scripts/project-memory-summary.test.cjs` / `scripts/project-memory-summary-client.test.cjs` / `scripts/use-project-memory-summary.test.cjs` / `scripts/project-memory-tab.test.cjs` / `scripts/project-settings-memory-sidebar.test.cjs` | サマリ意味論・fail-closed取得・effect前のProject切替／refresh競合応答・Memoryの4ボタンと主ボタン切替・Sidebarのrefresh契約／双方向排他／Project操作中の開始禁止／inert保護を検証 |
 | `scripts/attachment-content.test.cjs` | 添付結合のリテラルとのバイト一致・添付なし・raw queryText・split/replaceのラウンドトリップとfail-closedを検証 |
 | `scripts/query-text-retention.test.cjs` | 空文字・添付なし・本文不一致・フェンス検証・factory独立性の保持契約を検証 |
 | `scripts/query-text-regeneration.test.cjs` | resolver配線・別走査・実コールバックのbody / 再結合 / 検証失敗時の停止 / 中断時の保持を検証 |
@@ -360,6 +368,13 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/project-memory-delete-topics-migrations.test.cjs` / `scripts/projects-memory-topics-bulk-delete-route.test.cjs` / `scripts/project-memory-delete-confirm-modal.test.cjs` | v205のcast前検証・ロック/削除順・権限・50件契約、bulk-delete APIのfail-closed検証・エラー写像、必須チェック・Lore保持案内・focus・送信中ロックを検証。既存hook/両一覧/Sidebar/proxyテストにも一括削除の回帰を追加 |
 | `scripts/verify-project-memory-delete-topics.mjs` | test DB固定の手動検証。v205手動適用後に実行し、CASの全か無か・revision cascade・昇格済みLore保持・不正入力P0001・認証42501を検証。通常テスト外、migration適用機能なし |
 | `scripts/project-memory-auto-summary-cursors-migrations.test.cjs` | v206の静的テスト12件。migration/schema一致・列/FK/PK/index・RLS/ACL・RPC引数/戻り値・処理順・JSON/UUID/重複・エラー・100件定数・適格性・単調upsert・本文/履歴非変更・再適用と確認手順を検証 |
+| `scripts/project-memory-auto-summary-update.test.cjs` | origin／provenance（旧assistant起点互換）・cursor解決／FIFO／ページング／入力予算・LLM parser／prompt v2・preview routeの3結果／エラー・並列probeとthread順の失敗優先を検証 |
+| `scripts/projects-memory-update-checkpoint-route.test.cjs` | 認証→body／UUID／revision／cursor／重複→Project／topic→RPCの順序、OpenAIキー不要、advanced応答、400/403/404/409/500とmetadata-onlyログを検証 |
+| `scripts/auto-summary-update-client.test.cjs` | 3結果のstrict parser、validation前mutation禁止、PATCH→checkpointと新／base revision、全topic並列処理・PATCH非再試行・checkpoint再試行・結果分類・空cursorを検証 |
+| `scripts/auto-summary-update-warning.test.cjs` | 標準注入ON／非空本文のコードポイント字数・7,000境界・選択のみの仮置換・入力非変更・8,000字選抜後の新規未注入差分と優先順を検証 |
+| `scripts/use-auto-summary-update.test.cjs` | canGenerate／同期ロック・古いProject／disable／unmount応答の破棄・checkpoint_only自動記録・apply／skipAllのrun共有・onApplied 1回／失敗・close非消費・reload待ちの保護を検証 |
+| `scripts/project-memory-auto-update-modal.test.cjs` | 警告GET待ち／失敗／古い応答の無視、選択連動注入量／Lore警告、見送り2段階確認、閉じる／Escape／背景クリック、4topic結果表示と到達可能なstatus×checkpoint全ラベルを検証 |
+| 差分preview Phase 1bの検証記録（2026-10-08） | 当時の追記記録：作業前test:all 408件→初回実装npm test 416件／test:all 448件（updateテスト40件、fail 0、既存bootstrapテスト／assertionは当時無変更）。並列probeのdeferred制御7テスト追加後423件／455件全成功・型チェック成功。当時のbootstrap本体差分はTOPIC_ROLES／targetMessagesのexportのみで、update実装自体は読み取り専用（cursor RPC／migration／UI／applyは後続Phaseで追加済み）。初回はnpx tsc --noEmit --incremental false／git diff --checkも成功と記録。これらは現行件数ではない。Phase 1bは1d51d26、並列probe／prompt v2は1aab314としてコミット済み |
 | `scripts/verify-project-memory-auto-summary-cursors.mjs` | v206手動適用後のtest DB固定検証（ref: jvarrlsqttfjiysaedlg）。auth/anon・前進/同値/後退/UUID順・CAS・不適格候補skip・inactive許可・不正入力・cascade・RLS・直接書込禁止・message削除後保持・本文/履歴非変更をPASS/FAILで確認。環境変数はAUTO_SUMMARY_CURSORS_*、通常テスト外。Codexはnode --checkのみ、DB実行・migration適用はRuiが行う |
 | `scripts/verify-project-memory-*.mjs` | 実DB（test環境）向けの手動検証スクリプト。通常のテスト実行には含めない |
 | `scripts/proxy.test.cjs` | `proxy.ts`のmatcher・認証境界・redirect・CSP付与をマトリクス検証 |
@@ -590,7 +605,18 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 |-|-|
 | 設定ドロワーの保存方式 | 指示・参照は「保存」で設定を反映。Memory操作は個別に適用され、「保存」は不要。フッタはmarginTop:auto＋paddingTop:16pxで下端に置き、長い内容ではパネル下に続く（stickyなし） |
 | Memoryサマリの意味 | チャット注入ONと現在注入は別概念。ONでも空本文・合計8,000字の選択から外れたtopicは現在注入に数えない。Lore登録済みはcurrent／staleの検索対象であり、会話ごとの参照を保証しない。currentを注入条件として扱わない。チャット未注入・Lore未登録は非注入かつnot_promotedのみ |
-| Memoryサマリのrefresh契約 | SidebarのrefreshTokenを+1する3か所：①一覧モーダルonCancel（無条件）②整理applyが結果を返した直後（applied件数によらず、全件failedも対象）③自動要約apply wrapperのfinally（引数・戻り値・rejectをそのまま通し、Promise完了後に更新）。既存useAutoSummary／useProjectMemoryTopicsは変更しない |
+| Memoryサマリのrefresh契約 | SidebarのprojectMemoryRefreshTokenを+1する既存3か所：①一覧モーダルonCancel（無条件。onTopicsChangedでも更新）②整理applyが結果を返した直後（applied件数によらず、全件failedも対象）③初回自動要約apply wrapperのfinally（引数・戻り値・rejectを通し、Promise完了後に更新）。差分更新は④useAutoSummaryUpdateのonAppliedだけでapply／skipAll両方の結果取得後に1回加算する。checkpoint_only／not_applicableでは呼ばれない。bootstrapのように別途finallyで加算してはいけない |
+| 差分更新のbaselineと除外 | 標準4topicのみ。既存本文は出自を問わず権威あるbaselineとして全文入力し、最新revisionのoriginは表示用。empty_topic／cursorなしでrevision 1なしのno_baseline／cursorなしでauto_summary履歴なしのno_auto_summary_history／起点矛盾のprovenance_mismatchをtopic単位で除外する。保存済みcursorがあればrevision 1 provenanceが利用不能でも未記録threadを全履歴から読む保守的fallback（重複可・取りこぼし不可） |
+| 差分更新のcursor解決 | 保存済み(message_created_at, message_id)を直接使い、message本体は再検索しない。cursorなしthreadはrevision 1のauto_summary参照messageをIDで取得しthread／role／Project／userを照合（is_active／providerで起点を絞らない）。削除済み起点と未記録threadはconsidered_threadsのlast_message_at最大値をtimestamp-only baselineにする。同時刻は全件消費済み扱い、時刻比較はサブミリ秒精度を保持し、UUIDは辞書順で比較 |
+| 差分更新の入力とFIFO予算 | 対象はProject／user一致、roleplay null/false、role=user、memo／image_genを除外、is_active null/true。topic群のthread別min cursor以降を(created_at,id)昇順で読み、next unprocessedが古い100threadへwater-fillingする。各messageのtopic_keysはその発言が新規のtopicを示す。thread／cursorは500行、messageは100行keyset paging。mask→1,000コードポイントtruncate→JSTを共用。JSON.stringify({existing_topics,threads}).length（UTF-16、system prompt除外）で60,000以内、既存本文は切り詰めずFIFOで入らない先頭を飛ばさない。既存本文だけで過大／新規ありで1件も入らない場合413。6,000コードポイントは標準本文合計の目安であり、有用な情報を削る制約ではない |
+| 差分更新のstatsとcheckpoint候補 | user_messages_availableは全候補threadの新規発言総数（topic間重複は1件、未使用候補threadも含む）、user_messages_includedは実採用件数。初回生成のavailableとは集計範囲が違う。checkpoint_topicsは各topicの入力に実際に含めたthread別最終messageのみで、開始位置以下は返さない。preview／checkpoint_onlyはconsidered_threads／7キーstats／excluded_topicsを維持し、not_applicableはLLM未実行 |
+| 差分更新のcursor契約 | 採用＋PATCH成功は新revisionで、見送り・unchanged・needs_update=falseはbase_revisionで前進し共有入力のstarvationを防ぐ。checkpoint_onlyはhookが自動記録。「閉じる」・Escape・背景クリックは何も進めず、PATCH 409のtopicも進めない。PATCH成功後のcheckpoint失敗は本文適用済み・確認位置の記録失敗として扱い、次回同じ発言が対象になる可能性を表示する（重複可・取りこぼし不可）。checkpointは複数topic／複数試行全体のtransactionではなく、応答紛失では失敗表示でもサーバー側で前進済みの可能性があるため、失敗を一律にcursor未前進と断定しない。ネットワーク／5xxのときだけ1回再試行、4xxとPATCHは再試行しない。空cursor配列はRPC不要 |
+| 差分更新のuser入力と旧provenance互換 | assistant発言は新規入力に含めない。revision 1 provenanceの起点roleはuserまたはassistantを許可（旧bootstrap履歴互換）し、別role／thread／user／Project矛盾は除外する。起点にassistantを許しても、対象messageとcheckpoint RPCの候補はrole=userのみ |
+| 更新UIの開始・ドロワー保護 | 更新開始はhookのcanGenerateに加え、autoSummary generating／isApplying／preview、整理loading／applying／モーダル、一覧表示、projectSettingsSaving／projectRenaming／projectDeleting／projectDeleteModalOpenで禁止（disabledと開始handlerの両方）。更新generating／isApplying／preview中は既存3操作もdisabled＋handler先頭で禁止。保存・名前変更・削除はcloseProjectSettingsを通らずsetProjectSettingsModal(null)を直接呼ぶため、ドロワー全体inertで操作を止める。inertは開始済みの非同期処理を止めないのでProject操作中の更新開始ガードも必要。generating中（checkpoint_only記録中を含む）はcloseProjectSettingsでも閉じられず、生成中ラベルを維持。更新モーダルはinert領域外 |
+| 差分更新の結果表示 | preview.proposalsではなくresults全体を表示し、updateResultLabelで到達可能なstatus×checkpointを分類。applied＋okは「反映し、確認位置も記録しました」、applied＋none（確認位置なし）も到達し「反映しました（記録する確認位置はありません）」、applied＋failedは本文更新済みだが確認位置記録失敗。skipped＋ok/noneは「見送りました」、unchanged＋ok/noneは「変更なし（確認済み）」、両status＋failedはそれぞれ確認位置記録失敗・次回再対象の可能性。conflict＋noneは別操作による更新で未適用・確認位置未前進。failed＋noneはネットワーク例外でサーバー成功の可能性があるため「更新結果を確認できませんでした。Project Memory一覧で現在の内容を確認してください。」とし、「未適用」「次回再提案」と断定しない。結果表示後の同run再実行は禁止 |
+| 差分更新の警告GET | preview受信時のeffectでfetchProjectMemorySummaryTopicsを取得し、AbortController／cleanup／projectId＋preview.run_id照合で閉じた後・Project切替後の古い結果を無視。取得中は適用／すべて見送る／見送り確定を無効、失敗時は「注入量の警告を確認できませんでした」と表示して適用を許可。computeUpdateWarningをUI側で再実装せず選択変更ごとに再計算。標準注入ON本文7,000字超と、8,000字選抜で新たに注入されなくなるtopicを警告するがブロックしない。選択topicのpromotion.status currentは適用後Loreが「更新あり」、staleはすでに「更新あり」で再昇格が必要と表示 |
+| 差分更新の見送り・閉じる | checkbox OFFは見送りとして今回の発言の確認位置を記録する。すべて見送るは2段階確認で「次回は原則として再提案されません」を明示し、確認中は他操作を無効（確認取消は可）。0件選択でapplyを呼ばずskipAllを使う。適用中は閉じる／Escape／背景クリック無効。checkpoint_only／not_applicableではモーダルを開かずhookのtoastのみ |
+| 差分更新の手動確認 | preview routeは読み取り専用で何度でも実行可。ただしUIのgenerateはcheckpoint_only応答時に自動記録するため、ボタン操作を読み取り専用とみなさない。apply／見送り／checkpointはcursorを不可逆に進めるので実Projectでは行わず、テスト用Project「小説モードのテスト」のみ。再previewのno_new_messages、checkpoint_only、別タブ編集後の409、注入ON本文を調整した7,000／8,000字付近の警告を確認する |
 | 新Route追加時の登録 | `app/api`配下にRouteを追加したら`lib/proxy-paths.ts`の`API_AUTH_CLASSIFICATIONS`へ登録が必須。`scripts/proxy-paths.test.cjs`が全route×methodに分類がちょうど1件あることを検証するため、未登録だと確実に失敗する |
 | 自動要約の最終発言時刻 | `threads.updated_at`は通常チャットで更新されないため最終発言時刻に使わない。対象user messagesの最新`created_at`をpreflightで取得して候補を並べる。considered_threads.last_message_atも最新user発言時刻 |
 | 自動要約のNULL扱い | `roleplay_mode`はfalseとNULLを通常スレッドとして採用（`.or("roleplay_mode.is.null,roleplay_mode.eq.false")`）。`is_active`もtrueとNULLを採用（`.or("is_active.is.null,is_active.eq.true")`）。単純なeq/neqではNULLが落ちる |
@@ -760,7 +786,12 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v203 | Project Memory同revisionのarchived昇格Lore復元（専用RPC・本文/embedding保持。コミット4526438） |
 | v204 | Project Memory topicのチャット注入（`include_in_chat`列・`set_project_memory_topic_chat_inclusion` RPC・topic単位のopt-in。チャットへの注入・PATCH API・一覧のトグルと使用量表示。migration `migration_v204_project_memory_chat_inclusion.sql`。コミットc7e2eae／fac3277／72140ad） |
 | v205 | Project Memory一覧（Sidebar・`/library`）の一括削除（50件まで、全件所有確認＋revision CAS、Project→topic id順ロック）。revision履歴ごと削除し、昇格済みLoreは残す。「選択→削除ボタン→確認モーダルの必須チェック」の二段階確認（履歴の完全削除を常に確認し、昇格済みを含む場合はLore保持・再昇格時の重複も確認）。本番適用済み、`docs/applied/migration_v205_delete_project_memory_topics.sql`へ移動・`docs/schema.sql`反映済み。実装コミット895d681 |
-| v206 | 自動要約Phase 1aのtopic×thread消費位置テーブル・前進RPC（100件、topic revision CAS、本文/履歴とは独立）。`docs/migration_v206_project_memory_auto_summary_cursors.sql`に作成、`docs/schema.sql`反映済み。未適用、Ruiが手動適用後にapplied/へ移動。アプリ連携はPhase 1b |
+| v206 | 自動要約Phase 1aのtopic×thread消費位置テーブル・前進RPC（100件、topic revision CAS、本文/履歴とは独立）。適用済み、`docs/applied/migration_v206_project_memory_auto_summary_cursors.sql`に保管・`docs/schema.sql`に定義統合済み。実装d61026b、適用済みへの更新・移動b81fb3c。適用日は資料から確認できない。アプリ連携はPhase 2a／2bで実装済み |
+| 自動要約差分更新 Phase 1b | 読み取り専用preview route・cursor解決・userのみFIFO入力・strict LLM parser（1d51d26）。thread probe並列度4・共有タイトル上限・prompt v2（1aab314） |
+| 自動要約差分更新 Phase 2a | checkpoint route・body検証とProject／topic確認・cursor RPC呼び出し・エラー写像（3792beb） |
+| 自動要約差分更新 Phase 2b | client／strict preview parser／PATCH→checkpoint／注入量警告関数（b92ab77）、useAutoSummaryUpdateの生成／自動記録／apply／skipAll／run消費・旧応答破棄（ff7caa5） |
+| 自動要約差分更新 Phase 2c | revision 1 provenanceの起点roleをuserまたはassistantへ緩和し旧bootstrap履歴と互換化。差分入力はuserのみを維持（aacb57d） |
+| 自動要約差分更新 Phase 3 | Memoryタブの4ボタン・更新モーダル・警告GET／Lore警告・双方向排他・ドロワー保護・全topic結果ラベルとonAppliedによる1回refresh（674f926） |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。
 > v175以降はmigration番号を基準とし、`docs/applied/README.md`の台帳と対応する。v174以前は機能の変更履歴番号であり、番号体系が異なる。
@@ -824,21 +855,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - TypingMindと違い、複数AIの履歴共有・引継ぎ機能・メモモード・公開スレッド一覧がある
 - 「完成した知識」でなく「考えている途中のプロセス」を共有する文化を作りたい
 - 小説執筆特化機能（プロジェクトモード・キャラDB・整合性チェック）で作家ユーザーの開拓を狙う
-
-### 自動要約の差分 update preview（Phase 1b、2026-10-08）
-
-追記: updateのthread probeを共有PREFLIGHT_CONCURRENCY=4のbatchでPromise.allSettledし、元のthread順で結果・最初の例外を処理。MAX_TITLE_CHARS=80もbootstrapからexportして共用し、query内容・返却値・選抜・promptは維持。deferred制御の7テスト追加、npm test 423件/test:all 455件全通過、型チェック通過。
-追記: update prompt_versionを2へ更新。自分のtopic_keyを含む新規発言に根拠がない、または既存内容を変える必要がないtopicはneeds_update:falseとする1文をsystem promptに追加。routeのversion期待値のみ更新し、文面・定数の回帰テストを追加。
-
-- 新規ファイル: `lib/project-memory/auto-summary-update-limits.ts`（独立した60,000 UTF-16入力予算、16,384 completion tokens、prompt version 1、response/checkpoint型）、`lib/project-memory/auto-summary-update.ts`（読み取り・cursor解決・FIFO selector・最小パッチprompt・厳密parser）、`app/api/projects/[projectId]/memory/update/preview/route.ts`（POST）、`scripts/project-memory-auto-summary-update.test.cjs`（node:test 40件）。proxyのbearer POST登録と境界テストも追加。
-- standard 4 topicのみ。既存本文は出自を問わず権威あるbaselineとして全文入力する。最新revisionのoriginは表示用。空本文、cursorなしでrevision 1なし、cursorなしでrevision 1がauto_summary以外、provenance矛盾はtopicごとに除外する。
-- v206 cursorの保存済み `(message_created_at, message_id)` を直接使用し、message本体を再検索しない。cursorがないthreadはrevision 1のauto_summary参照messageをIDで取得し、thread/role/project/userを検証する（is_activeでは絞らない）。物理削除された参照はconsidered_threadsのlast_message_at最大値に後退。保存済みcursorがありrevision 1 provenanceが利用不能な場合、未記録threadは全履歴から読む保守的fallbackとする。
-- thread/cursorを500行ずつ取得し、messagesは100行ずつkeyset paging。project/user一致・roleplay null/false、user role・memo/image_gen除外・is_active null/true。topic群のthread別min cursor以降を `(created_at,id)` 昇順に読み、next unprocessedが古い100 threadにwater-fillingで配分する。共有入力の各messageのtopic_keysで、その発言が新規となるtopicを明示。mask→1,000 code point truncate→JST化は既存helperを再利用。
-- 入力は `JSON.stringify({ existing_topics, threads }).length` で正確に計測し、system promptを含めない。既存本文は切り詰めず、FIFOで入らない先頭発言を飛ばさない。既存本文だけで過大、または新規ありで1件も入らない場合413。6,000 code pointはstandard全体の目安であり有用な既存情報を削除する制約ではない。7,000/8,000字判定や8,000字警告は本フェーズで追加しない。
-- responseは共通run_id/model/prompt_version付きのpreview、checkpoint_only、not_applicable。preview/checkpoint_onlyは必ずcheckpoint_topics/considered_threads/stats/excluded_topicsを返す。checkpointは各topicの入力に実際に含めたthread別最終messageのみで、開始位置以下のcursorを返さない。statsのuser_messages_availableは全候補threadの新規発言総数（topic間重複は1件）、user_messages_includedは採用入力件数。not_applicableはno_updatable_topics/no_new_messagesのみでLLM未実行。
-- parserは要求topic集合を過不足・重複なく検証し、falseはtopic_key/needs_updateだけ、trueは非空reason/content_md必須。trueで現本文と完全一致ならfalseへ正規化。部分採用なし。413はupdate_input_too_large、不正JSON/形/集合は502 invalid_llm_response、LLM失敗502、DB失敗500。本文・revision・cursorの書き込み、cursor RPC、migration、UI/applyは追加していない。bootstrapの差分はTOPIC_ROLES/targetMessagesのexportのみ。
-- Phase 2契約（今回は型・コメントのみ）: needs_update=true採用はPATCH(full, expected_revision)成功後に新revisionでcursor前進。checkbox OFFはdismissとして本文を変更せずbase_revisionで前進し、共有入力のstarvationを防ぐ。needs_update=falseもbase_revisionで前進。空cursor配列はRPC不要。モーダルCancelは一切前進せず、409 conflictのtopicも前進させない。
-- 検証: 作業前test:all 408件全通過。変更後npm test 416件、npm run test:all 448件、いずれもfail 0。追加updateテスト40件全通過、既存bootstrapテスト/assertionは無変更。`npx tsc --noEmit --incremental false` と `git diff --check` も通過。commit/pushなし。
 
 ### /api/chat の検索クエリ契約（B2-2、2026-10-04）
 
