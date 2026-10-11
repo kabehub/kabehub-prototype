@@ -8,6 +8,7 @@ interface ProjectMemoryTabProps {
   refreshToken: number;
   // 自動要約ボタンの既存disabled条件をSidebarから受け取る。
   disabled?: boolean;
+  update?: { canGenerate: boolean; generating: boolean; busy: boolean; onGenerate: () => void };
   autoSummary: {
     buttonLabel: string;
     canGenerate: boolean;
@@ -19,18 +20,19 @@ interface ProjectMemoryTabProps {
   list: { onOpen: () => void };
 }
 
-export default function ProjectMemoryTab({ projectId, refreshToken, disabled, autoSummary, consolidation, list }: ProjectMemoryTabProps) {
+export default function ProjectMemoryTab({ projectId, refreshToken, disabled, autoSummary, consolidation, list, update }: ProjectMemoryTabProps) {
   const { topics, loading, error } = useProjectMemorySummary({ projectId, refreshToken });
   const summary = topics === null ? null : summarizeProjectMemory(topics);
-  const autoDisabled = disabled ?? (!autoSummary.canGenerate || consolidation.loading);
+  const autoDisabled = Boolean(update?.busy) || (disabled ?? (!autoSummary.canGenerate || consolidation.loading));
   const autoPrimary = summary !== null && summary.standardCreated < summary.standardTotal && !autoDisabled;
-  const listPrimary = !autoPrimary && (summary !== null || error !== null);
+  const updatePrimary = !autoPrimary && summary !== null && summary.standardCreated === summary.standardTotal && Boolean(update?.canGenerate);
+  const listPrimary = !autoPrimary && !updatePrimary && (summary !== null || error !== null);
 
   return (
     <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", background: "white" }}>
       <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink)", marginBottom: "3px" }}>Project Memory</div>
       <div style={{ fontSize: "11px", color: "var(--ink-muted)", lineHeight: 1.6, marginBottom: "10px" }}>
-        会話から自動要約してProject Memory topicを作成できます。『チャットに含める』をONにしたtopicは、上限内で通常チャットへの注入対象になります。Loreに昇格すると検索対象になり、『整理』では既存topicの重複・矛盾・古い記述の更新案を作成できます。
+        会話から自動要約してProject Memory topicを作成できます。『チャットに含める』をONにしたtopicは、上限内で通常チャットへの注入対象になります。『会話からMemoryを更新』は、前回以降のあなたの発言から既存の標準topicへの反映案を作ります。更新が不要と判定された発言は、確認済みとして自動的に記録されます。Loreに昇格すると検索対象になり、『整理』では既存topicの重複・矛盾・古い記述の更新案を作成できます。
       </div>
       <div style={{ fontSize: "12px", color: "var(--ink-muted)", lineHeight: 1.8, marginBottom: "10px" }}>
         {summary ? (
@@ -54,12 +56,17 @@ export default function ProjectMemoryTab({ projectId, refreshToken, disabled, au
         >{autoSummary.buttonLabel}</button>
         <button
           onClick={consolidation.onOpen}
-          disabled={!projectId || consolidation.loading || autoSummary.generating}
+          disabled={!projectId || consolidation.loading || autoSummary.generating || Boolean(update?.busy)}
           style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: "white", color: projectId && !consolidation.loading ? "#7c3aed" : "var(--ink-faint)", fontSize: "12px", cursor: projectId && !consolidation.loading ? "pointer" : "not-allowed", fontWeight: 500 }}
         >{consolidation.loading ? "整理案を生成中…" : "Project Memoryを整理"}</button>
+        {update && <button
+          onClick={update.onGenerate}
+          disabled={!update.canGenerate}
+          style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: updatePrimary ? "#7c3aed" : "white", color: update.canGenerate ? (updatePrimary ? "white" : "#7c3aed") : "var(--ink-faint)", fontSize: "12px", cursor: update.canGenerate ? "pointer" : "not-allowed", fontWeight: 500 }}
+        >{update.generating ? "更新案を生成中…" : "会話からMemoryを更新"}</button>}
         <button
           onClick={list.onOpen}
-          disabled={!projectId}
+          disabled={!projectId || Boolean(update?.busy)}
           style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #7c3aed", background: listPrimary ? "#7c3aed" : "white", color: listPrimary ? "white" : "#7c3aed", fontSize: "12px", cursor: "pointer", fontWeight: 500 }}
         >Project Memory一覧</button>
       </div>

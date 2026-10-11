@@ -36,10 +36,10 @@ function render(overrides = {}) {
   };
   const tree = ProjectMemoryTab(props);
   const buttons = collect(tree).filter(node => node.type === "button");
-  assert.equal(buttons.length, 3);
+  assert.equal(buttons.length, props.update ? 4 : 3);
   const listButton = buttons.find(button => text(button) === "Project Memory一覧");
   assert.ok(listButton);
-  assert.equal(listButton.props.disabled, !props.projectId);
+  assert.equal(listButton.props.disabled, !props.projectId || Boolean(props.update?.busy));
   assert.deepEqual(hookArgs, { projectId: props.projectId, refreshToken: 7 });
   const description = collect(tree).find(node => node.type === "div" && text(node).startsWith("会話から自動要約"));
   assert.ok(description);
@@ -141,4 +141,17 @@ test("Memory tab explicit disabled prop keeps auto summary secondary and the lis
   assert.equal(view.buttons[0].props.style.background, "white");
   assert.equal(view.listButton.props.disabled, false);
   assertPrimary(view.buttons, "Project Memory一覧");
+});
+
+test("Memory update is the only primary at 4/4 and independent of bootstrap disabled", () => {
+  summaryState = { topics: ["overview", "current-work", "principles", "references"].map(key => topic(key)), loading: false, error: null };
+  const view = render({ disabled: true, update: { canGenerate: true, generating: false, busy: false, onGenerate() {} } });
+  assertPrimary(view.buttons, "会話からMemoryを更新");
+  assert.equal(view.buttons[2].props.disabled, false);
+  assert.match(text(view.tree), /更新が不要と判定された発言は、確認済みとして自動的に記録されます/);
+});
+test("Memory update busy disables all existing buttons and keeps generating label", () => {
+  const view = render({ update: { canGenerate: false, generating: true, busy: true, onGenerate() {} } });
+  assert.ok(view.buttons.every(button => button.props.disabled));
+  assert.equal(text(view.buttons[2]), "更新案を生成中…");
 });

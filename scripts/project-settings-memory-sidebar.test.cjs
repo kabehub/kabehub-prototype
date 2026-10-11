@@ -6,6 +6,7 @@ const { installAliasResolver, installTsLoader } = require("./testBootstrap.cjs")
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 let state = [], cursor = 0, mounting = false, pendingEffects = [], modalProps = {}, memoryProps = null;
+let update = {}, updateArgs, updateCalls = 0;
 let consolidationResult = [], consolidationCalls = [], toasts = [], auto = {}, generateCalls = 0, autoReloads = 0;
 const hooks = { ...React,
   useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === "function" ? initial() : initial; return [state[i], value => { state[i] = typeof value === "function" ? value(state[i]) : value; }]; },
@@ -13,15 +14,16 @@ const hooks = { ...React,
   useEffect(fn) { if (mounting) pendingEffects.push(fn); },
   useCallback(fn) { return fn; }, useMemo(fn) { return fn(); },
 };
-const modalNames = ["ProjectMemoryListModal", "ProjectMemoryConsolidationModal", "ProjectMemoryBootstrapModal", "ProjectDeleteConfirmModal"];
+const modalNames = ["ProjectMemoryAutoUpdateModal", "ProjectMemoryListModal", "ProjectMemoryConsolidationModal", "ProjectMemoryBootstrapModal", "ProjectDeleteConfirmModal"];
 const load = Module._load;
 Module._load = function(request, parent, main) {
   if (request === "react") return hooks;
+  if (request === "@/lib/project-memory/use-auto-summary-update") return { useAutoSummaryUpdate(args) { updateArgs = args; return update; } };
   if (request === "@/lib/project-memory/use-auto-summary") return { useAutoSummary() { return auto; } };
   if (request === "@/components/Toast") return { useToast() { return { showToast(...args) { toasts.push(args); } }; } };
   if (request === "@/lib/apiKeyStore") return { webApiKeyStore: { async getKey() { return "key"; } } };
   if (request === "@/lib/project-memory/consolidation-client") return {
-    async applyProjectMemoryConsolidation(...args) { consolidationCalls.push(args); return consolidationResult; },
+    async applyProjectMemoryConsolidation(...args) { consolidationCalls.push(args); return typeof consolidationResult === "function" ? await consolidationResult() : consolidationResult; },
   };
   if (request === "@/components/ProjectMemoryTab") return { __esModule: true, default: props => {
     memoryProps = props; return React.createElement("mock-memory-tab", props);
@@ -66,6 +68,8 @@ function button(nodes, label) {
 }
 async function setup() {
   state = []; pendingEffects = []; consolidationCalls = []; toasts = []; generateCalls = 0; autoReloads = 0;
+  updateCalls = 0;
+  update = { canGenerate: true, generating: false, isApplying: false, preview: null, results: null, generate() { updateCalls++; }, apply() {}, skipAll() {}, close() {} };
   auto = {
     buttonLabel: "会話からMemoryを作る", canGenerate: true, error: null, generating: false,
     preview: null, isApplying: false, results: null,
@@ -175,5 +179,97 @@ test("Sidebar auto-summary wrapper preserves arguments and return value, refresh
       }
       render(); assert.equal(memoryProps.refreshToken, before + 1);
     }
+  } finally { global.fetch = original; }
+});
+
+test("Sidebar rejects update while bootstrap is generating, applying or previewing", async () => {
+  const original = global.fetch;
+  try {
+    for (const field of ["generating", "isApplying", "preview"]) {
+      selectMemory(await setup()); auto[field] = field === "preview" ? { run_id: "run" } : true; render();
+      assert.equal(memoryProps.update.canGenerate, false); memoryProps.update.onGenerate(); assert.equal(updateCalls, 0);
+    }
+  } finally { global.fetch = original; }
+});
+test("Sidebar rejects update while consolidation loads, applies, previews or list is open", async () => {
+  const original = global.fetch;
+  try {
+    selectMemory(await setup());
+    const running = memoryProps.consolidation.onOpen(); render();
+    assert.equal(memoryProps.update.canGenerate, false); memoryProps.update.onGenerate(); assert.equal(updateCalls, 0);
+    await running; render();
+    assert.equal(memoryProps.update.canGenerate, false); memoryProps.update.onGenerate(); assert.equal(updateCalls, 0);
+    let done; const pending = new Promise(resolve => { done = resolve; });
+    consolidationResult = () => pending;
+    const applying = modalProps.ProjectMemoryConsolidationModal.onApply(["topic"]); render();
+    assert.equal(modalProps.ProjectMemoryConsolidationModal.isApplying, true);
+    assert.equal(memoryProps.update.canGenerate, false); memoryProps.update.onGenerate(); assert.equal(updateCalls, 0);
+    done([]); await applying; render();
+    modalProps.ProjectMemoryConsolidationModal.onCancel(); render();
+    memoryProps.list.onOpen(); render(); assert.equal(memoryProps.update.canGenerate, false);
+    memoryProps.update.onGenerate(); assert.equal(updateCalls, 0);
+  } finally { global.fetch = original; }
+});
+test("Sidebar update locks existing handlers and drawer including checkpoint-only generating", async () => {
+  const original = global.fetch;
+  try {
+    for (const field of ["generating", "isApplying", "preview"]) {
+      let nodes = selectMemory(await setup()); update[field] = field === "preview" ? { run_id: "update" } : true;
+      update.canGenerate = false; nodes = render();
+      const drawer = nodes.find(node => node.props.inert === true && node.props.onClick);
+      assert.ok(drawer); assert.equal(memoryProps.update.busy, true);
+      memoryProps.autoSummary.onGenerate(); await memoryProps.consolidation.onOpen(); memoryProps.list.onOpen(); render();
+      assert.equal(generateCalls, 0); assert.equal(modalProps.ProjectMemoryListModal.isOpen, false);
+      assert.equal(modalProps.ProjectMemoryConsolidationModal, undefined);
+      drawer.props.onClick(); nodes = render(); assert.ok(memoryProps, "drawer stays open");
+      assert.equal(updateArgs.enabled, true);
+      if (field === "preview") assert.equal(modalProps.ProjectMemoryAutoUpdateModal.onCancel, update.close);
+    }
+  } finally { global.fetch = original; }
+});
+test("Sidebar refreshes update only through onApplied once and does not open modal for outcomes", async () => {
+  const original = global.fetch;
+  try {
+    selectMemory(await setup()); assert.equal(updateArgs.projectId, projectId);
+    memoryProps.update.onGenerate(); assert.equal(updateCalls, 1);
+    update.outcome = { result: "checkpoint_only" }; render(); assert.equal(modalProps.ProjectMemoryAutoUpdateModal, undefined);
+    update.outcome = { result: "not_applicable" }; render(); assert.equal(modalProps.ProjectMemoryAutoUpdateModal, undefined);
+    update.preview = { run_id: "update" }; render();
+    const before = memoryProps.refreshToken;
+    await modalProps.ProjectMemoryAutoUpdateModal.onApply(["topic"]); render(); assert.equal(memoryProps.refreshToken, before);
+    updateArgs.onApplied(); render(); assert.equal(memoryProps.refreshToken, before + 1);
+  } finally { global.fetch = original; }
+});
+
+test("Sidebar rejects update throughout saving, renaming, deleting and delete confirmation", async () => {
+  const original = global.fetch;
+  try {
+    for (const operation of ["save", "rename", "delete"]) {
+      let nodes = selectMemory(await setup());
+      let finish; const pending = new Promise(resolve => { finish = resolve; });
+      const baselineFetch = global.fetch;
+      global.fetch = (url, init) => init?.method ? pending : baselineFetch(url, init);
+      let running;
+      if (operation === "save") running = button(nodes, "保存").props.onClick();
+      else if (operation === "rename") running = button(nodes, "変更").props.onClick();
+      else {
+        await button(nodes, "Projectを削除").props.onClick(); nodes = render();
+        assert.equal(memoryProps.update.canGenerate, false); memoryProps.update.onGenerate(); assert.equal(updateCalls, 0);
+        running = modalProps.ProjectDeleteConfirmModal.onDelete(false);
+      }
+      render(); assert.equal(memoryProps.update.canGenerate, false); memoryProps.update.onGenerate(); assert.equal(updateCalls, 0);
+      finish(Response.json(operation === "rename" ? { name: "Renamed" } : {})); await running;
+    }
+  } finally { global.fetch = original; }
+});
+test("update generation makes save, rename and delete controls descendants of inert drawer", async () => {
+  const original = global.fetch;
+  try {
+    selectMemory(await setup()); update.generating = true; const nodes = render();
+    const drawer = nodes.find(node => node.props.inert === true && node.props.onClick);
+    const descendants = []; collect(drawer.props.children, descendants);
+    for (const label of ["保存", "変更", "Projectを削除"]) assert.ok(button(descendants, label));
+    assert.equal(memoryProps.update.generating, true);
+    drawer.props.onClick(); render(); assert.equal(updateArgs.enabled, true);
   } finally { global.fetch = original; }
 });

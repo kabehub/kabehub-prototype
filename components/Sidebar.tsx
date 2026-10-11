@@ -4,6 +4,8 @@ import { Thread } from "@/types";
 import { timeAgo } from "@/lib/formatters";
 import { PINNED_GITHUB_FILES_MAX } from "@/lib/validationLimits";
 import { useToast } from "@/components/Toast";
+import ProjectMemoryAutoUpdateModal from "@/components/ProjectMemoryAutoUpdateModal";
+import { useAutoSummaryUpdate } from "@/lib/project-memory/use-auto-summary-update";
 import ProjectMemoryTab from "@/components/ProjectMemoryTab";
 import ProjectSettingsTabs, { type ProjectSettingsTab } from "@/components/ProjectSettingsTabs";
 import ProjectDeleteConfirmModal from "@/components/ProjectDeleteConfirmModal";
@@ -723,6 +725,19 @@ export default function Sidebar({
   const [projectMemoryRefreshToken, setProjectMemoryRefreshToken] = useState<number>(0);
   const autoSummary = useAutoSummary({ projectId: projectSettingsModal?.projectId ?? null, enabled: projectSettingsModal !== null, showToast });
 
+  const autoUpdate = useAutoSummaryUpdate({
+    projectId: projectSettingsModal?.projectId ?? null, enabled: projectSettingsModal !== null, showToast,
+    onApplied: () => { setProjectMemoryRefreshToken(previous => previous + 1); },
+  });
+  const updateBusy = autoUpdate.generating || autoUpdate.isApplying || autoUpdate.preview !== null;
+  const updateCanGenerate = autoUpdate.canGenerate && !autoSummary.generating && !autoSummary.isApplying && !autoSummary.preview &&
+    !consolidationLoading && !consolidationApplying && !consolidationModal && !memoryListOpen &&
+    !projectSettingsSaving && !projectRenaming && !projectDeleting && !projectDeleteModalOpen;
+  const handleGenerateMemoryUpdate = () => {
+    if (!updateCanGenerate) return;
+    void autoUpdate.generate();
+  };
+
   const handleNewThreadInFolder = useCallback((projectId: string) => {
     onNewThreadInFolder(projectId);
   }, [onNewThreadInFolder]);
@@ -760,10 +775,10 @@ export default function Sidebar({
   }, []);
 
   const closeProjectSettings = useCallback(() => {
-    if (autoSummary.preview || autoSummary.isApplying) return;
+    if (autoSummary.preview || autoSummary.isApplying || updateBusy) return;
     setProjectSettingsModal(null);
     setProjectRenameInput("");
-  }, [autoSummary.preview, autoSummary.isApplying]);
+  }, [autoSummary.preview, autoSummary.isApplying, updateBusy]);
 
   const handleOpenProjectDelete = useCallback(async () => {
     if (!projectSettingsModal?.projectId) return;
@@ -779,7 +794,7 @@ export default function Sidebar({
   }, [projectSettingsModal]);
 
   const handleOpenMemoryConsolidation = useCallback(async () => {
-    if (!projectSettingsModal?.projectId || consolidationLoading) return;
+    if (updateBusy || !projectSettingsModal?.projectId || consolidationLoading) return;
 
     setConsolidationLoading(true);
     try {
@@ -834,7 +849,7 @@ export default function Sidebar({
     } finally {
       setConsolidationLoading(false);
     }
-  }, [consolidationLoading, projectSettingsModal, showToast]);
+  }, [updateBusy, consolidationLoading, projectSettingsModal, showToast]);
 
   const handleApplyMemoryConsolidation = useCallback(async (topicIds: string[]) => {
     if (!consolidationModal || consolidationApplying || topicIds.length === 0) return;
@@ -1564,7 +1579,7 @@ export default function Sidebar({
       {/* フォルダ設定ドロワー */}
       {projectSettingsModal && (
         <div
-          inert={autoSummary.preview !== null}
+          inert={autoSummary.preview !== null || updateBusy}
           onClick={closeProjectSettings}
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 200 }}
         >
@@ -1765,10 +1780,11 @@ export default function Sidebar({
                   autoSummary={{
                     buttonLabel: autoSummary.buttonLabel, canGenerate: autoSummary.canGenerate,
                     error: autoSummary.error, generating: autoSummary.generating,
-                    onGenerate: () => { void autoSummary.generate(); },
+                    onGenerate: () => { if (updateBusy) return; void autoSummary.generate(); },
                   }}
                   consolidation={{ onOpen: handleOpenMemoryConsolidation, loading: consolidationLoading }}
-                  list={{ onOpen: () => setMemoryListOpen(true) }}
+                  list={{ onOpen: () => { if (updateBusy) return; setMemoryListOpen(true); } }}
+                  update={{ canGenerate: updateCanGenerate, generating: autoUpdate.generating, busy: updateBusy, onGenerate: handleGenerateMemoryUpdate }}
                 />
               )}
             </div>
@@ -1839,6 +1855,20 @@ export default function Sidebar({
             setConsolidationModal(null);
             setConsolidationResults(null);
           }}
+        />
+      )}
+      {autoUpdate.preview && projectSettingsModal?.projectId && (
+        <ProjectMemoryAutoUpdateModal
+          key={projectSettingsModal.projectId + ":" + autoUpdate.preview.run_id}
+          isOpen={true}
+          projectId={projectSettingsModal.projectId}
+          projectName={projectSettingsModal.folderName}
+          preview={autoUpdate.preview}
+          isApplying={autoUpdate.isApplying}
+          results={autoUpdate.results}
+          onApply={autoUpdate.apply}
+          onSkipAll={autoUpdate.skipAll}
+          onCancel={autoUpdate.close}
         />
       )}
       {autoSummary.preview && (

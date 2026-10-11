@@ -76,7 +76,7 @@ test('modal selects topics, uses empty old diff, displays stats/truncation/resul
     nodes(tree).find(n=>n.props.style?.zIndex===1100).props.onClick();nodes(tree).find(n=>n.type==='button').props.onClick();assert.equal(cancelled,1);
     cursor=0;effects=[];tree=Modal({...props,results:[{topic_key:'overview',status:'applied'},{topic_key:'principles',status:'conflict'},{topic_key:'references',status:'failed',error:'表示用エラー'}]});
     assert.match(strings(tree),/作成済み/);assert.match(strings(tree),/別の操作/);assert.match(strings(tree),/表示用エラー/);assert.ok(nodes(tree).filter(n=>n.type==='input').every(n=>n.props.disabled));
-    const sidebar=fs.readFileSync(require.resolve('../components/Sidebar.tsx'),'utf8');assert.match(sidebar,/useAutoSummary/);assert.match(sidebar,/disabled=\{!autoSummary.canGenerate/);assert.match(sidebar,/inert=\{autoSummary.preview !== null\}/);
+    const sidebar=fs.readFileSync(require.resolve('../components/Sidebar.tsx'),'utf8');assert.match(sidebar,/useAutoSummary/);assert.match(sidebar,/disabled=\{!autoSummary.canGenerate/);assert.match(sidebar,/inert=\{autoSummary.preview !== null \|\| updateBusy\}/);
   }finally{global.window=original;}
 });
 
