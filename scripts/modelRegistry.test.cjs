@@ -434,7 +434,7 @@ for (const [provider, modelId, pricing] of newModels) {
 
 for (const source of [registry, sharedRegistry]) {
   assert.deepEqual(source.EXTRACT_SETTINGS_CONFIG, {
-    claude: "claude-sonnet-5", gemini: "gemini-3.8-flash", openai: "gpt-4o",
+    claude: "claude-sonnet-5-5", gemini: "gemini-3.8-flash", openai: "gpt-4o",
   });
   for (const [id, before, after] of [
     ["gemini-3.5-flash", { inputPerMTok: 1.5, outputPerMTok: 9 }, { inputPerMTok: 1.5, outputPerMTok: 9 }],

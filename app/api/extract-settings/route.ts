@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { sanitizeReferenceText } from '@/lib/ai-context-blocks'
 import { EXTRACT_SETTINGS_CONFIG } from '@/lib/modelRegistry'
+import { extractClaudeSettingsText } from '@/lib/extractSettingsResponse'
 import * as logger from '@/lib/logger'
 
 // GET /api/extract-settings?thread_id=xxx
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model: EXTRACT_SETTINGS_CONFIG.claude,
           max_tokens: 4096,
-          thinking: { type: "disabled" },
+          thinking: { type: "between_tools" },
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
         }),
@@ -150,7 +151,12 @@ export async function POST(req: NextRequest) {
         return providerFailure('claude', 'Claude', res.status)
       }
       const data = await res.json()
-      rawText = data.content[0].text
+      if (data?.stop_reason === 'max_tokens') {
+        console.error('[extract-settings] output truncated', { provider, model: EXTRACT_SETTINGS_CONFIG.claude })
+        return finalizeJson({ error: 'output_truncated' }, { status: 500 })
+      }
+      // Empty/invalid content follows the existing JSON parse_error path.
+      rawText = extractClaudeSettingsText(data?.content) ?? ''
 
     } else if (provider === 'gemini') {
       const res = await fetch(

@@ -353,6 +353,93 @@ test("extract-settings rejects an unowned thread before external AI", async () =
   ]);
 });
 
+test("extract-settings Claude end_turn joins text and saves the existing payload", async () => {
+  resetMocks();
+  const expected = { characters: [{ name: "Alice" }], factions: [], glossary: [] };
+  const text = JSON.stringify(expected);
+  const savedFetch = global.fetch;
+  let sent;
+  global.fetch = async (url, init) => {
+    externalFetchCalls += 1;
+    assert.equal(url, "https://api.anthropic.com/v1/messages");
+    sent = JSON.parse(init.body);
+    return Response.json({ stop_reason: "end_turn", content: [
+      { type: "thinking", thinking: "private response" },
+      { type: "text", text: text.slice(0, 20) },
+      { type: "text", text: text.slice(20) },
+    ] });
+  };
+  try {
+    const response = await invokeExtractSettings({
+      threadId: THREAD_ID, messages: [{ role: "user", content: "Alice is a character." }],
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), expected);
+    assert.equal(sent.model, "claude-sonnet-5-5");
+    assert.equal(sent.max_tokens, 4096);
+    assert.deepEqual(sent.thinking, { type: "between_tools" });
+    assert.equal("tools" in sent, false);
+    assert.equal(externalFetchCalls, 1);
+    const writes = queryCalls.filter(call => call.table === "novel_settings" && call.operation === "upsert");
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].payload, [
+      { user_id: USER_ID, thread_id: THREAD_ID, type: "character", data: { characters: expected.characters } },
+      { user_id: USER_ID, thread_id: THREAD_ID, type: "faction", data: { factions: [] } },
+      { user_id: USER_ID, thread_id: THREAD_ID, type: "glossary", data: { glossary: [] } },
+    ]);
+    assert.deepEqual(writes[0].options, { onConflict: "user_id,thread_id,type" });
+  } finally {
+    global.fetch = savedFetch;
+  }
+});
+
+test("extract-settings Claude invalid content returns parse_error without writing", async () => {
+  const savedFetch = global.fetch;
+  const savedError = console.error;
+  console.error = () => {};
+  try {
+    for (const content of [[], [{ type: "thinking", thinking: "private response" }], null, {}, "text",
+      [{ type: "text", text: '{"characters":' }]]) {
+      resetMocks();
+      global.fetch = async () => Response.json({ stop_reason: "end_turn", content });
+      const response = await invokeExtractSettings({ threadId: THREAD_ID, messages: [] });
+      assert.equal(response.status, 500);
+      assert.deepEqual(await response.json(), { error: "parse_error" });
+      assert.equal(queryCalls.some(call => call.table === "novel_settings"), false);
+    }
+  } finally {
+    global.fetch = savedFetch;
+    console.error = savedError;
+  }
+});
+
+test("extract-settings Claude max_tokens rejects even parseable JSON without writing", async () => {
+  const savedFetch = global.fetch;
+  const savedError = console.error;
+  try {
+    for (const text of ['{"characters":', '{"characters":[],"factions":[],"glossary":[]}']) {
+      resetMocks();
+      const logs = [];
+      console.error = (...args) => logs.push(args);
+      global.fetch = async () => Response.json({
+        stop_reason: "max_tokens", content: [{ type: "text", text }],
+      });
+      const response = await invokeExtractSettings({
+        threadId: THREAD_ID, messages: [{ role: "user", content: "private conversation" }],
+      });
+      assert.equal(response.status, 500);
+      assert.deepEqual(await response.json(), { error: "output_truncated" });
+      assert.equal(queryCalls.some(call => call.table === "novel_settings"), false);
+      assert.deepEqual(logs, [
+        ["[extract-settings] output truncated", { provider: "claude", model: "claude-sonnet-5-5" }],
+      ]);
+    }
+  } finally {
+    global.fetch = savedFetch;
+    console.error = savedError;
+  }
+});
+
 test("lore/embed canonical projectId skips RPC and writes project_id only", async () => {
   resetMocks();
   const response = await invokeLoreEmbed({

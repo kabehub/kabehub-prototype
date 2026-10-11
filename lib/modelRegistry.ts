@@ -490,7 +490,7 @@ type TextModelByProvider = {
 };
 
 export const EXTRACT_SETTINGS_CONFIG = {
-  claude: "claude-sonnet-5",
+  claude: "claude-sonnet-5-5",
   gemini: "gemini-3.8-flash",
   openai: "gpt-4o",
 } as const satisfies TextModelByProvider;
