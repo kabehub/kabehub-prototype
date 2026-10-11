@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/07 — 自動要約Phase 1a（v206カーソルDB定義・未適用、アプリ連携はPhase 1b）・自動要約Phase C-3（使用スレッド内のuser発言カバレッジと具体的な省略警告、プロンプトv8＋切り詰め前の入力マスク・空topicの理由表示）・topic一括削除Phase B（v205本番適用済み・schema反映済み）
+最終更新: 2026/10/11 — モデル刷新（Sonnet 5価格修正・Claudeのcache込みtier判定・新モデル追加・既定値変更）
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -62,16 +62,16 @@ git pull origin main
 | フロントエンド | Next.js 16.2.11 (App Router) + React 19.2.8 + Tailwind CSS |
 | DB | Supabase (PostgreSQL) — 法人アカウント admin@kabehub.com |
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
-| AI メイン | Anthropic Claude API（claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
-| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.7-flash / gemini-3.5-flash-lite） |
-| AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna）※gpt-5.5-proは`/v1/chat/completions`非対応のため、chat・arena両方で`/v1/responses`へ分岐する |
+| AI メイン | Anthropic Claude API（claude-sonnet-5-5 / claude-opus-5-5 / claude-haiku-5-5 / claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
+| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash（deprecated） / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.7-flash（deprecated） / gemini-3.8-flash / gemini-3.5-flash-lite） |
+| AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna / gpt-6-luna / gpt-6-sol / gpt-6.1-sol）※gpt-5.5-proは`/v1/chat/completions`非対応のため、chat・arena両方で`/v1/responses`へ分岐する |
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |
 | ファイルストレージ | Supabase Storage（generated-imagesバケット） |
 | デプロイ | Vercel（kabehub.com） |
 | Markdown | react-markdown + remark-gfm + @tailwindcss/typography |
 
-モデルIDのUnion型は `types/index.ts`、実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金は `lib/modelRegistry.ts` で管理する。両者には双方向の型一致チェック（`AssertNever`）があり、不一致は型エラーになる。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` / `resolveClaudeRequestOverrides` をimportして使い、手動Thinking UIの可否は `canToggleDeepThinking` から導出する。モデル追加・削除時は `types/index.ts` と `lib/modelRegistry.ts` の両方を更新すること。
+モデルIDのUnion型は `lib/modelRegistry.ts` の `MODEL_REGISTRY` から導出され、`types/index.ts` はその型を参照するため手動更新は不要。実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金も `lib/modelRegistry.ts` で管理する。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` / `resolveClaudeRequestOverrides` をimportして使い、手動Thinking UIの可否は `canToggleDeepThinking` から導出する。モデル追加・削除時は `lib/modelRegistry.ts` と `packages/shared/src/modelRegistry.ts` を同一内容で更新する（`loadModel` / `saveModel` はlibのみ）。
 
 ---
 
@@ -491,7 +491,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 新しいAIモデルを追加する際は以下の手順で対応する：
 
 1. `lib/modelRegistry.ts` の `MODEL_REGISTRY` へエントリを追加する。`provider`・`status`・`surfaces.chat`・`surfaces.arena`・`thinking`・`pricing`を設定する
-2. `types/index.ts` の該当するUnion型へモデルIDを追加する。registryとの双方向型チェック（`AssertNever`）が型エラーにならないことを確認する
+2. `packages/shared/src/modelRegistry.ts` にも同じ変更を反映する（`loadModel` / `saveModel` はlibのみ）。モデルIDのUnion型はregistryから導出されるため、`types/index.ts` の手動更新は不要
 3. `components/ChatInput.tsx`・`app/api/chat/route.ts`・`app/api/arena/route.ts` は通常変更不要。`MODEL_CONFIG`・許可判定・デフォルト・Thinking対応表示はいずれもregistryから自動的に導出される
 4. API形式が既存モデルと異なる場合のみ、対応するrouteへ個別実装を追加する（例：専用エンドポイント、request body形式、streaming方式）。gpt-5.5-proはこの例外に該当し、`app/api/chat/route.ts`・`app/api/arena/route.ts`の両方で`/v1/responses`分岐を実装済み
 5. `lib/pricing.ts` は通常変更不要（`getPricing`の再exportのみのため）。`calcCost`・`formatUSD`自体の仕様変更がある場合のみ変更する
