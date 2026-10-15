@@ -363,7 +363,7 @@ function streamGemini(
             // ✅ S19 #15: 複数partsに対応（従来はparts[0]のみでテキスト欠落の恐れがあった）
             const parts = parsed.candidates?.[0]?.content?.parts;
             const text = Array.isArray(parts)
-              ? parts.map((p: { text?: string }) => p.text ?? "").join("")
+              ? parts.filter((p: { thought?: boolean }) => p.thought !== true).map((p: { text?: string }) => p.text ?? "").join("")
               : "";
             if (text) controller.enqueue(text);
             if (parsed.usageMetadata) {

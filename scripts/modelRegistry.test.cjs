@@ -38,6 +38,7 @@ const expectedLegacyModelConfig = {
       { id: "gemini-3.6-flash", label: "3.6 Flash", badge: "高性能" },
       { id: "gemini-3.8-flash", label: "3.8 Flash", badge: "高性能" },
       { id: "gemini-3.5-flash-lite", label: "3.5 Flash Lite", badge: "軽量・爆速" },
+      { id: "gemini-4-argon", label: "4 Argon", badge: "最高性能" },
     ],
     defaultModel: "gemini-3.8-flash",
     lsKey: "kabehub_gemini_model",
@@ -127,6 +128,33 @@ assert.deepEqual(
   sharedRegistry.MODEL_REGISTRY,
   "lib and shared MODEL_REGISTRY must stay identical"
 );
+
+// Argon is selectable through both registries, without enabling novel-check.
+for (const source of [registry, sharedRegistry]) {
+  const id = "gemini-4-argon";
+  const model = source.MODEL_REGISTRY.find(model => model.id === id);
+  assert.equal(model.status, "active");
+  assert.equal(model.provider, "gemini");
+  assert.deepEqual(model.surfaces, { chat: true, arena: true });
+  assert.equal(source.getThinkingSupport(id).control, "always_on");
+  assert.equal(Object.hasOwn(model, "features"), false);
+  assert.ok(!source.getNovelCheckModels().some(model => model.id === id));
+  assert.equal(source.isAllowedNovelCheckModel(id), false);
+  for (const surface of ["chat", "arena"]) {
+    assert.equal(source.isAllowedModel("gemini", id, surface), true);
+  }
+  assert.ok(source.getArenaModels("gemini").some(model => model.id === id));
+  assert.ok(source.buildLegacyModelConfig().gemini.models.some(model => model.id === id));
+  assert.equal(source.buildLegacyModelConfig().gemini.defaultModel, "gemini-3.8-flash");
+  for (const [at, expected] of [
+    ["2026-11-30T23:59:59.999Z", { inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10 }],
+    ["2026-12-01T00:00:00.000Z", { inputPerMTok: 4, cachedInputPerMTok: 0.2, outputPerMTok: 20 }],
+  ]) {
+    for (const promptTokens of [undefined, 1_000_000]) {
+      assert.deepEqual(source.getPricing(id, new Date(at), promptTokens), expected);
+    }
+  }
+}
 
 const representativeIds = [
   "gpt-4o", "gemini-2.5-pro", "ideogram-v3", "black-forest-labs/flux.2-pro",
@@ -465,7 +493,7 @@ for (const source of [registry, sharedRegistry]) {
     assert.deepEqual(source.getPricing(id, new Date("2026-12-31T23:59:59.999Z")), before);
     assert.deepEqual(source.getPricing(id, new Date("2027-01-01T00:00:00.000Z")), after);
   }
-  for (const id of ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]) {
+  for (const id of ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-4-argon"]) {
     assert.equal(source.MODEL_REGISTRY.find(model => model.id === id).status, "active");
   }
   // Prove status filtering also applies when a deprecated model has novelCheck metadata.

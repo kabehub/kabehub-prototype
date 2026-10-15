@@ -84,11 +84,15 @@ I'm not an engineer by trade — I'm a tax accountant. I started from nearly zer
 |Database|Supabase (PostgreSQL) + RLS|
 |Auth|Supabase Auth (Google OAuth)|
 |AI (Primary)|Anthropic Claude API (claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001)|
-|AI (Secondary)|Google Gemini API (gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.7-flash / gemini-3.5-flash-lite)|
+|AI (Secondary)|Google Gemini API (gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.7-flash / gemini-3.5-flash-lite / gemini-4-argon)|
 |AI (Tertiary)|OpenAI API (gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna)|
 |Image Generation|Gemini (gemini-2.5-flash-image) / OpenAI (gpt-image-2.5-sunburst) / Ideogram (ideogram-v3) / Flux via OpenRouter (black-forest-labs/flux.2-pro). The image page also offers gemini-3.1-flash-image and gemini-3-pro-image|
 |Embedding|OpenAI text-embedding-3-small (used for AI memory and RAG)|
 |Deploy|Vercel|
+
+Using Gemini 4 Argon (`gemini-4-argon`) via the API requires a supported paid API project. The free tier or Google AI Pro alone does not provide access.
+
+Argon cost figures are estimates based only on tokens reported by the API. Thought tokens are excluded when the API does not report them. Differences from actual billing have not been verified.
 
 ---
 

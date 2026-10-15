@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -63,13 +63,17 @@ git pull origin main
 | DB | Supabase (PostgreSQL) — 法人アカウント admin@kabehub.com |
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
 | AI メイン | Anthropic Claude API（claude-sonnet-5-5 / claude-opus-5-5 / claude-haiku-5-5 / claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
-| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash（deprecated） / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.7-flash（deprecated） / gemini-3.8-flash / gemini-3.5-flash-lite） |
+| AI サブ1 | Google Gemini API（gemini-2.5-flash / gemini-2.5-pro / gemini-3.5-flash（deprecated） / gemini-3.1-flash-lite / gemini-3.6-flash / gemini-3.7-flash（deprecated） / gemini-3.8-flash / gemini-3.5-flash-lite / gemini-4-argon） |
 | AI サブ2 | OpenAI API（gpt-4o / gpt-5.4-mini / gpt-5.4 / gpt-5.5 / gpt-5.5-pro / gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna / gpt-6-luna / gpt-6-sol / gpt-6.1-sol）※gpt-5.5-proは`/v1/chat/completions`非対応のため、chat・arena両方で`/v1/responses`へ分岐する |
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2.5-sunburst、旧gpt-image-2はhiddenで価格定義を維持） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |
 | ファイルストレージ | Supabase Storage（generated-imagesバケット） |
 | デプロイ | Vercel（kabehub.com）。Function RegionはダッシュボードでTokyo（hnd1）に設定済み（2026-10-08に本番レスポンスヘッダー x-vercel-id が hnd1 であることを確認）。`vercel.json`にはregionsを記載していない。regionsを追加するとダッシュボード設定より優先される（[Vercel公式設定仕様](https://vercel.com/docs/project-configuration/vercel-json#regions)） |
 | Markdown | react-markdown + remark-gfm + @tailwindcss/typography |
+
+Gemini 4 Argon（`gemini-4-argon`）のAPI利用には、対応する有料APIプロジェクトが必要です（無料枠・Google AI Proのみでは利用できません）。
+
+Argonの料金表示は目安です。APIが報告したトークンのみ集計しており、思考トークンが報告されない場合は含まれません。実請求との差は未検証です。
 
 モデルIDのUnion型は `lib/modelRegistry.ts` の `MODEL_REGISTRY` から導出され、`types/index.ts` はその型を参照するため手動更新は不要。実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金も `lib/modelRegistry.ts` で管理する。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` / `resolveClaudeRequestOverrides` をimportして使い、手動Thinking UIの可否は `canToggleDeepThinking` から導出する。モデル追加・削除時は `lib/modelRegistry.ts` と `packages/shared/src/modelRegistry.ts` を同一内容で更新する（`loadModel` / `saveModel` はlibのみ）。画像生成の標準モデルを置き換える際は `PROVIDER_CONFIG.image_gen.defaultModelId` と3つのテスト（`modelRegistry` / `ai-usage` / `loadModel`）も更新し、旧モデルのID・料金互換性が必要なら価格定義を変えず `hidden` で残す。
 

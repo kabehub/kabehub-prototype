@@ -107,6 +107,35 @@ function sse(lines) {
       cache_read_input_tokens: 200,
     });
 
+    let argonUsage = null;
+    let argonRequestBody = null;
+    global.fetch = async (_url, init) => {
+      argonRequestBody = JSON.parse(init.body);
+      return sse([
+        { candidates: [{ content: { parts: [{ text: "hidden", thought: true }, { text: "visible" }] } }] },
+        { usageMetadata: { promptTokenCount: 6042, candidatesTokenCount: 19, totalTokenCount: 6061 } },
+      ]);
+    };
+    const argonText = await consume(streamGemini(
+      "key",
+      [{ role: "user", content: "hello" }],
+      undefined,
+      "gemini-4-argon",
+      [],
+      undefined,
+      (usage) => { argonUsage = usage; },
+    ));
+    assert.equal(argonText, "visible");
+    assert.deepEqual(argonUsage, {
+      input_tokens: 6042,
+      output_tokens: 19,
+      normal_input_tokens: 6042,
+      cache_read_input_tokens: null,
+    });
+    for (const key of ["generationConfig", "thinkingConfig", "includeThoughts"]) {
+      assert.equal(Object.hasOwn(argonRequestBody, key), false);
+    }
+
     let openaiUsage = null;
     global.fetch = async () => sse([
       { choices: [{ delta: { content: "OpenAI" } }] },

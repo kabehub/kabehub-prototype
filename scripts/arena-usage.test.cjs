@@ -221,6 +221,30 @@ test("callGemini returns visible text and aggregated usage", async () => {
   });
 });
 
+test("callGemini Argon keeps absent cache/thought usage and default request settings", async () => {
+  let requestBody = null;
+  global.fetch = async (_url, init) => {
+    requestBody = JSON.parse(init.body);
+    return jsonResponse({
+      candidates: [{ content: { parts: [{ text: "Argon response", thoughtSignature: "synthetic-signature" }] } }],
+      usageMetadata: { promptTokenCount: 6042, candidatesTokenCount: 19, totalTokenCount: 6061 },
+    });
+  };
+  const result = await callGemini(
+    "key",
+    [{ role: "user", content: "hello" }],
+    undefined,
+    "gemini-4-argon",
+  );
+  assert.deepEqual(result, {
+    text: "Argon response",
+    usage: { inputTokens: 6042, outputTokens: 19, cacheReadInputTokens: null },
+  });
+  for (const key of ["generationConfig", "thinkingConfig", "includeThoughts"]) {
+    assert.equal(Object.hasOwn(requestBody, key), false);
+  }
+});
+
 test("callOpenAI returns Chat Completions text and usage", async () => {
   global.fetch = async () => jsonResponse({
     choices: [{ message: { content: "Chat Completions response" } }],

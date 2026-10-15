@@ -136,4 +136,14 @@ assert.equal(formatUSD(0.005), "$0.0050");
 assert.equal(formatUSD(0.5), "$0.500");
 assert.equal(formatUSD(5), "$5.00");
 
+// Argon pricing changes at midnight UTC, equally through lib and shared.
+for (const source of [{ getPricing }, sharedPricing]) {
+  for (const [at, expected] of [
+    ["2026-11-30T23:59:59.999Z", { inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10 }],
+    ["2026-12-01T00:00:00.000Z", { inputPerMTok: 4, cachedInputPerMTok: 0.2, outputPerMTok: 20 }],
+  ]) {
+    assert.deepEqual(source.getPricing("gemini-4-argon", new Date(at)), expected);
+  }
+}
+
 console.log("pricing tests passed");

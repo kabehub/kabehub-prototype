@@ -121,7 +121,7 @@ export function calculateTextUsageCost(
     const cachedTokens = Math.max(0, usage.cacheReadInputTokens ?? 0);
     const normalInputTokens = Math.max(0, inputTokens - cachedTokens);
     cost += perMTok(normalInputTokens, tier.inputPerMTok);
-    cost += perMTok(cachedTokens, tier.inputPerMTok * GEMINI_CACHE_READ_MULTIPLIER);
+    cost += perMTok(cachedTokens, tier.cachedInputPerMTok ?? tier.inputPerMTok * GEMINI_CACHE_READ_MULTIPLIER);
   } else {
     const cachedTokens = Math.max(0, usage.cachedInputTokens ?? 0);
     const cacheWriteTokens = supportsOpenAICacheWrite(modelId)

@@ -171,6 +171,36 @@ const gemini = calculateTextUsageCost("gemini", "gemini-2.5-flash", {
 assert.equal(gemini.costSource, "computed");
 approx(gemini.estimatedCostUsd, 1.496, "gemini cache cost");
 
+// Argon uses its explicit cache rate in both pricing epochs.
+for (const [at, cachedCost, uncachedCost] of [
+  ["2026-11-30T23:59:59.999Z", 6.24, 7],
+  ["2026-12-01T00:00:00.000Z", 12.48, 14],
+]) {
+  for (const [cacheUsage, expected] of [
+    [{ cacheReadInputTokens: 400_000 }, cachedCost],
+    [{ cacheReadInputTokens: null }, uncachedCost],
+    [{ cacheReadInputTokens: 0 }, uncachedCost],
+    [{}, uncachedCost],
+  ]) {
+    const result = calculateTextUsageCost("gemini", "gemini-4-argon", {
+      inputTokens: 1_000_000, outputTokens: 500_000, ...cacheUsage,
+    }, new Date(at));
+    assert.equal(result.costSource, "computed");
+    approx(result.estimatedCostUsd, expected, "Argon cache cost at " + at);
+  }
+}
+// Synthetic token-count fixture matching the observed response shape.
+const argonSample = calculateTextUsageCost("gemini", "gemini-4-argon", {
+  inputTokens: 6042, cacheReadInputTokens: 3993, outputTokens: 19,
+}, new Date("2026-11-30T00:00:00.000Z"));
+assert.equal(argonSample.costSource, "computed");
+approx(argonSample.estimatedCostUsd, 0.0046873, "Argon small cache sample");
+const geminiFallback = calculateTextUsageCost("gemini", "gemini-3.8-flash", {
+  inputTokens: 1_000_000, cacheReadInputTokens: 400_000, outputTokens: 0,
+}, new Date("2026-08-15T00:00:00.000Z"));
+assert.equal(geminiFallback.costSource, "computed");
+approx(geminiFallback.estimatedCostUsd, 0.48, "Gemini legacy cache multiplier");
+
 const geminiImage = calculateImageUsageCost("gemini-2.5-flash-image", {
   inputTokens: 110_000,
   outputTokens: 21_000,

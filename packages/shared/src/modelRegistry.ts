@@ -148,6 +148,16 @@ export const MODEL_REGISTRY = [
     { from: "2027-01-01T00:00:00.000Z", tiers: [{ inputPerMTok: 1.50, outputPerMTok: 7.50 }] },
   ], features: { novelCheck: { label: "3.8 Flash", estimatedInputPerMTok: 0.75 } } },
   { kind: "text", id: "gemini-3.5-flash-lite", provider: "gemini", label: "3.5 Flash Lite", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50) },
+  {
+    kind: "text", id: "gemini-4-argon", provider: "gemini",
+    label: "4 Argon", badge: "最高性能", status: "active",
+    surfaces: { chat: true, arena: true },
+    thinking: { control: "always_on", note: "Gemini 4 Argonは思考機能が標準で有効です（既定レベル：medium）。現在、KabeHubからレベルは変更できません" },
+    pricing: [
+      { note: "〜2026-11-30", tiers: [{ inputPerMTok: 2.00, cachedInputPerMTok: 0.10, outputPerMTok: 10.00 }] },
+      { from: "2026-12-01T00:00:00.000Z", tiers: [{ inputPerMTok: 4.00, cachedInputPerMTok: 0.20, outputPerMTok: 20.00 }] },
+    ],
+  },
 
   { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00, 1.25), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
   { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50, 0.075), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
