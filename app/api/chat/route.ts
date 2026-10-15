@@ -358,8 +358,12 @@ function streamGemini(
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
         let cacheReadInputTokens: number | null = null;
+        let finishReason: string | undefined;
         try {
           await pumpSSE(response, (parsed) => {
+            if (typeof parsed.candidates?.[0]?.finishReason === "string") {
+              finishReason = parsed.candidates[0].finishReason;
+            }
             // ✅ S19 #15: 複数partsに対応（従来はparts[0]のみでテキスト欠落の恐れがあった）
             const parts = parsed.candidates?.[0]?.content?.parts;
             const text = Array.isArray(parts)
@@ -377,6 +381,12 @@ function streamGemini(
               cacheReadInputTokens = usage.cachedContentTokenCount ?? null;
             }
           });
+          if (!signal?.aborted && finishReason !== undefined && finishReason !== "STOP") {
+            logger.geminiAbnormalFinish({
+              modelId,
+              finishReason: finishReason === "MAX_TOKENS" ? "MAX_TOKENS" : "OTHER",
+            });
+          }
           onUsage?.({
             input_tokens: inputTokens,
             output_tokens: outputTokens,

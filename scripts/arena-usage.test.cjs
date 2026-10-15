@@ -78,6 +78,7 @@ Module._load = function loadWithArenaUsageMocks(request, parent, isMain) {
       dbOperationFailed(params) {
         dbLogs.push(params);
       },
+      geminiAbnormalFinish: originalLoad.call(this, path.join(__dirname, "..", "lib", "logger.ts"), parent, isMain).geminiAbnormalFinish,
       dbCompensationFailed() {},
       externalApiFailed() {},
       toExternalService(provider) {
@@ -244,6 +245,41 @@ test("callGemini Argon keeps absent cache/thought usage and default request sett
     assert.equal(Object.hasOwn(requestBody, key), false);
   }
 });
+
+for (const [finishReason, expected] of [
+  ["MAX_TOKENS", "MAX_TOKENS"],
+  ["SOMETHING_NEW", "OTHER"],
+  ["SAFETY", "OTHER"],
+  ["CONTINUATION", "OTHER"],
+  ["STOP", null],
+  [undefined, null],
+  [123, null],
+]) {
+  test("callGemini diagnostic label: " + String(finishReason), async () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args);
+    try {
+      global.fetch = async () => jsonResponse({
+        candidates: [{ finishReason, content: { parts: [{ text: "visible" }] } }],
+        usageMetadata: { promptTokenCount: 202, candidatesTokenCount: 31, thoughtsTokenCount: 13, cachedContentTokenCount: 17 },
+        promptFeedback: { synthetic: true }, safetyRatings: [],
+      });
+      assert.deepEqual(await callGemini(
+        "key", [{ role: "user", content: "hello" }], undefined, "gemini-4-argon",
+      ), {
+        text: "visible",
+        usage: { inputTokens: 202, outputTokens: 44, cacheReadInputTokens: 17 },
+      });
+      assert.deepEqual(warnings, expected === null ? [] : [["[gemini-abnormal-finish]", {
+        modelId: "gemini-4-argon", finishReason: expected,
+      }]]);
+      assert.ok(!JSON.stringify(warnings).includes("SOMETHING_NEW"));
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+}
 
 test("callOpenAI returns Chat Completions text and usage", async () => {
   global.fetch = async () => jsonResponse({

@@ -136,6 +136,105 @@ function sse(lines) {
       assert.equal(Object.hasOwn(argonRequestBody, key), false);
     }
 
+    // Only a successfully drained stream may emit a finish diagnostic.
+    for (const [reasons, expected] of [
+      [["MAX_TOKENS", "MAX_TOKENS", undefined], "MAX_TOKENS"],
+      [["MAX_TOKENS", "SOMETHING_NEW", undefined], "OTHER"],
+      [["SAFETY"], "OTHER"],
+      [["CONTINUATION"], "OTHER"],
+      [["MAX_TOKENS", "STOP", undefined], null],
+      [[undefined], null],
+      [[123, null], null],
+    ]) {
+      const warnings = [];
+      const originalWarn = console.warn;
+      console.warn = (...args) => warnings.push(args);
+      try {
+        global.fetch = async () => sse([
+          { candidates: [{ content: { parts: [{ text: "visible" }] } }] },
+          ...reasons.map(finishReason => ({ candidates: [{ finishReason }] })),
+          { usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 100, thoughtsTokenCount: 50, cachedContentTokenCount: 200 } },
+        ]);
+        let usage = null;
+        assert.equal(await consume(streamGemini(
+          "key", [{ role: "user", content: "hello" }], undefined, "gemini-4-argon",
+          [], undefined, (value) => { usage = value; },
+        )), "visible");
+        assert.deepEqual(usage, {
+          input_tokens: 1000, output_tokens: 150, normal_input_tokens: 800, cache_read_input_tokens: 200,
+        });
+        assert.deepEqual(warnings, expected === null ? [] : [["[gemini-abnormal-finish]", {
+          modelId: "gemini-4-argon", finishReason: expected,
+        }]]);
+        assert.ok(!JSON.stringify(warnings).includes("SOMETHING_NEW"));
+      } finally {
+        console.warn = originalWarn;
+      }
+    }
+
+    for (const errorName of ["AbortError", "Error"]) {
+      const warnings = [];
+      const originalWarn = console.warn;
+      console.warn = (...args) => warnings.push(args);
+      try {
+        const abortController = new AbortController();
+        let pulls = 0;
+        global.fetch = async () => new Response(new ReadableStream({
+          pull(controller) {
+            if (pulls++ === 0) {
+              controller.enqueue(new TextEncoder().encode('data: ' + JSON.stringify({
+                candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: "partial" }] } }],
+                usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 100 },
+              }) + '\n'));
+            } else {
+              const error = new Error("synthetic stream failure");
+              error.name = errorName;
+              if (errorName === "AbortError") abortController.abort();
+              controller.error(error);
+            }
+          },
+        }));
+        let usage = null;
+        const result = consume(streamGemini(
+          "key", [{ role: "user", content: "hello" }], undefined, "gemini-4-argon",
+          [], abortController.signal, (value) => { usage = value; },
+        ));
+        if (errorName === "AbortError") {
+          assert.equal(await result, "partial");
+        } else {
+          await assert.rejects(result);
+        }
+        assert.deepEqual(usage, {
+          input_tokens: 1000, output_tokens: 100, normal_input_tokens: 1000,
+          cache_read_input_tokens: null, aborted: errorName === "AbortError",
+        });
+        assert.deepEqual(warnings, []);
+      } finally {
+        console.warn = originalWarn;
+      }
+    }
+
+    for (const failure of ["fetch", "http"]) {
+      const warnings = [];
+      const originalWarn = console.warn;
+      console.warn = (...args) => warnings.push(args);
+      try {
+        global.fetch = async () => {
+          if (failure === "fetch") throw new Error("synthetic fetch failure");
+          return new Response("synthetic upstream failure", { status: 503 });
+        };
+        let usage = null;
+        await assert.rejects(consume(streamGemini(
+          "key", [{ role: "user", content: "hello" }], undefined, "gemini-4-argon",
+          [], undefined, (value) => { usage = value; },
+        )));
+        assert.deepEqual(usage, { input_tokens: null, output_tokens: null, aborted: false });
+        assert.deepEqual(warnings, []);
+      } finally {
+        console.warn = originalWarn;
+      }
+    }
+
     let openaiUsage = null;
     global.fetch = async () => sse([
       { choices: [{ delta: { content: "OpenAI" } }] },

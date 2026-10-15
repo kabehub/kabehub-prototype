@@ -266,6 +266,13 @@ async function callGemini(apiKey: string, messages: ChatMessage[], systemPrompt:
   const usageMetadata = data.usageMetadata;
   const candidatesTokenCount = usageMetadata?.candidatesTokenCount;
   const thoughtsTokenCount = usageMetadata?.thoughtsTokenCount;
+  const finishReason = data.candidates?.[0]?.finishReason;
+  if (typeof finishReason === "string" && finishReason !== "STOP") {
+    logger.geminiAbnormalFinish({
+      modelId,
+      finishReason: finishReason === "MAX_TOKENS" ? "MAX_TOKENS" : "OTHER",
+    });
+  }
   return {
     text: text || "（応答の取得に失敗しました）",
     usage: {

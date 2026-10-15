@@ -137,3 +137,14 @@ export function claudeRefusal(p: {
     modelId: p.modelId,
   }));
 }
+
+/** Geminiの異常終了。終了理由は機械的ラベルに丸め、本文や識別情報を受け取らない。 */
+export function geminiAbnormalFinish(p: {
+  modelId: import("@/types").GeminiModel;
+  finishReason: "MAX_TOKENS" | "OTHER";
+}): void {
+  console.warn("[gemini-abnormal-finish]", pickDefined({
+    modelId: p.modelId,
+    finishReason: p.finishReason,
+  }));
+}

@@ -15,6 +15,7 @@ const {
   dbOperationFailed,
   dbOperationFailedBestEffort,
   externalApiFailed,
+  geminiAbnormalFinish,
   securityGuardRejected,
 } = require(path.join(__dirname, "..", "lib", "logger.ts"));
 
@@ -305,6 +306,20 @@ test("claudeRefusal preserves booleans and excludes sensitive extra fields", () 
     assert.deepEqual(logs.errors, []);
     assert.deepEqual(logs.warnings, [["[claude-refusal]", {
       memoryTopicsInjected, pinnedInjected: false, modelId: "claude-sonnet-4-5",
+    }]]);
+  }
+});
+
+test("geminiAbnormalFinish logs only the model and mechanical finish label", () => {
+  for (const finishReason of ["MAX_TOKENS", "OTHER"]) {
+    const logs = captureConsole(() => geminiAbnormalFinish({
+      modelId: "gemini-4-argon", finishReason,
+      userId: "synthetic-user", threadId: "synthetic-thread", prompt: "synthetic prompt",
+      body: "synthetic body", promptFeedback: {}, safetyRatings: [], usageMetadata: {},
+    }));
+    assert.deepEqual(logs.errors, []);
+    assert.deepEqual(logs.warnings, [["[gemini-abnormal-finish]", {
+      modelId: "gemini-4-argon", finishReason,
     }]]);
   }
 });
