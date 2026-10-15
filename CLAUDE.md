@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -68,7 +68,7 @@ git pull origin main
 | 画像生成 | Gemini（gemini-2.5-flash-image） / OpenAI（gpt-image-2.5-sunburst、旧gpt-image-2はhiddenで価格定義を維持） / Ideogram（ideogram-v3） / OpenRouter-Flux（black-forest-labs/flux.2-pro） |
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |
 | ファイルストレージ | Supabase Storage（generated-imagesバケット） |
-| デプロイ | Vercel（kabehub.com）。Function Regionは引継ぎ記録ではTokyo（hnd1）をダッシュボードで設定（現行ダッシュボード値は要確認）。`vercel.json`にはregionsを記載していない。regionsを追加するとダッシュボード設定より優先される（[Vercel公式設定仕様](https://vercel.com/docs/project-configuration/vercel-json#regions)） |
+| デプロイ | Vercel（kabehub.com）。Function RegionはダッシュボードでTokyo（hnd1）に設定済み（2026-10-08に本番レスポンスヘッダー x-vercel-id が hnd1 であることを確認）。`vercel.json`にはregionsを記載していない。regionsを追加するとダッシュボード設定より優先される（[Vercel公式設定仕様](https://vercel.com/docs/project-configuration/vercel-json#regions)） |
 | Markdown | react-markdown + remark-gfm + @tailwindcss/typography |
 
 モデルIDのUnion型は `lib/modelRegistry.ts` の `MODEL_REGISTRY` から導出され、`types/index.ts` はその型を参照するため手動更新は不要。実行時のモデル台帳・利用surface・デフォルト・Thinking対応・料金も `lib/modelRegistry.ts` で管理する。`app/api/chat/route.ts` と `app/api/arena/route.ts` は `lib/modelRegistry.ts` の `isAllowedModel` / `getDefaultModel` / `resolveClaudeRequestOverrides` をimportして使い、手動Thinking UIの可否は `canToggleDeepThinking` から導出する。モデル追加・削除時は `lib/modelRegistry.ts` と `packages/shared/src/modelRegistry.ts` を同一内容で更新する（`loadModel` / `saveModel` はlibのみ）。画像生成の標準モデルを置き換える際は `PROVIDER_CONFIG.image_gen.defaultModelId` と3つのテスト（`modelRegistry` / `ai-usage` / `loadModel`）も更新し、旧モデルのID・料金互換性が必要なら価格定義を変えず `hidden` で残す。

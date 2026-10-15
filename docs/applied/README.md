@@ -57,3 +57,4 @@
 | migration_v203_project_memory_promotion_restore.sql | 同revisionの手動アーカイブ済み昇格Loreの復元RPC新設（本文・embeddingを保持・superseded/他active行の競合を拒否） |
 | migration_v204_project_memory_chat_inclusion.sql | Project Memory topicのチャット包含opt-in（include_in_chat列・revisionを進めない専用RPC・ON時点の合計8,000字契約） |
 | migration_v205_delete_project_memory_topics.sql | Project Memory topicの一括削除（最大50件・所有確認とrevision CASによる全か無か・revision履歴はCASCADE削除・昇格済みLoreは保持） |
+| migration_v206_project_memory_auto_summary_cursors.sql | 自動要約Phase 1aのtopic×thread消費位置テーブル（project_memory_auto_summary_cursors）と前進RPC（advance_project_memory_auto_summary_cursors。最大100件・topic revision CAS・本文/履歴は変更しない）。適用済み（テスト・本番、日付未記録） |

@@ -1,8 +1,8 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/10/07（v206定義まで反映。v206は未適用、Ruiが手動適用予定。v205は本番適用済み）
+-- 最終更新: 2026/10/07（v206定義まで反映。v206は適用済み（テスト・本番とも。適用日は未記録）。v205は本番適用済み）
 --
--- 2026/10/07: v206 自動要約カーソルのtable・index・RLS・RPCを統合。DB適用は行っていない。
+-- 2026/10/07: v206 自動要約カーソルのtable・index・RLS・RPCを統合。v206はテスト・本番とも適用済み。
 --
 -- 【このファイルについて】
 -- 2026/07/10、本番Supabaseの pg_policies / pg_proc / information_schema.tables /
@@ -714,7 +714,7 @@ create policy "threads: delete own"
 -- 公開スレッドの読み取りは public_threads_view（get_public_threads_projection()経由）に一本化した。
 -- migration_v128_public_threads_projection.sql 参照。
 
--- v206: Project Memory auto summary cursors (pending manual application)
+-- v206: Project Memory auto summary cursors (applied: test and production)
 create table if not exists public.project_memory_auto_summary_cursors (
   topic_id uuid not null references public.project_memory_topics(id) on delete cascade,
   thread_id uuid not null references public.threads(id) on delete cascade,
