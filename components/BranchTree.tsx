@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { generateMessageSummary } from "@/lib/stringUtils";
+import { getMessageDisplayInfo } from "@/lib/messageDisplay";
 import type { TreeEdge, TreeNodeLayout } from "@/lib/branchTree";
 
 type BranchTreeProps = {
@@ -11,9 +12,9 @@ type BranchTreeProps = {
   edges: TreeEdge[];
 };
 
-const COL_WIDTH = 220;
+const COL_WIDTH = 248;
 const ROW_HEIGHT = 132;
-const NODE_WIDTH = 168;
+const NODE_WIDTH = 208;
 const NODE_HEIGHT = 58;
 const PADDING = 56;
 
@@ -88,13 +89,15 @@ export default function BranchTree({ threadId, nodes, edges }: BranchTreeProps) 
           const borderColor = node.isCurrentLane ? "#2563eb" : "#d8d8cf";
           const background = node.isCurrentLane ? "#eff6ff" : node.isCommon ? "#ffffff" : "#f6f6f2";
           const color = node.isCurrentLane ? "#1d4ed8" : "var(--ink)";
+          const { providerLabel, modelLabel, color: providerColor } = getMessageDisplayInfo(node.message);
+          const label = modelLabel ? `${providerLabel} · ${modelLabel}` : providerLabel;
 
           return (
             <button
               key={node.id}
               type="button"
               onClick={() => router.push(`/?thread=${encodeURIComponent(threadId)}&msg=${encodeURIComponent(node.id)}`)}
-              title={summary}
+              title={`${label}\n${summary}`}
               style={{
                 position: "absolute",
                 left: pos.cx - NODE_WIDTH / 2,
@@ -116,8 +119,15 @@ export default function BranchTree({ threadId, nodes, edges }: BranchTreeProps) 
                 fontFamily: "'DM Sans', sans-serif",
               }}
             >
-              <span style={{ fontSize: 11, lineHeight: 1, color: node.isCurrentLane ? "#2563eb" : "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
-                {number}
+              <span aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, borderRadius: "7px 0 0 7px", background: providerColor.border }} />
+              <span style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", minWidth: 0, fontSize: 11, lineHeight: 1, whiteSpace: "nowrap" }}>
+                <span style={{ flexShrink: 0, color: node.isCurrentLane ? "#2563eb" : "var(--ink-faint)", fontFamily: "'JetBrains Mono', monospace" }}>{number}</span>
+                <span style={{ flexShrink: 0 }}>·</span>
+                <span style={{ flexShrink: 0, color: providerColor.text }}>{providerLabel}</span>
+                {modelLabel && <>
+                  <span style={{ flexShrink: 0 }}>·</span>
+                  <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
+                </>}
               </span>
               <span style={{ fontSize: 12, lineHeight: 1.3, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden", display: "block", width: "100%", minWidth: 0 }}>
                 {summary || "(空のメッセージ)"}

@@ -6,6 +6,7 @@ import { MODEL_CONFIG, loadModel } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { webApiClient } from "@/lib/api-client";
+import { getMessageDisplayInfo } from "@/lib/messageDisplay";
 import {
   API_KEY_HEADER_NAMES,
   buildApiKeyHeaders,
@@ -266,16 +267,11 @@ function MessageBubble({
   };
 
   const aiLabel = (num?: number) => {
-    const p = message.provider ?? provider ?? "AI";
-    const providerName =
-      p === "claude" ? "Claude" :
-      p === "gemini" ? "Gemini" :
-      p === "openai" ? "ChatGPT" :
-      p === "memo" ? "メモ" :
-      p === "image_gen" ? "🖼️ 画像生成" : "AI";
+    const { providerLabel, modelLabel } = getMessageDisplayInfo(message, provider ?? "AI");
+    const providerName = (message.provider ?? provider) === "image_gen" ? `🖼️ ${providerLabel}` : providerLabel;
     const numStr = num ? ` · #${num}` : '';
-    return message.model_id
-      ? `${providerName}${numStr} · ${message.model_id}`
+    return modelLabel
+      ? `${providerName}${numStr} · ${modelLabel}`
       : `${providerName}${numStr}`;
   };
 
@@ -1466,12 +1462,9 @@ export function BranchBubble({ messages, onRestore }: BranchBubbleProps) {
     messages.find((msg) => msg.role === "assistant") ??
     messages[0];
 
-  const providerLabel =
-    labelMessage?.provider === "claude" ? "Claude" :
-    labelMessage?.provider === "gemini" ? "Gemini" :
-    labelMessage?.provider === "openai" ? "ChatGPT" : "AI";
-
-  const modelLabel = labelMessage?.model_id ? ` · ${labelMessage.model_id}` : "";
+  const displayInfo = labelMessage ? getMessageDisplayInfo(labelMessage) : null;
+  const providerLabel = displayInfo?.providerLabel ?? "AI";
+  const modelLabel = displayInfo?.modelLabel ? ` · ${displayInfo.modelLabel}` : "";
 
   return (
     <div style={{

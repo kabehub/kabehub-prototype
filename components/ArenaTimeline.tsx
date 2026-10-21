@@ -2,18 +2,18 @@
 
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import { Message } from "@/types";
+import { getModelDisplayLabel, PROVIDER_COLORS, PROVIDER_LABELS, type Provider } from "@/lib/messageDisplay";
+
+export { PROVIDER_COLORS, PROVIDER_LABELS, type Provider } from "@/lib/messageDisplay";
 
 // ── 型定義 ──────────────────────────────────────────────────────
 
-import { MODEL_REGISTRY } from "@/lib/modelRegistry";
-
 export function getArenaMessageLabel(message: Message, providerLabel: string): string {
   if (!message.model_id) return providerLabel;
-  const modelLabel = MODEL_REGISTRY.find((model) => model.id === message.model_id)?.label ?? message.model_id;
+  // 意図的にlegacy prefix付きIDもlabelへ解決する。ArenaのMarkdownエクスポートにも反映される。
+  const modelLabel = getModelDisplayLabel(message.model_id);
   return providerLabel + " / " + modelLabel;
 }
-
-export type Provider = "claude" | "gemini" | "openai" | "human";
 
 export interface ArenaMeta {
   type: "arena";
@@ -23,20 +23,6 @@ export interface ArenaMeta {
   ai2Prompt?: string;
   topic: string;
 }
-
-export const PROVIDER_LABELS: Record<Provider, string> = {
-  claude: "Claude",
-  gemini: "Gemini",
-  openai: "ChatGPT",
-  human: "あなた",
-};
-
-export const PROVIDER_COLORS: Record<Provider, { bg: string; border: string; text: string }> = {
-  claude: { bg: "#f0f4ff", border: "#a5b4fc", text: "#3730a3" },
-  gemini: { bg: "#f0fdf4", border: "#86efac", text: "#166534" },
-  openai: { bg: "#fff7ed", border: "#fdba74", text: "#9a3412" },
-  human: { bg: "#fdf4ff", border: "#e9d5ff", text: "#6b21a8" },
-};
 
 // ── ArenaBubble ─────────────────────────────────────────────────
 

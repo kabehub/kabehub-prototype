@@ -250,6 +250,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/ai-context-blocks.ts` | 3ソース（lore_book / memory / project_memory_topic）の参照ブロックと、GitHub用コード封筒を生成。コードは封筒タグのみ分断し、JSX等を保持する |
 | `lib/branching.ts` | 表示順・anchor・chain block・現在laneの構築ロジック |
 | `lib/branchTree.ts` | 分岐ツリー構築ロジック（`scripts/branchTree.test.cjs`でテストあり） |
+| `lib/messageDisplay.ts` | メッセージのprovider名・色とモデルlabelを解決するclient-safe共通helper。legacy ID・過去モデル・未知IDに対応 |
 | `lib/context-window.ts` | `trimContextToWindow`。コンテキストウィンドウのトリミング・キャッシュアンカー算出 |
 | `lib/csp.ts` | CSPヘッダー生成・違反レポート解析・報告URL無害化 |
 | `lib/exportUtils.ts` | 会話エクスポート生成（`buildExportContent`等）。`components/ChatPanel.tsx`・`app/settings/page.tsx`から利用 |
@@ -346,6 +347,8 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/apply-branch-edit-route.test.cjs` | branch edit RouteのRPC契約・採番・エラー処理を検証 |
 | `scripts/auth-callback-route.test.cjs` | 認証callbackのcode交換・Cookie・`next`復帰/onboarding分岐を検証 |
 | `scripts/branchTree.test.cjs` | 分岐laneとツリーレイアウト構築を検証 |
+| `scripts/messageDisplay.test.cjs` | provider・role優先順位、モデルlabel・legacy ID・非表示モデル、Arenaの表示互換性を検証 |
+| `scripts/branchtree-render.test.cjs` | ツリーのprovider色・モデルlabel、省略構造・title・現在レーンの青表示を静的描画で検証 |
 | `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
 | `scripts/chat-lore-search-plan.test.cjs` | 19語全件・非トリガー・temporary・OpenAIキー・novel・対象project有無の検索計画、queryTextのフォールバック・空文字・空白・上限・サロゲート境界を検証 |
