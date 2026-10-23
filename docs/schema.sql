@@ -1,6 +1,9 @@
 -- ============================================================
 -- KabeHub セルフホスト用DBスキーマ（統合版）
--- 最終更新: 2026/10/07（v206定義まで反映。v206は適用済み（テスト・本番とも。適用日は未記録）。v205は本番適用済み）
+-- 最終更新: 2026/10/23（v207定義まで反映。v207は2026/10/23にテスト・本番とも適用済み）
+--
+-- 2026/10/23: docs/applied/migration_v207_thread_trash.sqlを統合（テスト・本番とも同日適用済み）。
+-- スレッドのゴミ箱化Phase 1: カラム2本・部分index・新規関数7本・INSERTガード5本、既存6関数のdeleted_at条件を反映。
 --
 -- 2026/10/07: v206 自動要約カーソルのtable・index・RLS・RPCを統合。v206はテスト・本番とも適用済み。
 --
@@ -662,7 +665,8 @@ create table if not exists threads (
   rp_char_name      text,
   rp_char_icon_url  text,
   shared_at         timestamptz,
-  project_id        uuid references projects(id) on delete set null
+  project_id        uuid references projects(id) on delete set null,
+  deleted_at        timestamptz
 );
 
 create index if not exists idx_threads_user_id on threads(user_id);
@@ -670,6 +674,8 @@ create index if not exists idx_threads_is_public on threads(is_public) where is_
 create index if not exists idx_threads_share_token on threads(share_token) where share_token is not null;
 create index if not exists threads_likes_id_idx on threads(likes_count desc, id desc);
 create index if not exists idx_threads_project on threads(project_id);
+create index if not exists idx_threads_deleted_at
+  on public.threads(deleted_at) where deleted_at is not null;
 
 alter table threads enable row level security;
 
@@ -1197,7 +1203,7 @@ as $$
     t.id, t.title, t.is_public, t.created_at, t.updated_at,
     t.user_id, t.genre, t.share_token, t.allow_prompt_fork, t.fork_count
   from public.threads as t
-  where t.is_public = true;
+  where t.is_public = true and t.deleted_at is null;
 $$;
 
 revoke all on function public.get_public_threads_projection() from public;
@@ -1216,6 +1222,7 @@ as $$
     select 1 from public.threads as t
     where t.id = p_thread_id
       and t.is_public = true
+      and t.deleted_at is null
       and (t.shared_at is null or p_created_at <= t.shared_at)
   );
 $$;
@@ -1236,6 +1243,7 @@ as $$
     select 1 from public.threads as t
     where t.id = p_thread_id
       and t.is_public = true
+      and t.deleted_at is null
       and t.user_id = p_tag_user_id
   );
 $$;
@@ -1488,6 +1496,7 @@ begin
     from threads child
     where child.forked_from_id = p_thread_id
       and child.user_id <> parent.user_id
+      and child.deleted_at is null
   )
   where parent.id = p_thread_id
     and parent.is_public = true;
@@ -1767,7 +1776,8 @@ create table if not exists lore_embeddings (
   metadata               jsonb default '{}'::jsonb,
   is_manually_corrected  boolean not null default false,
   updated_at             timestamptz,
-  project_id             uuid references projects(id) on delete set null
+  project_id             uuid references projects(id) on delete set null,
+  archived_by_thread_delete_at timestamptz
 );
 
 create index if not exists idx_lore_embeddings_memory_kind on lore_embeddings(memory_kind);
@@ -1830,6 +1840,218 @@ create policy "lore_embeddings: update own"
 create policy "lore_embeddings: delete own"
   on lore_embeddings for delete
   using (auth.uid() = user_id);
+
+-- ============================================================
+-- v207: Thread trash Phase 1 (applied: test and production, 2026-10-23)
+-- ============================================================
+create or replace function public.thread_trash_retention()
+returns interval
+language sql
+immutable
+security invoker
+set search_path = ''
+as $$
+  select interval '7 days';
+$$;
+revoke execute on function public.thread_trash_retention() from public, anon, authenticated;
+grant execute on function public.thread_trash_retention() to authenticated, service_role;
+
+create or replace function public.soft_delete_thread(p_user_id uuid, p_thread_id uuid)
+returns timestamptz
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_thread record;
+  v_deleted_at timestamptz;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  select t.deleted_at, t.forked_from_id into v_thread
+  from public.threads as t
+  where t.id = p_thread_id and t.user_id = p_user_id
+  for update;
+  if not found then
+    raise exception 'thread not found' using errcode = 'P0001';
+  end if;
+  if v_thread.deleted_at is not null then
+    return v_thread.deleted_at;
+  end if;
+
+  v_deleted_at := now();
+  update public.threads set deleted_at = v_deleted_at
+  where id = p_thread_id and user_id = p_user_id;
+
+  update public.lore_embeddings
+  set is_archived = true, archived_by_thread_delete_at = v_deleted_at
+  where source_thread_id = p_thread_id and user_id = p_user_id
+    and is_pinned = false and is_archived = false and superseded_by is null;
+
+  if v_thread.forked_from_id is not null then
+    perform public.recalc_fork_count(v_thread.forked_from_id);
+  end if;
+  return v_deleted_at;
+end;
+$$;
+revoke execute on function public.soft_delete_thread(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.soft_delete_thread(uuid, uuid) to authenticated;
+
+create or replace function public.restore_thread(p_user_id uuid, p_thread_id uuid)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_thread record;
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+
+  select t.deleted_at, t.forked_from_id into v_thread
+  from public.threads as t
+  where t.id = p_thread_id and t.user_id = p_user_id
+  for update;
+  if not found then
+    raise exception 'thread not found' using errcode = 'P0001';
+  end if;
+  if v_thread.deleted_at is null then
+    return;
+  end if;
+  if now() >= v_thread.deleted_at + public.thread_trash_retention() then
+    raise exception 'trash retention expired' using errcode = 'P0001';
+  end if;
+
+  -- Clear every marker for this deletion, including subsequently superseded Lore.
+  update public.lore_embeddings as le
+  set archived_by_thread_delete_at = null,
+      is_archived = case when le.superseded_by is null then false else le.is_archived end
+  where le.source_thread_id = p_thread_id and le.user_id = p_user_id
+    and le.archived_by_thread_delete_at = v_thread.deleted_at;
+
+  update public.threads set deleted_at = null
+  where id = p_thread_id and user_id = p_user_id;
+  if v_thread.forked_from_id is not null then
+    perform public.recalc_fork_count(v_thread.forked_from_id);
+  end if;
+end;
+$$;
+revoke execute on function public.restore_thread(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.restore_thread(uuid, uuid) to authenticated;
+
+create or replace function public.list_trashed_threads(p_user_id uuid)
+returns table(id uuid, title text, deleted_at timestamptz, expires_at timestamptz, is_public boolean, project_id uuid)
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if p_user_id is null or auth.uid() is distinct from p_user_id then
+    raise exception 'Unauthorized' using errcode = '42501';
+  end if;
+  return query
+  select t.id, t.title, t.deleted_at, t.deleted_at + public.thread_trash_retention(), t.is_public, t.project_id
+  from public.threads as t
+  where t.user_id = p_user_id and t.deleted_at is not null
+  order by t.deleted_at desc;
+end;
+$$;
+revoke execute on function public.list_trashed_threads(uuid) from public, anon, authenticated;
+grant execute on function public.list_trashed_threads(uuid) to authenticated;
+
+create or replace function public.list_expired_trashed_threads(p_limit integer)
+returns table(id uuid, user_id uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_limit is null or p_limit < 1 or p_limit > 200 then
+    raise exception 'limit must be between 1 and 200' using errcode = 'P0001';
+  end if;
+  return query
+  select t.id, t.user_id from public.threads as t
+  where t.deleted_at is not null
+    and now() >= t.deleted_at + public.thread_trash_retention()
+  order by t.deleted_at asc, t.id asc
+  limit p_limit;
+end;
+$$;
+revoke execute on function public.list_expired_trashed_threads(integer) from public, anon, authenticated;
+grant execute on function public.list_expired_trashed_threads(integer) to service_role;
+
+create or replace function public.purge_expired_thread(p_thread_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  -- One conditional DELETE rechecks expiry under the row lock, including restore races.
+  delete from public.threads as t
+  where t.id = p_thread_id and t.deleted_at is not null
+    and t.deleted_at <= now() - public.thread_trash_retention()
+  returning t.id into v_id;
+  return found;
+end;
+$$;
+revoke execute on function public.purge_expired_thread(uuid) from public, anon, authenticated;
+grant execute on function public.purge_expired_thread(uuid) to service_role;
+
+create or replace function public.guard_thread_not_trashed()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_deleted_at timestamptz;
+begin
+  select t.deleted_at into v_deleted_at
+  from public.threads as t where t.id = new.thread_id
+  for share;
+  if found and v_deleted_at is not null then
+    raise exception 'thread is in trash' using errcode = 'P0001';
+  end if;
+  -- Missing parents are left to FK/RLS checks.
+  return new;
+end;
+$$;
+revoke execute on function public.guard_thread_not_trashed() from public, anon, authenticated;
+
+-- All five tables verified in docs/schema.sql to carry thread_id.
+-- PostgreSQL fires matching triggers in name order: trg_00_ precedes
+-- messages.trg_set_message_number, so rejected INSERTs never reach numbering.
+-- INSERT only: UPDATE/DELETE remain available for internal updates and FK cascades.
+-- Exclusions: ai_usage_events (audit/usage log), likes and reports (public viewing /
+-- moderation records) must retain their existing write semantics. Lore is managed
+-- by the RPCs above; project_memory_auto_summary_cursors is checkpoint bookkeeping.
+drop trigger if exists trg_00_guard_thread_not_trashed on public.messages;
+create trigger trg_00_guard_thread_not_trashed
+  before insert on public.messages
+  for each row execute function public.guard_thread_not_trashed();
+drop trigger if exists trg_00_guard_thread_not_trashed on public.thread_tags;
+create trigger trg_00_guard_thread_not_trashed
+  before insert on public.thread_tags
+  for each row execute function public.guard_thread_not_trashed();
+drop trigger if exists trg_00_guard_thread_not_trashed on public.thread_notes;
+create trigger trg_00_guard_thread_not_trashed
+  before insert on public.thread_notes
+  for each row execute function public.guard_thread_not_trashed();
+drop trigger if exists trg_00_guard_thread_not_trashed on public.message_notes;
+create trigger trg_00_guard_thread_not_trashed
+  before insert on public.message_notes
+  for each row execute function public.guard_thread_not_trashed();
+drop trigger if exists trg_00_guard_thread_not_trashed on public.drafts;
+create trigger trg_00_guard_thread_not_trashed
+  before insert on public.drafts
+  for each row execute function public.guard_thread_not_trashed();
 
 -- ============================================================
 -- Project Memory topicのLore昇格
@@ -2741,6 +2963,7 @@ begin
   from public.threads as t
   where t.id = p_thread_id
     and t.user_id = p_user_id
+    and t.deleted_at is null
   for update;
 
   if not found then
@@ -2843,7 +3066,7 @@ begin
   -- 1. thread行を先にロック（MF-6a規約踏襲。restore_message_branchとの直列化も兼ねる。
   --    通常のmessage INSERT経路（trigger基準のset_message_number）とは直列化されない既知の制約）
   perform t.id from public.threads as t
-  where t.id = p_thread_id and t.user_id = p_user_id
+  where t.id = p_thread_id and t.user_id = p_user_id and t.deleted_at is null
   for update;
   if not found then
     raise exception 'thread not found' using errcode = 'P0001';

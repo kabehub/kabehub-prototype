@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -794,6 +794,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v204 | Project Memory topicのチャット注入（`include_in_chat`列・`set_project_memory_topic_chat_inclusion` RPC・topic単位のopt-in。チャットへの注入・PATCH API・一覧のトグルと使用量表示。migration `migration_v204_project_memory_chat_inclusion.sql`。コミットc7e2eae／fac3277／72140ad） |
 | v205 | Project Memory一覧（Sidebar・`/library`）の一括削除（50件まで、全件所有確認＋revision CAS、Project→topic id順ロック）。revision履歴ごと削除し、昇格済みLoreは残す。「選択→削除ボタン→確認モーダルの必須チェック」の二段階確認（履歴の完全削除を常に確認し、昇格済みを含む場合はLore保持・再昇格時の重複も確認）。本番適用済み、`docs/applied/migration_v205_delete_project_memory_topics.sql`へ移動・`docs/schema.sql`反映済み。実装コミット895d681 |
 | v206 | 自動要約Phase 1aのtopic×thread消費位置テーブル・前進RPC（100件、topic revision CAS、本文/履歴とは独立）。適用済み、`docs/applied/migration_v206_project_memory_auto_summary_cursors.sql`に保管・`docs/schema.sql`に定義統合済み。実装d61026b、適用済みへの更新・移動b81fb3c。適用日は資料から確認できない。アプリ連携はPhase 2a／2bで実装済み |
+| v207 | スレッドのゴミ箱化Phase 1（DBのみ。deleted_at・Lore archive印・保持期間関数・trash/restore/list/purge RPC・INSERTガード5本・公開判定/分岐/fork集計のdeleted_at条件）。テスト・本番とも2026-10-23適用済み。`docs/applied/migration_v207_thread_trash.sql`に保管・`docs/schema.sql`反映済み。アプリ・API・UI・CronはPhase 2以降 |
 | 自動要約差分更新 Phase 1b | 読み取り専用preview route・cursor解決・userのみFIFO入力・strict LLM parser（1d51d26）。thread probe並列度4・共有タイトル上限・prompt v2（1aab314） |
 | 自動要約差分更新 Phase 2a | checkpoint route・body検証とProject／topic確認・cursor RPC呼び出し・エラー写像（3792beb） |
 | 自動要約差分更新 Phase 2b | client／strict preview parser／PATCH→checkpoint／注入量警告関数（b92ab77）、useAutoSummaryUpdateの生成／自動記録／apply／skipAll／run消費・旧応答破棄（ff7caa5） |
@@ -805,7 +806,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 > Arena利用量記録（コミット89d9363）は当時「v182」と呼ばれたが、migration v182（Project Memory Phase A）とは別物。
 > コミット日とDB適用日は一致しない。適用状況は`docs/applied/README.md`と`docs/schema.sql`冒頭を参照。
 > migration v182・v184の冒頭コメントに残る「未適用」の記述は古く、台帳とコミット記録では適用済み。
-> v175〜v205のmigrationは、`docs/applied/`と`docs/`直下に番号が存在するものをすべて表に記載（欠番を除く）。
+> v175〜v207のmigrationは、`docs/applied/`と`docs/`直下に番号が存在するものをすべて表に記載（欠番を除く）。
 
 > v133〜v159の詳細変更履歴（RPC定義・設計判断メモ含む）は `KabeHub_引き継ぎ資料_20260615_v159.md`、v160〜v172の詳細は `KabeHub_変更履歴アーカイブ_v160-v172.md` を参照。
 
