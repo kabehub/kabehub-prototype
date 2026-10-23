@@ -7,6 +7,7 @@ exports.database = function database(tables, failTable, headResult) {
     const query = {
       select(value, opts) { columns = value; options = opts; call.select = value; call.head = opts?.head === true; call.count = opts?.count; return this; },
       eq(key, value) { call.filters.push(['eq', key, value]); rows = rows.filter(r => r[key] === value); return this; },
+      is(key, value) { call.filters.push(['is', key, value]); rows = rows.filter(r => value === null ? r[key] == null : r[key] === value); return this; },
       neq(key, value) { call.filters.push(['neq', key, value]); rows = rows.filter(r => r[key] != null && r[key] !== value); return this; },
       in(key, values) { call.filters.push(['in', key, values]); rows = rows.filter(r => values.includes(r[key])); return this; },
       or(value) { call.filters.push(['or', value]); rows = rows.filter(r => value.split(',').some(term => {

@@ -28,6 +28,19 @@ export async function POST(req: NextRequest) {
 
   if (msgError || !message)
     return finalizeJson({ error: "Message not found" }, { status: 404 });
+
+  const { data: thread, error: threadError } = await serviceRoleClient()
+    .from("threads")
+    .select("project_id")
+    .eq("id", message.thread_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (threadError)
+    return finalizeJson({ error: threadError.message }, { status: 500 });
+  if (!thread)
+    return finalizeJson({ error: "Message not found" }, { status: 404 });
+
   if (message.user_id !== user.id)
     return finalizeJson({ error: "Forbidden" }, { status: 403 });
   if (message.role !== "assistant")
@@ -55,15 +68,6 @@ export async function POST(req: NextRequest) {
       { status },
     );
   }
-
-  const { data: thread, error: threadError } = await serviceRoleClient()
-    .from("threads")
-    .select("project_id")
-    .eq("id", message.thread_id)
-    .single();
-
-  if (threadError)
-    return finalizeJson({ error: threadError.message }, { status: 500 });
 
   const { memoryKind, importanceScore, confidenceScore } = LIKED_AI_DEFAULTS;
   const { error: insertError } = await supabase.from("lore_embeddings").insert({

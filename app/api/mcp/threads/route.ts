@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from('threads')
     .select('id, title, created_at, updated_at, is_public, genre, project_id, projects(user_id, name)')
+    .is("deleted_at", null)
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
     .limit(100)

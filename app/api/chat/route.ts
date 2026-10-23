@@ -826,7 +826,8 @@ export async function POST(req: NextRequest) {
   if (isLightRegenerate) {
     const { data: targetAssistant, error: targetAssistantError } = await supabase
       .from("messages")
-      .select("id, content, model_id")
+      .select("id, content, model_id, threads!inner(deleted_at)")
+      .is("threads.deleted_at", null)
       .eq("id", targetMessageId)
       .eq("thread_id", threadId)
       .eq("user_id", userId)
@@ -854,7 +855,8 @@ export async function POST(req: NextRequest) {
     if (targetUserMessageId) {
       const { data: targetUser, error: targetUserError } = await supabase
         .from("messages")
-        .select("id, content")
+        .select("id, content, threads!inner(deleted_at)")
+        .is("threads.deleted_at", null)
         .eq("id", targetUserMessageId)
         .eq("thread_id", threadId)
         .eq("user_id", userId)
@@ -955,7 +957,8 @@ export async function POST(req: NextRequest) {
       // このケースはフロント側（handleEditAndRegenerate）でmessages再GET同期により対応する。
       const { data: activeMessages, error: activeMessagesError } = await supabase
         .from("messages")
-        .select("role, content, provider")
+        .select("role, content, provider, threads!inner(deleted_at)")
+        .is("threads.deleted_at", null)
         .eq("thread_id", threadId)
         .eq("user_id", userId)
         .not("is_active", "eq", false)
@@ -1213,7 +1216,8 @@ export async function POST(req: NextRequest) {
     try {
       const { data: imgMsg } = await supabase
         .from('messages')
-        .select('content, metadata')
+        .select('content, metadata, threads!inner(deleted_at)')
+        .is("threads.deleted_at", null)
         .eq('id', imageContextId)
         .eq('user_id', userId)
         .single()

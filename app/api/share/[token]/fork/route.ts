@@ -14,6 +14,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
   const { data: sourceThread, error: threadError } = await adminSupabase
     .from("threads")
     .select("id, title, is_public, allow_prompt_fork, system_prompt, hide_memos, shared_at")
+    .is("deleted_at", null)
     .eq("share_token", params.token)
     .single();
 

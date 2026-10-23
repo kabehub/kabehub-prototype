@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
     let dbQuery = adminSupabase
       .from("threads")
       .select(`id, title, is_public, created_at, updated_at, user_id, genre, share_token, likes_count, fork_count, allow_prompt_fork${tagJoin}`)
+      .is("deleted_at", null)
       .eq("is_public", true)
       .order("likes_count", { ascending: false, nullsFirst: false })
       .order(timestampColumn, { ascending: false, nullsFirst: false })

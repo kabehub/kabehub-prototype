@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   if (!query) {
     const { data, error } = await supabase
       .from("threads")
-      .select("*")
+      .select("*").is("deleted_at", null)
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
     if (error) return finalizeJson({ error }, { status: 500 });
@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
 
   if (target === "both") {
     const [titleRes, msgRes] = await Promise.all([
-      supabase.from("threads").select("id").ilike("title", pattern).eq("user_id", user.id),
-      supabase.from("messages").select("id, thread_id").ilike("content", pattern).eq("user_id", user.id),
+      supabase.from("threads").select("id").is("deleted_at", null).ilike("title", pattern).eq("user_id", user.id),
+      supabase.from("messages").select("id, thread_id, threads!inner(deleted_at)").is("threads.deleted_at", null).ilike("content", pattern).eq("user_id", user.id),
     ]);
     const searchError = titleRes.error ?? msgRes.error;
     if (searchError) {
@@ -42,13 +42,13 @@ export async function GET(req: NextRequest) {
       matchedMsgMap.set(m.thread_id, [...existing, m.id]);
     });
   } else if (target === "title") {
-    const { data, error } = await supabase.from("threads").select("id").ilike("title", pattern).eq("user_id", user.id);
+    const { data, error } = await supabase.from("threads").select("id").is("deleted_at", null).ilike("title", pattern).eq("user_id", user.id);
     if (error) {
       return finalizeJson({ error: error.message }, { status: 500 });
     }
     (data ?? []).forEach((t) => threadIds.add(t.id));
   } else if (target === "message") {
-    const { data, error } = await supabase.from("messages").select("id, thread_id").ilike("content", pattern).eq("user_id", user.id);
+    const { data, error } = await supabase.from("messages").select("id, thread_id, threads!inner(deleted_at)").is("threads.deleted_at", null).ilike("content", pattern).eq("user_id", user.id);
     if (error) {
       return finalizeJson({ error: error.message }, { status: 500 });
     }
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("threads")
-    .select("*")
+    .select("*").is("deleted_at", null)
     .in("id", Array.from(threadIds))
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });

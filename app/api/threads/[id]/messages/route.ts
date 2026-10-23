@@ -11,6 +11,15 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   if (!auth.ok) return auth.response;
   const { user, supabase, finalizeJson } = auth;
 
+  const { data: thread, error: threadError } = await supabase
+    .from("threads")
+    .select("id")
+    .eq("id", params.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (threadError) return finalizeJson([], { status: 500 });
+  if (!thread) return finalizeJson([]);
+
   const { data, error } = await supabase
     .from("messages")
     .select("*")

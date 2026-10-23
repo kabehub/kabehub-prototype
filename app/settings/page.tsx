@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { getClientUser } from '@/lib/supabase/client-auth'
-import { generateBulkExportZip } from '@/lib/exportUtils'
+import { generateBulkExportZip, type BulkExportRawData } from '@/lib/exportUtils'
 import { LS_ENTER_MODE, type EnterMode } from '@/lib/inputUtils'
 import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
 import { useToast } from '@/components/Toast'
@@ -277,8 +277,40 @@ function SettingsContent() {
       const userId = user.id
       const exportedAt = new Date().toISOString()
 
+      // Page every query so the API row cap cannot discard live export data.
+      const readExportPages = async <T,>(
+        query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+      ) => {
+        const data: T[] = []
+        const pageSize = 500
+        for (let from = 0; ; from += pageSize) {
+          const page = await query(from, from + pageSize - 1)
+          if (page.error) return { data: [], error: page.error }
+          data.push(...(page.data ?? []))
+          if ((page.data?.length ?? 0) < pageSize) return { data, error: null }
+        }
+      }
+
+      const { data: threads, error: threadsError } = await readExportPages<BulkExportRawData["threads"][number]>(
+        (from, to) => supabase.from("threads").select("*").eq("user_id", userId)
+          .is("deleted_at", null).order("id").range(from, to),
+      )
+      if (threadsError) throw new Error(threadsError.message)
+      const liveThreadIds = threads.map(thread => thread.id)
+      const readChildren = async <T,>(table: "messages" | "thread_tags" | "thread_notes" | "message_notes" | "drafts") => {
+        const data: T[] = []
+        // Bound IN URLs and page each batch independently; an empty ID set makes no query.
+        for (let offset = 0; offset < liveThreadIds.length; offset += 100) {
+          const ids = liveThreadIds.slice(offset, offset + 100)
+          const batch = await readExportPages<T>((from, to) => supabase.from(table).select("*")
+            .eq("user_id", userId).in("thread_id", ids).order("created_at").order("id").range(from, to))
+          if (batch.error) return { data: [], error: batch.error }
+          data.push(...batch.data)
+        }
+        return { data, error: null }
+      }
+
       const [
-        { data: threads, error: threadsError },
         { data: messages, error: messagesError },
         { data: tags, error: tagsError },
         { data: notes, error: notesError },
@@ -287,14 +319,14 @@ function SettingsContent() {
         { data: profiles, error: profilesError },
         { data: likes, error: likesError },
       ] = await Promise.all([
-        supabase.from("threads").select("*").eq("user_id", userId),
-        supabase.from("messages").select("*").eq("user_id", userId),
-        supabase.from("thread_tags").select("*").eq("user_id", userId),
-        supabase.from("thread_notes").select("*").eq("user_id", userId),
-        supabase.from("message_notes").select("*").eq("user_id", userId),
-        supabase.from("drafts").select("*").eq("user_id", userId),
+        readChildren<BulkExportRawData["messages"][number]>("messages"),
+        readChildren<BulkExportRawData["tags"][number]>("thread_tags"),
+        readChildren<BulkExportRawData["notes"][number]>("thread_notes"),
+        readChildren<BulkExportRawData["messageNotes"][number]>("message_notes"),
+        readChildren<BulkExportRawData["drafts"][number]>("drafts"),
         supabase.from("profiles").select("*").eq("id", userId),
-        supabase.from("likes").select("*").eq("user_id", userId),
+        readExportPages<{ id: string; thread_id: string; user_id: string; created_at: string }>((from, to) => supabase.from("likes").select("*").eq("user_id", userId)
+          .order("id").range(from, to)),
       ])
 
       const queryErrors = [
@@ -316,6 +348,19 @@ function SettingsContent() {
         return
       }
 
+      // threads RLS is owner-only. Resolve other people's public live threads
+      // through the existing projection, preserving likes on their public threads.
+      const liveLikedThreadIds = new Set(liveThreadIds)
+      const likedThreadIds = [...new Set(likes.map(like => like.thread_id))]
+      for (let offset = 0; offset < likedThreadIds.length; offset += 100) {
+        const ids = likedThreadIds.slice(offset, offset + 100)
+        const visible = await readExportPages<{ id: string }>((from, to) => supabase.from("public_threads_view")
+          .select("id").in("id", ids).order("id").range(from, to))
+        if (visible.error) throw new Error(visible.error.message)
+        visible.data.forEach(thread => liveLikedThreadIds.add(thread.id))
+      }
+      const liveLikes = likes.filter(like => liveLikedThreadIds.has(like.thread_id))
+
       const blob = await generateBulkExportZip({
         threads: threads ?? [],
         messages: messages ?? [],
@@ -324,7 +369,7 @@ function SettingsContent() {
         messageNotes: messageNotes ?? [],
         drafts: drafts ?? [],
         profiles: profiles ?? [],
-        likes: likes ?? [],
+        likes: liveLikes,
         exportedAt,
       })
 

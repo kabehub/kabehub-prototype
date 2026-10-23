@@ -255,7 +255,7 @@ test("buildMemoryExtractionPrompt full output snapshot", () => {
 test("fetchTargetMessages preserves every query condition and ordering", async () => {
   const calls = [];
   const builder = {};
-  for (const method of ["select", "eq", "neq", "or", "order"]) {
+  for (const method of ["select", "is", "eq", "neq", "or", "order"]) {
     builder[method] = (...args) => {
       calls.push([method, ...args]);
       return builder;
@@ -275,7 +275,8 @@ test("fetchTargetMessages preserves every query condition and ordering", async (
   await batchTrain.fetchTargetMessages(supabase, "user-1", 37);
   assert.deepEqual(calls, [
     ["from", "messages"],
-    ["select", "id, thread_id, content, created_at"],
+    ["select", "id, thread_id, content, created_at, threads!inner(deleted_at)"],
+    ["is", "threads.deleted_at", null],
     ["eq", "user_id", "user-1"],
     ["eq", "is_learned", false],
     ["eq", "skip_learning", false],

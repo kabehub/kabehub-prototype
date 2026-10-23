@@ -19,6 +19,15 @@ export function createThreadResourceHandlers(config: ThreadResourceConfig) {
     if (!auth.ok) return auth.response;
     const { user, supabase, finalizeJson } = auth;
 
+    const { data: thread, error: threadError } = await supabase
+      .from("threads")
+      .select("id")
+      .eq("id", params.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (threadError) return finalizeJson({ error: threadError.message }, { status: 500 });
+    if (!thread) return finalizeJson([]);
+
     let query = supabase.from(config.table).select("*").eq("thread_id", params.id);
     if (config.addExplicitUserFilterOnGet) {
       query = query.eq("user_id", user.id);

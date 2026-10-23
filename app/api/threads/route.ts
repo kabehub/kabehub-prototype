@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from("threads")
     .select("*")
+    .is("deleted_at", null)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
   if (error) {

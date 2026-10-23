@@ -9,6 +9,24 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   if (!auth.ok) return auth.response;
   const { user, supabase, finalizeJson } = auth;
 
+  const { data: thread, error: threadError } = await supabase
+    .from("threads")
+    .select("id")
+    .eq("id", params.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (threadError) return finalizeJson({ error: threadError.message }, { status: 500 });
+  if (!thread) {
+    // Raw threads RLS is owner-only; preserve reads of other users' public tags.
+    const { data: publicThread, error: publicError } = await supabase
+      .from("public_threads_view")
+      .select("id")
+      .eq("id", params.id)
+      .maybeSingle();
+    if (publicError) return finalizeJson({ error: publicError.message }, { status: 500 });
+    if (!publicThread) return finalizeJson([]);
+  }
+
   const { data, error } = await supabase
     .from("thread_tags")
     .select("*")

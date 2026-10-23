@@ -27,6 +27,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const { data: sourceThread, error: threadError } = await supabase
     .from('threads')
     .select('*')
+    .is("deleted_at", null)
     .eq('id', sourceThreadId)
     .eq('user_id', user.id)
     .single()

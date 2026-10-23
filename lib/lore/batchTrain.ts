@@ -75,7 +75,8 @@ ${correctionLines.join("\n")}`;
 async function fetchTargetMessages(supabase: SupabaseClient, userId: string, limit: number) {
   const { data, error } = await supabase
     .from("messages")
-    .select("id, thread_id, content, created_at")
+    .select("id, thread_id, content, created_at, threads!inner(deleted_at)")
+    .is("threads.deleted_at", null)
     .eq("user_id", userId)
     .eq('is_learned', false)
     .eq('skip_learning', false)

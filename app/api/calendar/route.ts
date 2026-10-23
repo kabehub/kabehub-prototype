@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
   const { data: threads, error } = await supabase
     .from("threads")
     .select("id, title, updated_at")
+    .is("deleted_at", null)
     .eq("user_id", user.id)
     .gte("updated_at", startUTC.toISOString())
     .lt("updated_at", endUTC.toISOString())

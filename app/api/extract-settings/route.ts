@@ -18,6 +18,16 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return auth.response
   const { user, supabase, finalizeJson } = auth
 
+  const { data: thread, error: threadError } = await supabase
+    .from("threads")
+    .select("id")
+    .eq("id", thread_id)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .maybeSingle()
+  if (threadError) return finalizeJson({ error: threadError.message }, { status: 500 })
+  if (!thread) return finalizeJson({ characters: [], factions: [], glossary: [] })
+
   const { data, error } = await supabase
     .from('novel_settings')
     .select('*')

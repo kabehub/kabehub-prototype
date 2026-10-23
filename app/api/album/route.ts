@@ -16,9 +16,10 @@ export async function GET(req: NextRequest) {
 
   const { data: messages, error, count } = await supabase
     .from("messages")
-    .select("id, thread_id, created_at, content, metadata", { count: "exact" })
+    .select("id, thread_id, created_at, content, metadata, threads!inner(deleted_at)", { count: "exact" })
     .eq("user_id", user.id)
     .eq("provider", "image_gen")
+    .is("threads.deleted_at", null)
     .neq("metadata->>image_deleted", "true")
     .order("created_at", { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -66,10 +67,11 @@ export async function GET(req: NextRequest) {
   }
 
   const items = (messages ?? []).map((m: Record<string, unknown>) => {
+    const { threads: _thread, ...message } = m;
     const meta = m.metadata as Record<string, unknown> | null;
     const storagePath = meta?.storagePath as string | null;
     return {
-      ...m,
+      ...message,
       signedUrl: storagePath ? signedUrls[storagePath] ?? null : null,
     };
   });

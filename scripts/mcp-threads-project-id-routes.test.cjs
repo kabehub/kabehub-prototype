@@ -36,6 +36,10 @@ const supabase = {
         state.select = columns;
         return query;
       },
+      is(column, value) {
+        state.filters.push({ column, value, operator: "is" });
+        return query;
+      },
       eq(column, value) {
         state.filters.push({ column, value });
         return query;
@@ -320,7 +324,7 @@ test("GET: project_id and legacy name come from the owned Project join", async (
     project_id: PROJECT_ID, folder_name: " Foo ",
   }] });
   assert.deepEqual(queryCalls, [{
-    table: "threads", select: GET_COLUMNS, filters: [{ column: "user_id", value: USER_ID }],
+    table: "threads", select: GET_COLUMNS, filters: [{ column: "deleted_at", value: null, operator: "is" }, { column: "user_id", value: USER_ID }],
     order: { column: "updated_at", options: { ascending: false } }, limit: 100,
   }]);
   assert.deepEqual(ownedCalls, []);

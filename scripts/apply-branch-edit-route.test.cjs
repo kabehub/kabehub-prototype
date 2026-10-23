@@ -16,6 +16,9 @@ function createQuery(result) {
     select() {
       return query;
     },
+    is() {
+      return query;
+    },
     eq() {
       return query;
     },

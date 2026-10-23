@@ -191,7 +191,7 @@ export function finalizeAutoSummaryInput(keys: readonly AutoSummaryTopicKey[], t
 export async function selectAutoSummaryInput(db: SupabaseClient, userId: string, projectId: string, keys: readonly AutoSummaryTopicKey[]) {
   const threads: ThreadRow[] = [];
   for (let offset = 0; ; offset += THREAD_PAGE_SIZE) {
-    const { data, error } = await db.from("threads").select("id, title").eq("project_id", projectId).eq("user_id", userId)
+    const { data, error } = await db.from("threads").select("id, title").is("deleted_at", null).eq("project_id", projectId).eq("user_id", userId)
       .or("roleplay_mode.is.null,roleplay_mode.eq.false").order("id", { ascending: true }).range(offset, offset + THREAD_PAGE_SIZE - 1);
     checkError(error, "threads");
     threads.push(...(data ?? []) as ThreadRow[]);

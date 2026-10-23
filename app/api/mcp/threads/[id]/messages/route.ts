@@ -20,6 +20,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   const { data: thread, error: threadError } = await supabase
     .from('threads')
     .select('id')
+    .is("deleted_at", null)
     .eq('id', params.id)
     .eq('user_id', userId)
     .maybeSingle()

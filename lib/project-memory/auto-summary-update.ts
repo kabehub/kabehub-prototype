@@ -128,7 +128,7 @@ function after(query: any, start: UpdatePosition) {
 export async function selectAutoSummaryUpdateInput(db: SupabaseClient, userId: string, projectId: string, topics: readonly UpdateTopic[]) {
   const existing_topics = topics.map(t => ({ topic_key: t.topic_key, role: TOPIC_ROLES[t.topic_key], content_md: t.content_md }));
   assertAutoSummaryUpdateInputBudget(buildAutoSummaryUpdateInput(existing_topics, []));
-  const threads = await pages<Thread>("threads", () => db.from("threads").select("id, title")
+  const threads = await pages<Thread>("threads", () => db.from("threads").select("id, title").is("deleted_at", null)
     .eq("project_id", projectId).eq("user_id", userId).or("roleplay_mode.is.null,roleplay_mode.eq.false").order("id"));
   const candidates: Array<{ thread: Thread; start: UpdatePosition; first: Message; count: number }> = [];
   const probe = async (thread: Thread) => {

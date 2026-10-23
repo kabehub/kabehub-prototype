@@ -359,7 +359,8 @@ export async function POST(req: NextRequest) {
   if (imageRefId) {
     const { data: refMessage, error: refError } = await supabase
       .from('messages')
-      .select('metadata')
+      .select('metadata, threads!inner(deleted_at)')
+      .is("threads.deleted_at", null)
       .eq('id', imageRefId)
       .eq('user_id', userId)
       .single()

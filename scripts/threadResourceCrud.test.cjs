@@ -21,6 +21,13 @@ function createQuery(table) {
       record.calls.push({ method: "select", args });
       return query;
     },
+    is(...args) {
+      record.calls.push({ method: "is", args });
+      return query;
+    },
+    maybeSingle() {
+      return Promise.resolve({ data: databaseResult.error ? null : { id: "thread-1" }, error: databaseResult.error });
+    },
     eq(...args) {
       record.calls.push({ method: "eq", args });
       return query;
@@ -276,10 +283,13 @@ test("GET uses each route's table, ordering, and user-filter configuration", asy
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), rows);
-    assert.equal(queryRecords.length, 1);
-    assert.equal(queryRecords[0].table, entry.table);
-    assert.deepEqual(findCalls(queryRecords[0], "eq"), entry.expectedEq);
-    assert.deepEqual(findCalls(queryRecords[0], "order"), [
+    assert.equal(queryRecords.length, 2);
+    assert.equal(queryRecords[0].table, "threads");
+    assert.deepEqual(findCalls(queryRecords[0], "eq"), [["id", "thread-1"]]);
+    assert.deepEqual(findCalls(queryRecords[0], "is"), [["deleted_at", null]]);
+    assert.equal(queryRecords[1].table, entry.table);
+    assert.deepEqual(findCalls(queryRecords[1], "eq"), entry.expectedEq);
+    assert.deepEqual(findCalls(queryRecords[1], "order"), [
       ["created_at", { ascending: entry.ascending }],
     ]);
 

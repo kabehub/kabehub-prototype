@@ -45,6 +45,7 @@ function database(tables, failTable) {
     const q = {
       select(v, opts) { columns = v; options = opts; call.columns = v; call.options = opts; return q; },
       eq(k,v) { call.filters.push(['eq',k,v]); rows = rows.filter(r => r[k] === v); return q; },
+      is(k,v) { call.filters.push(['is',k,v]); rows = rows.filter(r => v === null ? r[k] == null : r[k] === v); return q; },
       neq(k,v) { call.filters.push(['neq',k,v]); rows = rows.filter(r => r[k] != null && r[k] !== v); return q; },
       in(k,v) { call.filters.push(['in',k,v]); rows = rows.filter(r => v.includes(r[k])); return q; },
       gt(k,v) { call.filters.push(['gt',k,v]); rows = rows.filter(r => r[k] > v); return q; },

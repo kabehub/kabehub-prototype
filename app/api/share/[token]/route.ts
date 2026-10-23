@@ -14,6 +14,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
   const { data: thread, error: threadError } = await adminSupabase
     .from("threads")
     .select("id, title, is_public, created_at, updated_at, user_id, genre, shared_at")
+    .is("deleted_at", null)
     .eq("share_token", params.token)
     .single();
 
