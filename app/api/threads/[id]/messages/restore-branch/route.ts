@@ -1,3 +1,4 @@
+import { getOwnedThreadTrashState, isThreadTrashedError, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import * as logger from "@/lib/logger";
@@ -25,6 +26,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   const threadId = params.id;
 
+  const preflight = await getOwnedThreadTrashState(supabase, user.id, threadId);
+  if (preflight.error) return finalizeJson({ error: preflight.error.message }, { status: 500 });
+  if (preflight.data?.deleted_at) return finalizeJson(...threadTrashResponse());
+
   const { error } = await supabase.rpc("restore_message_branch", {
     p_user_id: user.id,
     p_thread_id: threadId,
@@ -33,6 +38,12 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   });
 
   if (error) {
+    if (isThreadTrashedError(error)) return finalizeJson(...threadTrashResponse());
+    if (error.code === "P0001" && error.message === "thread not found") {
+      const recheck = await getOwnedThreadTrashState(supabase, user.id, threadId);
+      if (recheck.error) return finalizeJson({ error: recheck.error.message }, { status: 500 });
+      if (recheck.data?.deleted_at) return finalizeJson(...threadTrashResponse());
+    }
     logger.dbOperationFailed({
       route: "threads-messages-restore-branch",
       operation: "restore_message_branch",

@@ -1,3 +1,4 @@
+import { getOwnedThreadTrashState, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { createThreadResourceHandlers } from "@/lib/threadResourceCrud";
@@ -21,6 +22,14 @@ export async function PATCH(req: NextRequest) {
   const { user, supabase, finalizeJson } = auth;
 
   const { id, content } = await req.json();
+  const { data: target, error: targetError } = await supabase.from("thread_notes")
+    .select("thread_id").eq("id", id).eq("user_id", user.id).maybeSingle();
+  if (targetError) return finalizeJson({ error: targetError.message }, { status: 500 });
+  if (target) {
+    const { data: writeThread, error: writeThreadError } = await getOwnedThreadTrashState(supabase, user.id, target.thread_id);
+    if (writeThreadError) return finalizeJson({ error: writeThreadError.message }, { status: 500 });
+    if (writeThread?.deleted_at) return finalizeJson(...threadTrashResponse());
+  }
   const { data, error } = await supabase
     .from("thread_notes")
     .update({ content, updated_at: new Date().toISOString() })

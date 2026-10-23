@@ -33,6 +33,8 @@ function createQuery(table) {
       state.select = columns;
       return query;
     },
+    is() { return query; },
+    update(payload) { state.operation = "update"; state.payload = payload; return query; },
     eq(column, value) {
       state.filters.push({ column, value });
       return query;
@@ -54,6 +56,7 @@ function createQuery(table) {
     },
     maybeSingle() {
       if (table === "projects") return Promise.resolve(projectResult);
+      if (table === "threads" && state.operation === "update") return Promise.resolve({ data: { id: THREAD_ID, user_id: USER_ID, ...state.payload }, error: null });
       if (table === "threads") return Promise.resolve(threadResult);
       throw new Error(`unexpected maybeSingle table: ${table}`);
     },
@@ -239,7 +242,7 @@ test("threads PATCH sets an owned project_id without writing folder_name", async
     { column: "id", value: PROJECT_ID },
     { column: "user_id", value: USER_ID },
   ]);
-  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "upsert");
+  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "update");
   assert.equal(write.payload.project_id, PROJECT_ID);
   assert.equal("folder_name" in write.payload, false);
 });
@@ -251,7 +254,7 @@ test("threads PATCH clears project_id without RPC or ownership lookup", async ()
   assert.equal(response.status, 200);
   assert.equal(rpcCalls.length, 0);
   assert.equal(queryCalls.some((call) => call.table === "projects"), false);
-  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "upsert");
+  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "update");
   assert.equal(write.payload.project_id, null);
   assert.equal("folder_name" in write.payload, false);
 });
@@ -261,7 +264,7 @@ test("threads PATCH rejects an unowned project_id", async () => {
   const response = await invokeThreadPatch({ project_id: PROJECT_ID });
 
   assert.equal(response.status, 404);
-  assert.equal(queryCalls.some((call) => call.operation === "upsert"), false);
+  assert.equal(queryCalls.some((call) => ["update", "insert", "upsert"].includes(call.operation)), false);
 });
 
 test("threads PATCH rejects project_id and folder_name together", async () => {
@@ -293,7 +296,7 @@ test("threads PATCH with title only leaves both project keys untouched", async (
   const response = await invokeThreadPatch({ title: "Renamed" });
 
   assert.equal(response.status, 200);
-  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "upsert");
+  const write = queryCalls.find((call) => call.table === "threads" && call.operation === "update");
   assert.equal(write.payload.title, "Renamed");
   assert.equal("project_id" in write.payload, false);
   assert.equal("folder_name" in write.payload, false);

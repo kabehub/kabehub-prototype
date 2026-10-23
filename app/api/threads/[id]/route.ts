@@ -1,3 +1,4 @@
+import { getOwnedThreadTrashState, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import {
@@ -157,34 +158,51 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   // ✅ v76: スナップショット型共有のPush時刻
   if (body.shared_at !== undefined) updates.shared_at = body.shared_at;
 
-  const { data: thread, error: threadError } = await supabase
-    .from("threads")
-    .select("id, share_token")
-    .eq("id", params.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (threadError) {
-    return finalizeJson({ error: threadError.message }, { status: 500 });
-  }
-
+  // Token allocation preserves the existing needsToken contract.
   if (body.needsToken && body.is_public) {
-    if (!thread?.share_token) {
-      updates.share_token = uuidv4();
-    }
+    const { data: thread, error } = await supabase.from("threads").select("id, share_token, deleted_at")
+      .eq("id", params.id).eq("user_id", user.id).maybeSingle();
+    if (error) return finalizeJson({ error: error.message }, { status: 500 });
+    if (thread?.deleted_at) return finalizeJson(...threadTrashResponse());
+    if (!thread?.share_token) updates.share_token = uuidv4();
   }
 
-  const { data, error } = await supabase
-    .from("threads")
-    .upsert({
-      id: params.id,
-      user_id: user.id,
-      ...updates,
-    })
-    .eq("user_id", user.id)
-    .select()
-    .single();
+  const writeLive = () => {
+    // Empty patches must not send an empty UPDATE to PostgREST.
+    if (Object.keys(updates).length === 0) {
+      return supabase.from("threads").select("*").eq("id", params.id)
+        .eq("user_id", user.id).is("deleted_at", null).maybeSingle();
+    }
+    return supabase.from("threads").update(updates).eq("id", params.id)
+      .eq("user_id", user.id).is("deleted_at", null).select().maybeSingle();
+  };
+  // Called only on an exclusive zero-row/23505 branch; never recursive.
+  const retryLiveOnce = async () => {
+    const retry = await writeLive();
+    if (retry.error) return finalizeJson({ error: retry.error.message }, { status: 500 });
+    if (retry.data) return finalizeJson(retry.data);
+    const check = await getOwnedThreadTrashState(supabase, user.id, params.id);
+    if (check.error) return finalizeJson({ error: check.error.message }, { status: 500 });
+    if (check.data?.deleted_at) return finalizeJson(...threadTrashResponse());
+    return finalizeJson({ error: "Failed to update thread" }, { status: 500 });
+  };
 
-  if (error) return finalizeJson({ error: error.message }, { status: 500 });
-  return finalizeJson(data);
+  const updated = await writeLive();
+  if (updated.error) return finalizeJson({ error: updated.error.message }, { status: 500 });
+  if (updated.data) return finalizeJson(updated.data);
+  const existing = await getOwnedThreadTrashState(supabase, user.id, params.id);
+  if (existing.error) return finalizeJson({ error: existing.error.message }, { status: 500 });
+  if (existing.data?.deleted_at) return finalizeJson(...threadTrashResponse());
+  if (existing.data) return retryLiveOnce();
+
+  const inserted = await supabase.from("threads").insert({ id: params.id, user_id: user.id, ...updates })
+    .select().single();
+  if (!inserted.error) return finalizeJson(inserted.data);
+  if (inserted.error.code === "23505") {
+    const raced = await getOwnedThreadTrashState(supabase, user.id, params.id);
+    if (raced.error) return finalizeJson({ error: raced.error.message }, { status: 500 });
+    if (raced.data?.deleted_at) return finalizeJson(...threadTrashResponse());
+    if (raced.data) return retryLiveOnce();
+  }
+  return finalizeJson({ error: inserted.error.message }, { status: 500 });
 }

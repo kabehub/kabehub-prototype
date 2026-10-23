@@ -1,4 +1,5 @@
-﻿import { NextRequest } from "next/server";
+﻿import { getOwnedThreadTrashState, threadTrashResponse } from "@/lib/threads/trash-errors";
+import { NextRequest } from "next/server";
 import { deleteOwnedMessage } from "@/lib/messages/delete";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
@@ -16,6 +17,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     messageId: params.id,
   });
   if (!result.ok) {
+    if (result.trashed) return finalizeJson(...threadTrashResponse());
     return finalizeJson({ error: result.error }, { status: 500 });
   }
   return finalizeJson({ success: true });
@@ -30,6 +32,15 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const { user, supabase, finalizeJson } = auth;
 
   const body = await req.json();
+
+  const { data: target, error: targetError } = await supabase.from("messages")
+    .select("thread_id").eq("id", params.id).eq("user_id", user.id).maybeSingle();
+  if (targetError) return finalizeJson({ error: targetError }, { status: 500 });
+  if (target) {
+    const { data: writeThread, error: writeThreadError } = await getOwnedThreadTrashState(supabase, user.id, target.thread_id);
+    if (writeThreadError) return finalizeJson({ error: writeThreadError.message }, { status: 500 });
+    if (writeThread?.deleted_at) return finalizeJson(...threadTrashResponse());
+  }
 
   // 画像削除アクション
   if (body.action === "delete_image") {

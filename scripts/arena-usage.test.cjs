@@ -19,6 +19,11 @@ const serviceRoleClientValue = { kind: "service-role-client" };
 function createSupabaseClient() {
   return {
     from(table) {
+      if (table === "threads") {
+        const q = { select() { return q; }, eq() { return q; },
+          async maybeSingle() { return { data: { id: "thread-1", deleted_at: null }, error: null }; } };
+        return q;
+      }
       assert.equal(table, "messages");
       return {
         async insert(payload) {

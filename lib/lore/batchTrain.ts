@@ -1,3 +1,5 @@
+import { getOwnedThreadTrashState } from "@/lib/threads/trash-errors";
+import { securityGuardRejected } from "@/lib/logger";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { chatCompleteMini, createEmbedding } from "@/lib/lore/openai";
 import { clamp } from "@/lib/lore/mappers";
@@ -200,6 +202,12 @@ export async function runBatchTrain(
   for (const message of messages) {
     try {
       const memories = await extractMemories(openaiKey, message, memoryExtractionPrompt);
+      const parent = await getOwnedThreadTrashState(supabase, userId, message.thread_id);
+      if (parent.error) throw new Error(parent.error.message);
+      if (!parent.data || parent.data.deleted_at) {
+        securityGuardRejected({ operation: "batch-train-parent-unavailable", skippedCount: 1 });
+        continue; // Do not mark learned; restoration can make this input eligible again.
+      }
       processedCount++;
       const persisted = await persistExtractedMemories(supabase, userId, message, memories, openaiKey);
       insertedCount += persisted.insertedCount;

@@ -98,6 +98,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
       const { error: compensationError } = await supabase
         .from("threads")
         .delete()
+        .is("deleted_at", null)
         .eq("id", newThread.id);
       if (compensationError) {
         logger.dbCompensationFailed({

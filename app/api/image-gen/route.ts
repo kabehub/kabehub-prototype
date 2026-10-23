@@ -1,3 +1,4 @@
+import { isThreadTrashedError, threadTrashResponse } from "@/lib/threads/trash-errors";
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -344,7 +345,7 @@ export async function POST(req: NextRequest) {
   if (threadId) {
     const { data: thread, error: threadError } = await supabase
       .from('threads')
-      .select('id')
+      .select('id, deleted_at')
       .eq('id', threadId)
       .eq('user_id', userId)
       .single()
@@ -352,6 +353,7 @@ export async function POST(req: NextRequest) {
     if (threadError || !thread) {
       return finalizeJson({ error: 'スレッドが見つかりません' }, { status: 404 })
     }
+    if (thread.deleted_at) return finalizeJson(...threadTrashResponse());
   }
 
   let imageInput: ImageInput | undefined
@@ -524,7 +526,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (dbError) {
-    return finalizeJson({ error: `DB保存失敗: ${dbError.message}` }, { status: 500 })
+    return finalizeJson({ error: `DB保存失敗: ${dbError.message}` }, { status: isThreadTrashedError(dbError) ? 409 : 500 })
   }
 
   await persistImageUsage(handlerResult.modelId, handlerResult.usage, 'completed', message.id)

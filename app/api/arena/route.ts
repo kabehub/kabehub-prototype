@@ -1,3 +1,4 @@
+import { getOwnedThreadTrashState, isThreadTrashedError, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
@@ -83,7 +84,7 @@ async function ensureArenaThread({
 }: EnsureArenaThreadParams): Promise<EnsureArenaThreadResult> {
   const { data: existingThread, error: lookupError } = await supabase
     .from("threads")
-    .select("id")
+    .select("id, deleted_at")
     .eq("id", threadId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -100,6 +101,7 @@ async function ensureArenaThread({
       response: NextResponse.json({ error: "Failed to verify arena thread" }, { status: 500 }),
     };
   }
+  if (existingThread?.deleted_at) return { ok: false, response: NextResponse.json(...threadTrashResponse()) };
   if (existingThread) return { ok: true, created: false };
 
   const title = `【AI闘技場】${(topic ?? "").slice(0, 30)}`;
@@ -125,7 +127,7 @@ async function ensureArenaThread({
   // 同時リクエストが先に作成した場合だけ成功扱いにする。別ユーザー所有の同一IDは500のまま。
   const { data: racedThread, error: recheckError } = await supabase
     .from("threads")
-    .select("id")
+    .select("id, deleted_at")
     .eq("id", threadId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -142,6 +144,7 @@ async function ensureArenaThread({
       response: NextResponse.json({ error: "Failed to verify arena thread" }, { status: 500 }),
     };
   }
+  if (racedThread?.deleted_at) return { ok: false, response: NextResponse.json(...threadTrashResponse()) };
   if (racedThread) return { ok: true, created: false };
 
   logger.dbOperationFailed({
@@ -170,6 +173,7 @@ async function compensateCreatedArenaThread({
   const { error: compensationError } = await supabase
     .from("threads")
     .delete()
+    .is("deleted_at", null)
     .eq("id", threadId)
     .eq("user_id", userId);
 
@@ -185,13 +189,21 @@ async function compensateCreatedArenaThread({
 
 async function compensateInterventionMessage({
   supabase,
+  threadId,
   messageId,
   userId,
 }: {
   supabase: SupabaseClient;
   messageId: string;
+  threadId: string;
   userId: string;
 }): Promise<void> {
+  const parent = await getOwnedThreadTrashState(supabase, userId, threadId);
+  if (parent.error) {
+    logger.dbCompensationFailed({ route: "arena", operation: "verify_intervention_parent", table: "threads", errorCode: parent.error.code });
+    return;
+  }
+  if (parent.data?.deleted_at) return;
   const { error: compensationError } = await supabase
     .from("messages")
     .delete()
@@ -434,6 +446,7 @@ export async function POST(req: NextRequest) {
           operation: "delete_thread_after_human_insert",
         });
       }
+      if (isThreadTrashedError(humanInsertError)) return finalizeJson(...threadTrashResponse());
       return finalizeJson({ error: "Failed to save human message" }, { status: 500 });
     }
     return finalizeJson({ ok: true, message: humanMsg });
@@ -442,6 +455,10 @@ export async function POST(req: NextRequest) {
   // ── タイムトラベルモード ──────────────────────────────────────
   if (body.mode === "timeTravel") {
     const { threadId, since } = body as { threadId: string; since: string };
+    const preflight = await getOwnedThreadTrashState(supabase, userId, threadId);
+    if (preflight.error) return finalizeJson({ error: "Failed to verify arena thread" }, { status: 500 });
+    if (preflight.data?.deleted_at) return finalizeJson(...threadTrashResponse());
+
     const { error } = await supabase
       .from("messages")
       .delete()
@@ -492,6 +509,10 @@ export async function POST(req: NextRequest) {
     const ensuredThread = await ensureArenaThread({ supabase, threadId, topic, userId });
     if (!ensuredThread.ok) return finalizeResponse(ensuredThread.response);
     arenaThreadCreated = ensuredThread.created;
+  } else {
+    const preflight = await getOwnedThreadTrashState(supabase, userId, threadId);
+    if (preflight.error) return finalizeJson({ error: "Failed to verify arena thread" }, { status: 500 });
+    if (preflight.data?.deleted_at) return finalizeJson(...threadTrashResponse());
   }
 
   // 介入メッセージ保存
@@ -529,6 +550,7 @@ export async function POST(req: NextRequest) {
           operation: "delete_thread_after_intervention_insert",
         });
       }
+      if (isThreadTrashedError(interventionInsertError)) return finalizeJson(...threadTrashResponse());
       return finalizeJson({ error: "Failed to save intervention message" }, { status: 500 });
     }
     savedInterventionMessageId = interventionMsg.id;
@@ -663,6 +685,7 @@ export async function POST(req: NextRequest) {
     } else if (savedInterventionMessageId) {
       await compensateInterventionMessage({
         supabase,
+        threadId,
         messageId: savedInterventionMessageId,
         userId,
       });

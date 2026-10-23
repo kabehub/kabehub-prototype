@@ -1,3 +1,4 @@
+import { getOwnedThreadTrashState, isThreadTrashedError, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest, NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions"; // ✅ v62: Vercel環境でレスポンス後もDB保存を保証
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
@@ -742,7 +743,7 @@ export async function POST(req: NextRequest) {
   if (!isTemporary) {
     let { data: thread, error: threadError } = await supabase
       .from('threads')
-      .select('project_id, user_id')
+      .select('project_id, user_id, deleted_at')
       .eq('id', threadId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -753,6 +754,10 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    if (thread?.deleted_at) return chatResponse(JSON.stringify(threadTrashResponse()[0]), {
+          status: 409, headers: { "Content-Type": "application/json" },
+        });
 
     if (!thread) {
       const title = userContent.slice(0, 20) + (userContent.length > 20 ? "…" : "");
@@ -770,7 +775,7 @@ export async function POST(req: NextRequest) {
 
       const { data: confirmedThread, error: confirmedThreadError } = await supabase
         .from('threads')
-        .select('project_id, user_id')
+        .select('project_id, user_id, deleted_at')
         .eq('id', threadId)
         .eq('user_id', userId)
         .maybeSingle();
@@ -789,6 +794,9 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      if (confirmedThread.deleted_at) return chatResponse(JSON.stringify(threadTrashResponse()[0]), {
+          status: 409, headers: { "Content-Type": "application/json" },
+        });
       thread = confirmedThread;
     }
 
@@ -926,6 +934,18 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (rpcError) {
+        if (isThreadTrashedError(rpcError)) return chatResponse(JSON.stringify(threadTrashResponse()[0]), {
+          status: 409, headers: { "Content-Type": "application/json" },
+        });
+        if (rpcError.code === "P0001" && rpcError.message === "thread not found") {
+          const recheck = await getOwnedThreadTrashState(supabase, userId, threadId as string);
+          if (recheck.error) return chatResponse(JSON.stringify({ error: recheck.error.message }), {
+            status: 500, headers: { "Content-Type": "application/json" },
+          });
+          if (recheck.data?.deleted_at) return chatResponse(JSON.stringify(threadTrashResponse()[0]), {
+          status: 409, headers: { "Content-Type": "application/json" },
+        });
+        }
         const status = rpcError.code === "42501" ? 403 : rpcError.code === "P0001" ? 400 : 500;
         logger.dbOperationFailed({
           route: "chat/branch-edit",
@@ -1026,6 +1046,9 @@ export async function POST(req: NextRequest) {
       });
 
       if (insertError) {
+        if (isThreadTrashedError(insertError)) return chatResponse(JSON.stringify(threadTrashResponse()[0]), {
+          status: 409, headers: { "Content-Type": "application/json" },
+        });
         return chatResponse(JSON.stringify({ error: insertError.message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },

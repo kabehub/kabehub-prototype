@@ -1,3 +1,4 @@
+import { threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import {
@@ -57,13 +58,14 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
 
   const { data: thread, error: threadError } = await supabase
     .from("threads")
-    .select("id")
+    .select("id, deleted_at")
     .eq("id", params.id)
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (threadError) return finalizeJson({ error: threadError }, { status: 500 });
   if (!thread) return finalizeJson({ error: "Thread not found" }, { status: 404 });
+  if (thread.deleted_at) return finalizeJson(...threadTrashResponse());
 
   const { data: targetMessages, error: targetError } = await supabase
     .from("messages")

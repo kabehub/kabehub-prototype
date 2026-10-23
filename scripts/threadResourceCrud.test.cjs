@@ -26,7 +26,7 @@ function createQuery(table) {
       return query;
     },
     maybeSingle() {
-      return Promise.resolve({ data: databaseResult.error ? null : { id: "thread-1" }, error: databaseResult.error });
+      return Promise.resolve({ data: databaseResult.error ? null : table === "threads" ? { id: "thread-1", deleted_at: null } : { thread_id: "thread-1" }, error: databaseResult.error });
     },
     eq(...args) {
       record.calls.push({ method: "eq", args });
@@ -344,8 +344,8 @@ test("POST builds the expected payload for notes and message notes", async () =>
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), saved);
-    assert.equal(queryRecords[0].table, entry.table);
-    assert.deepEqual(findCalls(queryRecords[0], "insert"), [
+    assert.equal(queryRecords[1].table, entry.table);
+    assert.deepEqual(findCalls(queryRecords[1], "insert"), [
       [entry.expectedPayload],
     ]);
   }
@@ -367,8 +367,8 @@ test("draft POST trims content and supplies a generated id", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), saved);
-  const [[payload]] = findCalls(queryRecords[0], "insert");
-  assert.equal(queryRecords[0].table, "drafts");
+  const [[payload]] = findCalls(queryRecords[1], "insert");
+  assert.equal(queryRecords[1].table, "drafts");
   assert.match(
     payload.id,
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -402,9 +402,9 @@ test("DELETE scopes removal to the resource id and authenticated user", async ()
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { success: true });
-  assert.equal(queryRecords[0].table, "message_notes");
-  assert.deepEqual(findCalls(queryRecords[0], "delete"), [[]]);
-  assert.deepEqual(findCalls(queryRecords[0], "eq"), [
+  assert.equal(queryRecords[2].table, "message_notes");
+  assert.deepEqual(findCalls(queryRecords[2], "delete"), [[]]);
+  assert.deepEqual(findCalls(queryRecords[2], "eq"), [
     ["id", "note-1"],
     ["user_id", "user-1"],
   ]);
@@ -427,12 +427,12 @@ test("notes PATCH scopes updates to the user and uses shared finalizers", async 
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), saved);
-  assert.equal(queryRecords[0].table, "thread_notes");
-  assert.deepEqual(findCalls(queryRecords[0], "eq"), [
+  assert.equal(queryRecords[2].table, "thread_notes");
+  assert.deepEqual(findCalls(queryRecords[2], "eq"), [
     ["id", "note-1"],
     ["user_id", "user-1"],
   ]);
-  const [[updatePayload]] = findCalls(queryRecords[0], "update");
+  const [[updatePayload]] = findCalls(queryRecords[2], "update");
   assert.equal(updatePayload.content, "updated");
   assert.equal(
     new Date(updatePayload.updated_at).toISOString(),

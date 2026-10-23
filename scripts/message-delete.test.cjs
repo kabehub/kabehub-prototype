@@ -13,9 +13,11 @@ const STORAGE_PATH = `${USER_ID}/${THREAD_ID}/image.png`;
 
 function createFakeSupabase(options = {}) {
   const history = [];
-  const existing = Object.prototype.hasOwnProperty.call(options, "existing")
+  const rawExisting = Object.prototype.hasOwnProperty.call(options, "existing")
     ? options.existing
     : { metadata: { storagePath: STORAGE_PATH } };
+
+  const existing = rawExisting ? { thread_id: THREAD_ID, ...rawExisting } : rawExisting;
 
   class QueryBuilder {
     constructor(table) {
@@ -49,13 +51,13 @@ function createFakeSupabase(options = {}) {
 
     maybeSingle() {
       history.push({
-        operation: "select",
+        operation: this.table === "threads" ? "parent select" : "select",
         table: this.table,
         payload: this.payload,
         filters: [...this.filters],
       });
       return Promise.resolve({
-        data: existing,
+        data: this.table === "threads" ? { id: THREAD_ID, deleted_at: null } : existing,
         error: options.selectError ?? null,
       });
     }
@@ -255,7 +257,7 @@ test("archive failure warns with the existing text and continues deletion", asyn
   ]);
   assert.deepEqual(
     history.map((entry) => entry.operation),
-    ["select", "archive", "delete"]
+    ["select", "parent select", "archive", "delete"]
   );
 });
 
@@ -273,7 +275,7 @@ test("delete failure returns the same error object and skips cleanup", async () 
   assert.equal(result.error, deleteError);
   assert.deepEqual(
     history.map((entry) => entry.operation),
-    ["select", "archive", "delete"]
+    ["select", "parent select", "archive", "delete"]
   );
 });
 
@@ -289,7 +291,7 @@ test("work runs in select, archive, delete, storage cleanup order", async () => 
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(
     history.map((entry) => entry.operation),
-    ["select", "archive", "delete", "storage cleanup"]
+    ["select", "parent select", "archive", "delete", "storage cleanup"]
   );
   assert.deepEqual(operation(history, "storage cleanup").paths, [STORAGE_PATH]);
 });

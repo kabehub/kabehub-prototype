@@ -1,3 +1,4 @@
+import { getOwnedThreadTrashState, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { deleteOwnedMessage } from "@/lib/messages/delete";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
@@ -18,6 +19,7 @@ export async function DELETE(
     threadId: params.id,
   });
   if (!result.ok) {
+    if (result.trashed) return finalizeJson(...threadTrashResponse());
     return finalizeJson({ error: result.error }, { status: 500 });
   }
   return finalizeJson({ success: true });
@@ -41,6 +43,10 @@ export async function PATCH(
   if (Object.keys(updates).length === 0) {
     return finalizeJson({ error: "No valid fields to update" }, { status: 400 });
   }
+
+  const { data: writeThread, error: writeThreadError } = await getOwnedThreadTrashState(supabase, user.id, params.id);
+  if (writeThreadError) return finalizeJson({ error: writeThreadError.message }, { status: 500 });
+  if (writeThread?.deleted_at) return finalizeJson(...threadTrashResponse());
 
   const { data, error } = await supabase
     .from("messages")

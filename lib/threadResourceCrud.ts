@@ -1,3 +1,4 @@
+import { getOwnedThreadTrashState, isThreadTrashedError, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 
@@ -51,11 +52,16 @@ export function createThreadResourceHandlers(config: ThreadResourceConfig) {
       return finalizeJson({ error: insertResult.error }, { status: 400 });
     }
 
+    const { data: writeThread, error: writeThreadError } = await getOwnedThreadTrashState(supabase, user.id, params.id);
+    if (writeThreadError) return finalizeJson({ error: writeThreadError.message }, { status: 500 });
+    if (writeThread?.deleted_at) return finalizeJson(...threadTrashResponse());
+
     const { data, error } = await supabase
       .from(config.table)
       .insert(insertResult.payload)
       .select()
       .single();
+    if (writeThread && isThreadTrashedError(error)) return finalizeJson(...threadTrashResponse());
     if (error) return finalizeJson({ error: error.message }, { status: 500 });
     return finalizeJson(data);
   }
@@ -66,6 +72,14 @@ export function createThreadResourceHandlers(config: ThreadResourceConfig) {
     const { user, supabase, finalizeJson } = auth;
 
     const { id } = await req.json();
+    const { data: target, error: targetError } = await supabase.from(config.table)
+      .select("thread_id").eq("id", id).eq("user_id", user.id).maybeSingle();
+    if (targetError) return finalizeJson({ error: targetError.message }, { status: 500 });
+    if (target) {
+      const { data: writeThread, error: writeThreadError } = await getOwnedThreadTrashState(supabase, user.id, target.thread_id);
+      if (writeThreadError) return finalizeJson({ error: writeThreadError.message }, { status: 500 });
+      if (writeThread?.deleted_at) return finalizeJson(...threadTrashResponse());
+    }
     const { error } = await supabase
       .from(config.table)
       .delete()

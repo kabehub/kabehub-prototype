@@ -1,10 +1,12 @@
+import { getOwnedThreadTrashState } from "@/lib/threads/trash-errors";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isOwnedStoragePath } from "@/lib/storage-path-guard";
 import { removeStoragePaths } from "@/lib/supabase/storage-cleanup";
 
 type DeleteOwnedMessageResult =
   | { ok: true }
-  | { ok: false; error: unknown };
+  | { ok: false; trashed: true }
+  | { ok: false; trashed?: false; error: unknown };
 
 export async function deleteOwnedMessage({
   supabase,
@@ -21,7 +23,7 @@ export async function deleteOwnedMessage({
 
   let selectQuery = supabase
     .from("messages")
-    .select("metadata")
+    .select("metadata, thread_id")
     .eq("id", messageId)
     .eq("user_id", userId);
   if (isThreadScoped) selectQuery = selectQuery.eq("thread_id", threadId);
@@ -34,6 +36,12 @@ export async function deleteOwnedMessage({
 
   if (isThreadScoped && !existing) {
     return { ok: true };
+  }
+
+  if (existing) {
+    const { data: parent, error } = await getOwnedThreadTrashState(supabase, userId, existing.thread_id);
+    if (error) return { ok: false, error: error.message };
+    if (parent?.deleted_at) return { ok: false, trashed: true };
   }
 
   let archiveQuery = supabase

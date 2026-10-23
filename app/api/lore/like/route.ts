@@ -1,3 +1,4 @@
+import { threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
@@ -31,9 +32,8 @@ export async function POST(req: NextRequest) {
 
   const { data: thread, error: threadError } = await serviceRoleClient()
     .from("threads")
-    .select("project_id")
+    .select("project_id, user_id, deleted_at")
     .eq("id", message.thread_id)
-    .is("deleted_at", null)
     .maybeSingle();
 
   if (threadError)
@@ -41,8 +41,9 @@ export async function POST(req: NextRequest) {
   if (!thread)
     return finalizeJson({ error: "Message not found" }, { status: 404 });
 
-  if (message.user_id !== user.id)
+  if (message.user_id !== user.id || thread.user_id !== user.id)
     return finalizeJson({ error: "Forbidden" }, { status: 403 });
+  if (thread.deleted_at) return finalizeJson(...threadTrashResponse());
   if (message.role !== "assistant")
     return finalizeJson({ error: "Only assistant messages can be liked" }, { status: 400 });
 

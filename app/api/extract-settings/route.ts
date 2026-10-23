@@ -1,3 +1,4 @@
+import { threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest, NextResponse } from 'next/server'
 import { requireRouteUser } from '@/lib/supabase/route-auth'
 import { sanitizeReferenceText } from '@/lib/ai-context-blocks'
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
 
     const { data: thread, error: threadError } = await supabase
       .from('threads')
-      .select('id')
+      .select('id, deleted_at')
       .eq('id', threadId)
       .eq('user_id', user.id)
       .maybeSingle()
@@ -126,6 +127,8 @@ export async function POST(req: NextRequest) {
     if (!thread) {
       return finalizeJson({ error: 'Thread not found' }, { status: 404 })
     }
+
+    if (thread.deleted_at) return finalizeJson(...threadTrashResponse());
 
     if (!provider) {
       return finalizeJson({ error: 'API key is required (x-anthropic-api-key, x-gemini-api-key, or x-openai-api-key)' }, { status: 400 })

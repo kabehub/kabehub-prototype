@@ -252,6 +252,17 @@ test("buildMemoryExtractionPrompt full output snapshot", () => {
 2. text: "期限" / ai_proposed_kind: unknown / corrected_memoryKind: fact`);
 });
 
+test("batch parent write-preflight reads owned deleted_at without hiding trash", async () => {
+  const { getOwnedThreadTrashState } = require("../lib/threads/trash-errors.ts");
+  const calls = [];
+  const q = {};
+  for (const method of ["select", "eq"]) q[method] = (...args) => { calls.push([method, ...args]); return q; };
+  q.maybeSingle = async () => ({ data: { id: "t", deleted_at: "2026-10-01" }, error: null });
+  const result = await getOwnedThreadTrashState({ from(table) { calls.push(["from", table]); return q; } }, "u", "t");
+  assert.equal(result.data.deleted_at, "2026-10-01");
+  assert.deepEqual(calls, [["from", "threads"], ["select", "id, deleted_at"], ["eq", "id", "t"], ["eq", "user_id", "u"]]);
+});
+
 test("fetchTargetMessages preserves every query condition and ordering", async () => {
   const calls = [];
   const builder = {};

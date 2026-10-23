@@ -26,8 +26,11 @@ Module._load = function loadWithSupabaseMock(request, parent, isMain) {
             rpcCalls.push({ name, args });
             return rpcResult;
           },
-          from() {
-            throw new Error("direct table access was not expected");
+          from(table) {
+            assert.equal(table, "threads");
+            const q = { select() { return q; }, eq() { return q; },
+              async maybeSingle() { return { data: { id: "thread-1", deleted_at: null }, error: null }; } };
+            return q;
           },
         };
       },

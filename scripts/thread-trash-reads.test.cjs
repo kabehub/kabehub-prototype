@@ -58,7 +58,7 @@ function section(source, start, end) {
   return source.slice(at, stop);
 }
 function get(file) {
-  return read(file).split(/export async function (?:POST|PATCH|DELETE)\(/)[0];
+  return read(file).split(/\b(?:export )?async function (?:POST|PATCH|DELETE)\(/)[0];
 }
 function parentGate(source, table, variable, id, missing, childId = id) {
   const parents = queries(source, "threads");
@@ -236,8 +236,11 @@ test("additional reuse inputs are guarded at their individual SELECTs", () => {
   const like = read("app/api/lore/like/route.ts");
   const parent = queries(like, "threads");
   assert.equal(parent.length, 1);
-  live(parent[0]);
+  assert.match(parent[0].methods[0].args, /user_id, deleted_at/);
+  assert.ok(!method(parent[0], "is"));
   assert.ok(method(parent[0], "eq", /^"id", message\.thread_id$/));
+  assert.ok(like.indexOf("message.user_id !== user.id") < like.indexOf("if (thread.deleted_at)"));
+  assert.ok(like.indexOf("if (thread.deleted_at)") < like.indexOf("const { data: existing"));
   const embedding = like.indexOf("embedding = await createEmbedding");
   assert.ok(parent[0].end < embedding);
   assert.match(like.slice(parent[0].end, embedding), /if \(!thread\)\s*return finalizeJson\(\{ error: "Message not found" \}, \{ status: 404 \}\)/);
@@ -288,7 +291,7 @@ test("bulk export establishes all live owned IDs, then scopes and pages every ch
 const exemptions = [
   { file: "lib/project-memory/auto-summary-update.ts", route: "loadAutoSummaryUpdateTopics: historical provenance SELECTs", reason: "Preserve historical project/user consistency; trash alone must not cause provenance_mismatch." },
   { file: "app/api/stats/route.ts", route: "GET /api/stats: messages + ai_usage_events", reason: "Retain usage and billing history together, including legacy fallback." },
-  { file: "app/api/arena/route.ts", route: "POST /api/arena: ensureArenaThread lookup + conflict recheck", reason: "Phase 2b must reject trash explicitly without attempting same-ID INSERT." },
+  { file: "app/api/arena/route.ts", route: "POST /api/arena: ensureArenaThread lookup + conflict recheck", reason: "Write preflight reads deleted_at explicitly; it must never filter trash out as missing." },
 ];
 test("exemptions are scoped to their read purpose, not entire filenames", () => {
   for (const entry of exemptions) assert.ok(entry.file && entry.route && entry.reason);
@@ -298,7 +301,8 @@ test("exemptions are scoped to their read purpose, not entire filenames", () => 
   assert.doesNotMatch(stats, /deleted_at|threads!inner/);
   const arena = section(read(exemptions[2].file), "async function ensureArenaThread", "async function compensateCreatedArenaThread");
   assert.equal(queries(arena, "threads").length, 2);
-  assert.doesNotMatch(arena, /deleted_at/);
+  assert.equal((arena.match(/\.select\("id, deleted_at"\)/g) ?? []).length, 2);
+  assert.doesNotMatch(arena, /\.is\("deleted_at", null\)/);
 });
 
 test("arena display/history/metadata entrances use protected thread/share reads", () => {

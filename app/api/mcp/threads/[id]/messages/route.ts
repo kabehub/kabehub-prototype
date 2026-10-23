@@ -1,3 +1,4 @@
+import { isThreadTrashedError, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateMcpToken, serviceRoleClient } from '@/lib/mcp-auth'
 import { checkMcpLimitResponse } from '@/lib/rate-limit'
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   // スレッドの所有者確認
   const { data: thread, error: threadError } = await supabase
     .from('threads')
-    .select('id')
+    .select('id, deleted_at')
     .eq('id', params.id)
     .eq('user_id', userId)
     .maybeSingle()
@@ -76,6 +77,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   }
   if (!thread) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  if (thread.deleted_at) return NextResponse.json(...threadTrashResponse());
+
   const body = await req.json().catch(() => ({}))
   const role: 'user' | 'assistant' = body.role === 'assistant' ? 'assistant' : 'user'
   const content: string = body.content ?? ''
@@ -89,12 +92,14 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .select('id, role, content, provider, created_at')
     .single()
 
+  if (isThreadTrashedError(error)) return NextResponse.json(...threadTrashResponse());
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // 更新失敗はベストエフォート。失敗してもmessages取得自体は成功として返す。
   const { error: threadUpdateError } = await supabase
     .from('threads')
     .update({ updated_at: new Date().toISOString() })
+    .is("deleted_at", null)
     .eq('id', params.id)
     .eq('user_id', userId)
 
