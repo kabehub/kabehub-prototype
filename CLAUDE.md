@@ -551,7 +551,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 | パス種別 | matcher | セッション確認 | 未認証時・備考 |
 |---|---:|---:|---|
-| `/`・`/settings/*`・`/admin/*`・`/stats`・`/memory`・`/library`・`/album`・`/arena`・`/calendar`・`/image`・`/novel-check`・`/threads/[id]/tree` | ○ | ○ | ページなので `/login?next=...` へ307 |
+| `/`・`/settings/*`・`/admin/*`・`/stats`・`/memory`・`/trash`・`/library`・`/album`・`/arena`・`/calendar`・`/image`・`/novel-check`・`/threads/[id]/tree` | ○ | ○ | ページなので `/login?next=...` へ307 |
 | `/login` | ○ | ○ | 未ログインは表示、ログイン済みは `/` へ307 |
 | `/arena/[token]`・`/share/[token]`（公開閲覧ページ） | ○※ | ✕ | 未認証でも閲覧可。CSPのみ付与 |
 | その他の通常ページ（`/auth/callback`含む） | ○※ | ✕ | CSPのみ付与。ページ・Route自身の実装に委ねる |

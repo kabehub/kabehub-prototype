@@ -147,6 +147,7 @@ export function parseBearerAuthorization(
 const PROTECTED_STATIC_PAGES = new Set([
   "/stats",
   "/memory",
+  "/trash",
   "/library",
   "/album",
   "/arena",

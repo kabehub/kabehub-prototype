@@ -36,6 +36,8 @@ function setup(query = "raw", options = {}) {
     retention, replaceQueryText, isLoading: false, activeThreadId: "t", activeThread: {}, messages: [user, assistant],
     crypto: { randomUUID: () => "branch" }, uuidv4: () => "new-thread", provider: "claude", isTemporary: false,
     isImagePinned: false, imageContextId: null, loadModel: () => "model", temporaryMessages: [],
+    captureView: () => ({ epoch: 0, threadId: "t" }), isCurrentView: () => true,
+    abortReasonRef: { current: null }, abortControllerRef: { current: null }, generationViewRef: { current: null },
     setIsLoading() {}, setStreamingContent() {}, setGithubProgressMessages() {}, setThinkingContents() {},
     setInputValue() {}, setImageContextId() {}, setMessages() {}, fetchThreads: async () => {},
     getApiKeyHeaders: async () => ({}), console: { error() {} },

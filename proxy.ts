@@ -322,6 +322,7 @@ export const config = {
     "/admin/:path*",
     "/stats",
     "/memory",
+    "/trash",
     "/library",
     "/album",
     "/arena",

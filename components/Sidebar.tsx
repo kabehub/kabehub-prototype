@@ -369,7 +369,7 @@ function ThreadItem({ thread, isActive, projects, onSelect, onDelete, onUpdateFo
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (window.confirm(`「${thread.title}」を削除しますか？`)) {
+              if (window.confirm(`「${thread.title}」をゴミ箱に移動しますか？`)) {
                 onDelete();
               }
             }}
@@ -1576,6 +1576,11 @@ export default function Sidebar({
       </div>
         </>
       )}
+      <a href="/trash" title="ゴミ箱" aria-label="ゴミ箱"
+        style={{ display: "block", padding: "10px 16px", textAlign: collapsed ? "center" : "left", fontSize: "12px",
+          color: "var(--ink-muted)", textDecoration: "none", borderTop: "1px solid var(--border)" }}>
+        {collapsed ? "🗑️" : "🗑️ ゴミ箱"}
+      </a>
       {/* フォルダ設定ドロワー */}
       {projectSettingsModal && (
         <div
