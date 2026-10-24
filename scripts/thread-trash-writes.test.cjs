@@ -123,11 +123,11 @@ test('lore like owns both message and parent before trash, then role/duplicate/e
   assert.match(s,/\.select\("project_id, user_id, deleted_at"\)/);assert.doesNotMatch(s,/\.is\("deleted_at", null\)/);
   ordered(s,'if (msgError || !message)','if (!thread)','if (message.user_id !== user.id || thread.user_id !== user.id)','if (thread.deleted_at)','if (message.role !== "assistant")','const { data: existing','embedding = await createEmbedding');
 });
-test('purge remains disconnected; collects before conditional DELETE/RPC and Storage',()=>{
+test('purge is used only by trash DELETE; collects before conditional DELETE/RPC and Storage',()=>{
   const s=read('lib/threads/purge.ts');
-  ordered(s,'for (let offset = 0; ; offset += pageSize)','.order("id").range(offset, offset + pageSize - 1)','if (error) return fail','collectOwnedStoragePaths','let deleted: boolean','if (!deleted) return','await removeStoragePaths');
+  ordered(s,'for (let offset = 0; ;)','.order("id").range(offset, offset + pageSize - 1)','if (error) return fail','if (!data?.length) break','collectOwnedStoragePaths(data, userId)','offset += data.length','let deleted: boolean','if (!deleted) return','await removeStoragePaths');
   assert.match(s,/\.not\("deleted_at", "is", null\)\.select\("id"\)/);assert.match(s,/rpc\("purge_expired_thread", \{ p_thread_id: input.threadId \}\)/);assert.doesNotMatch(s,/recalc_fork_count|serviceRoleClient/);
-  function walk(dir){for(const item of fs.readdirSync(path.join(root,dir),{withFileTypes:true})){const f=`${dir}/${item.name}`;if(item.isDirectory())walk(f);else if(/\.tsx?$/.test(item.name))assert.doesNotMatch(read(f),/threads\/purge|purgeThread\(/,f);}}walk('app');
+  function walk(dir){for(const item of fs.readdirSync(path.join(root,dir),{withFileTypes:true})){const f=`${dir}/${item.name}`;if(item.isDirectory())walk(f);else if(/\.tsx?$/.test(item.name)&&f!=='app/api/trash/threads/[id]/route.ts')assert.doesNotMatch(read(f),/threads\/purge|purgeThread\(/,f);}}walk('app');
 });
 test('negative fixtures detect absent guards, wrong URL parent and ensureArenaThread live filtering',()=>{
   const helper=section(read('lib/threadResourceCrud.ts'),'async function DELETE');

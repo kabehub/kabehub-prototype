@@ -105,6 +105,9 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/threads\/[^/]+\/?$/, methods: ["DELETE", "PATCH"], classification: "bearer" },
   { pattern: /^\/api\/threads\/[^/]+\/tags\/?$/, methods: ["GET", "POST", "DELETE"], classification: "bearer" },
   { pattern: /^\/api\/threads\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/trash\/threads\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/trash\/threads\/[^/]+\/restore\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/trash\/threads\/[^/]+\/?$/, methods: ["DELETE"], classification: "bearer" },
 ];
 
 export function classifyApi(

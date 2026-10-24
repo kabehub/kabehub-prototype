@@ -40,13 +40,15 @@ export async function purgeThread(input: PurgeThreadInput): Promise<PurgeThreadR
     table = "messages";
     const paths = new Set<string>();
     const pageSize = 500;
-    for (let offset = 0; ; offset += pageSize) {
+    for (let offset = 0; ;) {
       const { data, error } = await db.from("messages").select("id, metadata")
         .eq("thread_id", input.threadId).eq("user_id", userId)
         .order("id").range(offset, offset + pageSize - 1);
       if (error) return fail(operation, table, error.code);
-      for (const path of collectOwnedStoragePaths(data ?? [], userId)) paths.add(path);
-      if ((data?.length ?? 0) < pageSize) break;
+      if (!data?.length) break;
+      for (const path of collectOwnedStoragePaths(data, userId)) paths.add(path);
+      // PostgREST may cap results below pageSize. Only an empty page is final.
+      offset += data.length;
     }
 
     operation = "delete_thread";
@@ -73,6 +75,12 @@ export async function purgeThread(input: PurgeThreadInput): Promise<PurgeThreadR
     } catch (error) {
       cleanup = { attemptedCount: paths.size, succeededCount: 0, failedCount: paths.size,
         errorCodes: [error instanceof Error ? error.name : "unknown"] };
+    }
+    if (cleanup.failedCount > 0) {
+      for (const errorCode of new Set(cleanup.errorCodes.length ? cleanup.errorCodes : ["unknown"])) {
+        logger.dbOperationFailedBestEffort({ route: "thread-purge", operation: "remove_owned_storage_paths",
+          table: "generated-images", errorCode });
+      }
     }
     console.info("[thread-purge]", { mode: input.mode, outcome: "deleted",
       attemptedCount: cleanup.attemptedCount, failedCount: cleanup.failedCount });

@@ -1,10 +1,6 @@
-import { getOwnedThreadTrashState, threadTrashResponse } from "@/lib/threads/trash-errors";
+import { getOwnedThreadTrashState, mapThreadTrashRpcError, threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
-import {
-  collectOwnedStoragePaths,
-  removeStoragePaths,
-} from "@/lib/supabase/storage-cleanup";
 import { v4 as uuidv4 } from "uuid";
 import * as logger from "@/lib/logger";
 import { getOwnedProject } from "@/lib/project-memory/get-owned-project";
@@ -15,99 +11,24 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   if (!auth.ok) return auth.response;
   const { user, supabase, finalizeJson } = auth;
 
-  const { data: thread, error: threadError } = await supabase
-    .from("threads")
-    .select("id, forked_from_id")
-    .eq("id", params.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (threadError) {
-    logger.dbOperationFailed({
-      route: "threads_id_delete",
-      operation: "verify_thread_ownership",
-      table: "threads",
-      errorCode: threadError.code,
-    });
-    return finalizeJson({ error: "Failed to verify thread" }, { status: 500 });
+  const { data: deleted_at, error } = await supabase.rpc("soft_delete_thread", {
+    p_user_id: user.id,
+    p_thread_id: params.id,
+  });
+  if (error) {
+    logger.dbOperationFailed({ route: "threads_id_delete", operation: "soft_delete_thread",
+      table: "threads", errorCode: error.code });
+    const mapped = mapThreadTrashRpcError(error);
+    return finalizeJson({ error: mapped.error }, { status: mapped.status });
   }
 
-  if (!thread) return finalizeJson({ error: "Not Found" }, { status: 404 });
-  const forkedFromId = thread.forked_from_id;
-
-  const { data: threadMessages, error: msgSelectError } = await supabase
-    .from("messages")
-    .select("id, metadata")
-    .eq("thread_id", params.id)
-    .eq("user_id", user.id);
-
-  if (msgSelectError) {
-    return finalizeJson({ error: msgSelectError.message }, { status: 500 });
+  const deletedAtMs = typeof deleted_at === "string" ? Date.parse(deleted_at) : NaN;
+  const expiresAtMs = deletedAtMs + 7 * 24 * 60 * 60 * 1000;
+  if (!Number.isFinite(deletedAtMs) || !Number.isFinite(new Date(expiresAtMs).getTime())) {
+    return finalizeJson({ error: "Invalid deleted_at returned by soft_delete_thread" }, { status: 500 });
   }
-
-  // 補助処理（アーカイブ・storage cleanup・fork count再計算）はベストエフォート。
-  // これらの失敗だけではthread削除の成功レスポンスを変更しない。
-  const { error: archiveError } = await supabase
-    .from("lore_embeddings")
-    .update({ is_archived: true })
-    .eq("source_thread_id", params.id)
-    .eq("user_id", user.id)
-    .eq("is_pinned", false);
-
-  if (archiveError) {
-    logger.dbOperationFailedBestEffort({
-      route: "threads_id_delete",
-      operation: "archive_lore_embeddings",
-      table: "lore_embeddings",
-      errorCode: archiveError.code,
-    });
-  }
-
-  const { error: deleteError } = await supabase
-    .from("threads")
-    .delete()
-    .eq("id", params.id)
-    .eq("user_id", user.id);
-
-  if (deleteError) {
-    logger.dbOperationFailed({
-      route: "threads_id_delete",
-      operation: "delete_thread",
-      table: "threads",
-      errorCode: deleteError.code,
-    });
-    return finalizeJson({ error: deleteError.message }, { status: 500 });
-  }
-
-  const ownedPaths = collectOwnedStoragePaths(threadMessages ?? [], user.id);
-  if (ownedPaths.length > 0) {
-    const cleanup = await removeStoragePaths(supabase, ownedPaths);
-    if (cleanup.failedCount > 0) {
-      logger.dbOperationFailedBestEffort({
-        route: "threads_id_delete",
-        operation: "remove_owned_storage_paths",
-        table: "generated-images",
-        errorCode: cleanup.errorCodes[0] ?? "unknown",
-      });
-    }
-  }
-
-  if (forkedFromId) {
-    const { error: recalcForkError } = await supabase.rpc("recalc_fork_count", {
-      p_thread_id: forkedFromId,
-    });
-
-    if (recalcForkError) {
-      logger.dbOperationFailedBestEffort({
-        route: "threads_id_delete",
-        operation: "recalc_fork_count",
-        table: "threads",
-        errorCode: recalcForkError.code,
-      });
-    }
-  }
-
-  return finalizeJson({ success: true });
+  // expires_at is for display only; DB thread_trash_retention() is authoritative.
+  return finalizeJson({ success: true, deleted_at, expires_at: new Date(expiresAtMs).toISOString() });
 }
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
