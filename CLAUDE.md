@@ -171,6 +171,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `app/api/album/route.ts` | GET：生成画像一覧取得・署名URL発行 |
 | `app/api/calendar/route.ts` | GET：指定年月の範囲で認証ユーザーのスレッドを取得 |
 | `app/api/cron/storage-cleanup/route.ts` | GET：Cron Secret認証で孤立Storage候補を抽出し、dry-runまたは削除を実行・記録 |
+| `app/api/cron/thread-trash-purge/route.ts` | GET：Cron Secret認証で7日経過のゴミ箱スレッドを最大50件、古い順に逐次purge。40秒超で次候補の開始を停止、maxDuration=60。Storage失敗はwarn・HTTP 200、DB等の個別失敗は継続・HTTP 500 |
 | `app/api/csp-report/route.ts` | POST：CSP違反レポートをサイズ・rate limit・URL無害化のうえ記録 |
 | `app/api/extract-settings/route.ts` | 会話から`novel_settings`を抽出・保存（POST）・取得（GET） |
 | `app/api/image-gen/route.ts` | 画像生成（Gemini / OpenAI / Ideogram / Flux） |
@@ -390,6 +391,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/route-auth-cookie.test.cjs` | Route認証helperのCookie転記・応答確定を検証 |
 | `scripts/stats-route.test.cjs` | stats Routeの認証・集計・DBエラー応答を検証 |
 | `scripts/storage-cleanup-cron.test.cjs` | Storage cleanup Cronのmode・候補上限・実行記録を検証 |
+| `scripts/thread-trash-purge-cron.test.cjs` | ゴミ箱Cronの認可・dry-run・51件取得/50件処理・順序・個別失敗継続・Storage失敗・時間予算・秘密情報非出力をモックで検証 |
 | `scripts/storage-cleanup.test.cjs` | Storageパス収集・再帰一覧取得・batch削除を検証 |
 | `scripts/storage-path-guard.test.cjs` | Storageパスの所有namespace検証をテスト |
 | `scripts/testBootstrap.cjs` | Node上でTypeScript/TSXと`@/` aliasを読み込む共通テストbootstrap |
@@ -501,6 +503,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - Cookie認証ではhelper内部が `createRouteHandlerSupabaseClient(req, authResponse)` を呼ぶ。許可されたAPIのBearer認証ではanon keyとAuthorizationヘッダーを設定した `createClient` を生成し、`auth.getUser(token)`で検証する。不正BearerをCookieへフォールバックしない。
 - 任意認証の `/api/explore`・`/api/reports` は `getOptionalRouteUser(req)` を使う。`/api/share/[token]` は `createRouteHandlerSupabaseClient` と `serviceRoleClient` を直接使うため、全Routeが同一のhelperを使うわけではない。
 - service roleの実例は、Cronの `createAdminSupabaseClient`、通報RPC用の `createServiceRoleSupabaseClient`、MCPの `authenticateMcpToken` / `serviceRoleClient`。MCPトークン認証はCookie/Supabaseセッション認証とは別経路。
+- ゴミ箱purge Cronは既存のserver-only `CRON_SECRET`を共用し、`THREAD_TRASH_PURGE_DRY_RUN`が文字列`"false"`と完全一致する場合だけ実削除する。未設定・その他はdry-run。`.env.local.example`を参照し、初回はdry-runで候補を観測する。`vercel.json`のscheduleは`0 17 * * *`（孤児Storage回収は既存の`0 18 * * *`）。`storage_cleanup_runs`は流用しない。
 - chatの `waitUntil` は `dbSavePromise` でストリーム内保存の完了を待ち、保存失敗かつ非一時チャットの場合だけ `SUPABASE_SERVICE_ROLE_KEY` でREST APIへフォールバック保存する。
 
 ### なりきりモード

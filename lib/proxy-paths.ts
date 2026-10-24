@@ -40,6 +40,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/calendar\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/chat\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/cron\/storage-cleanup\/?$/, methods: ["GET"], classification: "internal" },
+  { pattern: /^\/api\/cron\/thread-trash-purge\/?$/, methods: ["GET"], classification: "internal" },
   { pattern: /^\/api\/csp-report\/?$/, methods: ["POST"], classification: "internal" },
   { pattern: /^\/api\/explore\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/extract-settings\/?$/, methods: ["GET", "POST"], classification: "bearer" },
