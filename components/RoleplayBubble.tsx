@@ -8,6 +8,7 @@
 import MarkdownRenderer from "./MarkdownRenderer";
 import { Message, MessageNote } from "@/types";
 import { useState, memo } from "react";
+import { isThreadTrashWriteError } from "@/lib/threads/trash-client";
 
 interface RoleplayBubbleProps {
   message: Message;
@@ -110,8 +111,8 @@ function RoleplayBubble({
     try {
       await onUpdateMessage(message.id, { content: editContent });
       setIsEditing(false);
-    } catch {
-      alert("保存に失敗しました");
+    } catch (error) {
+      if (!isThreadTrashWriteError(error)) alert("保存に失敗しました");
     } finally {
       setIsSavingEdit(false);
     }

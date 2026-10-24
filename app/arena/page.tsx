@@ -16,6 +16,8 @@ import {
 import { webApiClient } from "@/lib/api-client";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
 import { buildApiKeyHeaders } from "@kabehub/shared";
+import { useToast } from "@/components/Toast";
+import { throwIfThreadTrashed, notifyThreadTrashed } from "@/lib/threads/trash-client";
 
 // ── 型定義 ──────────────────────────────────────────────────────
 
@@ -81,6 +83,7 @@ function calcTotalTurns(msgs: Message[], playerCount: number): number {
 // ── メインページ ─────────────────────────────────────────────────
 
 export default function ArenaPage() {
+  const { showToast } = useToast();
   const [phase, setPhase] = useState<"setup" | "arena">("setup");
 
   const [config, setConfig] = useState<ArenaConfig>({
@@ -201,6 +204,7 @@ export default function ArenaPage() {
         }),
       });
 
+      await throwIfThreadTrashed(res);
       const data = await res.json() as Partial<ArenaTurnResult>;
       if (!res.ok) throw new Error("arena API error");
       if (!data.message || typeof data.saved !== "boolean") {
@@ -273,7 +277,7 @@ export default function ArenaPage() {
         }
       } catch (err) {
         if (!isCancelled) {
-          alert(`エラーが発生しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
+          if (!notifyThreadTrashed(err, showToast)) alert(`エラーが発生しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
           setIsRunning(false);
           setThinkingLabel(null);
           setActionQueue([]);
@@ -286,7 +290,7 @@ export default function ArenaPage() {
     return () => {
       isCancelled = true;
     };
-  }, [actionQueue, isRunning, waitingForHuman, isContinuousTakeover, players, runOneTurn, config.topic]);
+  }, [actionQueue, isRunning, waitingForHuman, isContinuousTakeover, players, runOneTurn, config.topic, showToast]);
 
   // キューが空になったら実行完了
   useEffect(() => {
@@ -341,6 +345,7 @@ export default function ArenaPage() {
           topic: config.topic,
         }),
       });
+      await throwIfThreadTrashed(res);
       const data = await res.json() as { ok?: boolean; message?: Message };
       if (!res.ok || data.ok === false || !data.message) {
         throw new Error("人間メッセージのDB保存に失敗しました");
@@ -361,9 +366,9 @@ export default function ArenaPage() {
       setActionQueue((prev) => prev.slice(1));
       setIsRunning(true);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "人間メッセージのDB保存に失敗しました");
+      if (!notifyThreadTrashed(err, showToast)) alert(err instanceof Error ? err.message : "人間メッセージのDB保存に失敗しました");
     }
-  }, [humanInputText, waitingForHuman, playerLabels, threadId, config.topic]);
+  }, [humanInputText, waitingForHuman, playerLabels, threadId, config.topic, showToast]);
 
   // ── タイムトラベル（指定メッセージ以降を全削除） ─────────────
 const handleTimeTravel = useCallback(async (targetMsg: Message) => {
@@ -378,6 +383,7 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
       body: JSON.stringify({ fromCreatedAt: targetMsg.created_at }),
     });
 
+    await throwIfThreadTrashed(res);
     if (!res.ok) throw new Error("削除に失敗しました");
 
     // フロント側のmessagesを更新
@@ -393,7 +399,8 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
     // キューをリセット（削除後は改めて「続ける」ボタンで再開）
     setActionQueue([]);
 
-  } catch {
+  } catch (error) {
+    if (notifyThreadTrashed(error, showToast)) return;
     // RLSエラーの場合のフォールバック: /api/arena 経由で削除
     try {
       const res2 = await webApiClient.request("/api/arena", {
@@ -405,6 +412,7 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
           since: targetMsg.created_at,
         }),
       });
+      await throwIfThreadTrashed(res2);
       if (!res2.ok) throw new Error("arena経由の削除も失敗しました");
 
       const newMessages = messages.filter(
@@ -416,10 +424,10 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
       setActionQueue([]);
 
     } catch (err2) {
-      alert(`削除に失敗しました: ${err2 instanceof Error ? err2.message : "不明なエラー"}`);
+      if (!notifyThreadTrashed(err2, showToast)) alert(`削除に失敗しました: ${err2 instanceof Error ? err2.message : "不明なエラー"}`);
     }
   }
-}, [isRunning, waitingForHuman, messages, threadId, players.length]);
+}, [isRunning, waitingForHuman, messages, threadId, players.length, showToast]);
 
     // ── MDエクスポート ───────────────────────────────────────────
   const handleExportMd = useCallback(() => {
@@ -501,14 +509,15 @@ const handleTimeTravel = useCallback(async (targetMsg: Message) => {
         }),
       });
 
+      await throwIfThreadTrashed(res);
       if (!res.ok) throw new Error("シェアの設定に失敗しました");
       setShareToken(newToken);
     } catch (err) {
-      alert(`シェアに失敗しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
+      if (!notifyThreadTrashed(err, showToast)) alert(`シェアに失敗しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
     } finally {
       setIsSharing(false);
     }
-  }, [isSharing, messages, config, threadId]);
+  }, [isSharing, messages, config, threadId, showToast]);
 
   // ── シェアURLコピー ────────────────────────────────────────────
   const handleCopyShareUrl = useCallback(() => {

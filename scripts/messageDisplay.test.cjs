@@ -17,6 +17,7 @@ Module._load = function (request, parent, isMain) {
   if (request === "./ChatInput") return { MODEL_CONFIG: {}, loadModel() {} };
   if (request.endsWith("/supabase/client")) return { supabase: {} };
   if (request.endsWith("/api-client")) return { webApiClient: {} };
+  if (request.endsWith("/components/Toast")) return { useToast: () => ({ showToast() {} }) };
   return originalLoad.call(this, request, parent, isMain);
 };
 const arena = require("../components/ArenaTimeline.tsx");

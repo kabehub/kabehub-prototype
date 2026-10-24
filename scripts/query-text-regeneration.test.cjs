@@ -33,6 +33,7 @@ function setup(query = "raw", options = {}) {
   const bodies = [];
   let returnedUser;
   const context = {
+    ...require('../lib/threads/trash-client.ts'),
     retention, replaceQueryText, isLoading: false, activeThreadId: "t", activeThread: {}, messages: [user, assistant],
     crypto: { randomUUID: () => "branch" }, uuidv4: () => "new-thread", provider: "claude", isTemporary: false,
     isImagePinned: false, imageContextId: null, loadModel: () => "model", temporaryMessages: [],
@@ -55,6 +56,7 @@ function setup(query = "raw", options = {}) {
       return { userMessage: returnedUser, assistantMessage: assistant, aborted: options.aborted ?? false };
     },
   };
+  context.persistAbortedMessages = callback('persistAbortedMessages', context);
   return { context, retention, user, assistant, events, bodies, returned: () => returnedUser };
 }
 

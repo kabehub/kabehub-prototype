@@ -6,11 +6,11 @@ const source = fs.readFileSync(path.join(__dirname, '../app/page.tsx'), 'utf8');
 const ast = ts.createSourceFile('page.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
 // Execute the real callback, including catches/finally, with controlled asynchronous I/O.
-function pageCallback(name, context) {
+function extractCallback(ast, name, context) {
   let expression;
   function visit(node) {
-    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === name && ts.isCallExpression(node.initializer)) {
-      expression = node.initializer.arguments[0].getText(ast);
+    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === name && node.initializer) {
+      expression = (ts.isCallExpression(node.initializer) ? node.initializer.arguments[0] : node.initializer).getText(ast);
     }
     ts.forEachChild(node, visit);
   }
@@ -22,10 +22,16 @@ function pageCallback(name, context) {
   vm.runInNewContext(compiled, context);
   return context.handler;
 }
+const pageCallback = (name, context) => extractCallback(ast, name, context);
+function fileCallback(relativePath, name, context) {
+  const file = path.join(__dirname, '..', relativePath);
+  const ast = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  return extractCallback(ast, name, context);
+}
 function deferred() {
   let resolve, reject;
   const promise = new Promise((a, b) => { resolve = a; reject = b; });
   return { promise, resolve, reject };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
-module.exports = { pageCallback, deferred, tick, source };
+module.exports = { pageCallback, fileCallback, deferred, tick, source };

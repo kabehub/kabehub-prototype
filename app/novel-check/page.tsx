@@ -7,6 +7,8 @@ import { getNovelCheckModels, NOVEL_CHECK_CONFIG } from "@/lib/modelRegistry";
 import { webApiClient } from "@/lib/api-client";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
 import { buildApiKeyHeaders } from "@kabehub/shared";
+import { useToast } from "@/components/Toast";
+import { throwIfThreadTrashed, notifyThreadTrashed } from "@/lib/threads/trash-client";
 
 interface NovelFile {
   name: string;
@@ -38,6 +40,7 @@ async function readFileAsText(file: File): Promise<string> {
 }
 
 export default function NovelCheckPage() {
+  const { showToast } = useToast();
   const [files, setFiles] = useState<NovelFile[]>([]);
   const [checkItems, setCheckItems] = useState<string[]>([...CHECK_ITEMS]);
   const [selectedModel, setSelectedModel] = useState<NovelCheckModelId>(NOVEL_CHECK_CONFIG.defaultModelId);
@@ -154,11 +157,13 @@ export default function NovelCheckPage() {
       const title = saveTitle.trim() || "整合性チェック";
 
       // スレッド作成（upsert）
-      await fetch(`/api/threads/${threadId}`, {
+      const threadRes = await fetch(`/api/threads/${threadId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title }),
       });
+      await throwIfThreadTrashed(threadRes);
+      if (!threadRes.ok) throw new Error("スレッドの保存に失敗しました");
 
       const sharedHeaders: Record<string, string> = {
         "Content-Type": "application/json",
@@ -168,25 +173,29 @@ export default function NovelCheckPage() {
       const checkNames = checkItems.map((item) => item.split("：")[0]).join("、");
       const metaContent = `【整合性チェック実行】\n対象ファイル: ${files[0]?.name ?? ""}${files.length > 1 ? ` ほか計${files.length}件` : ""}\n総文字数: 約${totalChars.toLocaleString()}文字\nチェック項目: ${checkNames}`;
 
-      await fetch("/api/chat", {
+      const metaRes = await fetch("/api/chat", {
         method: "POST",
         headers: sharedHeaders,
         body: JSON.stringify({ threadId, messages: [], userContent: metaContent, provider: "gemini", isMemo: true, isTemporary: false }),
       });
+      await throwIfThreadTrashed(metaRes);
+      if (!metaRes.ok) throw new Error("チェック情報の保存に失敗しました");
 
       // AI結果をメモとして保存
-      await fetch("/api/chat", {
+      const resultRes = await fetch("/api/chat", {
         method: "POST",
         headers: sharedHeaders,
         body: JSON.stringify({ threadId, messages: [], userContent: result, provider: "gemini", isMemo: true, isTemporary: false }),
       });
+      await throwIfThreadTrashed(resultRes);
+      if (!resultRes.ok) throw new Error("チェック結果の保存に失敗しました");
 
       window.location.href = `/?thread=${threadId}`;
     } catch (err) {
-      alert(`保存に失敗しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
+      if (!notifyThreadTrashed(err, showToast)) alert(`保存に失敗しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
       setIsSaving(false);
     }
-  }, [result, isSaving, saveTitle, files, checkItems, totalChars, geminiKey]);
+  }, [result, isSaving, saveTitle, files, checkItems, totalChars, geminiKey, showToast]);
 
   const canStart = !!geminiKey && files.length > 0 && checkItems.length > 0 && !isLoading;
 

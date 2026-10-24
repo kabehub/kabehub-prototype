@@ -5,6 +5,7 @@ const { pageCallback, deferred, tick, source } = require('./thread-trash-ui-test
 installTsLoader();
 const { isViewCurrent, createLatestRequest } = require('../lib/threads/view-guard.ts');
 const { trashDaysRemaining } = require('../lib/threads/trash-display.ts');
+const trashClient = require('../lib/threads/trash-client.ts');
 
 test('view identity requires BOTH epoch and ID, including delete/Undo/reselect ABA', () => {
   for (const [epoch, threadId, expected] of [[3, 't', true], [4, 't', false], [3, 'other', false], [4, null, false]]) {
@@ -27,6 +28,7 @@ test('remaining days clamps expired dates and rounds partial days upward', () =>
 function setup() {
   const events = [], toasts = [];
   const context = {
+    ...trashClient,
     activeThreadId: 't', activeThread: {}, messages: [], temporaryMessages: [], inputValue: '',
     threads: [{ id: 't', is_public: true }], displayThreads: [{ id: 't', is_public: true }], isLoading: false, isTemporary: false, provider: 'claude',
     activeThreadIdRef: { current: 't' }, viewEpochRef: { current: 1 }, isTemporaryRef: { current: false },
@@ -57,6 +59,7 @@ function setup() {
   context.commitActiveThread = pageCallback('commitActiveThread', context);
   context.commitTemporary = pageCallback('commitTemporary', context);
   context.selectThread = pageCallback('selectThread', context);
+  context.persistAbortedMessages = pageCallback('persistAbortedMessages', context);
   return { context, events, toasts };
 }
 const result = (aborted = false) => ({ userMessage: { id: 'u', content: 'old' }, assistantMessage: { id: 'a', content: 'old answer' }, aborted });
