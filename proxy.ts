@@ -101,6 +101,8 @@ function shouldRunSupabaseSessionCheck(
       pathname === "/api/auth/github/mobile-callback/" ||
       pathname === "/api/cron/storage-cleanup" ||
       pathname.startsWith("/api/cron/storage-cleanup/") ||
+      pathname === "/api/cron/thread-trash-purge" ||
+      pathname.startsWith("/api/cron/thread-trash-purge/") ||
       pathname === "/api/csp-report" ||
       pathname.startsWith("/api/csp-report/")
     ) {
@@ -322,6 +324,7 @@ export const config = {
     "/admin/:path*",
     "/stats",
     "/memory",
+    "/trash",
     "/library",
     "/album",
     "/arena",
@@ -329,6 +332,6 @@ export const config = {
     "/image",
     "/novel-check",
     "/threads/:id/tree",
-    "/api/((?!mcp(?:/|$)|auth/github/callback(?:/|$)|auth/github/mobile-callback/?$|cron/storage-cleanup(?:/|$)|csp-report(?:/|$)).*)",
+    "/api/((?!mcp(?:/|$)|auth/github/callback(?:/|$)|auth/github/mobile-callback/?$|cron/storage-cleanup(?:/|$)|cron/thread-trash-purge(?:/|$)|csp-report(?:/|$)).*)",
   ],
 };

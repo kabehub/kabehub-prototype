@@ -40,6 +40,7 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/calendar\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/chat\/?$/, methods: ["POST"], classification: "bearer" },
   { pattern: /^\/api\/cron\/storage-cleanup\/?$/, methods: ["GET"], classification: "internal" },
+  { pattern: /^\/api\/cron\/thread-trash-purge\/?$/, methods: ["GET"], classification: "internal" },
   { pattern: /^\/api\/csp-report\/?$/, methods: ["POST"], classification: "internal" },
   { pattern: /^\/api\/explore\/?$/, methods: ["GET"], classification: "bearer" },
   { pattern: /^\/api\/extract-settings\/?$/, methods: ["GET", "POST"], classification: "bearer" },
@@ -105,6 +106,9 @@ export const API_AUTH_CLASSIFICATIONS: readonly ApiAuthRule[] = [
   { pattern: /^\/api\/threads\/[^/]+\/?$/, methods: ["DELETE", "PATCH"], classification: "bearer" },
   { pattern: /^\/api\/threads\/[^/]+\/tags\/?$/, methods: ["GET", "POST", "DELETE"], classification: "bearer" },
   { pattern: /^\/api\/threads\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/trash\/threads\/?$/, methods: ["GET"], classification: "bearer" },
+  { pattern: /^\/api\/trash\/threads\/[^/]+\/restore\/?$/, methods: ["POST"], classification: "bearer" },
+  { pattern: /^\/api\/trash\/threads\/[^/]+\/?$/, methods: ["DELETE"], classification: "bearer" },
 ];
 
 export function classifyApi(
@@ -144,6 +148,7 @@ export function parseBearerAuthorization(
 const PROTECTED_STATIC_PAGES = new Set([
   "/stats",
   "/memory",
+  "/trash",
   "/library",
   "/album",
   "/arena",

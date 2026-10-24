@@ -11,6 +11,9 @@ const {
   isBearerCapableApi,
   isCorsEligibleApi,
   parseBearerAuthorization,
+  isProtectedPagePath,
+  isProtectedRedirectPath,
+  resolveAllowedNextRedirect,
 } = require(path.join(__dirname, "..", "lib", "proxy-paths.ts"));
 
 const apiRoot = path.join(__dirname, "..", "app", "api");
@@ -134,6 +137,18 @@ test("classification helpers are fail-closed and keep auth modes separate", () =
   assert.equal(isCorsEligibleApi("/api/mcp/threads", "GET"), false);
 });
 
+test("thread trash Cron has only an internal GET classification with an exact path boundary", () => {
+  for (const pathname of ["/api/cron/thread-trash-purge", "/api/cron/thread-trash-purge/"]) {
+    assert.equal(classifyApi(pathname, "GET"), "internal");
+    assert.equal(isBearerCapableApi(pathname, "GET"), false);
+    assert.equal(isCorsEligibleApi(pathname, "GET"), false);
+    assert.equal(classifyApi(pathname, "POST"), null);
+  }
+  for (const pathname of ["/api/cron/thread-trash-purge-extra", "/api/cron/thread-trash-purge/child"]) {
+    assert.equal(classifyApi(pathname, "GET"), null);
+  }
+});
+
 test("GitHub mobile callback classification has an exact path boundary", () => {
   assert.equal(
     classifyApi("/api/auth/github/mobile-callback", "GET"),
@@ -151,6 +166,18 @@ test("GitHub mobile callback classification has an exact path boundary", () => {
     classifyApi("/api/auth/github/mobile-callback/x", "GET"),
     null
   );
+});
+
+test("trash is an exact protected page and permitted login return target", () => {
+  assert.equal(resolveAllowedNextRedirect("/trash", "https://www.kabehub.com").pathname, "/trash");
+  for (const pathname of ["/trash", "/trash/"]) {
+    assert.equal(isProtectedPagePath(pathname), true);
+    assert.equal(isProtectedRedirectPath(pathname), true);
+  }
+  for (const pathname of ["/trash-other", "/trash/extra"]) {
+    assert.equal(isProtectedPagePath(pathname), false);
+    assert.equal(isProtectedRedirectPath(pathname), false);
+  }
 });
 
 test("Bearer parser distinguishes absent, empty, and populated credentials", () => {

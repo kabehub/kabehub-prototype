@@ -13,6 +13,7 @@ import { TAG_NAME_MAX_LENGTH, normalizeTagName } from "@/lib/validationLimits";
 import PublishConfirmModal from "./PublishConfirmModal";
 import RoleplayBubble, { RoleplayThinkingBubble } from "./RoleplayBubble";
 import { useToast } from "@/components/Toast";
+import { throwIfThreadTrashed, notifyThreadTrashed, isThreadTrashWriteError, restoreThreadInput } from "@/lib/threads/trash-client";
 import type { ApiKeyStore } from "@kabehub/shared";
 import {
   buildBranchLanes,
@@ -39,6 +40,7 @@ interface ChatPanelProps {
   onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => void;
   thinkingContents?: Record<string, string>;
   getRetainedQueryText?: (message: Message) => string | null;
+  captureViewGuard?: () => () => boolean;
   onMemoSubmit: () => void;
   isLoading: boolean;
   provider: Provider;
@@ -111,6 +113,7 @@ export default function ChatPanel({
   onRegenerate,
   onEditAndRegenerate,
   getRetainedQueryText,
+  captureViewGuard,
   onTrimFrom,
   onDeleteMessage,
   onDeleteImage,
@@ -532,6 +535,7 @@ export default function ChatPanel({
           ...(newGenre !== undefined && { genre: newGenre }), // 👈 追加（undefinedの時は送らない）
         }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) throw new Error("公開設定保存失敗");
       const updated = await res.json();
       onThreadUpdate(thread.id, {
@@ -548,7 +552,7 @@ export default function ChatPanel({
       setShareHideMemos(thread.hide_memos ?? false);
       setShareAllowPromptFork(thread.allow_prompt_fork ?? true);
       setShareGenre((thread.genre as string | null) ?? null);
-      showToast("公開設定の保存に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("公開設定の保存に失敗しました", "error");
     } finally {
       setShareSaving(false);
     }
@@ -574,6 +578,7 @@ const handlePushLatest = async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shared_at: now }),
     });
+    await throwIfThreadTrashed(res);
     if (!res.ok) {
       showToast("最新の会話のPushに失敗しました", "error");
       return;
@@ -583,7 +588,7 @@ const handlePushLatest = async () => {
     showToast("最新の会話をPushしました");
   } catch (err) {
     console.error("Push失敗:", err);
-    showToast("最新の会話のPushに失敗しました", "error");
+    if (!notifyThreadTrashed(err, showToast)) showToast("最新の会話のPushに失敗しました", "error");
   } finally {
     setShareSaving(false);
   }
@@ -602,6 +607,7 @@ const handlePushLatest = async () => {
         title: thread.title || "無題", // Gemini指摘: INSERT時のフォールバック
       }),
     });
+    await throwIfThreadTrashed(res);
     if (!res.ok) {
       showToast("システムプロンプトの保存に失敗しました", "error");
       return;
@@ -610,7 +616,7 @@ const handlePushLatest = async () => {
     onThreadUpdate(thread.id, { system_prompt: updated.system_prompt ?? "" });
   } catch (err) {
     console.error("システムプロンプト保存失敗:", err);
-    showToast("システムプロンプトの保存に失敗しました", "error");
+    if (!notifyThreadTrashed(err, showToast)) showToast("システムプロンプトの保存に失敗しました", "error");
   } finally {
     setSystemPromptSaving(false);
   }
@@ -645,6 +651,7 @@ const handleSaveRoleplay = async (
         title: thread.title || "無題",
       }),
     });
+    await throwIfThreadTrashed(res);
     if (!res.ok) throw new Error("なりきりモード保存失敗");
     onThreadUpdate(thread.id, {
       roleplay_mode: newMode,
@@ -654,7 +661,7 @@ const handleSaveRoleplay = async (
     return true;
   } catch (err) {
     console.error("なりきりモード保存失敗:", err);
-    showToast("なりきりモードの保存に失敗しました", "error");
+    if (!notifyThreadTrashed(err, showToast)) showToast("なりきりモードの保存に失敗しました", "error");
     return false;
   } finally {
     setRpSaving(false);
@@ -719,6 +726,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
   // ★ タグ追加
   const handleAddTag = async () => {
     if (!thread || tagSubmittingRef.current) return;
+    const isCurrent = captureViewGuard?.() ?? (() => true);
     const raw = tagInputValue;
     const clean = normalizeTagName(raw);
     if (!clean) { setTagInputValue(""); setShowTagInput(false); return; }
@@ -734,6 +742,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: clean }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("タグの追加に失敗しました", "error");
         return;
@@ -744,8 +753,13 @@ const handleToggleRoleplayMode = (next: boolean) => {
         setTags((prev) => [...prev, data]);
       }
     } catch (err) {
+      if (isThreadTrashWriteError(err)) {
+        if (!isCurrent()) return;
+        setTagInputValue(current => isCurrent() ? restoreThreadInput(current, raw) : current);
+        setShowTagInput(true);
+      }
       console.error("タグ追加失敗:", err);
-      showToast("タグの追加に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("タグの追加に失敗しました", "error");
     } finally {
       tagSubmittingRef.current = false;
     }
@@ -762,11 +776,12 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tagId }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) throw new Error("タグ削除失敗");
     } catch (err) {
       console.error("タグ削除失敗:", err);
       if (removedTag) setTags((prev) => [...prev, removedTag]);
-      showToast("タグの削除に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("タグの削除に失敗しました", "error");
     }
   };
 
@@ -778,6 +793,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: newNoteContent.trim() }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("メモの追加に失敗しました", "error");
         return;
@@ -787,7 +803,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
       setNewNoteContent("");
     } catch (err) {
       console.error("メモ追加失敗:", err);
-      showToast("メモの追加に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("メモの追加に失敗しました", "error");
     }
   };
 
@@ -799,6 +815,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, content: editingNoteContent.trim() }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("メモの更新に失敗しました", "error");
         return;
@@ -808,7 +825,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
       setEditingNoteId(null);
     } catch (err) {
       console.error("メモ更新失敗:", err);
-      showToast("メモの更新に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("メモの更新に失敗しました", "error");
     }
   };
 
@@ -820,6 +837,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("メモの削除に失敗しました", "error");
         return;
@@ -827,7 +845,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
       setNotes((prev) => prev.filter((n) => n.id !== id));
     } catch (err) {
       console.error("メモ削除失敗:", err);
-      showToast("メモの削除に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("メモの削除に失敗しました", "error");
     }
   };
 
@@ -839,6 +857,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId, content }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("メッセージノートの追加に失敗しました", "error");
         return;
@@ -847,9 +866,9 @@ const handleToggleRoleplayMode = (next: boolean) => {
       setMessageNotes((prev) => [...prev, note]);
     } catch (err) {
       console.error("メッセージノート追加失敗:", err);
-      showToast("メッセージノートの追加に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("メッセージノートの追加に失敗しました", "error");
     }
-  }, [thread?.id]);
+  }, [thread?.id, showToast]);
 
   const handleDeleteMessageNote = useCallback(async (noteId: string) => {
     if (!thread) return;
@@ -859,6 +878,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: noteId }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("メッセージノートの削除に失敗しました", "error");
         return;
@@ -866,9 +886,9 @@ const handleToggleRoleplayMode = (next: boolean) => {
       setMessageNotes((prev) => prev.filter((n) => n.id !== noteId));
     } catch (err) {
       console.error("メッセージノート削除失敗:", err);
-      showToast("メッセージノートの削除に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("メッセージノートの削除に失敗しました", "error");
     }
-  }, [thread?.id]);
+  }, [thread?.id, showToast]);
 
   const handleSaveDraft = async () => {
     if (!thread || !inputValue.trim()) return;
@@ -878,6 +898,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: inputValue.trim() }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("下書きの保存に失敗しました", "error");
         return;
@@ -887,7 +908,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
       onInputChange("");
     } catch (err) {
       console.error("下書き保存失敗:", err);
-      showToast("下書きの保存に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("下書きの保存に失敗しました", "error");
     }
   };
 
@@ -904,6 +925,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
+      await throwIfThreadTrashed(res);
       if (!res.ok) {
         showToast("下書きの削除に失敗しました", "error");
         return;
@@ -911,7 +933,7 @@ const handleToggleRoleplayMode = (next: boolean) => {
       setDrafts((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       console.error("下書き削除失敗:", err);
-      showToast("下書きの削除に失敗しました", "error");
+      if (!notifyThreadTrashed(err, showToast)) showToast("下書きの削除に失敗しました", "error");
     }
   };
 
@@ -942,13 +964,19 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
 
   const handleSaveTitle = async () => {
     if (!thread || !editTitle.trim()) return;
-    await fetch(`/api/threads/${thread.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: editTitle.trim() }),
-    });
-    onTitleUpdate(thread.id, editTitle.trim());
-    setShowDialog(false);
+    try {
+      const res = await fetch(`/api/threads/${thread.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editTitle.trim() }),
+      });
+      await throwIfThreadTrashed(res);
+      if (!res.ok) throw new Error("タイトル保存失敗");
+      onTitleUpdate(thread.id, editTitle.trim());
+      setShowDialog(false);
+    } catch (err) {
+      if (!notifyThreadTrashed(err, showToast)) showToast("タイトルの保存に失敗しました", "error");
+    }
   };
 
   const lastAssistantIndex = useMemo(

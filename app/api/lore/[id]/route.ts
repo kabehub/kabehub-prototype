@@ -108,6 +108,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
       case "archive":
         updates.is_archived = true;
+        updates.archived_by_thread_delete_at = null;
         break;
 
       default:

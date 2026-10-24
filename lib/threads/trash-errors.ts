@@ -16,6 +16,18 @@ export function mapThreadTrashRpcMessage(message: string): 404 | 409 | null {
   return null;
 }
 
+export function mapThreadTrashRpcError(error: { code?: string; message: string }): {
+  status: 403 | 404 | 409 | 500;
+  error: string;
+} {
+  if (error.code === "42501") return { status: 403, error: "Forbidden" };
+  if (error.code === "P0001") {
+    const status = mapThreadTrashRpcMessage(error.message);
+    if (status !== null) return { status, error: error.message };
+  }
+  return { status: 500, error: "Failed to process thread trash request" };
+}
+
 // Never filter out trash in a write preflight: missing and trashed are different.
 // Include ownership even for callers using a service-role client.
 export async function getOwnedThreadTrashState(db: SupabaseClient, userId: string, threadId: string) {

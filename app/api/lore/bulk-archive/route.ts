@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("lore_embeddings")
-    .update({ is_archived: true })
+    .update({ is_archived: true, archived_by_thread_delete_at: null })
     .in("id", ids)
     .eq("user_id", user.id)
     .eq("is_pinned", false)

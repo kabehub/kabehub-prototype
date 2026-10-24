@@ -28,6 +28,7 @@ const client = { async request(url, init) {
 const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
   if (request === "react") return hooks;
+  if (request.endsWith("/components/Toast")) return { useToast: () => ({ showToast() {} }) };
   if (request.endsWith("/MarkdownRenderer")) return { __esModule: true, default: ({ content }) => React.createElement("p", null, content) };
   if (request.endsWith("/api-client")) return { webApiClient: client, createMobileApiClient: () => client };
   if (request.endsWith("/lib/apiKeyStore")) return { webApiKeyStore: { getKey: async () => null }, mobileApiKeyStore: { getKey: async () => null } };

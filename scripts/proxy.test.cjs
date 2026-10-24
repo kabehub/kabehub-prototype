@@ -103,6 +103,7 @@ const pendingTests = [];
 const protectedPagePaths = [
   "/stats",
   "/memory",
+  "/trash",
   "/library",
   "/album",
   "/arena",
@@ -290,10 +291,32 @@ test("reports now matches proxy, skips Cookie pre-auth, and receives CORS", asyn
   assertAllowedCors(result.response);
 });
 
+test("thread trash Cron bypasses proxy auth without a session and leaves Cron Secret validation to the route", async () => {
+  for (const pathname of ["/api/cron/thread-trash-purge", "/api/cron/thread-trash-purge/"]) {
+    assert.equal(matches(pathname), false);
+    const result = await invoke(pathname, {
+      headers: { authorization: "Bearer cron-only-test-token" },
+    });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.sessionCheckCount, 0);
+    assert.deepEqual(bearerGetUserTokens, []);
+  }
+});
+
+test("thread trash Cron proxy exclusion preserves the segment boundary", async () => {
+  const pathname = "/api/cron/thread-trash-purge-extra";
+  assert.equal(matches(pathname), true);
+  const result = await invoke(pathname, {
+    headers: { authorization: "Bearer cron-only-test-token" },
+  });
+  await assertJsonUnauthorized(result.response);
+});
+
 test("internal and MCP routes never receive CORS headers", async () => {
   for (const { pathname, method } of [
     { pathname: "/api/mcp/threads", method: "GET" },
     { pathname: "/api/cron/storage-cleanup", method: "GET" },
+    { pathname: "/api/cron/thread-trash-purge", method: "GET" },
     { pathname: "/api/csp-report", method: "POST" },
     { pathname: "/api/auth/github/callback", method: "GET" },
     { pathname: "/api/auth/github/mobile-callback", method: "GET" },

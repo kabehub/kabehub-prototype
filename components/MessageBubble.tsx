@@ -6,6 +6,8 @@ import { MODEL_CONFIG, loadModel } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { webApiClient } from "@/lib/api-client";
+import { useToast } from "@/components/Toast";
+import { throwIfThreadTrashed, notifyThreadTrashed, isThreadTrashWriteError } from "@/lib/threads/trash-client";
 import { getMessageDisplayInfo } from "@/lib/messageDisplay";
 import {
   API_KEY_HEADER_NAMES,
@@ -87,6 +89,7 @@ function MessageBubble({
   onSendMemoToAI,
   onBranchToNewChat,
 }: MessageBubbleProps) {
+  const { showToast } = useToast();
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
   const isImageGen = message.provider === "image_gen";
@@ -310,8 +313,9 @@ function MessageBubble({
     try {
       await onUpdateMessage(message.id, { content: editContent });
       setIsEditing(false);
-    } catch {
-      alert("保存に失敗しました");
+    } catch (error) {
+      // The page already notified for trash; keep the editor open without a second alert.
+      if (!isThreadTrashWriteError(error)) alert("保存に失敗しました");
     } finally {
       setIsSavingEdit(false);
     }
@@ -334,6 +338,7 @@ function MessageBubble({
         },
         body: JSON.stringify({ messageId: message.id }),
       });
+      await throwIfThreadTrashed(res);
       const data = await res.json();
       if (data.alreadyLiked) {
         setLikeStatus("already");
@@ -344,8 +349,8 @@ function MessageBubble({
         alert(data.error ?? "エラーが発生しました");
         setLikeStatus("idle");
       }
-    } catch {
-      alert("エラーが発生しました");
+    } catch (error) {
+      if (!notifyThreadTrashed(error, showToast)) alert("エラーが発生しました");
       setLikeStatus("idle");
     }
   };
