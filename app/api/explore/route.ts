@@ -26,21 +26,27 @@ type SortCursor = {
   id: string;
 };
 
-function parseSortCursor(cursor: string | null): SortCursor | null {
-  if (!cursor) return null;
-  try {
-    const parsed = JSON.parse(cursor) as Partial<SortCursor>;
-    if (
-      typeof parsed.likes_count === "number" &&
-      typeof parsed.cursor_at === "string" &&
-      typeof parsed.id === "string"
-    ) {
-      return parsed as SortCursor;
-    }
-  } catch {
-    return null;
+// Require the absolute end of each value, rejecting even a trailing newline.
+const CURSOR_TIMESTAMP_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)(?![\s\S])/;
+const CURSOR_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])/i;
+
+function parseSortCursor(cursor: string): SortCursor {
+  const parsed: unknown = JSON.parse(cursor);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("invalid cursor");
   }
-  return null;
+  const value = parsed as Partial<SortCursor>;
+  if (
+    !Number.isSafeInteger(value.likes_count) ||
+    typeof value.cursor_at !== "string" ||
+    !CURSOR_TIMESTAMP_RE.test(value.cursor_at) ||
+    typeof value.id !== "string" ||
+    !CURSOR_UUID_RE.test(value.id)
+  ) {
+    throw new Error("invalid cursor");
+  }
+  // Keep the original timestamp: Date would discard microsecond precision.
+  return value as SortCursor;
 }
 
 export async function GET(req: NextRequest) {
@@ -65,8 +71,15 @@ export async function GET(req: NextRequest) {
   let queryError: { message: string } | null = null;
 
   if (sort === "popular" || sort === "trending") {
+    let cursorData: SortCursor | null = null;
+    if (cursor !== null) {
+      try {
+        cursorData = parseSortCursor(cursor);
+      } catch {
+        return finalizeJson({ error: "invalid cursor" }, { status: 400 });
+      }
+    }
     const adminSupabase = serviceRoleClient();
-    const cursorData = parseSortCursor(cursor);
     const timestampColumn = sort === "popular" ? "created_at" : "updated_at";
     const tagJoin = tag ? ", thread_tags!inner(name)" : "";
 
@@ -155,7 +168,7 @@ export async function GET(req: NextRequest) {
 
   if (queryError) {
     console.error("explore API error:", queryError);
-    return finalizeJson({ error: queryError.message }, { status: 500 });
+    return finalizeJson({ error: "Failed to fetch threads" }, { status: 500 });
   }
 
   const hasMore = rows.length > limit;
