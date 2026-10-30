@@ -64,7 +64,7 @@ type TextModelBase = {
   surfaces: ModelSurface;
   thinking: ThinkingConfig;
   pricing: TextPricing;
-  features?: { novelCheck?: NovelCheckFeature };
+  features?: { novelCheck?: NovelCheckFeature; webSearch?: boolean };
 };
 
 type OpenAICacheCapability = { supportsCacheWrite?: boolean };
@@ -105,26 +105,26 @@ const price = (
 ];
 
 export const MODEL_REGISTRY = [
-  { kind: "text", id: "claude-sonnet-5-5", provider: "claude", label: "Sonnet 5.5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5.5はAdaptive Thinkingが標準で有効です" }, pricing: price(2.00, 10.00, 0.10) },
-  { kind: "text", id: "claude-opus-5-5", provider: "claude", label: "Opus 5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Opus 5.5はAdaptive Thinkingが自動適用されます" }, pricing: price(4.00, 20.00, 0.20) },
-  { kind: "text", id: "claude-haiku-5-5", provider: "claude", label: "Haiku 5.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: false }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true }, pricing: [
+  { kind: "text", id: "claude-sonnet-5-5", provider: "claude", features: { webSearch: true }, label: "Sonnet 5.5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5.5はAdaptive Thinkingが標準で有効です" }, pricing: price(2.00, 10.00, 0.10) },
+  { kind: "text", id: "claude-opus-5-5", provider: "claude", features: { webSearch: true }, label: "Opus 5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Opus 5.5はAdaptive Thinkingが自動適用されます" }, pricing: price(4.00, 20.00, 0.20) },
+  { kind: "text", id: "claude-haiku-5-5", provider: "claude", features: { webSearch: true }, label: "Haiku 5.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: false }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true }, pricing: [
     { tiers: [
       { inputPerMTok: 0.10, cachedInputPerMTok: 0.01, outputPerMTok: 0.50 },
       { promptTokensAbove: 100_000, inputPerMTok: 0.50, cachedInputPerMTok: 0.05, outputPerMTok: 2.50 },
     ] },
   ] },
-  { kind: "text", id: "claude-fable-5", provider: "claude", label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00) },
-  { kind: "text", id: "claude-fable-5-1", provider: "claude", label: "Fable 5.1", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5.1はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00, 0.25) },
-  { kind: "text", id: "claude-sonnet-5", provider: "claude", label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5はAdaptive Thinkingが標準で有効です" }, pricing: [
+  { kind: "text", id: "claude-fable-5", provider: "claude", features: { webSearch: true }, label: "Fable 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00) },
+  { kind: "text", id: "claude-fable-5-1", provider: "claude", features: { webSearch: true }, label: "Fable 5.1", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "always_on", note: "Fable 5.1はAdaptive Thinkingが自動適用されます" }, pricing: price(10.00, 50.00, 0.25) },
+  { kind: "text", id: "claude-sonnet-5", provider: "claude", features: { webSearch: true }, label: "Sonnet 5", badge: "新標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Sonnet 5はAdaptive Thinkingが標準で有効です" }, pricing: [
     { tiers: [{ inputPerMTok: 2.00, outputPerMTok: 10.00 }] },
   ] },
-  { kind: "text", id: "claude-opus-5", provider: "claude", label: "Opus 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Opus 5はAdaptive Thinkingが標準で有効です" }, pricing: price(5.00, 25.00) },
-  { kind: "text", id: "claude-opus-4-8", provider: "claude", label: "Opus 4.8", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
-  { kind: "text", id: "claude-opus-4-7", provider: "claude", label: "Opus 4.7", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
-  { kind: "text", id: "claude-opus-4-6", provider: "claude", label: "Opus 4.6", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
-  { kind: "text", id: "claude-sonnet-4-5", provider: "claude", label: "Sonnet 4.5", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(3.00, 15.00) },
-  { kind: "text", id: "claude-sonnet-4-6", provider: "claude", label: "Sonnet 4.6", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(3.00, 15.00) },
-  { kind: "text", id: "claude-haiku-4-5-20251001", provider: "claude", label: "Haiku 4.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(1.00, 5.00) },
+  { kind: "text", id: "claude-opus-5", provider: "claude", features: { webSearch: true }, label: "Opus 5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: true, note: "Opus 5はAdaptive Thinkingが標準で有効です" }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-opus-4-8", provider: "claude", features: { webSearch: true }, label: "Opus 4.8", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-opus-4-7", provider: "claude", features: { webSearch: true }, label: "Opus 4.7", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-opus-4-6", provider: "claude", features: { webSearch: true }, label: "Opus 4.6", badge: "高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(5.00, 25.00) },
+  { kind: "text", id: "claude-sonnet-4-5", provider: "claude", features: { webSearch: true }, label: "Sonnet 4.5", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(3.00, 15.00) },
+  { kind: "text", id: "claude-sonnet-4-6", provider: "claude", features: { webSearch: true }, label: "Sonnet 4.6", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "adaptive", defaultOn: false }, pricing: price(3.00, 15.00) },
+  { kind: "text", id: "claude-haiku-4-5-20251001", provider: "claude", features: { webSearch: true }, label: "Haiku 4.5", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "toggleable", requestType: "enabled", defaultOn: false }, pricing: price(1.00, 5.00) },
 
   { kind: "text", id: "gemini-2.5-flash", provider: "gemini", label: "2.5 Flash", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.30, 2.50), features: { novelCheck: { label: "2.5 Flash", estimatedInputPerMTok: 0.30 } } },
   { kind: "text", id: "gemini-2.5-pro", provider: "gemini", label: "2.5 Pro", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
@@ -362,6 +362,11 @@ export function isAllowedModel(provider: TextProvider, modelId: string, surface:
   return MODEL_REGISTRY.some((model) => model.kind === "text" && model.provider === provider && model.id === modelId && model.status === "active" && model.surfaces[surface]);
 }
 
+/** Model capability only; route status/surface validation remains separate. */
+export function supportsWebSearch(provider: string, modelId: string): boolean {
+  return MODEL_REGISTRY.some((model) => model.kind === "text" && model.provider === provider && model.id === modelId && "features" in model && "webSearch" in model.features && model.features.webSearch === true);
+}
+
 export const NOVEL_CHECK_CONFIG = {
   defaultModelId: "gemini-3.8-flash",
   estimatedTokensPerCharacter: 1.2,
@@ -377,7 +382,8 @@ export function getNovelCheckModels(): { id: string; label: string; estimatedInp
       model.kind === "text" &&
       model.status === "active" &&
       "features" in model &&
-      model.features?.novelCheck !== undefined
+      "novelCheck" in model.features &&
+      model.features.novelCheck !== undefined
     )
     .map((model) => ({
       id: model.id,

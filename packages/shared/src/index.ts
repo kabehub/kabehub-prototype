@@ -90,6 +90,7 @@ export {
   getDefaultModel,
   getArenaModels,
   isAllowedModel,
+  supportsWebSearch,
   NOVEL_CHECK_CONFIG,
   getNovelCheckModels,
   isAllowedNovelCheckModel,
@@ -149,3 +150,14 @@ export {
   isKabeCardFenceClosed,
   createKabeCardLimiter,
 } from "./kabeCard";
+
+export {
+  WEB_SEARCH_MAX_USES_CLAUDE,
+  MAX_SOURCES,
+  MAX_SOURCE_TITLE_LENGTH,
+  MAX_SOURCE_URL_LENGTH,
+  normalizeSources,
+  withSources,
+  type MessageSource,
+  type MessageSources,
+} from "./webSearch";

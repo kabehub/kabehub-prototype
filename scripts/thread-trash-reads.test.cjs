@@ -227,7 +227,7 @@ test("additional reuse inputs are guarded at their individual SELECTs", () => {
   for (const [file, expected] of [["app/api/chat/route.ts", 4], ["app/api/image-gen/route.ts", 1]]) {
     const q = queries(read(file), "messages").filter(q => q.methods[0].args.includes("threads!inner"));
     assert.equal(q.length, expected);
-    const columns = file.includes("chat/") ? ["id, content, model_id", "id, content", "role, content, provider", "content, metadata"] : ["metadata"];
+    const columns = file.includes("chat/") ? ["id, content, provider, model_id, input_tokens, output_tokens, metadata", "id, content", "role, content, provider", "content, metadata"] : ["metadata"];
     for (const column of columns) {
       const query = q.find(q => q.methods[0].args.slice(1).startsWith(`${column}, threads!inner`));
       live(query, true);

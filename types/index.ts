@@ -1,3 +1,5 @@
+import type { MessageSources } from "@kabehub/shared";
+
 import type {
   RegistryClaudeModel,
   RegistryGeminiModel,
@@ -54,6 +56,7 @@ export interface Message {
   branch_index?: number | null;   // v131追加
   // is_learned / skip_learning / input_tokens / output_tokens はDB・サーバー処理専用のため意図的にこの型から除外
   metadata?: {
+    sources?: MessageSources;
     storagePath?: string | null; // [userId]/[threadId]/[imageId].png
     mimeType?: string | null;
     width?: number | null;

@@ -29,6 +29,7 @@ import {
   getOpenAICapability,
   OPENAI_RESPONSES_CONFIG,
   resolveClaudeRequestOverrides,
+  supportsWebSearch,
 } from "@/lib/modelRegistry";
 import type { LoreSearchV2Result } from "@/lib/lore";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ModelId } from "@/types";
@@ -39,8 +40,11 @@ import {
   type UsageEventStatus,
 } from "@/lib/aiUsage";
 import { serviceRoleClient } from "@/lib/mcp-auth";
+import { normalizeSources, withSources, WEB_SEARCH_MAX_USES_CLAUDE } from "@kabehub/shared";
+import { resolveAssistantPersistence, shouldEmitCitations, type AssistantSnapshot } from "@/lib/chat-assistant-persistence";
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 type ChatMessage = { role: string; content: string; provider?: string; model_id?: string | null; is_active?: boolean };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: string; data: string } };
@@ -168,6 +172,12 @@ function streamClaude(
   isDeepThinking?: boolean,
   cacheAnchorIndex: number = -1,
   extraCachedSystemBlocks: CachedSystemBlock[] = [],
+  webSearch?: {
+    maxUses: number;
+    controlToken: string;
+    onSearching?: () => void;
+    onCitation?: (c: { url: string; title?: string }) => void;
+  },
 ): ReadableStream<string> {
   const systemBlocks = buildClaudeSystemBlocks({
     stable: stableSystemPrompt,
@@ -198,6 +208,7 @@ function streamClaude(
     messages: messagesForAPI,
   };
   if (systemBlock) body.system = systemBlock;
+  if (webSearch) body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: webSearch.maxUses }];
 
   return new ReadableStream<string>({
     async start(controller) {
@@ -209,6 +220,10 @@ function streamClaude(
         );
       };
       let refusalHandled = false;
+      let searchingSent = false;
+      let hasText = false;
+      let pendingSearchSeparator = false;
+      let streamErrorType: string | null = null;
 
       try {
         const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -224,6 +239,18 @@ function streamClaude(
         });
 
         if (!response.ok) {
+          if (webSearch && response.status === 400) {
+            let searchToolUnavailable = false;
+            try {
+              const payload = await response.json();
+              searchToolUnavailable = [payload?.error?.type, payload?.error?.message]
+                .some(value => typeof value === "string" && /web[_ ]?search|tool/i.test(value));
+            } catch { /* Unreadable error bodies keep the existing generic message. */ }
+            if (searchToolUnavailable) {
+              providerApiError("claude", "Claude", response.status);
+              throw new ReportedProviderError("Web検索を利用できませんでした（このAPIキー／組織で検索ツールが許可されていない可能性があります）。Web検索をオフにして送信してください。");
+            }
+          }
           throw providerApiError("claude", "Claude", response.status);
         }
 
@@ -233,6 +260,36 @@ function streamClaude(
         let cacheReadInputTokens: number | null = null;
         try {
           await pumpSSE(response, (parsed) => {
+            let searchTextPrefix = "";
+            if (webSearch) {
+              if (parsed.type === "error") {
+                // pumpSSE swallows handler exceptions. Throw only after it returns.
+                streamErrorType = typeof parsed.error?.type === "string" ? parsed.error.type : "unknown";
+              }
+              if (parsed.type === "content_block_start") {
+                const block = parsed.content_block;
+                const isSearchUse = block?.type === "server_tool_use" && block.name === "web_search";
+                const isToolBlock = block?.type === "server_tool_use" || block?.type === "web_search_tool_result";
+                if (isToolBlock && hasText) pendingSearchSeparator = true;
+                if (isSearchUse && !searchingSent) {
+                  searchingSent = true;
+                  controller.enqueue(webSearch.controlToken);
+                  webSearch.onSearching?.();
+                }
+              }
+              if (parsed.type === "content_block_delta" && parsed.delta?.type === "citations_delta" &&
+                  parsed.delta.citation?.type === "web_search_result_location") {
+                const citation = parsed.delta.citation;
+                webSearch.onCitation?.({ url: citation.url, title: citation.title });
+              }
+              if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
+                if (pendingSearchSeparator && parsed.delta.text.length > 0) {
+                  searchTextPrefix = "\n\n";
+                  pendingSearchSeparator = false;
+                }
+                if (parsed.delta.text.length > 0) hasText = true;
+              }
+            }
             // ✅ v62: キャッシュ統計ログ（message_start + message_delta 両方拾う）
             if (parsed.type === "message_start") {
               const u = parsed.message?.usage ?? {};
@@ -270,15 +327,18 @@ function streamClaude(
             if (parsed.type === "content_block_delta") {
               if (isDeepThinking) {
                 if (parsed.delta?.type === "text_delta") {
-                  enqueueText(parsed.delta.text);
+                  enqueueText(searchTextPrefix + parsed.delta.text);
                 } else if (parsed.delta?.type === "thinking_delta") {
                   controller.enqueue(JSON.stringify({ kind: "thinking", text: parsed.delta.thinking }) + "\n");
                 }
               } else if (parsed.delta?.type === "text_delta") {
-                enqueueText(parsed.delta.text);
+                enqueueText(searchTextPrefix + parsed.delta.text);
               }
             }
           });
+          if (streamErrorType !== null) {
+            throw new ReportedProviderError("Claude APIへのリクエストに失敗しました");
+          }
           onUsage?.({
             input_tokens: inputTokens,
             output_tokens: outputTokens,
@@ -594,6 +654,8 @@ async function saveAssistantMessage(
   inputTokens?: number | null,
   outputTokens?: number | null,
   branchMeta?: BranchMeta | null,
+  metadata?: Record<string, unknown> | null,
+  includeNullTokens = false,
 ): Promise<boolean> {
   // ✅ v64修正: upsertで重複INSERT（duplicate key）を防ぐ
   // 同じIDで2回保存が走った場合は既存レコードを上書き
@@ -605,8 +667,9 @@ async function saveAssistantMessage(
     provider,
     user_id: userId,
     ...(modelId !== undefined ? { model_id: modelId } : {}),
-    ...(inputTokens != null ? { input_tokens: inputTokens } : {}),
-    ...(outputTokens != null ? { output_tokens: outputTokens } : {}),
+    ...(includeNullTokens || inputTokens != null ? { input_tokens: inputTokens ?? null } : {}),
+    ...(includeNullTokens || outputTokens != null ? { output_tokens: outputTokens ?? null } : {}),
+    ...(metadata !== undefined ? { metadata } : {}),
     ...(branchMeta ? {
       branch_root_id: branchMeta.branch_root_id,
       branch_index: branchMeta.branch_index,
@@ -647,6 +710,7 @@ export async function POST(req: NextRequest) {
     isTemporary?: boolean;
     attachedImages?: { base64: string; mediaType: string }[];
     isDeepThinking?: boolean;
+    webSearch?: boolean;
     imageContextId?: unknown;
     branchEdit?: { baseUserMessageId?: string };
     regenerateMode?: string;
@@ -666,7 +730,7 @@ export async function POST(req: NextRequest) {
   const {
     threadId, messages, userContent, queryText, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
-    imageContextId, branchEdit, regenerateMode, targetMessageId, targetUserMessageId,
+    imageContextId, branchEdit, regenerateMode, targetMessageId, targetUserMessageId, webSearch,
   } = requestBody;
 
   const hasText = typeof userContent === "string" && userContent.trim().length > 0;
@@ -829,12 +893,12 @@ export async function POST(req: NextRequest) {
 
   const isLightRegenerate = regenerateMode === "light" && !!targetMessageId;
   let targetUserMessage: { id: string; content: string } | null = null;
-  let originalLightAssistant: { content: string; model_id: string | null } | null = null;
+  let originalLightAssistant: AssistantSnapshot | null = null;
 
   if (isLightRegenerate) {
     const { data: targetAssistant, error: targetAssistantError } = await supabase
       .from("messages")
-      .select("id, content, model_id, threads!inner(deleted_at)")
+      .select("id, content, provider, model_id, input_tokens, output_tokens, metadata, threads!inner(deleted_at)")
       .is("threads.deleted_at", null)
       .eq("id", targetMessageId)
       .eq("thread_id", threadId)
@@ -857,7 +921,11 @@ export async function POST(req: NextRequest) {
     }
     originalLightAssistant = {
       content: targetAssistant.content,
+      provider: targetAssistant.provider,
       model_id: targetAssistant.model_id,
+      input_tokens: targetAssistant.input_tokens,
+      output_tokens: targetAssistant.output_tokens,
+      metadata: targetAssistant.metadata,
     };
 
     if (targetUserMessageId) {
@@ -1287,6 +1355,12 @@ export async function POST(req: NextRequest) {
   let errorMessage: string | null = null;
   const usedProvider = provider;
 
+  const webSearchEnabled = webSearch === true && provider === "claude" && !isMemo &&
+    isClaudeModel(resolvedModelId) && supportsWebSearch("claude", resolvedModelId);
+  const controlToken = webSearchEnabled ? "\u0000kabe-ctl:" + uuidv4() + ":searching\u0000" : undefined;
+  let searchExecuted = false;
+  const rawCitations: { url: string; title?: string }[] = [];
+  const getSources = () => searchExecuted ? normalizeSources(rawCitations, "claude") : undefined;
   // ✅ v92: ストリーム完了後にトークン数を回収するためのref
   const usageRef: UsageData = { input_tokens: null, output_tokens: null };
   const handleUsage = (u: UsageData) => { Object.assign(usageRef, u); };
@@ -1483,7 +1557,12 @@ export async function POST(req: NextRequest) {
       }
       if (!anthropicKey) throw new Error("ClaudeのAPIキーが設定されていません。");
       beginUsageEvent();
-      aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, manualThinkingEnabled, trimResult.cacheAnchorIndex, cachedSystemBlocks);
+      aiStream = streamClaude(anthropicKey, finalMessagesForApi, stableSystemPrompt, dynamicSystemText, resolvedModelId, imageBlocksForApi, req.signal, handleUsage, manualThinkingEnabled, trimResult.cacheAnchorIndex, cachedSystemBlocks, webSearchEnabled ? {
+        maxUses: WEB_SEARCH_MAX_USES_CLAUDE,
+        controlToken: controlToken!,
+        onSearching: () => { searchExecuted = true; },
+        onCitation: citation => { rawCitations.push(citation); },
+      } : undefined);
     } else if (provider === "openai") {
       if (!isOpenAIModel(resolvedModelId)) {
         return chatResponse(JSON.stringify({ error: `Invalid modelId "${resolvedModelId}" for provider "${provider}"` }), {
@@ -1504,6 +1583,7 @@ export async function POST(req: NextRequest) {
   // エラー時は非ストリーミングで返す
   if (errorMessage || !aiStream) {
     const content = errorMessage ?? "（応答の取得に失敗しました）";
+    const metadata = isLightRegenerate ? withSources(originalLightAssistant?.metadata, undefined) : undefined;
     const assistantMessage = {
       id: assistantMessageId,
       thread_id: threadId,
@@ -1511,10 +1591,11 @@ export async function POST(req: NextRequest) {
       content,
       provider: usedProvider,
       created_at: new Date().toISOString(),
+      ...(metadata !== undefined ? { metadata } : {}),
     };
     if (!isTemporary) {
       const [messageSaved] = await Promise.all([
-        saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta),
+        saveAssistantMessage(supabase, threadId as string, userId, content, usedProvider, assistantMessageId, resolvedModelId, undefined, undefined, branchEditMeta, metadata),
         recordChatUsage("failed", null),
       ]);
       if (messageSaved) await recordChatUsage("failed", assistantMessageId);
@@ -1529,12 +1610,15 @@ export async function POST(req: NextRequest) {
   if (isTemporary) {
     let content = "";
     let usageStatus: UsageEventStatus = "completed";
+    let contentReplacedByError = false;
     const reader = aiStream.getReader();
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+
+        if (controlToken !== undefined && value === controlToken) continue;
 
         if (manualThinkingEnabled) {
           try {
@@ -1553,6 +1637,7 @@ export async function POST(req: NextRequest) {
         : "failed";
       const msg = err instanceof Error ? err.message : "不明なエラー";
       content = `\n\n（エラー: ${msg}）`;
+      contentReplacedByError = true;
     } finally {
       reader.releaseLock();
     }
@@ -1562,6 +1647,7 @@ export async function POST(req: NextRequest) {
     }
 
     await recordChatUsage(usageStatus, null);
+    const sources = contentReplacedByError ? undefined : getSources();
 
     const assistantMessage = {
       id: assistantMessageId,
@@ -1570,6 +1656,7 @@ export async function POST(req: NextRequest) {
       content,
       provider: usedProvider,
       created_at: new Date().toISOString(),
+      ...(sources ? { metadata: { sources } } : {}),
     };
 
     return chatResponse(JSON.stringify({ userMessage, assistantMessage }), {
@@ -1599,6 +1686,7 @@ export async function POST(req: NextRequest) {
   let accumulatedTruncated = false;
   let accumulatedText = "";
   let isAborted = false;
+  let finalGenerationStatus: UsageEventStatus | undefined;
 
   const appendToAccumulated = (text: string) => {
     if (accumulatedTruncated) return;
@@ -1612,6 +1700,10 @@ export async function POST(req: NextRequest) {
 
   const outputStream = new TransformStream<string, string>({
     transform(chunk, controller) {
+      if (controlToken !== undefined && chunk === controlToken) {
+        controller.enqueue(JSON.stringify({ type: "searching" }) + "\n");
+        return;
+      }
       if (manualThinkingEnabled) {
         // JSON行形式: テキスト部分のみDBに蓄積、thinking部分は含めない
         try {
@@ -1626,6 +1718,11 @@ export async function POST(req: NextRequest) {
       controller.enqueue(JSON.stringify({ type: "chunk", text: chunk }) + "\n");
     },
     flush(controller) {
+      const aborted = Boolean(req.signal.aborted || usageRef.aborted || isAborted);
+      const sources = getSources();
+      if (sources && shouldEmitCitations({ aborted, isLightRegenerate, status: aborted ? "aborted" : "completed" })) {
+        controller.enqueue(JSON.stringify({ type: "citations", sources }) + "\n");
+      }
       // 正常完了: doneチャンクを送信
       controller.enqueue(
         JSON.stringify({ type: "done", aborted: false }) + "\n"
@@ -1636,20 +1733,19 @@ export async function POST(req: NextRequest) {
   // ✅ v64修正: DB保存ヘルパー。保存成功=true / 失敗=false を返す
   // dbSavedは保存「成功」時のみtrueにする（失敗を隠蔽しない）
   const saveToDb = async (status: UsageEventStatus, supabaseClient: ReturnType<typeof createRouteHandlerSupabaseClient>): Promise<boolean> => {
+    finalGenerationStatus = status;
     if (isTemporary) return true;
-    const restoredLightAssistant = isLightRegenerate && status !== "completed" ? originalLightAssistant : null;
-    const contentToSave = restoredLightAssistant
-      ? restoredLightAssistant.content
-      : stripLegacyAssistantLabelPrefix(accumulatedText);
-    const modelIdToSave = restoredLightAssistant
-      ? restoredLightAssistant.model_id
-      : resolvedModelId;
+    const saved = resolveAssistantPersistence({
+      isLightRegenerate, status, original: originalLightAssistant,
+      accumulatedText: stripLegacyAssistantLabelPrefix(accumulatedText),
+      usedProvider, resolvedModelId, usage: usageRef, sources: getSources(),
+    });
     const [messageSaved] = await Promise.all([
       saveAssistantMessage(
-        supabaseClient, threadId as string, userId, contentToSave, usedProvider,
-        assistantMessageId, modelIdToSave,
-        usageRef.input_tokens, usageRef.output_tokens,
-        branchEditMeta,
+        supabaseClient, threadId as string, userId, saved.content, saved.provider,
+        assistantMessageId, saved.model_id,
+        saved.input_tokens, saved.output_tokens,
+        branchEditMeta, saved.metadata, isLightRegenerate,
       ),
       recordChatUsage(status, null),
     ]);
@@ -1714,6 +1810,11 @@ export async function POST(req: NextRequest) {
           controller.enqueue(
             encoder.encode(JSON.stringify({ type: "chunk", text: `\n\n（エラー: ${msg}）` }) + "\n")
           );
+          const sources = getSources();
+          const aborted = Boolean(req.signal.aborted || usageRef.aborted);
+          if (sources && shouldEmitCitations({ aborted, isLightRegenerate, status: usageStatus })) {
+            controller.enqueue(encoder.encode(JSON.stringify({ type: "citations", sources }) + "\n"));
+          }
           controller.enqueue(
             encoder.encode(JSON.stringify({ type: "done", aborted: false }) + "\n")
           );
@@ -1741,11 +1842,11 @@ export async function POST(req: NextRequest) {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceKey) {
-        const restoredLightAssistant = isLightRegenerate && isAborted ? originalLightAssistant : null;
-        const contentToSave = restoredLightAssistant
-          ? restoredLightAssistant.content
-          : stripLegacyAssistantLabelPrefix(accumulatedText);
-        const modelIdToSave = restoredLightAssistant ? restoredLightAssistant.model_id : resolvedModelId;
+        const saved = resolveAssistantPersistence({
+          isLightRegenerate, status: finalGenerationStatus ?? (isAborted ? "aborted" : "completed"),
+          original: originalLightAssistant, accumulatedText: stripLegacyAssistantLabelPrefix(accumulatedText),
+          usedProvider, resolvedModelId, usage: usageRef, sources: getSources(),
+        });
         const res = await fetch(`${supabaseUrl}/rest/v1/messages`, {
           method: "POST",
           headers: {
@@ -1758,12 +1859,13 @@ export async function POST(req: NextRequest) {
             id: assistantMessageId,
             thread_id: threadId,
             role: "assistant",
-            content: contentToSave,
-            provider: usedProvider,
+            content: saved.content,
+            provider: saved.provider,
             user_id: userId,
-            ...(modelIdToSave !== undefined ? { model_id: modelIdToSave } : {}),
-            ...(usageRef.input_tokens != null ? { input_tokens: usageRef.input_tokens } : {}),
-            ...(usageRef.output_tokens != null ? { output_tokens: usageRef.output_tokens } : {}),
+            ...(saved.model_id !== undefined ? { model_id: saved.model_id } : {}),
+            ...(isLightRegenerate || saved.input_tokens != null ? { input_tokens: saved.input_tokens } : {}),
+            ...(isLightRegenerate || saved.output_tokens != null ? { output_tokens: saved.output_tokens } : {}),
+            ...(saved.metadata !== undefined ? { metadata: saved.metadata } : {}),
             ...(branchEditMeta ? {
               branch_root_id: branchEditMeta.branch_root_id,
               branch_index: branchEditMeta.branch_index,
