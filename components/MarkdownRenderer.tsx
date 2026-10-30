@@ -3,6 +3,9 @@
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { createKabeCardLimiter, isKabeCardFenceClosed, parseKabeCard } from "@kabehub/shared";
+import KabeCardView from "./KabeCardView";
+import InlineMarkdownCode from "./InlineMarkdownCode";
 
 interface MarkdownRendererProps {
   content: string;
@@ -44,7 +47,7 @@ function CodeBlock({
 }) {
   const [copied, setCopied] = useState(false);
 
-  const match = /language-(\w+)/.exec(className || "");
+  const match = /language-([\w-]+)/.exec(className || "");
   const lang = match?.[1]?.toLowerCase();
   const isDownloadable = lang === "csv" || lang === "txt";
 
@@ -192,6 +195,8 @@ export default function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const isShare = variant === "share";
 
+  const allowCard = createKabeCardLimiter();
+
   const wrapperClass = [
     "prose prose-sm max-w-none",
     className,
@@ -204,7 +209,7 @@ export default function MarkdownRenderer({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          pre({ children }) {
+          pre({ node, children }) {
             const codeElement = React.Children.toArray(children).find(
               React.isValidElement
             );
@@ -212,29 +217,24 @@ export default function MarkdownRenderer({
               | { className?: string; children?: React.ReactNode }
               | undefined;
 
+            const language = /language-([\w-]+)/.exec(codeProps?.className || "")?.[1];
+            const start = node?.position?.start.offset;
+            const end = node?.position?.end.offset;
+            if (language === "kabe-card" && start !== undefined && end !== undefined
+              && isKabeCardFenceClosed(content.slice(start, end))) {
+              const card = parseKabeCard(String(codeProps?.children).replace(/\n$/, ""));
+              if (card && allowCard(start)) return <KabeCardView card={card} variant={variant} />;
+            }
+
             return (
               <CodeBlock className={codeProps?.className} variant={variant}>
                 {codeProps?.children}
               </CodeBlock>
             );
           },
-          code({ className, children, ...props }) {
+          code({ node: _node, ...props }) {
             return (
-              <code
-                className={className}
-                style={{
-                  background: isShare ? "#f1f5f9" : "#e8eef5",
-                  color: isShare ? "#1e293b" : "#334155",
-                  border: isShare ? "none" : "1px solid #cbd5e1",
-                  borderRadius: "4px",
-                  padding: "1px 5px",
-                  fontSize: "0.875em",
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}
-                {...props}
-              >
-                {children}
-              </code>
+              <InlineMarkdownCode {...props} variant={variant} />
             );
           },
           table({ children }) {

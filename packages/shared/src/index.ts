@@ -138,3 +138,14 @@ export type { LoreMemoryCard } from "./types";
 export { pairKey } from "./lore/consolidation";
 export { toMemoryCard, memoryNeedsReview, type ConsolidationCandidate } from "./lore/mappers";
 export { DREAMING_DEFAULTS, BATCH_TRAIN_UI_REQUEST_LIMIT, type LoreMemoryRow } from "./lore/types";
+export type { KabeCard, KabeCardTone } from "./kabeCard";
+export {
+  KABE_CARD_MAX_PER_MESSAGE,
+  KABE_CARD_MAX_TITLE_LENGTH,
+  KABE_CARD_MAX_BADGE_LENGTH,
+  KABE_CARD_MAX_META_LENGTH,
+  KABE_CARD_MAX_BODY_LENGTH,
+  parseKabeCard,
+  isKabeCardFenceClosed,
+  createKabeCardLimiter,
+} from "./kabeCard";
