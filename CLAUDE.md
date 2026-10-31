@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -270,6 +270,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/mcp-token-hash.ts` | MCPトークンをSHA-256でhash化 |
 | `lib/messages/delete.ts` | 所有メッセージ削除、関連Loreのarchive、所有Storage画像の後処理を共通化 |
 | `lib/modelRegistry.ts` | モデル台帳。モデルID・表示情報・利用surface・デフォルト・Thinking対応・料金・許可判定を一元管理。`canToggleDeepThinking`と`resolveClaudeRequestOverrides`も提供 |
+| `lib/openai-responses-input.ts` | `buildResponsesInput`。Responses API向け`input`の組み立て（systemはtrim後に非空のときだけ先頭・最後のuserにだけ`input_image`（`image_url`は文字列のdata URL）→`input_text`の順で画像を付与・他は文字列のまま）。**importゼロの純関数**。gpt-5.5-proのPro分岐（`app/api/chat/route.ts`）と`lib/openai-web-search.ts`が共用する。Chat Completions／Arenaの組み立てはこれを使わない |
+| `lib/openai-web-search.ts` | OpenAIのWeb検索（Responses API・ストリーミング）のサーバー側アダプター。`buildOpenAIWebSearchRequest`（`tools:[{type:"web_search"}]`・`max_tool_calls:3`・`store:false`、inputは`buildResponsesInput`）と`streamOpenAIWebSearch`（専用SSEパーサー。本文delta・検索中の制御トークン・引用をenqueue、終端イベント欠落は失敗扱い、usageは終了時に1回）。対象は台帳で`features.webSearch`が付いたOpenAI 10モデル（gpt-4oとgpt-5.5-proは対象外） |
 | `lib/pricing.ts` | `getPricing`を`lib/modelRegistry.ts`から再exportする互換ファサード。`calcCost`・`formatUSD`を提供 |
 | `lib/proxy-paths.ts` | `proxy.ts`と対応する認証・公開・MCP・`next`復帰先のパス/メソッド判定 |
 | `lib/rate-limit.ts` | `checkChatRateLimit`。チャットのレート制限 |
@@ -331,8 +333,8 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-12実測で638件、全件成功。
-- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件）。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-31実測で1634件（D37反映後）、全件成功。
+- mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件。2026-10-31の再計測はしていない）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
 テスト115本（`scripts/*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（2026-10-12、`git ls-files`の追跡済みファイルで実測）。
@@ -368,6 +370,8 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/message-delete.test.cjs` | 所有メッセージ・関連Lore・Storage画像の削除契約を検証 |
 | `scripts/modelRegistry.test.cjs` | モデル台帳・surface・default・Thinking・料金の整合を検証 |
 | `scripts/novel-check-route.test.cjs` | novel-check Routeの認証・入力検証・外部API呼び出しを検証 |
+| `scripts/openai-responses-input.test.cjs` | `buildResponsesInput`の単体テスト13件。画像なし／1枚／複数枚の順序とMIME・systemの空白除外とtrim・最後がassistantのとき画像を付けない・過去のuser／assistantは文字列のまま・空本文でも`input_text`を残す・空履歴・入力の非破壊・旧形式の`image_url`／`text`typeが出ないこと |
+| `scripts/chat-openai-request-body.test.cjs` | OpenAI検索OFFの96ケース（`scripts/fixtures/openai-chat-off-bodies.json`、baseline 0ff9770の不変capture）の送信URL・生bodyをバイト比較。D37でPro画像あり4ケースだけ、goldenの旧形式をResponses形式へ変換した期待値に変更し（goldenが旧形式であることもassert）、残り92ケースは従来どおり生バイト一致 |
 | `scripts/optional-route-auth.test.cjs` | 任意認証Routeの匿名/認証済みCookie・DB/RPC契約を検証 |
 | `scripts/pricing.test.cjs` | registry由来料金・費用計算・表示formatを検証 |
 | `scripts/project-memory-*.test.cjs` / `scripts/projects-*-route.test.cjs` / `scripts/instruction-edit-client.test.cjs` / `scripts/use-project-memory-topics.test.cjs` | Project Memory API・hook・UI・migration契約の回帰テスト |
@@ -518,7 +522,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 1. `lib/modelRegistry.ts` の `MODEL_REGISTRY` へエントリを追加する。`provider`・`status`・`surfaces.chat`・`surfaces.arena`・`thinking`・`pricing`を設定する
 2. `packages/shared/src/modelRegistry.ts` にも同じ変更を反映する（`loadModel` / `saveModel` はlibのみ）。モデルIDのUnion型はregistryから導出されるため、`types/index.ts` の手動更新は不要
 3. `components/ChatInput.tsx`・`app/api/chat/route.ts`・`app/api/arena/route.ts` は通常変更不要。`MODEL_CONFIG`・許可判定・デフォルト・Thinking対応表示はいずれもregistryから自動的に導出される
-4. API形式が既存モデルと異なる場合のみ、対応するrouteへ個別実装を追加する（例：専用エンドポイント、request body形式、streaming方式）。gpt-5.5-proはこの例外に該当し、`app/api/chat/route.ts`・`app/api/arena/route.ts`の両方で`/v1/responses`分岐を実装済み
+4. API形式が既存モデルと異なる場合のみ、対応するrouteへ個別実装を追加する（例：専用エンドポイント、request body形式、streaming方式）。gpt-5.5-proはこの例外に該当し、`app/api/chat/route.ts`・`app/api/arena/route.ts`の両方で`/v1/responses`分岐を実装済み。Responses APIへ画像を渡すモデルを増やす場合は、`lib/openai-responses-input.ts`の`buildResponsesInput`を使う（Chat Completions形式の画像配列を流用しない）
 5. `lib/pricing.ts` は通常変更不要（`getPricing`の再exportのみのため）。`calcCost`・`formatUSD`自体の仕様変更がある場合のみ変更する
 
 ---
@@ -680,7 +684,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |
 | OpenAI の max_tokens | `gpt-4o` は `max_tokens`、`gpt-5.4-mini` 以降は `max_completion_tokens`。`streamOpenAI` 内で分岐済み |
 | OpenAI の stream_options | `stream_options: { include_usage: true }` が必須。外すと `[OpenAI Cache]` ログが出ない |
-| gpt-5.5-pro専用分岐 | `streamOpenAI`・Arenaの`callOpenAI`内で`modelId === "gpt-5.5-pro"`の場合のみ`/v1/responses`へ分岐（Chat Completions API非対応のため）。chat側は一括取得してenqueueする擬似ストリーム、Arena側は非ストリーミングで一括取得する |
+| gpt-5.5-pro専用分岐 | `streamOpenAI`・Arenaの`callOpenAI`内で`modelId === "gpt-5.5-pro"`の場合のみ`/v1/responses`へ分岐（Chat Completions API非対応のため）。chat側は一括取得してenqueueする擬似ストリーム、Arena側は非ストリーミングで一括取得する。**画像入力**：chat側は`lib/openai-responses-input.ts`の`buildResponsesInput`でResponses形式（`input_image`＋文字列の`image_url`／`input_text`）へ変換して送る。Chat Completions形式（`type:"image_url"`＋`{url}`／`type:"text"`）のまま`/v1/responses`へ送るとHTTP 400（`Invalid value: 'image_url'`、param `input[0].content[0].type`。2026-10-31にRuiの環境でprobe済み）。この不具合はD37として修正済み。Arenaは画像を扱わず、Arena側のResponses分岐はテキストのみ |
 
 ### Branching関連
 
@@ -803,6 +807,8 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 自動要約差分更新 Phase 2b | client／strict preview parser／PATCH→checkpoint／注入量警告関数（b92ab77）、useAutoSummaryUpdateの生成／自動記録／apply／skipAll／run消費・旧応答破棄（ff7caa5） |
 | 自動要約差分更新 Phase 2c | revision 1 provenanceの起点roleをuserまたはassistantへ緩和し旧bootstrap履歴と互換化。差分入力はuserのみを維持（aacb57d） |
 | 自動要約差分更新 Phase 3 | Memoryタブの4ボタン・更新モーダル・警告GET／Lore警告・双方向排他・ドロワー保護・全topic結果ラベルとonAppliedによる1回refresh（674f926） |
+| リッチ会話UI Lv1 Web検索 | Claude（Phase 1a `04cc9ab`／1b `0ff9770`）とOpenAI（Phase 2a サーバー `eea4db6`／2b クライアント `d6ddd6a`）のWeb検索・出典チップ。詳細と判断（D番号）は`KabeHub_リッチ会話UI_Lv1Lv2_検討_引き継ぎ資料_v6.md`・`v7.md` |
+| D37 gpt-5.5-pro画像入力の修正 | Pro分岐がChat Completions形式の画像をResponses APIへ送りHTTP 400になっていた不具合を、`buildResponsesInput`でResponses形式に変換して修正。Web検索側の同一変換も共通化。golden 96件のうちPro画像4件のみ新形式、残り92件は不変。npm test 1634件成功。本番で画像付きProの動作確認OK（`fb4d5c6`、2026-10-31） |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。
 > v175以降はmigration番号を基準とし、`docs/applied/README.md`の台帳と対応する。v174以前は機能の変更履歴番号であり、番号体系が異なる。
