@@ -2,11 +2,12 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { installTsLoader, installAliasResolver } = require('./testBootstrap.cjs');
 const { pageCallback, fileCallback, deferred, tick, source } = require('./thread-trash-ui-test-helpers.cjs');
-installTsLoader(); installAliasResolver();
+installTsLoader({ jsx: true }); installAliasResolver();
 const { resolveWebSearch } = require('../lib/webSearchPreference.ts');
 const { parseMessageSources } = require('../lib/sourceChips.ts');
 const { getDefaultModel } = require('../lib/modelRegistry.ts');
 const { buildMessageWithTextFiles } = require('../lib/attachmentContent.ts');
+const { canUseDeepThinking } = require('../components/ChatInput.tsx');
 const trash = require('../lib/threads/trash-client.ts');
 const plain = value => JSON.parse(JSON.stringify(value));
 const sources = { v: 1, provider: 'claude', items: [{ url: 'https://example.com/', title: 'Title', domain: 'example.com' }] };
@@ -14,7 +15,7 @@ const old = { id: 'a', thread_id: 't', role: 'assistant', content: 'old answer',
 const user = { id: 'u', role: 'user', content: 'question', provider: 'user' };
 function setup(options = {}) {
   const state = { messages: [user, structuredClone(old)], temporaryMessages: [], loading: false, searching: false, threadId: 't', epoch: 0 };
-  const bodies = [], calls = [], notices = [];
+  const bodies = [], rawBodies = [], calls = [], notices = [];
   const c = {
     ...trash, resolveWebSearch, getDefaultModel, parseMessageSources,
     webSearchPreference: options.preference ?? false, isTemporary: !!options.temporary, isTemporaryRef: { current: !!options.temporary },
@@ -39,15 +40,15 @@ function setup(options = {}) {
       return Response.json(options.sync === 'missing' ? [user] : options.dbRows ?? [user, old]);
     },
     fetchWithStreaming: async (url, headers, body) => {
-      bodies.push(JSON.parse(body));
+      bodies.push(JSON.parse(body)); rawBodies.push(body);
       return { userMessage: user, assistantMessage: { ...old, content: 'STREAM answer', metadata: { sources } }, aborted: !!options.aborted };
     },
     webApiClient: { request: async (url, init) => {
-      bodies.push(JSON.parse(init.body));
+      bodies.push(JSON.parse(init.body)); rawBodies.push(init.body);
       return Response.json({ userMessage: user, assistantMessage: { ...old, content: 'temporary', metadata: { sources } } });
     } },
   };
-  return { c, state, bodies, calls, notices };
+  return { c, state, bodies, rawBodies, calls, notices };
 }
 
 for (const preference of [false, true]) test(`all five request paths omit OFF or include true only when requested, preference=${preference}`, async () => {
@@ -203,4 +204,88 @@ test('light abort restores metadata and provider alongside content/model without
 test('search setters are reset at every progress-clear site; props and roleplay availability are wired', () => {
   assert.match(source, /isWebSearching=\{isWebSearching\}/);
   for (const match of source.matchAll(/setGithubProgressMessages\(\[\]\);/g)) assert.match(source.slice(match.index, match.index + 110), /setWebSearchingState\(false\)/);
+});
+
+// Raw bodies captured from eea4db6 before Phase 2b edits. Do not regenerate from the worktree.
+const CLIENT_OFF_GOLDEN = {
+  "normal": "{\"threadId\":\"t\",\"queryText\":\"question\",\"messages\":[{\"role\":\"user\",\"content\":\"question\",\"provider\":\"user\"},{\"role\":\"assistant\",\"content\":\"old answer\",\"provider\":\"claude\"}],\"userContent\":\"question\",\"provider\":\"openai\",\"modelId\":\"gpt-5.4-mini\",\"systemPrompt\":\"\",\"attachedImages\":[],\"isDeepThinking\":false}",
+  "temporary": "{\"threadId\":null,\"messages\":[{\"role\":\"user\",\"content\":\"question\",\"provider\":\"user\"},{\"role\":\"assistant\",\"content\":\"old answer\",\"provider\":\"claude\"},{\"role\":\"user\",\"content\":\"question\",\"provider\":\"user\"}],\"userContent\":\"question\",\"provider\":\"openai\",\"modelId\":\"gpt-5.4-mini\",\"systemPrompt\":\"\",\"isTemporary\":true,\"attachedImages\":[]}",
+  "branch": "{\"threadId\":\"t\",\"messages\":[{\"role\":\"user\",\"content\":\"question\",\"provider\":\"user\"}],\"userContent\":\"question\",\"provider\":\"openai\",\"modelId\":\"gpt-5.4-mini\",\"isRegenerate\":true,\"regenerateMode\":\"branch\",\"systemPrompt\":\"\"}",
+  "light": "{\"threadId\":\"t\",\"messages\":[{\"role\":\"user\",\"content\":\"question\",\"provider\":\"user\"}],\"userContent\":\"question\",\"provider\":\"openai\",\"modelId\":\"gpt-5.4-mini\",\"isRegenerate\":true,\"regenerateMode\":\"light\",\"targetMessageId\":\"a\",\"systemPrompt\":\"\"}",
+  "edit": "{\"threadId\":\"t\",\"userContent\":\"edited\",\"provider\":\"openai\",\"modelId\":\"gpt-5.4-mini\",\"branchEdit\":{\"baseUserMessageId\":\"u\"},\"systemPrompt\":\"\"}"
+};
+
+async function sendOpenAIPath(kind, { preference = true, roleplay = false, provider = 'openai', modelId = 'gpt-5.4-mini' } = {}) {
+  const s = setup({ preference, roleplay, temporary: kind === 'temporary' });
+  s.c.provider = provider;
+  s.c.loadModel = () => modelId;
+  if (['normal', 'temporary'].includes(kind)) await pageCallback('handleSubmit', s.c)('question', modelId, undefined, false, 'question', { webSearch: preference });
+  else if (kind === 'edit') await pageCallback('handleEditAndRegenerate', s.c)(user, 'edited', provider, modelId);
+  else await pageCallback('handleRegenerate', s.c)(provider, s.c.messages[1], modelId, kind);
+  assert.equal(s.bodies.length, 1, kind);
+  return s;
+}
+
+for (const kind of ['normal', 'temporary', 'branch', 'light', 'edit']) for (const scenario of [
+  { name: 'OpenAI supported ON', expected: true },
+  { name: 'OpenAI OFF', preference: false, expected: false },
+  { name: '4o ON', modelId: 'gpt-4o', expected: false },
+  { name: 'Pro ON', modelId: 'gpt-5.5-pro', expected: false },
+  { name: 'OpenAI roleplay ON', roleplay: true, expected: false },
+  { name: 'Gemini ON', provider: 'gemini', modelId: 'gemini-3.8-flash', expected: false },
+]) test(`${kind} request search gating: ${scenario.name}`, async () => {
+  const s = await sendOpenAIPath(kind, scenario);
+  assert.equal(Object.hasOwn(s.bodies[0], 'webSearch'), scenario.expected);
+  if (scenario.expected) assert.equal(s.bodies[0].webSearch, true);
+  assert.equal(s.bodies[0].provider, scenario.provider ?? 'openai');
+  assert.equal(s.bodies[0].modelId, scenario.modelId ?? 'gpt-5.4-mini');
+});
+
+for (const kind of ['branch', 'light', 'edit']) for (const sourceProvider of ['claude', 'gemini']) test(`${kind} regenerates ${sourceProvider} as OpenAI using target server default`, async () => {
+  const s = setup({ preference: true });
+  s.c.provider = sourceProvider;
+  s.c.messages[1].provider = sourceProvider;
+  s.c.messages[1].model_id = getDefaultModel(sourceProvider, 'chat');
+  s.c.loadModel = () => { throw new Error('Regeneration must not use the current provider stored model'); };
+  const resolutions = [];
+  s.c.resolveWebSearch = input => { resolutions.push(input); return resolveWebSearch(input); };
+  if (kind === 'edit') await pageCallback('handleEditAndRegenerate', s.c)(user, 'edited', 'openai');
+  else await pageCallback('handleRegenerate', s.c)('openai', s.c.messages[1], undefined, kind);
+  assert.equal(s.bodies.length, 1); assert.equal(s.bodies[0].provider, 'openai'); assert.equal(s.bodies[0].webSearch, true);
+  assert.equal(Object.hasOwn(s.bodies[0], 'modelId'), false);
+  assert.equal(resolutions[0].provider, 'openai'); assert.equal(resolutions[0].modelId, getDefaultModel('openai', 'chat'));
+});
+
+for (const kind of ['branch', 'light', 'edit']) for (const targetProvider of ['claude', 'gemini']) test(`${kind} uses ${targetProvider} target capability when the current provider is OpenAI`, async () => {
+  const s = setup({ preference: true }); s.c.provider = 'openai';
+  if (kind === 'edit') await pageCallback('handleEditAndRegenerate', s.c)(user, 'edited', targetProvider);
+  else await pageCallback('handleRegenerate', s.c)(targetProvider, s.c.messages[1], undefined, kind);
+  assert.equal(s.bodies.length, 1); assert.equal(s.bodies[0].provider, targetProvider);
+  assert.equal(Object.hasOwn(s.bodies[0], 'webSearch'), targetProvider === 'claude');
+  if (targetProvider === 'claude') assert.equal(s.bodies[0].webSearch, true);
+});
+
+for (const file of ['components/ChatInput.tsx', 'components/ChatInputCentered.tsx']) test(`${file} submits OpenAI search without enabling stale deep thinking`, () => {
+  for (const modelId of ['gpt-5.4-mini', 'gpt-4o', 'gpt-5.5-pro']) for (const preference of [false, true]) {
+    let args;
+    const files = [{ kind: 'text', name: 'note.txt', content: 'attached' }, { kind: 'image', name: 'i', base64: 'bytes', mediaType: 'image/jpeg', previewUrl: 'blob:preview' }];
+    const c = { value: ' raw ', provider: 'openai', activeProvider: 'openai', selectedModel: modelId,
+      attachedFiles: files, isDeepThinking: true, canUseDeepThinking, buildMessageWithTextFiles,
+      webSearchPreference: preference, webSearchAvailable: true, resolveWebSearch,
+      onChange() {}, onSubmit(...value) { args = value; }, setAttachedFiles() {}, setIsPreviewExpanded() {}, URL: { revokeObjectURL() {} },
+    };
+    fileCallback(file, 'handleSubmit', c)();
+    assert.equal(args[0], buildMessageWithTextFiles(c.value, [files[0]]).content); assert.equal(args[1], modelId);
+    assert.deepEqual(plain(args[2]), [{ kind: 'image', name: 'i', base64: 'bytes', mediaType: 'image/jpeg' }]);
+    assert.equal(args[3], false); assert.equal(args[4], ' raw ');
+    assert.deepEqual(plain(args[5]), { webSearch: preference && modelId === 'gpt-5.4-mini' });
+  }
+});
+
+test('all five OpenAI client OFF raw request bodies match immutable eea4db6 baseline bytes', async () => {
+  for (const kind of ['normal', 'temporary', 'branch', 'light', 'edit']) {
+    const s = await sendOpenAIPath(kind, { preference: false });
+    assert.equal(s.rawBodies.length, 1);
+    assert.deepEqual(Buffer.from(s.rawBodies[0]), Buffer.from(CLIENT_OFF_GOLDEN[kind]), kind);
+  }
 });

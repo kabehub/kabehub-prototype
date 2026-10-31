@@ -50,5 +50,5 @@ export function resolveWebSearch(input: {
   modelId: string;
   roleplay?: boolean;
 }): boolean {
-  return input.preference && input.provider === "claude" && supportsWebSearch("claude", input.modelId) && !input.roleplay;
+  return input.preference && !input.roleplay && (input.provider === "claude" || input.provider === "openai") && supportsWebSearch(input.provider, input.modelId);
 }

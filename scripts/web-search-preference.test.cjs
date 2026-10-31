@@ -15,6 +15,7 @@ Module._load = function (name, parent, main) {
 const preference = require('../lib/webSearchPreference.ts');
 Module._load = load;
 const { readWebSearchPreference: read, writeWebSearchPreference: write, resolveWebSearch, useWebSearchPreference, WEB_SEARCH_STORAGE_KEY: key } = preference;
+const { MODEL_REGISTRY, supportsWebSearch } = require('../lib/modelRegistry.ts');
 const storage = () => {
   const data = new Map();
   return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };
@@ -56,4 +57,41 @@ test('resolveWebSearch truth table preserves stored preference but gates provide
     for (const modelId of ['claude-sonnet-4-5', 'unknown']) for (const roleplay of [false, true]) {
       assert.equal(resolveWebSearch({ preference, provider, modelId, roleplay }), preference && provider === 'claude' && modelId === 'claude-sonnet-4-5' && !roleplay);
     }
+});
+
+test('resolveWebSearch returns strict booleans for supported, unsupported and foreign provider truth tables', () => {
+  const cases = [
+    ['claude', 'claude-sonnet-4-5', true], ['openai', 'gpt-5.4-mini', true],
+    ['openai', 'gpt-4o', false], ['openai', 'gpt-5.5-pro', false], ['openai', 'unknown', false],
+    ['gemini', 'gemini-3.8-flash', false], ['gemini', 'gpt-5.4-mini', false],
+    ['image_gen', 'gpt-image-2.5-sunburst', false], ['image_gen', 'gpt-5.4-mini', false],
+    ['unknown', 'gpt-5.4-mini', false], ['unknown', 'claude-sonnet-4-5', false],
+    ['claude', 'gpt-5.4-mini', false], ['openai', 'claude-sonnet-4-5', false],
+  ];
+  for (const [provider, modelId, supported] of cases) for (const preference of [false, true]) for (const roleplay of [undefined, false, true]) {
+    const actual = resolveWebSearch({ preference, provider, modelId, roleplay });
+    assert.equal(typeof actual, 'boolean');
+    assert.equal(actual, supported && preference && !roleplay, `${provider}/${modelId}/${preference}/${roleplay}`);
+  }
+});
+
+test('resolveWebSearch enables exactly the ten OpenAI registry search models', () => {
+  const models = MODEL_REGISTRY.filter(model => model.kind === 'text' && model.provider === 'openai');
+  const supported = models.filter(model => model.features?.webSearch === true).map(model => model.id);
+  const enabled = models.filter(model => resolveWebSearch({ preference: true, provider: 'openai', modelId: model.id })).map(model => model.id);
+  assert.equal(supported.length, 10);
+  assert.deepEqual(enabled, supported);
+  for (const modelId of supported) {
+    assert.equal(resolveWebSearch({ preference: false, provider: 'openai', modelId }), false);
+    assert.equal(resolveWebSearch({ preference: true, provider: 'openai', modelId, roleplay: true }), false);
+  }
+});
+
+test('all Claude model results retain the pre-Phase-2b behavior', () => {
+  const ids = [...MODEL_REGISTRY.filter(model => model.kind === 'text' && model.provider === 'claude').map(model => model.id), 'unknown'];
+  for (const modelId of ids) for (const preference of [false, true]) for (const roleplay of [undefined, false, true]) {
+    const actual = resolveWebSearch({ preference, provider: 'claude', modelId, roleplay });
+    assert.equal(typeof actual, 'boolean');
+    assert.equal(actual, preference && supportsWebSearch('claude', modelId) && !roleplay);
+  }
 });

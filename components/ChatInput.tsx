@@ -1359,7 +1359,6 @@ export default function ChatInput({
 
           {/* 🧠 深く考えるボタン（Claudeのみ） */}
           {provider === "claude" && (
-            <>
             <button
               onClick={() => setIsDeepThinking((v) => !v)}
               disabled={isThinkingUnsupported(selectedModel) || isLoading || !!disabled}
@@ -1383,8 +1382,9 @@ export default function ChatInput({
             >
               🧠 深く考える
             </button>
-            <WebSearchToggle preference={webSearchPreference} onChange={setWebSearchPreference} modelId={selectedModel} available={webSearchAvailable} disabled={isLoading || !!disabled} />
-            </>
+          )}
+          {(provider === "claude" || provider === "openai") && (
+            <WebSearchToggle provider={provider} preference={webSearchPreference} onChange={setWebSearchPreference} modelId={selectedModel} available={webSearchAvailable} disabled={isLoading || !!disabled} />
           )}
 
           {/* 🖼️ 参照画像ボタン（image_gen モード時のみ） */}

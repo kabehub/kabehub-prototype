@@ -964,7 +964,6 @@ export default function ChatInputCentered({
                 </button>
 
                 {activeProvider === "claude" && (
-                  <>
                   <button
                     onClick={() => setIsDeepThinking((v) => !v)}
                     disabled={isDeepThinkingDisabled}
@@ -988,8 +987,9 @@ export default function ChatInputCentered({
                   >
                     🧠 深く考える
                   </button>
-                  <WebSearchToggle preference={webSearchPreference} onChange={setWebSearchPreference} modelId={selectedModel} available={webSearchAvailable} disabled={isLoading || disabled} />
-                  </>
+                )}
+                {(activeProvider === "claude" || activeProvider === "openai") && (
+                  <WebSearchToggle provider={activeProvider} preference={webSearchPreference} onChange={setWebSearchPreference} modelId={selectedModel} available={webSearchAvailable} disabled={isLoading || disabled} />
                 )}
 
                 {!isMobile && (
