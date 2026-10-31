@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -335,7 +335,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-31実測で1686件（Lv2 Phase 3b反映後）、全件成功。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1692件（カード本文の箇条書き描画反映後）、全件成功。
 - mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件。2026-10-31の再計測はしていない）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 

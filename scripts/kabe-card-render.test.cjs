@@ -121,10 +121,12 @@ test('render: raw HTML and dangerous URLs do not create unsafe output elements/a
   }
   assert.match(html, />bad<\/a>/);
 });
-test('render: disallowed block elements unwrap and retain child text', () => {
+test('render: lists render while disallowed heading and code block elements unwrap and retain text', () => {
   const html = render(fence('title: A\n\n# heading text\n\n- list text\n\n~~~js\ncode text\n~~~'));
   assert.equal(countCards(html), 1);
-  assert.doesNotMatch(html, /<h1|<ul|<li|<pre|<img/);
+  assert.doesNotMatch(html, /<h1|<pre|<img/);
+  assert.match(html, /<ul\b/);
+  assert.match(html, /<li\b/);
   for (const text of ['heading text', 'list text', 'code text']) assert.ok(html.includes(text));
 });
 test('render: other code languages retain labels, content and download eligibility', () => {
@@ -148,4 +150,71 @@ test('render: Step 0 positions still point into original unprocessed content', (
   } }, content));
   assert.equal(source, '```kabe-card\n> title: A\n> body\n> ```');
   assert.equal(countCards(render(content)), 1);
+});
+
+test('render: card bullets keep each inline-markdown item in its own list item', () => {
+  for (const variant of ['default', 'share']) {
+    const html = render(fence('title: A\n- **A**: a\n- **B**: b\n- **C**: c'), variant);
+    assert.equal(countCards(html), 1);
+    assert.equal((html.match(/<ul\b/g) || []).length, 1);
+    assert.equal((html.match(/<li\b/g) || []).length, 3);
+    for (const [label, value] of [['A', 'a'], ['B', 'b'], ['C', 'c']]) {
+      assert.ok(html.includes('<strong>' + label + '</strong>: ' + value + '</li>'));
+    }
+    assert.match(html, /<ul style="margin:2px 0;padding-left:1.25em;list-style-type:disc"/);
+    assert.match(html, /<li style="margin:0"><strong>A<\/strong>: a<\/li>/);
+  }
+});
+
+test('render: ordered card lists preserve item boundaries and a non-default start', () => {
+  for (const variant of ['default', 'share']) {
+    const html = render(fence('title: A\n1. x\n2. y'), variant);
+    assert.equal((html.match(/<ol\b/g) || []).length, 1);
+    assert.equal((html.match(/<li\b/g) || []).length, 2);
+    assert.match(html, /<li[^>]*>x<\/li>/);
+    assert.match(html, /<li[^>]*>y<\/li>/);
+    assert.match(html, /<ol style="margin:2px 0;padding-left:1.5em;list-style-type:decimal"/);
+    assert.match(render(fence('title: A\n3. x'), variant), /<ol start="3"/);
+  }
+});
+
+test('render: nested card bullets retain both list levels', () => {
+  for (const variant of ['default', 'share']) {
+    const html = render(fence('title: A\n- a\n  - b'), variant);
+    assert.equal((html.match(/<ul\b/g) || []).length, 2);
+    assert.equal((html.match(/<li\b/g) || []).length, 2);
+    assert.match(html, /<li[^>]*>a\s*<ul[^>]*>\s*<li[^>]*>b<\/li>\s*<\/ul>\s*<\/li>/);
+  }
+});
+
+test('render: card paragraphs and bullet lists coexist', () => {
+  for (const variant of ['default', 'share']) {
+    const html = render(fence('title: A\n説明文\n\n- x\n- y'), variant);
+    assert.match(html, /<p style="margin:0">説明文<\/p>/);
+    assert.match(html, /<ul\b/);
+    assert.equal((html.match(/<li\b/g) || []).length, 2);
+  }
+});
+
+test('render: card task lists retain text without checkbox inputs', () => {
+  for (const variant of ['default', 'share']) {
+    const html = render(fence('title: A\n- [ ] todo'), variant);
+    assert.doesNotMatch(html, /<input\b/);
+    assert.match(html, /<li[^>]*>\s*todo<\/li>/);
+  }
+});
+
+test('render: card lists keep unsafe URLs, images, event attributes and raw HTML out of DOM elements', () => {
+  for (const variant of ['default', 'share']) {
+    const html = render(fence('title: A\n- [x](javascript:alert(1))\n- ![alt](https://example.com/image.png)\n- <img src=x onerror=alert(1)>\n- <b>x</b>'), variant);
+    assert.equal(countCards(html), 1);
+    assert.doesNotMatch(html, /<img\b|<b\b/);
+    assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
+    const tags = html.match(/<[a-z][^>]*>/gi) || [];
+    for (const tag of tags) {
+      assert.doesNotMatch(tag, /\s+on[^\s=/>]*\s*=/i);
+      for (const [, href] of tag.matchAll(/\bhref="([^"]*)"/gi)) assert.doesNotMatch(href, /javascript:/i);
+    }
+    assert.match(html, />x<\/a>/);
+  }
 });

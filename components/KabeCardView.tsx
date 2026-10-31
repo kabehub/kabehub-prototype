@@ -62,10 +62,13 @@ export default function KabeCardView({
           <div style={{ fontSize: "13px", lineHeight: 1.7, color: "var(--ink, #1f2937)" }}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              allowedElements={["p", "strong", "em", "del", "a", "code", "br"]}
+              allowedElements={["p", "strong", "em", "del", "a", "code", "br", "ul", "ol", "li"]}
               unwrapDisallowed
               components={{
                 p({ children }) { return <p style={{ margin: 0 }}>{children}</p>; },
+                ul({ children }) { return <ul style={{ margin: "2px 0", paddingLeft: "1.25em", listStyleType: "disc" }}>{children}</ul>; },
+                ol({ children, start }) { return <ol start={typeof start === "number" ? start : undefined} style={{ margin: "2px 0", paddingLeft: "1.5em", listStyleType: "decimal" }}>{children}</ol>; },
+                li({ children }) { return <li style={{ margin: 0 }}>{children}</li>; },
                 code({ node: _node, ...props }) {
                   return <InlineMarkdownCode {...props} variant={variant} />;
                 },
