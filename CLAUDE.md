@@ -814,7 +814,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 自動要約差分更新 Phase 2c | revision 1 provenanceの起点roleをuserまたはassistantへ緩和し旧bootstrap履歴と互換化。差分入力はuserのみを維持（aacb57d） |
 | 自動要約差分更新 Phase 3 | Memoryタブの4ボタン・更新モーダル・警告GET／Lore警告・双方向排他・ドロワー保護・全topic結果ラベルとonAppliedによる1回refresh（674f926） |
 | リッチ会話UI Lv1 Web検索 | Claude（Phase 1a `04cc9ab`／1b `0ff9770`）とOpenAI（Phase 2a サーバー `eea4db6`／2b クライアント `d6ddd6a`）のWeb検索・出典チップ。詳細と判断（D番号）は`KabeHub_リッチ会話UI_Lv1Lv2_検討_引き継ぎ資料_v6.md`・`v7.md` |
-| リッチ会話UI Lv2 Phase 3b | AIのカード表示（実装中）。UI設定のLocalStorageトグルは既定ON。通常送信・branch／light・編集再生成で有効なときだけrichDisplayを送り、回答生成用stableへカード規則を追加。一時モード・メモ・roleplay・小説Project・GitHub探索は除外。OFFでも過去のカード描画を維持。コミット：実装中 |
+| リッチ会話UI Lv2 Phase 3b | AIのカード表示。UI設定のLocalStorageトグルは既定ON。通常送信・branch／light・編集再生成で有効なときだけrichDisplayを送り、回答生成用stableへカード規則を追加。一時モード・メモ・roleplay・小説Project・GitHub探索は除外。OFFでも過去のカード描画を維持。コミット：`a9d7044` |
 | D37 gpt-5.5-pro画像入力の修正 | Pro分岐がChat Completions形式の画像をResponses APIへ送りHTTP 400になっていた不具合を、`buildResponsesInput`でResponses形式に変換して修正。Web検索側の同一変換も共通化。golden 96件のうちPro画像4件のみ新形式、残り92件は不変。npm test 1634件成功。本番で画像付きProの動作確認OK（`fb4d5c6`、2026-10-31） |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。
