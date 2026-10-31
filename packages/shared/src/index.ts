@@ -148,6 +148,7 @@ export {
   KABE_CARD_MAX_BODY_LENGTH,
   parseKabeCard,
   isKabeCardFenceClosed,
+  replaceKabeCards,
   createKabeCardLimiter,
 } from "./kabeCard";
 

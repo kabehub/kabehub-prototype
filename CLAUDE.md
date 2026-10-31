@@ -256,7 +256,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/messageDisplay.ts` | メッセージのprovider名・色とモデルlabelを解決するclient-safe共通helper。legacy ID・過去モデル・未知IDに対応 |
 | `lib/context-window.ts` | `trimContextToWindow`。コンテキストウィンドウのトリミング・キャッシュアンカー算出 |
 | `lib/csp.ts` | CSPヘッダー生成・違反レポート解析・報告URL無害化 |
-| `lib/exportUtils.ts` | 会話エクスポート生成（`buildExportContent`等）。`components/ChatPanel.tsx`・`app/settings/page.tsx`から利用 |
+| `lib/exportUtils.ts` | 会話エクスポート生成（`buildExportContent`等）。`components/ChatPanel.tsx`・`app/settings/page.tsx`から利用。md2のAI本文先頭が0〜3スペースのフェンスならprovider見出し＋本文全行を出力し、開始フェンス消失を防ぐ |
 | `lib/formatters.ts` | 相対時刻とローカル日時の表示フォーマッター |
 | `lib/genres.ts` | ジャンル階層マスタ（`GENRES`）と子ジャンルID取得ヘルパー（`getChildIds`） |
 | `lib/github-token-crypto.ts` | AES-GCMによるGitHubトークンの暗号化・復号 |
@@ -278,7 +278,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/proxy-paths.ts` | `proxy.ts`と対応する認証・公開・MCP・`next`復帰先のパス/メソッド判定 |
 | `lib/rate-limit.ts` | `checkChatRateLimit`。チャットのレート制限 |
 | `lib/storage-path-guard.ts` | Storageパスが指定ユーザーの名前空間配下にあるか検証 |
-| `lib/stringUtils.ts` | secret notationのmaskとメッセージsummary生成 |
+| `lib/stringUtils.ts` | `@kabehub/shared`の`SECRET_MASK`／`generateMessageSummary`／`maskSecretNotation`を薄くre-export。要約の正本は`packages/shared/src/stringUtils.ts`で、従来結果が空の場合だけ先頭の有効カードtitleへフォールバック |
+| `packages/shared/src/kabeCard.ts` | カード型・parse・閉鎖判定・描画枚数制限と`replaceKabeCards`。置換は最上位・行頭0スペースの閉じた有効カード20枚まで。外側の0〜3スペースの他フェンスは読み飛ばし、未変更部分の改行を保持。引用／リスト／インデント内は対象外で、ASTレンダラーとは認識範囲・枚数集合が異なりうる |
 | `lib/supabase.ts` | browser・Server Components・Route Handler用Supabase helperのbarrel export |
 | `lib/supabase/admin.ts` | Cron・管理バッチ用のservice role Supabaseクライアント生成 |
 | `lib/supabase/client-auth.ts` | browser側の`auth.getUser()`と認証エラー処理を共通化 |
@@ -335,7 +336,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1692件（カード本文の箇条書き描画反映後）、全件成功。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1776件（カード下流対応B1の84件追加後）、全件成功・失敗／skipなし。
 - mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件。2026-10-31の再計測はしていない）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
@@ -358,6 +359,9 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
 | `scripts/rich-display-preference.test.cjs` | 既定ON・0のみOFF・storage例外・厳密な送信判定・同一タブの即時購読通知・別タブstorageイベントを検証 |
 | `scripts/kabe-card-system-prompt.test.cjs` | 規則全文のバイト固定・LFと末尾改行なし・注入条件・OFF文字列の不変を検証 |
+| `scripts/kabe-card.test.cjs` | 既存parse／閉鎖判定／limiterに、カード置換の41件を追加。外側フェンス・CRLF／CR／LF保持・無効／未閉鎖の原文保持・有効20枚制限・ASTとの意図的な認識差を検証 |
+| `scripts/message-summary-kabe-card.test.cjs` | 24件。空要約のみtitleへフォールバック、非空の従来結果維持、UTF-16切り詰め維持、user貼り付け、Web／sharedの出力一致とmask互換を検証 |
+| `scripts/export-md2-fence.test.cjs` | 19件。実関数で先頭フェンス保持・provider見出し・後続メッセージがフェンス外にある構造、通常文／user／memoの従来出力、md／txt／CSV／ZIP JSONの不変を検証 |
 | `scripts/chat-rich-display.test.cjs` | route経由で全providerのON注入・非trueのOFF body互換・memo／一時／roleplay／novel除外・Claude marker位置・GitHub探索への非注入・trimへの反映を検証 |
 | `scripts/thread-trash-ui-test-helpers.cjs` | pageCallbackのhandleSubmit／handleRegenerate／handleEditAndRegenerateだけ、resolveRichDisplayとrichDisplayPreferenceのown property不足を即時検出。fileCallbackには適用しない。query-text-regenerationのローカルcallbackも同じガードを持つ |
 | `scripts/chat-lore-search-plan.test.cjs` | 19語全件・非トリガー・temporary・OpenAIキー・novel・対象project有無の検索計画、queryTextのフォールバック・空文字・空白・上限・サロゲート境界を検証 |
@@ -815,6 +819,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 自動要約差分更新 Phase 3 | Memoryタブの4ボタン・更新モーダル・警告GET／Lore警告・双方向排他・ドロワー保護・全topic結果ラベルとonAppliedによる1回refresh（674f926） |
 | リッチ会話UI Lv1 Web検索 | Claude（Phase 1a `04cc9ab`／1b `0ff9770`）とOpenAI（Phase 2a サーバー `eea4db6`／2b クライアント `d6ddd6a`）のWeb検索・出典チップ。詳細と判断（D番号）は`KabeHub_リッチ会話UI_Lv1Lv2_検討_引き継ぎ資料_v6.md`・`v7.md` |
 | リッチ会話UI Lv2 Phase 3b | AIのカード表示。UI設定のLocalStorageトグルは既定ON。通常送信・branch／light・編集再生成で有効なときだけrichDisplayを送り、回答生成用stableへカード規則を追加。一時モード・メモ・roleplay・小説Project・GitHub探索は除外。OFFでも過去のカード描画を維持。コミット：`a9d7044` |
+| カード下流対応 B1 | md2で先頭フェンスを保持しprovider見出しを付与。履歴・分岐・アウトラインの従来要約が空の場合だけ、先頭の有効カードtitleを表示。保存形式とmd／txt／CSV／JSON、検索・コピー・MCP・Lore・自動要約・描画は変更しない。引用／リスト内等のカードは要約ヘルパー対象外で、既存の非空要約を優先 |
 | D37 gpt-5.5-pro画像入力の修正 | Pro分岐がChat Completions形式の画像をResponses APIへ送りHTTP 400になっていた不具合を、`buildResponsesInput`でResponses形式に変換して修正。Web検索側の同一変換も共通化。golden 96件のうちPro画像4件のみ新形式、残り92件は不変。npm test 1634件成功。本番で画像付きProの動作確認OK（`fb4d5c6`、2026-10-31） |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。

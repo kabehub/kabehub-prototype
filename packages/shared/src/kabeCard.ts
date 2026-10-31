@@ -77,3 +77,56 @@ export function createKabeCardLimiter(
     return ordinals.get(startOffset)! <= max;
   };
 }
+
+/**
+ * Replace closed, valid column-zero cards, preserving untouched source slices and
+ * their original line endings. All 0–3-space fences are tracked so examples in
+ * other code blocks (including indented ones) remain opaque.
+ *
+ * Known limitation (D71): quoted/list/1–3-space-indented cards are not replaced,
+ * although MarkdownRenderer's AST may render them. The 20-card budget therefore
+ * counts this helper's recognized cards, not necessarily the renderer's set.
+ */
+export function replaceKabeCards(
+  content: string,
+  replacer: (card: KabeCard) => string
+): string {
+  let open: {
+    character: string; length: number; start: number; innerStart: number; isCard: boolean;
+  } | null = null;
+  let validCount = 0;
+  let cursor = 0;
+  const parts: string[] = [];
+
+  // Capture each line without normalizing CRLF/CR/LF; match.index is its source offset.
+  for (const match of content.matchAll(/([^\r\n]*)(\r\n|\r|\n|$)/g)) {
+    if (match[0] === "") break;
+    const line = match[1];
+    const start = match.index!;
+    if (open) {
+      const closing = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+      if (!closing || closing[1][0] !== open.character || closing[1].length < open.length) continue;
+      if (open.isCard) {
+        const inner = content.slice(open.innerStart, start).replace(/(?:\r\n|\r|\n)$/, "");
+        const card = parseKabeCard(inner);
+        if (card && ++validCount <= KABE_CARD_MAX_PER_MESSAGE) {
+          parts.push(content.slice(cursor, open.start), replacer(card));
+          cursor = start + line.length; // Keep the closing line's original newline.
+        }
+      }
+      open = null;
+      continue;
+    }
+
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!opening || (opening[1][0] === "`" && opening[2].includes("`"))) continue;
+    open = {
+      character: opening[1][0], length: opening[1].length,
+      start, innerStart: start + match[0].length,
+      isCard: line[0] !== " " && opening[2].trim().split(/\s+/)[0] === "kabe-card",
+    };
+  }
+  // An unclosed fence stays in the untouched tail, including everything inside it.
+  if (parts.length === 0) return content;
+  return parts.join("") + content.slice(cursor);
+}

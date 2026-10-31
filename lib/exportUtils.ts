@@ -74,7 +74,12 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   const modelInfo = ` (${modelLabel})`;
 
   const aiLines = content.split("\n");
-  const firstLine = aiLines[0].replace(/^#+\s*/, "").replace(/[*_`]/g, "");
+  // Export must retain the opening line, so detect fences broadly (0–3 spaces),
+  // unlike the column-zero-only card replacement helper. Unclosed fences are not repaired.
+  const startsWithFence = /^ {0,3}(`{3,}|~{3,})/.test(aiLines[0]);
+  const firstLine = startsWithFence
+    ? providerLabel
+    : aiLines[0].replace(/^#+\s*/, "").replace(/[*_`]/g, "");
 
   // AI絵文字をプロバイダーで出し分け
   const aiEmoji =
@@ -85,15 +90,10 @@ const buildMd2Message = (msg: Message, options: ExportOptions): string => {
   lines.push(`*${providerLabel}${modelInfo} · ${timestamp}*`);
   lines.push("");
 
-  // 1行目（タイトル行）はスキップして本文から出力
-  aiLines.slice(1).forEach(l => {
-    // ##はそのまま・###はH2に格上げ（サイドバー用）
-    if (l.startsWith("### ")) {
-      lines.push(l.replace(/^###\s+/, "## "));
-    } else {
-      lines.push(l);
-    }
-  });
+  // ##はそのまま・###はH2に格上げ（コードブロック内への適用も従来どおり）。
+  const promoteHeading = (line: string) => line.startsWith("### ") ? line.replace(/^###\s+/, "## ") : line;
+  const bodyLines = startsWithFence ? aiLines : aiLines.slice(1);
+  bodyLines.forEach(line => lines.push(promoteHeading(line)));
 
   return lines.join("\n");
 };
