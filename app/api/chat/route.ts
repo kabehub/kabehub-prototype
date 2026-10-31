@@ -5,6 +5,7 @@ import { createRouteHandlerSupabaseClient } from "@/lib/supabase/route-handler";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { v4 as uuidv4 } from "uuid";
 import { buildClaudeSystemBlocks, buildCombinedSystemPrompt, type CachedSystemBlock } from "@/lib/chat-system-blocks";
+import { appendKabeCardRules, shouldInjectKabeCardRules } from "@/lib/kabe-card-system-prompt";
 import { trimContextToWindow } from "@/lib/context-window";
 import { checkChatRateLimit } from "@/lib/rate-limit";
 import {
@@ -718,6 +719,7 @@ export async function POST(req: NextRequest) {
     attachedImages?: { base64: string; mediaType: string }[];
     isDeepThinking?: boolean;
     webSearch?: boolean;
+    richDisplay?: unknown;
     imageContextId?: unknown;
     branchEdit?: { baseUserMessageId?: string };
     regenerateMode?: string;
@@ -737,7 +739,7 @@ export async function POST(req: NextRequest) {
   const {
     threadId, messages, userContent, queryText, provider, modelId,
     isRegenerate, isMemo, systemPrompt, isTemporary, attachedImages, isDeepThinking,
-    imageContextId, branchEdit, regenerateMode, targetMessageId, targetUserMessageId, webSearch,
+    imageContextId, branchEdit, regenerateMode, targetMessageId, targetUserMessageId, webSearch, richDisplay,
   } = requestBody;
 
   const hasText = typeof userContent === "string" && userContent.trim().length > 0;
@@ -806,6 +808,8 @@ export async function POST(req: NextRequest) {
   let loreTargetProjectId: string | null = null;
   let currentProjectId: string | null = null;
   let loreEnabled = false;
+  let isRoleplayThread = false;
+  let isNovelProject = false;
   let pinnedGithubFiles: string[] = [];
   let githubRepo: string | null = null;
   let githubRef: string | undefined = undefined;
@@ -814,7 +818,7 @@ export async function POST(req: NextRequest) {
   if (!isTemporary) {
     let { data: thread, error: threadError } = await supabase
       .from('threads')
-      .select('project_id, user_id, deleted_at')
+      .select('project_id, user_id, deleted_at, roleplay_mode')
       .eq('id', threadId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -846,7 +850,7 @@ export async function POST(req: NextRequest) {
 
       const { data: confirmedThread, error: confirmedThreadError } = await supabase
         .from('threads')
-        .select('project_id, user_id, deleted_at')
+        .select('project_id, user_id, deleted_at, roleplay_mode')
         .eq('id', threadId)
         .eq('user_id', userId)
         .maybeSingle();
@@ -871,6 +875,7 @@ export async function POST(req: NextRequest) {
       thread = confirmedThread;
     }
 
+    isRoleplayThread = thread?.roleplay_mode === true;
     currentProjectId = thread?.project_id ?? null;
 
     if (currentProjectId !== null) {
@@ -892,6 +897,7 @@ export async function POST(req: NextRequest) {
         resolvedSystemPrompt = folderSetting?.system_prompt ?? undefined;
       }
       if (folderSetting?.folder_type === "novel") {
+        isNovelProject = true;
         loreTargetProjectId = currentProjectId;
         loreEnabled = true;
       }
@@ -1154,8 +1160,8 @@ export async function POST(req: NextRequest) {
   let dynamicSystemText: string | undefined = undefined;
   const cachedSystemBlocks: CachedSystemBlock[] = [];
   let cachedInsertionIndex: number | undefined;
-  const combinedSystemAtCurrentPosition = () => buildCombinedSystemPrompt({
-    stable: stableSystemPrompt,
+  const combinedSystemAtCurrentPosition = (stable: string = stableSystemPrompt) => buildCombinedSystemPrompt({
+    stable,
     cached: cachedSystemBlocks,
     pre: (dynamicSystemText ?? "").slice(0, cachedInsertionIndex),
     post: cachedInsertionIndex === undefined ? "" : (dynamicSystemText ?? "").slice(cachedInsertionIndex),
@@ -1427,9 +1433,13 @@ export async function POST(req: NextRequest) {
   };
 
   const labelNote = "\n\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。";
-  const stableSystemPrompt = resolvedSystemPrompt
+  const baseStableSystemPrompt = resolvedSystemPrompt
     ? resolvedSystemPrompt + labelNote
     : labelNote.trim();
+  const richDisplayEnabled = shouldInjectKabeCardRules({
+    richDisplay, isMemo: !!isMemo, isTemporary: isTemporary === true, isRoleplayThread, isNovelProject,
+  });
+  const stableSystemPrompt = appendKabeCardRules(baseStableSystemPrompt, richDisplayEnabled);
 
   if (participantNote.trim()) {
     dynamicSystemText = dynamicSystemText
@@ -1483,7 +1493,7 @@ export async function POST(req: NextRequest) {
   ) {
     try {
       const resolvedModelIdForLoop = isClaudeModel(resolvedModelId) ? resolvedModelId : DEFAULT_MODELS.claude;
-      const systemPromptForGithubLoop = combinedSystemAtCurrentPosition();
+      const systemPromptForGithubLoop = combinedSystemAtCurrentPosition(baseStableSystemPrompt);
       const discovery = await runGithubToolLoop({
         anthropicKey,
         modelId: resolvedModelIdForLoop,

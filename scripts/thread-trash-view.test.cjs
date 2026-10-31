@@ -27,12 +27,13 @@ test('remaining days clamps expired dates and rounds partial days upward', () =>
 });
 
 const { resolveWebSearch } = require("../lib/webSearchPreference.ts");
+const { resolveRichDisplay } = require("../lib/richDisplayPreference.ts");
 const { getDefaultModel } = require("../lib/modelRegistry.ts");
 function setup() {
   const events = [], toasts = [];
   const context = {
     ...trashClient,
-    resolveWebSearch, getDefaultModel, webSearchPreference: false, setWebSearchingState() {},
+    resolveWebSearch, resolveRichDisplay, getDefaultModel, webSearchPreference: false, richDisplayPreference: false, setWebSearchingState() {},
     activeThreadId: 't', activeThread: {}, messages: [], temporaryMessages: [], inputValue: '',
     threads: [{ id: 't', is_public: true }], displayThreads: [{ id: 't', is_public: true }], isLoading: false, isTemporary: false, provider: 'claude',
     activeThreadIdRef: { current: 't' }, viewEpochRef: { current: 1 }, isTemporaryRef: { current: false },

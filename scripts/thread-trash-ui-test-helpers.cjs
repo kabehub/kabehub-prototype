@@ -22,7 +22,15 @@ function extractCallback(ast, name, context) {
   vm.runInNewContext(compiled, context);
   return context.handler;
 }
-const pageCallback = (name, context) => extractCallback(ast, name, context);
+const GUARDED_PAGE_CALLBACKS = new Set(['handleSubmit', 'handleRegenerate', 'handleEditAndRegenerate']);
+function pageCallback(name, context) {
+  if (GUARDED_PAGE_CALLBACKS.has(name)) {
+    for (const key of ['resolveRichDisplay', 'richDisplayPreference']) {
+      if (!Object.hasOwn(context, key)) throw new Error(`Missing VM context: ${key} for ${name}`);
+    }
+  }
+  return extractCallback(ast, name, context);
+}
 function fileCallback(relativePath, name, context) {
   const file = path.join(__dirname, '..', relativePath);
   const ast = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

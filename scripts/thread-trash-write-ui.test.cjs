@@ -9,6 +9,7 @@ const { isViewCurrent } = require('../lib/threads/view-guard.ts');
 const trashResponse = () => Response.json({ error: 'thread is in trash' }, { status: 409 });
 const message = { id: 'm', thread_id: 't', content: 'hello', role: 'user', provider: 'user', created_at: '2026-10-25T00:00:00Z', metadata: { storagePath: 'u/t/img' } };
 const { resolveWebSearch } = require("../lib/webSearchPreference.ts");
+const { resolveRichDisplay } = require("../lib/richDisplayPreference.ts");
 const { getDefaultModel } = require("../lib/modelRegistry.ts");
 function setup() {
   const state = { inputValue: '', messages: [message], tags: [{ id: 'tag' }], showDialog: true,
@@ -16,7 +17,7 @@ function setup() {
   const notices = [], alerts = [], calls = [], updates = [];
   const c = {
     ...client, isViewCurrent,
-    resolveWebSearch, getDefaultModel, webSearchPreference: false, setWebSearchingState() {}, activeThreadId: 't', activeThreadIdRef: { current: 't' }, viewEpochRef: { current: 1 },
+    resolveWebSearch, resolveRichDisplay, getDefaultModel, webSearchPreference: false, richDisplayPreference: false, setWebSearchingState() {}, activeThreadId: 't', activeThreadIdRef: { current: 't' }, viewEpochRef: { current: 1 },
     isTemporaryRef: { current: false }, generationViewRef: { current: null }, abortReasonRef: { current: null }, abortControllerRef: { current: null },
     activeThread: {}, thread: { id: 't', title: 'title' }, messages: [message], temporaryMessages: [], isTemporary: false, isLoading: false,
     inputValue: '  original text  ', provider: 'claude', isImagePinned: false, imageContextId: null,

@@ -109,7 +109,7 @@ for(const file of ['app/api/threads/[id]/messages/restore-branch/route.ts','app/
 });
 test('chat rejects trash before upsert/external generation; pre-stream user trigger failure maps, assistant persistence stays unchanged',()=>{
   const s=read('app/api/chat/route.ts');
-  ordered(s,".select('project_id, user_id, deleted_at')",'if (thread?.deleted_at)','if (!thread) {','supabase.from("threads").upsert(');
+  ordered(s,".select('project_id, user_id, deleted_at, roleplay_mode')",'if (thread?.deleted_at)','if (!thread) {','supabase.from("threads").upsert(');
   ordered(s,'if (confirmedThread.deleted_at)','thread = confirmedThread');
   assert.match(s,/if \(isThreadTrashedError\(insertError\)\)[\s\S]*?status: 409/);
   assert.doesNotMatch(section(s,'async function saveAssistantMessage','export async function POST'),/isThreadTrashedError|status: 409/);

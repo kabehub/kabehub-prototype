@@ -9,6 +9,7 @@ require("./testBootstrap.cjs").installAliasResolver();
 const { createQueryTextRetention } = require("../lib/queryTextRetention.ts");
 const { buildMessageWithTextFiles, replaceQueryText } = require("../lib/attachmentContent.ts");
 const { resolveWebSearch } = require("../lib/webSearchPreference.ts");
+const { resolveRichDisplay } = require("../lib/richDisplayPreference.ts");
 const { getDefaultModel } = require("../lib/modelRegistry.ts");
 const root = path.resolve(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
@@ -18,7 +19,13 @@ const bubble = read("components/MessageBubble.tsx");
 const files = [{ name: "a.csv", content: "a,b\r\n1,2" }, { name: "b.md", content: "```\n前回の話" }];
 
 // Execute the actual page callback with mocked I/O, rather than duplicating its logic.
+const GUARDED_PAGE_CALLBACKS = new Set(['handleSubmit', 'handleRegenerate', 'handleEditAndRegenerate']);
 function callback(name, context) {
+  if (GUARDED_PAGE_CALLBACKS.has(name)) {
+    for (const key of ['resolveRichDisplay', 'richDisplayPreference']) {
+      if (!Object.hasOwn(context, key)) throw new Error(`Missing VM context: ${key} for ${name}`);
+    }
+  }
   const start = page.indexOf(`const ${name} = useCallback(`);
   assert.ok(start >= 0);
   const end = page.indexOf("}, [", start);
@@ -37,7 +44,7 @@ function setup(query = "raw", options = {}) {
   let returnedUser;
   const context = {
     ...require('../lib/threads/trash-client.ts'),
-    resolveWebSearch, getDefaultModel, webSearchPreference: false, setWebSearchingState() {},
+    resolveWebSearch, resolveRichDisplay, getDefaultModel, webSearchPreference: false, richDisplayPreference: false, setWebSearchingState() {},
     retention, replaceQueryText, isLoading: false, activeThreadId: "t", activeThread: {}, messages: [user, assistant],
     crypto: { randomUUID: () => "branch" }, uuidv4: () => "new-thread", provider: "claude", isTemporary: false, isTemporaryRef: { current: false },
     isImagePinned: false, imageContextId: null, loadModel: () => "model", temporaryMessages: [],

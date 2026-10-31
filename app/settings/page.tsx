@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client'
 import { getClientUser } from '@/lib/supabase/client-auth'
 import { generateBulkExportZip, type BulkExportRawData } from '@/lib/exportUtils'
 import { LS_ENTER_MODE, type EnterMode } from '@/lib/inputUtils'
+import { useRichDisplayPreference } from '@/lib/richDisplayPreference'
 import { MODEL_CONFIG, loadModel, saveModel, type ModelId } from '@/components/ChatInput'
 import { useToast } from '@/components/Toast'
 import { isValidHandleFormat, isAllUpperHandle, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from '@/lib/validationLimits'
@@ -96,6 +97,8 @@ function SettingsContent() {
   const [githubLoading, setGithubLoading] = useState(false)
   const [githubDisconnecting, setGithubDisconnecting] = useState(false)
   const [githubMessage, setGithubMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const [richDisplayPreference, writeRichDisplayPreference] = useRichDisplayPreference()
 
   // UI設定 state
   const [navAlwaysOn, setNavAlwaysOn] = useState(false)
@@ -1059,6 +1062,34 @@ function SettingsContent() {
                     position: 'absolute',
                     top: 3,
                     left: navAlwaysOn ? 27 : 3,
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: 'white',
+                    transition: 'left 0.2s',
+                    display: 'block',
+                  }}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-200">AIのカード表示</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  比較・候補の整理・注意点などを、AIが必要に応じてカード形式で回答します。OFFでも過去のカードは表示されます。ロールプレイと小説Projectでは自動適用されません。
+                </p>
+              </div>
+              <button
+                onClick={() => writeRichDisplayPreference(!richDisplayPreference)}
+                className="ml-6 relative"
+                style={{ width: 48, height: 24, borderRadius: 12, background: richDisplayPreference ? '#2563eb' : '#374151', border: 'none', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 3,
+                    left: richDisplayPreference ? 27 : 3,
                     width: 18,
                     height: 18,
                     borderRadius: '50%',

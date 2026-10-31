@@ -4,6 +4,7 @@ const { installTsLoader, installAliasResolver } = require('./testBootstrap.cjs')
 const { pageCallback, fileCallback, deferred, tick, source } = require('./thread-trash-ui-test-helpers.cjs');
 installTsLoader({ jsx: true }); installAliasResolver();
 const { resolveWebSearch } = require('../lib/webSearchPreference.ts');
+const { resolveRichDisplay } = require("../lib/richDisplayPreference.ts");
 const { parseMessageSources } = require('../lib/sourceChips.ts');
 const { getDefaultModel } = require('../lib/modelRegistry.ts');
 const { buildMessageWithTextFiles } = require('../lib/attachmentContent.ts');
@@ -17,7 +18,8 @@ function setup(options = {}) {
   const state = { messages: [user, structuredClone(old)], temporaryMessages: [], loading: false, searching: false, threadId: 't', epoch: 0 };
   const bodies = [], rawBodies = [], calls = [], notices = [];
   const c = {
-    ...trash, resolveWebSearch, getDefaultModel, parseMessageSources,
+    ...trash, resolveWebSearch, resolveRichDisplay, getDefaultModel, parseMessageSources,
+    richDisplayPreference: options.richDisplayPreference ?? false,
     webSearchPreference: options.preference ?? false, isTemporary: !!options.temporary, isTemporaryRef: { current: !!options.temporary },
     activeThreadId: 't', activeThread: { roleplay_mode: !!options.roleplay }, messages: state.messages, temporaryMessages: [],
     provider: 'claude', isLoading: false, isImagePinned: false, imageContextId: null,
@@ -215,8 +217,8 @@ const CLIENT_OFF_GOLDEN = {
   "edit": "{\"threadId\":\"t\",\"userContent\":\"edited\",\"provider\":\"openai\",\"modelId\":\"gpt-5.4-mini\",\"branchEdit\":{\"baseUserMessageId\":\"u\"},\"systemPrompt\":\"\"}"
 };
 
-async function sendOpenAIPath(kind, { preference = true, roleplay = false, provider = 'openai', modelId = 'gpt-5.4-mini' } = {}) {
-  const s = setup({ preference, roleplay, temporary: kind === 'temporary' });
+async function sendOpenAIPath(kind, { preference = true, roleplay = false, provider = 'openai', modelId = 'gpt-5.4-mini', richDisplayPreference = false } = {}) {
+  const s = setup({ preference, roleplay, richDisplayPreference, temporary: kind === 'temporary' });
   s.c.provider = provider;
   s.c.loadModel = () => modelId;
   if (['normal', 'temporary'].includes(kind)) await pageCallback('handleSubmit', s.c)('question', modelId, undefined, false, 'question', { webSearch: preference });
@@ -284,8 +286,61 @@ for (const file of ['components/ChatInput.tsx', 'components/ChatInputCentered.ts
 
 test('all five OpenAI client OFF raw request bodies match immutable eea4db6 baseline bytes', async () => {
   for (const kind of ['normal', 'temporary', 'branch', 'light', 'edit']) {
-    const s = await sendOpenAIPath(kind, { preference: false });
+    const s = await sendOpenAIPath(kind, { preference: false, richDisplayPreference: false });
     assert.equal(s.rawBodies.length, 1);
     assert.deepEqual(Buffer.from(s.rawBodies[0]), Buffer.from(CLIENT_OFF_GOLDEN[kind]), kind);
   }
+});
+
+for (const kind of ['normal', 'branch', 'light', 'edit']) {
+  for (const scenario of [
+    { name: 'ON', richDisplayPreference: true, expected: true },
+    { name: 'OFF', richDisplayPreference: false, expected: false },
+    { name: 'roleplay', richDisplayPreference: true, roleplay: true, expected: false },
+  ]) test(`${kind} rich display request: ${scenario.name}`, async () => {
+    const s = await sendOpenAIPath(kind, { ...scenario, preference: false });
+    assert.equal(Object.hasOwn(s.bodies[0], 'richDisplay'), scenario.expected);
+    if (scenario.expected) assert.equal(s.bodies[0].richDisplay, true);
+  });
+}
+
+test('temporary submission never sends richDisplay even when its preference is ON', async () => {
+  const s = await sendOpenAIPath('temporary', { richDisplayPreference: true });
+  assert.equal(s.bodies[0].isTemporary, true);
+  assert.equal(Object.hasOwn(s.bodies[0], 'richDisplay'), false);
+});
+
+for (const kind of ['normal', 'branch', 'light', 'edit']) test(`${kind} web search and rich display preferences are independent`, async () => {
+  for (const scenario of [
+    { preference: true, richDisplayPreference: false, web: true, rich: false },
+    { preference: false, richDisplayPreference: true, web: false, rich: true },
+    { preference: true, richDisplayPreference: true, roleplay: true, web: false, rich: false },
+  ]) {
+    const s = await sendOpenAIPath(kind, scenario);
+    assert.equal(Object.hasOwn(s.bodies[0], 'webSearch'), scenario.web);
+    assert.equal(Object.hasOwn(s.bodies[0], 'richDisplay'), scenario.rich);
+  }
+});
+
+test('all three page callbacks include richDisplayPreference in their dependency arrays', () => {
+  for (const name of ['handleSubmit', 'handleRegenerate', 'handleEditAndRegenerate']) {
+    const start = source.indexOf(`const ${name} = useCallback(`);
+    assert.ok(start >= 0, name);
+    const dependencies = source.slice(start).match(/\}, \[([^\]]*)\]\);/);
+    assert.ok(dependencies, name);
+    assert.match(dependencies[1], /\brichDisplayPreference\b/, name);
+  }
+});
+
+test('only guarded page callbacks reject missing or inherited rich display VM bindings', () => {
+  for (const name of ['handleSubmit', 'handleRegenerate', 'handleEditAndRegenerate']) {
+    for (const key of ['resolveRichDisplay', 'richDisplayPreference']) {
+      const s = setup(); delete s.c[key];
+      assert.throws(() => pageCallback(name, s.c), { message: `Missing VM context: ${key} for ${name}` });
+      Object.setPrototypeOf(s.c, { [key]: key === 'resolveRichDisplay' ? resolveRichDisplay : false });
+      assert.throws(() => pageCallback(name, s.c), { message: `Missing VM context: ${key} for ${name}` });
+    }
+  }
+  assert.equal(typeof pageCallback('handleAbort', { abortReasonRef: {}, abortControllerRef: {} }), 'function');
+  assert.equal(typeof fileCallback('components/ChatInput.tsx', 'handleSubmit', {}), 'function');
 });

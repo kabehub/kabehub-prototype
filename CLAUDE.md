@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -245,6 +245,8 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/project-memory/summary-client.ts` | 既存topics GETから必要な5項目のみ抽出。HTTP・配列・全件の必須型とpromotion.statusをfail-closedで検証 |
 | `lib/project-memory/use-project-memory-summary.ts` | Project IDとrefreshTokenで再取得するread-only hook。effect前も旧Projectのデータ・エラーを公開しない。未取得と0件を区別し、再取得失敗は旧データを破棄。request idとabortで古い応答を除外 |
 | `lib/chat-system-blocks.ts` | Claude systemブロックの順序・キャッシュmarker選択と、非Claude向けの旧system文字列復元（importゼロの純関数） |
+| `lib/richDisplayPreference.ts` | カード表示のブラウザ設定・useSyncExternalStore hook・送信判定。既定ON、OFF時だけLocalStorageに0を保存 |
+| `lib/kabe-card-system-prompt.ts` | カード規則の固定文面・サーバー注入判定・回答生成用stable末尾への付加。importゼロの純関数 |
 | `lib/attachmentContent.ts` | 手入力とテキスト添付を従来と同じフェンス・区切りで結合。contentは保存本文、queryTextはtrimしない手入力。splitMessageContent / replaceQueryText で添付部分を保持して手入力だけを差し替え |
 | `lib/queryTextRetention.ts` | createQueryTextRetention factory。ページごとのメモリ内保持のみ。記録時と現在のcontentが一致しsplitが成功したときだけ手入力を再利用 |
 | `lib/lore/chat-search-plan.ts` | サーバー用・importゼロの純関数。19語のトリガーとLore Book / Memoryの検索計画・コードポイント単位のクエリ導出を集約。メモモードはrouteで計画前にearly returnする |
@@ -333,7 +335,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-31実測で1634件（D37反映後）、全件成功。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-10-31実測で1686件（Lv2 Phase 3b反映後）、全件成功。
 - mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件。2026-10-31の再計測はしていない）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
@@ -354,6 +356,10 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/branchtree-render.test.cjs` | ツリーのprovider色・モデルlabel、省略構造・title・現在レーンの青表示を静的描画で検証 |
 | `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
+| `scripts/rich-display-preference.test.cjs` | 既定ON・0のみOFF・storage例外・厳密な送信判定・同一タブの即時購読通知・別タブstorageイベントを検証 |
+| `scripts/kabe-card-system-prompt.test.cjs` | 規則全文のバイト固定・LFと末尾改行なし・注入条件・OFF文字列の不変を検証 |
+| `scripts/chat-rich-display.test.cjs` | route経由で全providerのON注入・非trueのOFF body互換・memo／一時／roleplay／novel除外・Claude marker位置・GitHub探索への非注入・trimへの反映を検証 |
+| `scripts/thread-trash-ui-test-helpers.cjs` | pageCallbackのhandleSubmit／handleRegenerate／handleEditAndRegenerateだけ、resolveRichDisplayとrichDisplayPreferenceのown property不足を即時検出。fileCallbackには適用しない。query-text-regenerationのローカルcallbackも同じガードを持つ |
 | `scripts/chat-lore-search-plan.test.cjs` | 19語全件・非トリガー・temporary・OpenAIキー・novel・対象project有無の検索計画、queryTextのフォールバック・空文字・空白・上限・サロゲート境界を検証 |
 | `scripts/chat-pinned-cache.test.cjs` | provider別request捕捉、Pinned cache・全body marker上限・連続system一致・非Claude/Tool Loop/見積もりの旧文字列一致・cached各ブロックとdynamic参照群のpreamble個数を検証。Project Memory topic注入ブロック（memory＋Pinned＋参照の併存・取得失敗・超過topic除外・memory未使用時の旧文字列一致）も検証。refusal時の文言分岐（memory注入あり／なし、memoryのみ／pinnedのみ、Thinking両形式、一回限り、保存本文）とログを検証 |
 | `scripts/csp.test.cjs` | CSPヘッダー・report解析・URL無害化を検証 |
@@ -678,7 +684,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | upsertのtitle必須 | `threads/[id]/route.ts` のupsertがINSERTに回った場合、titleが必要。`title: thread.title \|\| "無題"` を必ず含める |
 | remark-gfm の [[text]] 誤認識 | shareページのYOUメッセージはMarkdownRendererを経由せずプレーンテキストで `.replace(/\[\[(.+?)\]\]/g, "████")` する |
 | フォルダ（Project）名変更の整合性 | 名前変更は`PATCH /api/projects/[projectId]`（`rename_project` RPC）に一本化されている。関連4テーブルの`folder_name`はRPCが同期するため、個別にUPDATEしない |
-| Claude system block | Claude system block の順序は stable(cache) → memory(cache・存在時のみ。`project-memory-topics`) → pinned(cache・存在時のみ) → dynamic(no cache)。空ブロックは作らない。Project Memory topicは複数でも**1つのcachedブロック**にまとめる（marker増加を避ける）。cache_control は message anchor を含めリクエスト全体で最大4個（system側は常に最大3、1枠をmessage anchor用に予約）。非Claude・Tool Loop・トークン見積もりは `buildCombinedSystemPrompt` と `cachedInsertionIndex` で同じ順序の文字列を復元する。Pinnedは `github_pinned_file` のコード封筒列を使う。Project MemoryとPinnedの各cachedブロックは自己完結でpreambleを各1個持つ。dynamicの参照群（lore_book / memory / Tool Loop）はrouteの `appendReferenceBlock` で最大1個。system全体でpreambleが常に1個とは限らない |
+| Claude system block | Claude system block の順序は stable(cache) → memory(cache・存在時のみ。`project-memory-topics`) → pinned(cache・存在時のみ) → dynamic(no cache)。空ブロックは作らない。Project Memory topicは複数でも**1つのcachedブロック**にまとめる（marker増加を避ける）。cache_control は message anchor を含めリクエスト全体で最大4個（system側は常に最大3、1枠をmessage anchor用に予約）。非Claude・Tool Loop・トークン見積もりは `buildCombinedSystemPrompt` と `cachedInsertionIndex` で同じ順序の文字列を復元する。Pinnedは `github_pinned_file` のコード封筒列を使う。Project MemoryとPinnedの各cachedブロックは自己完結でpreambleを各1個持つ。dynamicの参照群（lore_book / memory / Tool Loop）はrouteの `appendReferenceBlock` で最大1個。system全体でpreambleが常に1個とは限らない。リッチ表示の規則は `richDisplay===true` かつメモ・一時モード・roleplay・小説Projectのいずれでもないときだけ、回答生成用のstable末尾に足す。独立したsystem／cachedブロックは増やさず、OFF・欠落時は従来の文字列を保つ。GitHub探索には渡さない（探索はJSON配列だけを返させるため、base stableを使用）。非Claude・trim・見積もりにはcombined経由で反映する。クライアントは既定ONだが、サーバーは `richDisplay===true` のときだけ有効 |
 | Prompt Caching ヘッダー | `anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache_controlが無視される |
 | [[text]] マスク記法 | `MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする |
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |
@@ -808,6 +814,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 自動要約差分更新 Phase 2c | revision 1 provenanceの起点roleをuserまたはassistantへ緩和し旧bootstrap履歴と互換化。差分入力はuserのみを維持（aacb57d） |
 | 自動要約差分更新 Phase 3 | Memoryタブの4ボタン・更新モーダル・警告GET／Lore警告・双方向排他・ドロワー保護・全topic結果ラベルとonAppliedによる1回refresh（674f926） |
 | リッチ会話UI Lv1 Web検索 | Claude（Phase 1a `04cc9ab`／1b `0ff9770`）とOpenAI（Phase 2a サーバー `eea4db6`／2b クライアント `d6ddd6a`）のWeb検索・出典チップ。詳細と判断（D番号）は`KabeHub_リッチ会話UI_Lv1Lv2_検討_引き継ぎ資料_v6.md`・`v7.md` |
+| リッチ会話UI Lv2 Phase 3b | AIのカード表示（実装中）。UI設定のLocalStorageトグルは既定ON。通常送信・branch／light・編集再生成で有効なときだけrichDisplayを送り、回答生成用stableへカード規則を追加。一時モード・メモ・roleplay・小説Project・GitHub探索は除外。OFFでも過去のカード描画を維持。コミット：実装中 |
 | D37 gpt-5.5-pro画像入力の修正 | Pro分岐がChat Completions形式の画像をResponses APIへ送りHTTP 400になっていた不具合を、`buildResponsesInput`でResponses形式に変換して修正。Web検索側の同一変換も共通化。golden 96件のうちPro画像4件のみ新形式、残り92件は不変。npm test 1634件成功。本番で画像付きProの動作確認OK（`fb4d5c6`、2026-10-31） |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。

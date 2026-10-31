@@ -15,6 +15,7 @@ import { getClientUser } from "@/lib/supabase/client-auth";
 import { loadModel, type ModelId, type Provider, type SubmittedAttachedImageFile } from "@/components/ChatInput";
 import { getDefaultImageModel, getDefaultModel, type ImageApiProvider } from "@/lib/modelRegistry";
 import { resolveWebSearch, useWebSearchPreference, type WebSearchOptions } from "@/lib/webSearchPreference";
+import { resolveRichDisplay, useRichDisplayPreference } from "@/lib/richDisplayPreference";
 import { parseMessageSources } from "@/lib/sourceChips";
 import type { MessageSources } from "@kabehub/shared";
 import { webApiClient } from "@/lib/api-client";
@@ -76,6 +77,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [provider, setProvider] = useState<Provider>("claude");
   const [webSearchPreference] = useWebSearchPreference();
+  const [richDisplayPreference] = useRichDisplayPreference();
   const [user, setUser] = useState<User | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
 
@@ -796,9 +798,11 @@ export default function Home() {
 
     const resolvedModelId: ModelId = modelId ?? loadModel(provider);
     const webSearch = resolveWebSearch({ preference: options?.webSearch === true, provider, modelId: resolvedModelId, roleplay: activeThread?.roleplay_mode });
+    const richDisplay = resolveRichDisplay({ preference: richDisplayPreference, roleplay: activeThread?.roleplay_mode });
 
     if (isTemporary) {
       // 一時モード: メモリのみ（ストリーミングなし・既存動作を維持）
+      // 一時モードは除外対象を判定できないためrichDisplayを送らない。
       const userMsg: Message = {
         id: uuidv4(),
         thread_id: resolvedThreadId,
@@ -880,6 +884,7 @@ export default function Home() {
           provider,
           modelId: resolvedModelId,
           ...(webSearch ? { webSearch: true } : {}),
+          ...(richDisplay ? { richDisplay: true } : {}),
           systemPrompt: activeThread?.system_prompt ?? "",
           attachedImages: attachedImages ?? [],
           isDeepThinking: isDeepThinking ?? false,
@@ -929,7 +934,7 @@ export default function Home() {
         setWebSearchingState(false);
       }
     }
-  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, imageContextId, isImagePinned, showToast, captureView, isCurrentView, commitActiveThread]);
+  }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, imageContextId, isImagePinned, showToast, captureView, isCurrentView, commitActiveThread, richDisplayPreference]);
 
   // ── メモ送信（AIを呼ばない）──────────────────────────────
   const handleMemoSubmit = useCallback(async () => {
@@ -1261,6 +1266,7 @@ export default function Home() {
           provider: targetProvider,
           modelId: modelId,
           ...(resolveWebSearch({ preference: webSearchPreference, provider: targetProvider, modelId: modelId ?? getDefaultModel(targetProvider, "chat"), roleplay: activeThread?.roleplay_mode }) ? { webSearch: true } : {}),
+          ...(resolveRichDisplay({ preference: richDisplayPreference, roleplay: activeThread?.roleplay_mode }) ? { richDisplay: true } : {}),
           isRegenerate: true,
           regenerateMode: mode,
           ...(mode === "light" ? { targetMessageId: lastAssistant.id } : {}),
@@ -1342,7 +1348,7 @@ export default function Home() {
         setWebSearchingState(false);
       }
     }
-  }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, showToast, captureView, isCurrentView, webSearchPreference]);
+  }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, showToast, captureView, isCurrentView, webSearchPreference, richDisplayPreference]);
 
   const handleEditAndRegenerate = useCallback(async (
     baseUserMsg: Message,
@@ -1382,6 +1388,7 @@ export default function Home() {
           provider: targetProvider,
           modelId: modelId,
           ...(resolveWebSearch({ preference: webSearchPreference, provider: targetProvider, modelId: modelId ?? getDefaultModel(targetProvider, "chat"), roleplay: activeThread?.roleplay_mode }) ? { webSearch: true } : {}),
+          ...(resolveRichDisplay({ preference: richDisplayPreference, roleplay: activeThread?.roleplay_mode }) ? { richDisplay: true } : {}),
           branchEdit: { baseUserMessageId: baseUserMsg.id },
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
@@ -1445,7 +1452,7 @@ export default function Home() {
         setWebSearchingState(false);
       }
     }
-  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, fetchThreads, showToast, captureView, isCurrentView, webSearchPreference]);
+  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, fetchThreads, showToast, captureView, isCurrentView, webSearchPreference, richDisplayPreference]);
 
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
