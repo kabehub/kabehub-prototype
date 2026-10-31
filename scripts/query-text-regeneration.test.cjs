@@ -5,8 +5,11 @@ const path = require("node:path");
 const vm = require("node:vm");
 const ts = require("typescript");
 require("./testBootstrap.cjs").installTsLoader();
+require("./testBootstrap.cjs").installAliasResolver();
 const { createQueryTextRetention } = require("../lib/queryTextRetention.ts");
 const { buildMessageWithTextFiles, replaceQueryText } = require("../lib/attachmentContent.ts");
+const { resolveWebSearch } = require("../lib/webSearchPreference.ts");
+const { getDefaultModel } = require("../lib/modelRegistry.ts");
 const root = path.resolve(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 const page = read("app/page.tsx");
@@ -34,8 +37,9 @@ function setup(query = "raw", options = {}) {
   let returnedUser;
   const context = {
     ...require('../lib/threads/trash-client.ts'),
+    resolveWebSearch, getDefaultModel, webSearchPreference: false, setWebSearchingState() {},
     retention, replaceQueryText, isLoading: false, activeThreadId: "t", activeThread: {}, messages: [user, assistant],
-    crypto: { randomUUID: () => "branch" }, uuidv4: () => "new-thread", provider: "claude", isTemporary: false,
+    crypto: { randomUUID: () => "branch" }, uuidv4: () => "new-thread", provider: "claude", isTemporary: false, isTemporaryRef: { current: false },
     isImagePinned: false, imageContextId: null, loadModel: () => "model", temporaryMessages: [],
     captureView: () => ({ epoch: 0, threadId: "t" }), isCurrentView: () => true,
     abortReasonRef: { current: null }, abortControllerRef: { current: null }, generationViewRef: { current: null },

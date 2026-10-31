@@ -337,6 +337,11 @@ function streamClaude(
             }
           });
           if (streamErrorType !== null) {
+            logger.externalApiFailed({
+              service: logger.toExternalService("claude"),
+              errorCode: "UPSTREAM_STREAM_ERROR",
+              errorType: streamErrorType,
+            });
             throw new ReportedProviderError("Claude APIへのリクエストに失敗しました");
           }
           onUsage?.({

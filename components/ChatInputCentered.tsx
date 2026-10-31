@@ -1,5 +1,8 @@
 "use client";
 
+import { resolveWebSearch, useWebSearchPreference, type WebSearchOptions } from "@/lib/webSearchPreference";
+import WebSearchToggle from "./WebSearchToggle";
+
 import { buildMessageWithTextFiles } from "@/lib/attachmentContent";
 import {
   ChangeEvent,
@@ -43,10 +46,13 @@ interface ChatInputCenteredProps {
     modelId: ModelId,
     attachedImages?: SubmittedAttachedImageFile[],
     isDeepThinking?: boolean,
-    queryText?: string
+    queryText?: string,
+    options?: WebSearchOptions
   ) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
+  webSearchAvailable?: boolean;
+  disabled?: boolean;
   provider: Provider;
   onProviderChange: (p: Provider) => void;
   displayName?: string | null;
@@ -62,6 +68,8 @@ export default function ChatInputCentered({
   onSubmit,
   onMemoSubmit,
   isLoading,
+  webSearchAvailable = true,
+  disabled = false,
   provider,
   onProviderChange,
   displayName,
@@ -88,6 +96,7 @@ export default function ChatInputCentered({
   const [openModelProvider, setOpenModelProvider] = useState<Provider | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => MODEL_CONFIG[activeProvider].defaultModel);
   const [isDeepThinking, setIsDeepThinking] = useState(false);
+  const [webSearchPreference, setWebSearchPreference] = useWebSearchPreference();
   const [enterMode, setEnterMode] = useState<EnterMode>("send");
   const [isMobile, setIsMobile] = useState(false);
   const attachedFilesRef = useRef(attachedFiles);
@@ -390,7 +399,7 @@ export default function ChatInputCentered({
     const effectiveDeepThinking = isDeepThinking && canUseDeepThinking(activeProvider, selectedModel);
 
     onChange("");
-    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking, queryText);
+    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking, queryText, { webSearch: resolveWebSearch({ preference: webSearchPreference, provider: activeProvider, modelId: selectedModel, roleplay: !webSearchAvailable }) });
     attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
       URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
     });
@@ -955,6 +964,7 @@ export default function ChatInputCentered({
                 </button>
 
                 {activeProvider === "claude" && (
+                  <>
                   <button
                     onClick={() => setIsDeepThinking((v) => !v)}
                     disabled={isDeepThinkingDisabled}
@@ -978,6 +988,8 @@ export default function ChatInputCentered({
                   >
                     🧠 深く考える
                   </button>
+                  <WebSearchToggle preference={webSearchPreference} onChange={setWebSearchPreference} modelId={selectedModel} available={webSearchAvailable} disabled={isLoading || disabled} />
+                  </>
                 )}
 
                 {!isMobile && (

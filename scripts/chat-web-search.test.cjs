@@ -288,7 +288,10 @@ test('SSE error ON joins the existing failed path, emits error then citations th
   assert.equal(JSON.stringify([result.logs, result.rows]).includes('PRIVATE_UPSTREAM_BODY'), false);
   const source = fs.readFileSync(path.join(__dirname, '../app/api/chat/route.ts'), 'utf8');
   assert.match(source, /if \(parsed.type === "error"\)\s*\{[\s\S]*?streamErrorType =/);
-  assert.match(source, /if \(streamErrorType !== null\)\s*\{\s*throw new ReportedProviderError/);
+  assert.deepEqual(result.logs.find(row => row[0] === 'externalApiFailed'), [
+    'externalApiFailed', { service: 'claude', errorCode: 'UPSTREAM_STREAM_ERROR', errorType: 'overloaded_error' },
+  ]);
+  assert.match(source, /if \(streamErrorType !== null\)\s*\{\s*logger\.externalApiFailed\(\{[\s\S]*?\}\);\s*throw new ReportedProviderError/);
 });
 
 test('Claude absorbs AbortError, flush keeps done.aborted=false but suppresses citations and retains saved partial sources', async () => {

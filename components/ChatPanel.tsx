@@ -1,5 +1,7 @@
 "use client";
 
+import type { WebSearchOptions } from "@/lib/webSearchPreference";
+
 import { Fragment, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Message, Thread, ThreadNote, MessageNote, Draft, ThreadTag } from "@/types";
 import MessageBubble, { ThinkingBubble, BranchBubble } from "./MessageBubble";
@@ -37,7 +39,7 @@ interface ChatPanelProps {
   displayName?: string | null;
   inputValue: string;
   onInputChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string, options?: WebSearchOptions) => void;
   thinkingContents?: Record<string, string>;
   getRetainedQueryText?: (message: Message) => string | null;
   captureViewGuard?: () => () => boolean;
@@ -78,6 +80,7 @@ interface ChatPanelProps {
   streamingContent?: string;   // ✅ v62追加: ストリーミング中のリアルタイムテキスト
   onAbort?: () => void;        // ✅ v62追加: ■停止ボタン用
   githubProgressMessages?: string[];
+  isWebSearching?: boolean;
   onSendMemoToAI?: (content: string) => void;
   onRestoreBranch?: (branchRootId: string, branchIndex: number) => void | Promise<void>;
   onImageGenerate?: (prompt: string, imageProvider?: string, imageRefId?: string, imageRefUpload?: { base64: string; mimeType: string; previewUrl: string }) => void;
@@ -130,6 +133,7 @@ export default function ChatPanel({
   streamingContent = "",  // ✅ v62追加
   onAbort,               // ✅ v62追加
   githubProgressMessages = EMPTY_STRING_ARRAY,
+  isWebSearching = false,
   onSendMemoToAI,
   thinkingContents,
   onRestoreBranch,
@@ -1244,6 +1248,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
   const shouldShowFooter =
     shouldShowBottomInput ||
     (isLoading && githubProgressMessages.length > 0) ||
+    (isLoading && isWebSearching) ||
     !!(isLoading && onAbort) ||
     (!isInitialInputMode && !!thread);
 
@@ -2392,6 +2397,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                 provider={provider}
                 onProviderChange={onProviderChange}
                 displayName={displayName}
+                webSearchAvailable={!roleplayMode}
               />
             </div>
           </div>
@@ -2406,6 +2412,9 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
           >
             <div style={footerInnerStyle}>
 
+              {isLoading && isWebSearching && (
+                <div role="status" style={{ padding: "8px 16px", margin: "4px 0", borderRadius: "8px", background: "var(--surface, #f5f5f5)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--ink-muted)" }}>Web検索中…</div>
+              )}
               {/* GitHub探索中インジケーター */}
               {isLoading && githubProgressMessages.length > 0 && (
                 <div style={{
@@ -2491,6 +2500,7 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
                   onMemoSubmit={onMemoSubmit}
                   isLoading={isLoading}
                   disabled={!thread}
+                  webSearchAvailable={!roleplayMode}
                   provider={provider}
                   onProviderChange={onProviderChange}
                   onImageGenerate={onImageGenerate}

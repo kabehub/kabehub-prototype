@@ -1,6 +1,7 @@
 "use client";
 
 import MarkdownRenderer from "./MarkdownRenderer";
+import SourceChips from "./SourceChips";
 import { Message, MessageNote } from "@/types";
 import { MODEL_CONFIG, loadModel } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
@@ -714,7 +715,10 @@ function MessageBubble({
                   )}
                 </div>
               ) : (
-                <MarkdownRenderer content={message.content} />
+                <>
+                  <MarkdownRenderer content={message.content} />
+                  {message.role === "assistant" && !isMemo && message.metadata?.sources && <SourceChips sources={message.metadata.sources} />}
+                </>
               )}
             </div>
 

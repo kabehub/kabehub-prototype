@@ -68,7 +68,7 @@ for (const reason of ['thread-trashed', 'user', null]) for (const kind of ['tras
 for (const [status, body, expected] of [[409, { error: 'thread is in trash' }, 'thread is in trash'],
   [500, { error: 'server failure' }, 'server failure'], [500, null, undefined]]) {
   test(`fetchWithStreaming non-2xx keeps status=${status}, error=${expected}`, async () => {
-    const context = { ...client, AbortController, abortControllerRef: { current: null },
+    const context = { generationViewRef: { current: null }, setIsWebSearching() {}, ...client, AbortController, abortControllerRef: { current: null },
       webApiClient: { request: async () => body ? Response.json(body, { status }) : new Response(null, { status }) } };
     const stream = pageCallback('fetchWithStreaming', context);
     await assert.rejects(stream('/api/chat', {}, '{}', () => {}), error => {
@@ -79,7 +79,7 @@ for (const [status, body, expected] of [[409, { error: 'thread is in trash' }, '
 }
 test('fetchWithStreaming successful JSON remains unchanged', async () => {
   const body = { userMessage: { id: 'u' }, assistantMessage: { id: 'a' }, aborted: false };
-  const context = { AbortController, abortControllerRef: { current: null }, webApiClient: { request: async () => Response.json(body) } };
+  const context = { generationViewRef: { current: null }, setIsWebSearching() {}, AbortController, abortControllerRef: { current: null }, webApiClient: { request: async () => Response.json(body) } };
   assert.deepEqual(await pageCallback('fetchWithStreaming', context)('/api/chat', {}, '{}', () => {}), body);
 });
 test('fetchWithStreaming successful NDJSON preserves chunks, metadata and progress', async () => {
@@ -89,7 +89,7 @@ test('fetchWithStreaming successful NDJSON preserves chunks, metadata and progre
     { type: 'chunk', text: ' second' }, { type: 'done', aborted: false },
   ];
   const chunks = [], progress = [];
-  const context = { AbortController, TextDecoder, abortControllerRef: { current: null },
+  const context = { generationViewRef: { current: null }, setIsWebSearching() {}, AbortController, TextDecoder, abortControllerRef: { current: null },
     webApiClient: { request: async () => new Response(lines.map(v => JSON.stringify(v)).join('\n') + '\n') },
     setGithubProgressMessages: fn => progress.push(...fn([])), uuidv4: () => 'fallback', Date };
   const result = await pageCallback('fetchWithStreaming', context)('/api/chat', {}, '{}', text => chunks.push(text));

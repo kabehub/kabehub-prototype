@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const { installTsLoader } = require('./testBootstrap.cjs');
 const { pageCallback, deferred, tick, source } = require('./thread-trash-ui-test-helpers.cjs');
 installTsLoader();
+require("./testBootstrap.cjs").installAliasResolver();
 const { isViewCurrent, createLatestRequest } = require('../lib/threads/view-guard.ts');
 const { trashDaysRemaining } = require('../lib/threads/trash-display.ts');
 const trashClient = require('../lib/threads/trash-client.ts');
@@ -25,10 +26,13 @@ test('remaining days clamps expired dates and rounds partial days upward', () =>
   }
 });
 
+const { resolveWebSearch } = require("../lib/webSearchPreference.ts");
+const { getDefaultModel } = require("../lib/modelRegistry.ts");
 function setup() {
   const events = [], toasts = [];
   const context = {
     ...trashClient,
+    resolveWebSearch, getDefaultModel, webSearchPreference: false, setWebSearchingState() {},
     activeThreadId: 't', activeThread: {}, messages: [], temporaryMessages: [], inputValue: '',
     threads: [{ id: 't', is_public: true }], displayThreads: [{ id: 't', is_public: true }], isLoading: false, isTemporary: false, provider: 'claude',
     activeThreadIdRef: { current: 't' }, viewEpochRef: { current: 1 }, isTemporaryRef: { current: false },

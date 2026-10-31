@@ -1,5 +1,8 @@
 "use client";
 
+import { resolveWebSearch, useWebSearchPreference, type WebSearchOptions } from "@/lib/webSearchPreference";
+import WebSearchToggle from "./WebSearchToggle";
+
 import { buildMessageWithTextFiles } from "@/lib/attachmentContent";
 import { useRef, useEffect, KeyboardEvent, useState } from "react";
 import type { ClaudeModel, GeminiModel, OpenAIModel, ImageGenModel, ModelId, Provider } from "@/types";
@@ -112,9 +115,10 @@ export function canUseDeepThinking(provider: Provider, modelId: ModelId): boolea
 interface ChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => void;
+  onSubmit: (content: string, modelId: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string, options?: WebSearchOptions) => void;
   onMemoSubmit: () => void;
   isLoading: boolean;
+  webSearchAvailable?: boolean;
   disabled?: boolean;
   provider: Provider;
   onProviderChange: (p: Provider) => void;
@@ -179,6 +183,7 @@ export default function ChatInput({
   onSubmit,
   onMemoSubmit,
   isLoading,
+  webSearchAvailable = true,
   disabled,
   provider,
   onProviderChange,
@@ -216,6 +221,7 @@ export default function ChatInput({
   // モデル選択 state（初回描画はSSR/CSRで固定し、マウント後にLocalStorageへ同期）
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => MODEL_CONFIG[provider].defaultModel);
   const [isDeepThinking, setIsDeepThinking] = useState(false);
+  const [webSearchPreference, setWebSearchPreference] = useWebSearchPreference();
   const [enterMode, setEnterMode] = useState<EnterMode>("send");
   const [isMobile, setIsMobile] = useState(false);
   const attachedFilesRef = useRef(attachedFiles);
@@ -644,7 +650,7 @@ export default function ChatInput({
     const effectiveDeepThinking = isDeepThinking && canUseDeepThinking(provider, selectedModel);
 
     onChange("");
-    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking, queryText);
+    onSubmit(finalContent, selectedModel, submittedImages.length > 0 ? submittedImages : undefined, effectiveDeepThinking, queryText, { webSearch: resolveWebSearch({ preference: webSearchPreference, provider, modelId: selectedModel, roleplay: !webSearchAvailable }) });
     // ObjectURLを解放してからstateをクリア
     attachedFiles.filter((f) => f.kind === "image").forEach((f) => {
       URL.revokeObjectURL((f as AttachedImageFile).previewUrl);
@@ -1208,8 +1214,8 @@ export default function ChatInput({
       </div>
 
       {/* 下部ボタン行 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           {isMobile && (
             <div ref={toolMenuRef} style={{ position: "relative" }}>
               <button
@@ -1353,6 +1359,7 @@ export default function ChatInput({
 
           {/* 🧠 深く考えるボタン（Claudeのみ） */}
           {provider === "claude" && (
+            <>
             <button
               onClick={() => setIsDeepThinking((v) => !v)}
               disabled={isThinkingUnsupported(selectedModel) || isLoading || !!disabled}
@@ -1376,6 +1383,8 @@ export default function ChatInput({
             >
               🧠 深く考える
             </button>
+            <WebSearchToggle preference={webSearchPreference} onChange={setWebSearchPreference} modelId={selectedModel} available={webSearchAvailable} disabled={isLoading || !!disabled} />
+            </>
           )}
 
           {/* 🖼️ 参照画像ボタン（image_gen モード時のみ） */}

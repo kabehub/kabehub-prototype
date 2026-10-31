@@ -13,7 +13,10 @@ import { useToast } from "@/components/Toast";
 import { supabase } from "@/lib/supabase/client";
 import { getClientUser } from "@/lib/supabase/client-auth";
 import { loadModel, type ModelId, type Provider, type SubmittedAttachedImageFile } from "@/components/ChatInput";
-import { getDefaultImageModel, type ImageApiProvider } from "@/lib/modelRegistry";
+import { getDefaultImageModel, getDefaultModel, type ImageApiProvider } from "@/lib/modelRegistry";
+import { resolveWebSearch, useWebSearchPreference, type WebSearchOptions } from "@/lib/webSearchPreference";
+import { parseMessageSources } from "@/lib/sourceChips";
+import type { MessageSources } from "@kabehub/shared";
 import { webApiClient } from "@/lib/api-client";
 import { webApiKeyStore } from "@/lib/apiKeyStore";
 import {
@@ -57,6 +60,7 @@ export default function Home() {
       viewEpochRef.current += 1;
       setStreamingContent("");
       setGithubProgressState([]);
+      setWebSearchingState(false);
     }
     activeThreadIdRef.current = id;
     setActiveThreadId(id);
@@ -71,6 +75,7 @@ export default function Home() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [provider, setProvider] = useState<Provider>("claude");
+  const [webSearchPreference] = useWebSearchPreference();
   const [user, setUser] = useState<User | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
 
@@ -90,7 +95,10 @@ export default function Home() {
   const isTemporaryRef = useRef(false);
   const commitTemporary = useCallback((value: boolean) => {
     // A mode switch also invalidates work for the previous view of the same thread.
-    if (isTemporaryRef.current !== value) viewEpochRef.current += 1;
+    if (isTemporaryRef.current !== value) {
+      viewEpochRef.current += 1;
+      setWebSearchingState(false);
+    }
     isTemporaryRef.current = value;
     setIsTemporary(value);
   }, []);
@@ -107,6 +115,11 @@ export default function Home() {
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [githubProgressMessages, setGithubProgressState] = useState<string[]>([]);
   const generationViewRef = useRef<ThreadView | null>(null);
+  const [isWebSearching, setWebSearchingState] = useState(false);
+  const setIsWebSearching = useCallback((value: boolean, streamView: ThreadView | null) => {
+    if (!streamView || generationViewRef.current !== streamView || !isCurrentView(streamView)) return;
+    setWebSearchingState(value);
+  }, [isCurrentView]);
   // Keep fetchWithStreaming unchanged; guard its progress setter at the boundary.
   const setGithubProgressMessages = useCallback((value: SetStateAction<string[]>) => {
     if (typeof value === "function" && (!generationViewRef.current || !isCurrentView(generationViewRef.current))) return;
@@ -448,6 +461,7 @@ export default function Home() {
         setTemporaryMessages([]);
         setStreamingContent("");
         setGithubProgressMessages([]);
+        setWebSearchingState(false);
         localStorage.removeItem("lastActiveThreadId");
       }
       void fetchThreads();
@@ -605,6 +619,7 @@ export default function Home() {
     aborted: boolean;
     thinkingContent?: string;
   }> => {
+    const streamView = generationViewRef.current;
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -639,6 +654,7 @@ export default function Home() {
     let aborted = false;
     let deepThinkingMode = false;
     let thinkingAccumulated = "";
+    let sources: MessageSources | undefined;
 
     try {
       while (true) {
@@ -667,15 +683,22 @@ export default function Home() {
               if (deepThinkingMode) {
                 try {
                   const inner = JSON.parse(parsed.text);
-                  if (inner.kind === "text") { accumulatedText += inner.text; onChunk(accumulatedText); }
+                  if (inner.kind === "text") { accumulatedText += inner.text; if (inner.text.length > 0) setIsWebSearching(false, streamView); onChunk(accumulatedText); }
                   else if (inner.kind === "thinking") { thinkingAccumulated += inner.text; }
                 } catch { /* 分割チャンクは無視 */ }
               } else {
                 accumulatedText += parsed.text;
+                if (parsed.text.length > 0) setIsWebSearching(false, streamView);
                 onChunk(accumulatedText);
               }
             } else if (parsed.type === "done") {
               aborted = parsed.aborted;
+              setIsWebSearching(false, streamView);
+            } else if (parsed.type === "searching") {
+              setIsWebSearching(true, streamView);
+            } else if (parsed.type === "citations") {
+              const validated = parseMessageSources(parsed.sources);
+              if (validated) sources = validated;
             } else if (parsed.type === "github_progress") {
               setGithubProgressMessages(prev => [...prev, parsed.text]);
             }
@@ -701,6 +724,7 @@ export default function Home() {
       provider: (assistantProvider || "unknown") as "user" | "claude" | "gemini" | "openai" | "memo" | "unknown",
       created_at: assistantCreatedAt || new Date().toISOString(),
       model_id: assistantModelId || null,
+      ...(sources ? { metadata: { sources } } : {}),
     };
 
     return {
@@ -716,7 +740,7 @@ export default function Home() {
       aborted,
       thinkingContent: thinkingAccumulated || undefined,
     };
-  }, []);
+  }, [setIsWebSearching, setGithubProgressMessages]);
 
   // Await every PATCH before reading canonical state: a partial failure must not
   // leave an optimistic memo that was never persisted. Caller finally clears abortReasonRef.
@@ -748,7 +772,7 @@ export default function Home() {
   }, [isCurrentView, showToast]);
 
   // ── 通常送信 ──────────────────────────────────────────────
-  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string) => {
+  const handleSubmit = useCallback(async (userContent: string, modelId?: ModelId, attachedImages?: SubmittedAttachedImageFile[], isDeepThinking?: boolean, queryText?: string, options?: WebSearchOptions) => {
     if (!userContent.trim() || isLoading) return;
     if (provider === "image_gen") return;
     const resolvedThreadId = activeThreadId ?? uuidv4();
@@ -766,10 +790,12 @@ export default function Home() {
     setInputValue("");
     abortReasonRef.current = null;
     generationViewRef.current = view;
+    setWebSearchingState(false);
     setIsLoading(true);
     setStreamingContent(""); // ストリーミング表示をリセット
 
     const resolvedModelId: ModelId = modelId ?? loadModel(provider);
+    const webSearch = resolveWebSearch({ preference: options?.webSearch === true, provider, modelId: resolvedModelId, roleplay: activeThread?.roleplay_mode });
 
     if (isTemporary) {
       // 一時モード: メモリのみ（ストリーミングなし・既存動作を維持）
@@ -798,6 +824,7 @@ export default function Home() {
             userContent,
             provider,
             modelId: resolvedModelId,
+            ...(webSearch ? { webSearch: true } : {}),
             systemPrompt: activeThread?.system_prompt ?? "",
             isTemporary: true,
             attachedImages: attachedImages ?? [],
@@ -823,12 +850,15 @@ export default function Home() {
         console.error("一時送信エラー:", err);
         showToast("メッセージの送信に失敗しました", "error");
       } finally {
-        abortReasonRef.current = null;
-        abortControllerRef.current = null;
-        generationViewRef.current = null;
-        setIsLoading(false);
-        setStreamingContent("");
-        setGithubProgressMessages([]);
+        if (generationViewRef.current === view) {
+          abortReasonRef.current = null;
+          abortControllerRef.current = null;
+          generationViewRef.current = null;
+          setIsLoading(false);
+          setStreamingContent("");
+          setGithubProgressMessages([]);
+          setWebSearchingState(false);
+        }
       }
       return;
     }
@@ -849,6 +879,7 @@ export default function Home() {
           userContent,
           provider,
           modelId: resolvedModelId,
+          ...(webSearch ? { webSearch: true } : {}),
           systemPrompt: activeThread?.system_prompt ?? "",
           attachedImages: attachedImages ?? [],
           isDeepThinking: isDeepThinking ?? false,
@@ -888,12 +919,15 @@ export default function Home() {
         showToast("メッセージの送信に失敗しました", "error");
       }
     } finally {
-      abortReasonRef.current = null;
-      abortControllerRef.current = null;
-      generationViewRef.current = null;
-      setIsLoading(false);
-      setStreamingContent("");
-      setGithubProgressMessages([]);
+      if (generationViewRef.current === view) {
+        abortReasonRef.current = null;
+        abortControllerRef.current = null;
+        generationViewRef.current = null;
+        setIsLoading(false);
+        setStreamingContent("");
+        setGithubProgressMessages([]);
+        setWebSearchingState(false);
+      }
     }
   }, [activeThreadId, isLoading, isTemporary, messages, temporaryMessages, fetchThreads, provider, activeThread, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, imageContextId, isImagePinned, showToast, captureView, isCurrentView, commitActiveThread]);
 
@@ -1124,10 +1158,12 @@ export default function Home() {
     editedUserContent?: string,
     editedQueryText?: string,
   ) => {
+    if (isTemporaryRef.current) { showToast("一時モードでは再生成できません", "error"); return; }
     if (isLoading || !activeThreadId) return;
     const view = captureView();
     abortReasonRef.current = null;
     generationViewRef.current = view;
+    setWebSearchingState(false);
     setIsLoading(true);
     setStreamingContent("");
     try {
@@ -1182,6 +1218,8 @@ export default function Home() {
       const userContentChanged = userContentToSend !== lastUser.content;
       const originalAssistantContent = lastAssistant.content;
       const originalAssistantModelId = lastAssistant.model_id;
+      const originalAssistantMetadata = lastAssistant.metadata;
+      const originalAssistantProvider = lastAssistant.provider;
 
       if (mode === "branch") {
         // DBで is_active: false に更新（削除しない）
@@ -1222,6 +1260,7 @@ export default function Home() {
           ...(typeof queryTextToSend === "string" ? { queryText: queryTextToSend } : {}),
           provider: targetProvider,
           modelId: modelId,
+          ...(resolveWebSearch({ preference: webSearchPreference, provider: targetProvider, modelId: modelId ?? getDefaultModel(targetProvider, "chat"), roleplay: activeThread?.roleplay_mode }) ? { webSearch: true } : {}),
           isRegenerate: true,
           regenerateMode: mode,
           ...(mode === "light" ? { targetMessageId: lastAssistant.id } : {}),
@@ -1239,12 +1278,27 @@ export default function Home() {
       }
 
       if (mode === "light") {
+        let latestAssistant: Message | undefined;
+        if (!aborted) {
+          try {
+            const res = await fetch(`/api/threads/${activeThreadId}/messages`, { cache: "no-store" });
+            if (!isCurrentView(view)) return;
+            if (!res.ok) throw new Error("Message sync failed");
+            const rows: Message[] = await res.json();
+            if (!isCurrentView(view)) return;
+            latestAssistant = Array.isArray(rows) ? rows.find(row => row.id === lastAssistant.id) : undefined;
+            if (!latestAssistant) throw new Error("Target message missing");
+          } catch {
+            if (!isCurrentView(view)) return;
+            showToast("最新状態を取得できませんでした。ページを再読み込みしてください", "error");
+          }
+        }
         setMessages(prev => prev.map(m => {
           if (m.id === lastAssistant.id) {
             if (aborted) {
-              return { ...m, content: originalAssistantContent, model_id: originalAssistantModelId };
+              return { ...m, content: originalAssistantContent, provider: originalAssistantProvider, model_id: originalAssistantModelId, metadata: originalAssistantMetadata };
             }
-            return { ...m, content: assistantMessage.content, model_id: assistantMessage.model_id };
+            return latestAssistant ? { ...m, content: latestAssistant.content, provider: latestAssistant.provider, model_id: latestAssistant.model_id, metadata: latestAssistant.metadata } : m;
           }
           if (userContentChanged && m.id === lastUser.id) {
             return { ...m, content: userContentToSend };
@@ -1278,14 +1332,17 @@ export default function Home() {
         }
       }
     } finally {
-      abortReasonRef.current = null;
-      abortControllerRef.current = null;
-      generationViewRef.current = null;
-      setIsLoading(false);
-      setStreamingContent("");
-      setGithubProgressMessages([]);
+      if (generationViewRef.current === view) {
+        abortReasonRef.current = null;
+        abortControllerRef.current = null;
+        generationViewRef.current = null;
+        setIsLoading(false);
+        setStreamingContent("");
+        setGithubProgressMessages([]);
+        setWebSearchingState(false);
+      }
     }
-  }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, showToast, captureView, isCurrentView]);
+  }, [isLoading, activeThreadId, activeThread, messages, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, showToast, captureView, isCurrentView, webSearchPreference]);
 
   const handleEditAndRegenerate = useCallback(async (
     baseUserMsg: Message,
@@ -1294,10 +1351,12 @@ export default function Home() {
     modelId?: string,
     editedQueryText?: string,
   ) => {
+    if (isTemporaryRef.current) { showToast("一時モードでは再生成できません", "error"); return; }
     if (isLoading || !activeThreadId) return;
     const view = captureView();
     abortReasonRef.current = null;
     generationViewRef.current = view;
+    setWebSearchingState(false);
     setIsLoading(true);
     setStreamingContent("");
     try {
@@ -1322,6 +1381,7 @@ export default function Home() {
           ...(typeof editedQueryText === "string" ? { queryText: editedQueryText } : {}),
           provider: targetProvider,
           modelId: modelId,
+          ...(resolveWebSearch({ preference: webSearchPreference, provider: targetProvider, modelId: modelId ?? getDefaultModel(targetProvider, "chat"), roleplay: activeThread?.roleplay_mode }) ? { webSearch: true } : {}),
           branchEdit: { baseUserMessageId: baseUserMsg.id },
           systemPrompt: activeThread?.system_prompt ?? "",
         }),
@@ -1375,14 +1435,17 @@ export default function Home() {
         console.error("編集再生成失敗後の再同期失敗:", syncErr);
       }
     } finally {
-      abortReasonRef.current = null;
-      abortControllerRef.current = null;
-      generationViewRef.current = null;
-      setIsLoading(false);
-      setStreamingContent("");
-      setGithubProgressMessages([]);
+      if (generationViewRef.current === view) {
+        abortReasonRef.current = null;
+        abortControllerRef.current = null;
+        generationViewRef.current = null;
+        setIsLoading(false);
+        setStreamingContent("");
+        setGithubProgressMessages([]);
+        setWebSearchingState(false);
+      }
     }
-  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, fetchThreads, showToast, captureView, isCurrentView]);
+  }, [isLoading, activeThreadId, activeThread, getApiKeyHeaders, fetchWithStreaming, persistAbortedMessages, fetchThreads, showToast, captureView, isCurrentView, webSearchPreference]);
 
   // ── タイムトラベル削除 ──────────────────────────────────
   const handleTrimFrom = useCallback(async (message: Message) => {
@@ -1758,6 +1821,7 @@ export default function Home() {
         // ✅ v62追加
         streamingContent={streamingContent}
         githubProgressMessages={githubProgressMessages}
+        isWebSearching={isWebSearching}
         onAbort={handleAbort}
         onSendMemoToAI={handleSendMemoToAI}
         thinkingContents={thinkingContents}
