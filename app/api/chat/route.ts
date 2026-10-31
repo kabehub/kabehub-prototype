@@ -15,6 +15,7 @@ import {
 import { buildChatLoreSearchPlan, buildChatSearchQueries } from "@/lib/lore/chat-search-plan";
 import { CHAT_LORE_SEARCH_POLICY } from "@/lib/lore/types";
 import { streamOpenAIWebSearch } from "@/lib/openai-web-search";
+import { buildResponsesInput } from "@/lib/openai-responses-input";
 import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
@@ -529,7 +530,7 @@ function streamOpenAI(
       try {
         const capability = getOpenAICapability(modelId);
         if (capability.api === "responses") {
-          const input = msgs.map((m) => ({ role: m.role, content: m.content as string }));
+          const input = buildResponsesInput({ systemPrompt, messages, imageBlocks });
           const res = await fetch("https://api.openai.com/v1/responses", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
