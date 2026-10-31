@@ -160,38 +160,38 @@ export const MODEL_REGISTRY = [
   },
 
   { kind: "text", id: "gpt-4o", provider: "openai", label: "GPT-4o", badge: "旧世代", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 10.00, 1.25), openai: { api: "chat_completions", tokenParam: "max_tokens" } },
-  { kind: "text", id: "gpt-5.4-mini", provider: "openai", label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50, 0.075), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
-  { kind: "text", id: "gpt-5.4", provider: "openai", label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00, 0.25), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
-  { kind: "text", id: "gpt-5.5", provider: "openai", label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00, 0.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.4-mini", provider: "openai", features: { webSearch: true }, label: "GPT-5.4 mini", badge: "標準", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(0.75, 4.50, 0.075), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.4", provider: "openai", features: { webSearch: true }, label: "GPT-5.4", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(2.50, 15.00, 0.25), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
+  { kind: "text", id: "gpt-5.5", provider: "openai", features: { webSearch: true }, label: "GPT-5.5", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00, 0.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens" } },
   { kind: "text", id: "gpt-5.5-pro", provider: "openai", label: "GPT-5.5 Pro", badge: "最上位", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(30.00, 180.00), openai: { api: "responses" } },
-  { kind: "text", id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00, 0.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
-  { kind: "text", id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gpt-5.6-sol", provider: "openai", features: { webSearch: true }, label: "GPT-5.6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: price(5.00, 30.00, 0.50), openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
+  { kind: "text", id: "gpt-5.6-terra", provider: "openai", features: { webSearch: true }, label: "GPT-5.6 Terra", badge: "高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [{ inputPerMTok: 2.50, cachedInputPerMTok: 0.25, outputPerMTok: 15.00 }] },
     { from: "2026-07-30T00:00:00.000Z", tiers: [{ inputPerMTok: 2.00, cachedInputPerMTok: 0.20, outputPerMTok: 12.00 }] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
-  { kind: "text", id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gpt-5.6-luna", provider: "openai", features: { webSearch: true }, label: "GPT-5.6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [{ inputPerMTok: 1.00, cachedInputPerMTok: 0.10, outputPerMTok: 6.00 }] },
     { from: "2026-07-30T00:00:00.000Z", tiers: [{ inputPerMTok: 0.20, cachedInputPerMTok: 0.02, outputPerMTok: 1.20 }] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
-  { kind: "text", id: "gpt-6-astra", provider: "openai", label: "GPT-6 Astra", badge: "最高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gpt-6-astra", provider: "openai", features: { webSearch: true }, label: "GPT-6 Astra", badge: "最高性能", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [
       { inputPerMTok: 10.00, cachedInputPerMTok: 1.00, outputPerMTok: 50.00 },
       { promptTokensAbove: 272_000, inputPerMTok: 20.00, cachedInputPerMTok: 2.00, outputPerMTok: 75.00 },
     ] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", reasoningEffort: "medium", supportsCacheWrite: true } },
 
-  { kind: "text", id: "gpt-6-luna", provider: "openai", label: "GPT-6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gpt-6-luna", provider: "openai", features: { webSearch: true }, label: "GPT-6 Luna", badge: "軽量・爆速", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [
       { inputPerMTok: 0.10, cachedInputPerMTok: 0.01, outputPerMTok: 0.50 },
       { promptTokensAbove: 272_000, inputPerMTok: 0.20, cachedInputPerMTok: 0.02, outputPerMTok: 0.75 },
     ] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", supportsCacheWrite: true } },
-  { kind: "text", id: "gpt-6-sol", provider: "openai", label: "GPT-6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gpt-6-sol", provider: "openai", features: { webSearch: true }, label: "GPT-6 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [
       { inputPerMTok: 2.00, cachedInputPerMTok: 0.20, outputPerMTok: 10.00 },
     ] },
   ], openai: { api: "chat_completions", tokenParam: "max_completion_tokens", reasoningEffort: "medium", supportsCacheWrite: true } },
-  { kind: "text", id: "gpt-6.1-sol", provider: "openai", label: "GPT-6.1 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
+  { kind: "text", id: "gpt-6.1-sol", provider: "openai", features: { webSearch: true }, label: "GPT-6.1 Sol", badge: "最高精度", status: "active", surfaces: { chat: true, arena: true }, thinking: { control: "unsupported" }, pricing: [
     { tiers: [
       { inputPerMTok: 2.00, cachedInputPerMTok: 0.10, outputPerMTok: 10.00 },
       { promptTokensAbove: 272_000, inputPerMTok: 4.00, cachedInputPerMTok: 0.20, outputPerMTok: 15.00 },

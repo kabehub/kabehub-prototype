@@ -1,0 +1,165 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_0d5018d89f47d2cc016ae554988fa487d0a5467f8cb74b2b6e","object":"response","created_at":1793414296,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-5.4-2026-03-05","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"none","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+event: response.in_progress
+data: {"type":"response.in_progress","response":{"id":"resp_0d5018d89f47d2cc016ae554988fa487d0a5467f8cb74b2b6e","object":"response","created_at":1793414296,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-5.4-2026-03-05","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"none","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"ws_0d5018d89f47d2cc016ae55499d6d487d0ae452fdfa7c902c6","type":"web_search_call","status":"in_progress"},"output_index":0,"sequence_number":2}
+
+event: response.web_search_call.in_progress
+data: {"type":"response.web_search_call.in_progress","item_id":"ws_0d5018d89f47d2cc016ae55499d6d487d0ae452fdfa7c902c6","output_index":0,"sequence_number":3}
+
+event: response.web_search_call.searching
+data: {"type":"response.web_search_call.searching","item_id":"ws_0d5018d89f47d2cc016ae55499d6d487d0ae452fdfa7c902c6","output_index":0,"sequence_number":4}
+
+event: response.web_search_call.completed
+data: {"type":"response.web_search_call.completed","item_id":"ws_0d5018d89f47d2cc016ae55499d6d487d0ae452fdfa7c902c6","output_index":0,"sequence_number":5}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"ws_0d5018d89f47d2cc016ae55499d6d487d0ae452fdfa7c902c6","type":"web_search_call","status":"completed","action":{"type":"search","queries":["weather: Japan, Tokyo, Tokyo"],"query":"weather: Japan, Tokyo, Tokyo"}},"output_index":0,"sequence_number":6}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","type":"message","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":1,"sequence_number":7}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","output_index":1,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":8}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"今日","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"EmG5E9vyPXOd89","output_index":1,"sequence_number":9}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"、","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"ISXZt4fF8kVoh34","output_index":1,"sequence_number":10}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"**2026年10月31日（土","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"Y","output_index":1,"sequence_number":11}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"）の","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"Hmnr8vcChYsI73","output_index":1,"sequence_number":12}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"東京**","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"FdpXU2N5sKZs","output_index":1,"sequence_number":13}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"の天気は","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"w3167r98t0ic","output_index":1,"sequence_number":14}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"**晴れ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"BX2T5P9znKT1","output_index":1,"sequence_number":15}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"時々く","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"Y3CFMo1bfrXiU","output_index":1,"sequence_number":16}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"もり**です。現在は**22°C**","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"FaAi2J00cZCKJ6","output_index":1,"sequence_number":17}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"前後で、午後","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"Im4HIvw9zT","output_index":1,"sequence_number":18}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"は**24°C**","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"sJTmAuW","output_index":1,"sequence_number":19}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"くらいまで上","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"QfsMnoSyZr","output_index":1,"sequence_number":20}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"がり、夕方以降は","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"H8XOXTTP","output_index":1,"sequence_number":21}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"**16〜","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"dpDizPAuXj8","output_index":1,"sequence_number":22}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"20°C**ほど","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"yiijptcm","output_index":1,"sequence_number":23}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"に下がる見込みです。","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"EwqkVd","output_index":1,"sequence_number":24}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n\nざ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"L5a3fw8wxhiOn","output_index":1,"sequence_number":25}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"っくり：\n-","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"aHLNWCwI8z","output_index":1,"sequence_number":26}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":" 昼：**","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"uH24wpTwKeN","output_index":1,"sequence_number":27}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"22〜24°C**、","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"fGSpwR","output_index":1,"sequence_number":28}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"おお","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"pDqx4ZaFwHuYaL","output_index":1,"sequence_number":29}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"むね晴れ ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"3iDy1T6TpXw","output_index":1,"sequence_number":30}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n- ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"MTHaf4yGoeUHy","output_index":1,"sequence_number":31}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"夕方：**","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"Bro883eJeCx","output_index":1,"sequence_number":32}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"20〜21°C**、晴れ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"JJo4","output_index":1,"sequence_number":33}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"e1kVThRcO0q3JuV","output_index":1,"sequence_number":34}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n- 夜：**16〜","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"l7vHEt","output_index":1,"sequence_number":35}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"18°C**、晴れ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"kDudkmI","output_index":1,"sequence_number":36}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"mWoEEPW55NQRTba","output_index":1,"sequence_number":37}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"qiqmWSDbNvHuwzE","output_index":1,"sequence_number":38}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n必要なら、**","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"bTcVfsdd","output_index":1,"sequence_number":39}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"降水","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"DyRNGXgBulr1kj","output_index":1,"sequence_number":40}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"確率","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"aFM4weCh4KwSgB","output_index":1,"sequence_number":41}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"・","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"YVVJsK527dEHILE","output_index":1,"sequence_number":42}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"服装","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"pPfUQeHdRV2nNb","output_index":1,"sequence_number":43}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"の目安・","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"mfW108vvcvWN","output_index":1,"sequence_number":44}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"23","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"WXx7Tpkq4NaRaE","output_index":1,"sequence_number":45}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"区","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"RxnJ3aUQ4VgREV5","output_index":1,"sequence_number":46}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"/","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"m31YxSst5zflcbU","output_index":1,"sequence_number":47}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"多摩の違","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"2N3iscug5iEk","output_index":1,"sequence_number":48}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"い**まで","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"anVOGdFDloX","output_index":1,"sequence_number":49}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"まとめます。","item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"obfuscation":"NCMCKyA6JW","output_index":1,"sequence_number":50}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","logprobs":[],"output_index":1,"sequence_number":51,"text":"今日、**2026年10月31日（土）の東京**の天気は**晴れ時々くもり**です。現在は**22°C**前後で、午後は**24°C**くらいまで上がり、夕方以降は**16〜20°C**ほどに下がる見込みです。\n\nざっくり：\n- 昼：**22〜24°C**、おおむね晴れ \n- 夕方：**20〜21°C**、晴れ \n- 夜：**16〜18°C**、晴れ \n\n必要なら、**降水確率・服装の目安・23区/多摩の違い**までまとめます。"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","output_index":1,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"今日、**2026年10月31日（土）の東京**の天気は**晴れ時々くもり**です。現在は**22°C**前後で、午後は**24°C**くらいまで上がり、夕方以降は**16〜20°C**ほどに下がる見込みです。\n\nざっくり：\n- 昼：**22〜24°C**、おおむね晴れ \n- 夕方：**20〜21°C**、晴れ \n- 夜：**16〜18°C**、晴れ \n\n必要なら、**降水確率・服装の目安・23区/多摩の違い**までまとめます。"},"sequence_number":52}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"今日、**2026年10月31日（土）の東京**の天気は**晴れ時々くもり**です。現在は**22°C**前後で、午後は**24°C**くらいまで上がり、夕方以降は**16〜20°C**ほどに下がる見込みです。\n\nざっくり：\n- 昼：**22〜24°C**、おおむね晴れ \n- 夕方：**20〜21°C**、晴れ \n- 夜：**16〜18°C**、晴れ \n\n必要なら、**降水確率・服装の目安・23区/多摩の違い**までまとめます。"}],"phase":"final_answer","role":"assistant"},"output_index":1,"sequence_number":53}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_0d5018d89f47d2cc016ae554988fa487d0a5467f8cb74b2b6e","object":"response","created_at":1793414296,"status":"completed","access_programs":null,"background":false,"completed_at":1793414302,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-5.4-2026-03-05","moderation":null,"output":[{"id":"ws_0d5018d89f47d2cc016ae55499d6d487d0ae452fdfa7c902c6","type":"web_search_call","status":"completed","action":{"type":"search","queries":["weather: Japan, Tokyo, Tokyo"],"query":"weather: Japan, Tokyo, Tokyo"}},{"id":"msg_0d5018d89f47d2cc016ae5549b13dc87d09186c58fcf79680c","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"今日、**2026年10月31日（土）の東京**の天気は**晴れ時々くもり**です。現在は**22°C**前後で、午後は**24°C**くらいまで上がり、夕方以降は**16〜20°C**ほどに下がる見込みです。\n\nざっくり：\n- 昼：**22〜24°C**、おおむね晴れ \n- 夕方：**20〜21°C**、晴れ \n- 夜：**16〜18°C**、晴れ \n\n必要なら、**降水確率・服装の目安・23区/多摩の違い**までまとめます。"}],"phase":"final_answer","role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"none","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":1}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":4748,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":256,"output_tokens_details":{"reasoning_tokens":40},"total_tokens":5004},"user":null,"metadata":{}},"sequence_number":54}
+

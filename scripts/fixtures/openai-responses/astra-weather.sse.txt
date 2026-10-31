@@ -1,0 +1,120 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_0169443f4dac63a6016ae554a2570887d08c5187f524421171","object":"response","created_at":1793414306,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-6-astra","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+event: response.in_progress
+data: {"type":"response.in_progress","response":{"id":"resp_0169443f4dac63a6016ae554a2570887d08c5187f524421171","object":"response","created_at":1793414306,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-6-astra","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"ws_0169443f4dac63a6016ae554a459d887d0bdabaa126c6c8d93","type":"web_search_call","status":"in_progress"},"output_index":0,"sequence_number":2}
+
+event: response.web_search_call.in_progress
+data: {"type":"response.web_search_call.in_progress","item_id":"ws_0169443f4dac63a6016ae554a459d887d0bdabaa126c6c8d93","output_index":0,"sequence_number":3}
+
+event: response.web_search_call.searching
+data: {"type":"response.web_search_call.searching","item_id":"ws_0169443f4dac63a6016ae554a459d887d0bdabaa126c6c8d93","output_index":0,"sequence_number":4}
+
+event: response.web_search_call.completed
+data: {"type":"response.web_search_call.completed","item_id":"ws_0169443f4dac63a6016ae554a459d887d0bdabaa126c6c8d93","output_index":0,"sequence_number":5}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"ws_0169443f4dac63a6016ae554a459d887d0bdabaa126c6c8d93","type":"web_search_call","status":"completed","action":{"type":"search","queries":["東京 天気 2026年10月31日"],"query":"東京 天気 2026年10月31日"}},"output_index":0,"sequence_number":6}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","type":"message","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":1,"sequence_number":7}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","output_index":1,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":8}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"検索しました。**今日2026年10月31日（土）の東京は、晴れ時々く","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"7J37rMmHa4kMW","output_index":1,"sequence_number":9}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"もり","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"3vSertHleoaaUh","output_index":1,"sequence_number":10}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"で、夕方","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"yxsd6b5ikIH5","output_index":1,"sequence_number":11}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"以降は晴れる予報です。** ","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"9c","output_index":1,"sequence_number":12}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n\n- **","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"HGUOT8X8jW","output_index":1,"sequence_number":13}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"現在の気温","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"0nQivpHyfNw","output_index":1,"sequence_number":14}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"：22℃**","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"LpjyH9ZT8k","output_index":1,"sequence_number":15}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"、おお","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"8EGQymWFaf3co","output_index":1,"sequence_number":16}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"むね晴れ。","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"RaKJum8BB9H","output_index":1,"sequence_number":17}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n- **午後の","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"uW9azXOV","output_index":1,"sequence_number":18}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"気温：","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"Lwfb6A71XjXRu","output_index":1,"sequence_number":19}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"21〜24℃","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"Wn0H7PfhML","output_index":1,"sequence_number":20}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"程度**。","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"xNYrkTfd7Mv","output_index":1,"sequence_number":21}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"夜は16","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"TrwdN5nAxd4G","output_index":1,"sequence_number":22}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"〜","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"77y66xKpy4Ltk1C","output_index":1,"sequence_number":23}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"19℃ほどまで","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"yIkdHFdMZ","output_index":1,"sequence_number":24}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"下がる見込みです。","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"miL8EH5","output_index":1,"sequence_number":25}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"\n- **降水確率：","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"t6AoFY","output_index":1,"sequence_number":26}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"午後","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"03MvgqIIN4YVWG","output_index":1,"sequence_number":27}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"20％、夜","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"1UuvzCLFHTI","output_index":1,"sequence_number":28}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"10％**（午前2時発表","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"GsVc","output_index":1,"sequence_number":29}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"の予報）。","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"UTCiWvvTnHS","output_index":1,"sequence_number":30}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai))\n\n夜","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"Kx","output_index":1,"sequence_number":31}
+
+event: response.output_text.annotation.added
+data: {"type":"response.output_text.annotation.added","annotation":{"type":"url_citation","end_index":248,"start_index":157,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai"},"annotation_index":0,"content_index":0,"item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","output_index":1,"sequence_number":32}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"まで外出するなら、薄手","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"s5EwA","output_index":1,"sequence_number":33}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"の上着があるとよさ","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"7ZEz77m","output_index":1,"sequence_number":34}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"そうです。","item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"obfuscation":"FR0JVfVCLmI","output_index":1,"sequence_number":35}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","logprobs":[],"output_index":1,"sequence_number":36,"text":"検索しました。**今日2026年10月31日（土）の東京は、晴れ時々くもりで、夕方以降は晴れる予報です。** \n\n- **現在の気温：22℃**、おおむね晴れ。\n- **午後の気温：21〜24℃程度**。夜は16〜19℃ほどまで下がる見込みです。\n- **降水確率：午後20％、夜10％**（午前2時発表の予報）。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai))\n\n夜まで外出するなら、薄手の上着があるとよさそうです。"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","output_index":1,"part":{"type":"output_text","annotations":[{"type":"url_citation","end_index":248,"start_index":157,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai"}],"logprobs":[],"text":"検索しました。**今日2026年10月31日（土）の東京は、晴れ時々くもりで、夕方以降は晴れる予報です。** \n\n- **現在の気温：22℃**、おおむね晴れ。\n- **午後の気温：21〜24℃程度**。夜は16〜19℃ほどまで下がる見込みです。\n- **降水確率：午後20％、夜10％**（午前2時発表の予報）。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai))\n\n夜まで外出するなら、薄手の上着があるとよさそうです。"},"sequence_number":37}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","type":"message","status":"completed","content":[{"type":"output_text","annotations":[{"type":"url_citation","end_index":248,"start_index":157,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai"}],"logprobs":[],"text":"検索しました。**今日2026年10月31日（土）の東京は、晴れ時々くもりで、夕方以降は晴れる予報です。** \n\n- **現在の気温：22℃**、おおむね晴れ。\n- **午後の気温：21〜24℃程度**。夜は16〜19℃ほどまで下がる見込みです。\n- **降水確率：午後20％、夜10％**（午前2時発表の予報）。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai))\n\n夜まで外出するなら、薄手の上着があるとよさそうです。"}],"phase":"final_answer","role":"assistant"},"output_index":1,"sequence_number":38}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_0169443f4dac63a6016ae554a2570887d08c5187f524421171","object":"response","created_at":1793414306,"status":"completed","access_programs":null,"background":false,"completed_at":1793414313,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-6-astra","moderation":null,"output":[{"id":"ws_0169443f4dac63a6016ae554a459d887d0bdabaa126c6c8d93","type":"web_search_call","status":"completed","action":{"type":"search","queries":["東京 天気 2026年10月31日"],"query":"東京 天気 2026年10月31日"}},{"id":"msg_0169443f4dac63a6016ae554a6fc4487d0b5888956a451b04f","type":"message","status":"completed","content":[{"type":"output_text","annotations":[{"type":"url_citation","end_index":248,"start_index":157,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai"}],"logprobs":[],"text":"検索しました。**今日2026年10月31日（土）の東京は、晴れ時々くもりで、夕方以降は晴れる予報です。** \n\n- **現在の気温：22℃**、おおむね晴れ。\n- **午後の気温：21〜24℃程度**。夜は16〜19℃ほどまで下がる見込みです。\n- **降水確率：午後20％、夜10％**（午前2時発表の予報）。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/13/4410.html?utm_source=openai))\n\n夜まで外出するなら、薄手の上着があるとよさそうです。"}],"phase":"final_answer","role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":1}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":8768,"input_tokens_details":{"cache_write_tokens":4476,"cached_tokens":0},"output_tokens":256,"output_tokens_details":{"reasoning_tokens":57},"total_tokens":9024},"user":null,"metadata":{}},"sequence_number":39}
+

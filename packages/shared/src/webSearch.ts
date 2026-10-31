@@ -6,6 +6,7 @@ export type MessageSources = {
 };
 
 export const WEB_SEARCH_MAX_USES_CLAUDE = 3;
+export const WEB_SEARCH_MAX_TOOL_CALLS_OPENAI = 3;
 export const MAX_SOURCES = 20;
 export const MAX_SOURCE_TITLE_LENGTH = 120;
 export const MAX_SOURCE_URL_LENGTH = 2048;

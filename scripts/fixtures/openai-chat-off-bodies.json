@@ -1,0 +1,2310 @@
+{
+  "baseline": "0ff977007b783378adac422e73893f63bce73fe8",
+  "note": "Captured from git-show baseline before implementation. D37: Pro image_url arrays intentionally preserve the existing bug; update only in the separate D37 fix.",
+  "cases": [
+    {
+      "name": "gpt-4o/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-4o",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-4o/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-4o",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-4o/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-4o",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-4o/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-4o",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-4o/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-4o",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-4o/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-4o",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-4o/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-4o",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-4o/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-4o",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-4o"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-4o\",\"max_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4-mini/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.4-mini",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4-mini"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4-mini\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.4",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.4",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.4/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.4",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.4/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.4",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.4"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.4\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.5/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.5",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.5/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.5",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.5/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.5",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.5/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.5",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.5/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.5",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.5/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.5",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.5/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.5",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.5/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.5",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.5\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.5-pro/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.5-pro/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.5-pro/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.5-pro/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.5-pro/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.5-pro/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.5-pro/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.5-pro/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.5-pro",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.5-pro"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "rawBody": "{\"model\":\"gpt-5.5-pro\",\"input\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}],\"max_output_tokens\":8192,\"store\":false}"
+    },
+    {
+      "name": "gpt-5.6-sol/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-sol/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-sol/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-sol/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-sol/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-sol/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-sol/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-sol/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-sol\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-terra/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.6-terra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-terra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-terra\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-5.6-luna/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-5.6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-5.6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-5.6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-astra/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-astra/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-astra/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-astra/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-astra/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-astra/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-astra/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-astra/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6-astra",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-astra"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-astra\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-luna/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-luna/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-luna/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-luna/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-luna/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-luna/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-luna/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-luna/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6-luna",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-luna"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-luna\",\"max_completion_tokens\":8192,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-sol/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-sol/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-sol/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-sol/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-sol/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-sol/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6-sol/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6-sol/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/omitted/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/omitted/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/omitted/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/omitted/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/false/image=false/system=false",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/false/image=false/system=true",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":\"hello 日本語\"}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/false/image=true/system=false",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ]
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    },
+    {
+      "name": "gpt-6.1-sol/false/image=true/system=true",
+      "body": {
+        "modelId": "gpt-6.1-sol",
+        "webSearch": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "previous"
+          },
+          {
+            "role": "assistant",
+            "content": "history",
+            "provider": "openai",
+            "model_id": "gpt-6.1-sol"
+          }
+        ],
+        "attachedImages": [
+          {
+            "mediaType": "image/png",
+            "base64": "aW1hZ2U="
+          }
+        ],
+        "systemPrompt": "  fixed system 日本語  "
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "rawBody": "{\"model\":\"gpt-6.1-sol\",\"max_completion_tokens\":8192,\"reasoning_effort\":\"medium\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"messages\":[{\"role\":\"system\",\"content\":\"fixed system 日本語  \\n\\n【重要】会話履歴中の [model-id] はシステムが付与した発言者識別ラベルです。あなた自身の返答には絶対にこの形式のラベルを含めないでください。\"},{\"role\":\"user\",\"content\":\"previous\"},{\"role\":\"assistant\",\"content\":\"history\"},{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aW1hZ2U=\"}},{\"type\":\"text\",\"text\":\"hello 日本語\"}]}]}"
+    }
+  ]
+}

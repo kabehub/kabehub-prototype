@@ -14,6 +14,7 @@ import {
 } from "@/lib/lore";
 import { buildChatLoreSearchPlan, buildChatSearchQueries } from "@/lib/lore/chat-search-plan";
 import { CHAT_LORE_SEARCH_POLICY } from "@/lib/lore/types";
+import { streamOpenAIWebSearch } from "@/lib/openai-web-search";
 import { runGithubToolLoop } from "@/lib/github-tool-loop";
 import { buildPinnedGithubContext } from "@/lib/github";
 import { getGithubToken } from "@/lib/github-token-store";
@@ -1360,12 +1361,15 @@ export async function POST(req: NextRequest) {
   let errorMessage: string | null = null;
   const usedProvider = provider;
 
-  const webSearchEnabled = webSearch === true && provider === "claude" && !isMemo &&
-    isClaudeModel(resolvedModelId) && supportsWebSearch("claude", resolvedModelId);
+  const webSearchEnabled = webSearch === true && !isMemo && (
+    (provider === "claude" && isClaudeModel(resolvedModelId) && supportsWebSearch("claude", resolvedModelId)) ||
+    (provider === "openai" && isOpenAIModel(resolvedModelId) && supportsWebSearch("openai", resolvedModelId))
+  );
+  const searchProvider = provider === "openai" ? "openai" : "claude";
   const controlToken = webSearchEnabled ? "\u0000kabe-ctl:" + uuidv4() + ":searching\u0000" : undefined;
   let searchExecuted = false;
   const rawCitations: { url: string; title?: string }[] = [];
-  const getSources = () => searchExecuted ? normalizeSources(rawCitations, "claude") : undefined;
+  const getSources = () => searchExecuted ? normalizeSources(rawCitations, searchProvider) : undefined;
   // ✅ v92: ストリーム完了後にトークン数を回収するためのref
   const usageRef: UsageData = { input_tokens: null, output_tokens: null };
   const handleUsage = (u: UsageData) => { Object.assign(usageRef, u); };
@@ -1577,7 +1581,29 @@ export async function POST(req: NextRequest) {
       }
       if (!openaiKey) throw new Error("OpenAIのAPIキーが設定されていません。");
       beginUsageEvent();
-      aiStream = streamOpenAI(openaiKey, finalMessagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
+      aiStream = webSearchEnabled ? streamOpenAIWebSearch({
+        apiKey: openaiKey, modelId: resolvedModelId, systemPrompt: combinedSystemPrompt,
+        messages: finalMessagesForApi, imageBlocks: imageBlocksForApi, signal: req.signal, onUsage: handleUsage,
+        search: {
+          controlToken: controlToken!,
+          onSearching: () => { searchExecuted = true; },
+          onCitation: citation => { rawCitations.push(citation); },
+        },
+        errors: {
+          onHttpError: status => providerApiError("openai", "OpenAI", status),
+          onTransportError: error => normalizeProviderError("openai", "OpenAI", error),
+          onTerminalError: (kind, reason) => {
+            const codes = { incomplete: "UPSTREAM_STREAM_INCOMPLETE", failed: "UPSTREAM_STREAM_FAILED", protocol: "UPSTREAM_STREAM_PROTOCOL" };
+            logger.externalApiFailed({ service: "openai", errorCode: codes[kind] });
+            const message = kind === "incomplete"
+              ? reason === "max_output_tokens" ? "出力の上限に達したため、回答が途中で終わりました。"
+                : reason === "content_filter" ? "コンテンツフィルターにより、回答が途中で終わりました。"
+                  : "OpenAIの応答が完了しませんでした。"
+              : "OpenAIの応答が正常に完了しませんでした。";
+            return new ReportedProviderError(message);
+          },
+        },
+      }) : streamOpenAI(openaiKey, finalMessagesForApi, combinedSystemPrompt, resolvedModelId, imageBlocksForApi, req.signal, handleUsage);
     } else {
       throw new Error(`未対応のプロバイダーです: ${provider}`);
     }

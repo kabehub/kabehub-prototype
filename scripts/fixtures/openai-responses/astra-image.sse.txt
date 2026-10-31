@@ -1,0 +1,63 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_0478e094a8170afe016ae556a9154087d0a8cc92345a6c38f6","object":"response","created_at":1793414825,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-6-astra","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+event: response.in_progress
+data: {"type":"response.in_progress","response":{"id":"resp_0478e094a8170afe016ae556a9154087d0a8cc92345a6c38f6","object":"response","created_at":1793414825,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-6-astra","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"ws_0478e094a8170afe016ae556aa878087d091fcaa1e4767d015","type":"web_search_call","status":"in_progress"},"output_index":0,"sequence_number":2}
+
+event: response.web_search_call.in_progress
+data: {"type":"response.web_search_call.in_progress","item_id":"ws_0478e094a8170afe016ae556aa878087d091fcaa1e4767d015","output_index":0,"sequence_number":3}
+
+event: response.web_search_call.searching
+data: {"type":"response.web_search_call.searching","item_id":"ws_0478e094a8170afe016ae556aa878087d091fcaa1e4767d015","output_index":0,"sequence_number":4}
+
+event: response.web_search_call.completed
+data: {"type":"response.web_search_call.completed","item_id":"ws_0478e094a8170afe016ae556aa878087d091fcaa1e4767d015","output_index":0,"sequence_number":5}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"ws_0478e094a8170afe016ae556aa878087d091fcaa1e4767d015","type":"web_search_call","status":"completed","action":{"type":"search","queries":["東京 2026年10月31日 天気"],"query":"東京 2026年10月31日 天気"}},"output_index":0,"sequence_number":6}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","type":"message","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"},"output_index":1,"sequence_number":7}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","output_index":1,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":8}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"色","item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"obfuscation":"fZmUOvl03qqBR3k","output_index":1,"sequence_number":9}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"：**赤**。\n\n今日（202","item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"obfuscation":"F","output_index":1,"sequence_number":10}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"6年10月31日）の東京は","item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"obfuscation":"b3r","output_index":1,"sequence_number":11}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"、**晴れ時々","item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"obfuscation":"mvtyTtjIY","output_index":1,"sequence_number":12}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"曇り**","item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"obfuscation":"siI3pbOsQz96","output_index":1,"sequence_number":13}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"の予報です。最高25℃、最低14℃。","item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"obfuscation":"rHuWVly8KiVG0v","output_index":1,"sequence_number":14}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","content_index":0,"delta":"([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai))","item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"obfuscation":"KC","output_index":1,"sequence_number":15}
+
+event: response.output_text.annotation.added
+data: {"type":"response.output_text.annotation.added","annotation":{"type":"url_citation","end_index":152,"start_index":58,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai"},"annotation_index":0,"content_index":0,"item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","output_index":1,"sequence_number":16}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","logprobs":[],"output_index":1,"sequence_number":17,"text":"色：**赤**。\n\n今日（2026年10月31日）の東京は、**晴れ時々曇り**の予報です。最高25℃、最低14℃。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai))"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","output_index":1,"part":{"type":"output_text","annotations":[{"type":"url_citation","end_index":152,"start_index":58,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai"}],"logprobs":[],"text":"色：**赤**。\n\n今日（2026年10月31日）の東京は、**晴れ時々曇り**の予報です。最高25℃、最低14℃。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai))"},"sequence_number":18}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","type":"message","status":"completed","content":[{"type":"output_text","annotations":[{"type":"url_citation","end_index":152,"start_index":58,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai"}],"logprobs":[],"text":"色：**赤**。\n\n今日（2026年10月31日）の東京は、**晴れ時々曇り**の予報です。最高25℃、最低14℃。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai))"}],"phase":"final_answer","role":"assistant"},"output_index":1,"sequence_number":19}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_0478e094a8170afe016ae556a9154087d0a8cc92345a6c38f6","object":"response","created_at":1793414825,"status":"completed","access_programs":null,"background":false,"completed_at":1793414830,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":8192,"max_tool_calls":3,"model":"gpt-6-astra","moderation":null,"output":[{"id":"ws_0478e094a8170afe016ae556aa878087d091fcaa1e4767d015","type":"web_search_call","status":"completed","action":{"type":"search","queries":["東京 2026年10月31日 天気"],"query":"東京 2026年10月31日 天気"}},{"id":"msg_0478e094a8170afe016ae556ae42f087d0b437dbb7f649924a","type":"message","status":"completed","content":[{"type":"output_text","annotations":[{"type":"url_citation","end_index":152,"start_index":58,"title":"東京（東京）の天気 - Yahoo!天気・災害","url":"https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai"}],"logprobs":[],"text":"色：**赤**。\n\n今日（2026年10月31日）の東京は、**晴れ時々曇り**の予報です。最高25℃、最低14℃。([weather.yahoo.co.jp](https://weather.yahoo.co.jp/weather/jp/13/4410.html?utm_source=openai))"}],"phase":"final_answer","role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":1}},"tools":[{"type":"web_search","return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","user_location":{"type":"approximate","city":null,"country":"US","region":null,"timezone":null}}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":8978,"input_tokens_details":{"cache_write_tokens":43,"cached_tokens":4452},"output_tokens":117,"output_tokens_details":{"reasoning_tokens":57},"total_tokens":9095},"user":null,"metadata":{}},"sequence_number":20}
+

@@ -16,7 +16,7 @@ test('both registries and the shared root expose model capability without surfac
   for (const source of [registry, sharedRegistry, shared]) {
     for (const model of models) assert.equal(source.supportsWebSearch('claude', model.id), true);
     for (const model of source.MODEL_REGISTRY.filter(m => ['gemini', 'openai'].includes(m.provider))) {
-      assert.equal(source.supportsWebSearch(model.provider, model.id), false);
+      assert.equal(source.supportsWebSearch(model.provider, model.id), model.kind === 'text' && model.provider === 'openai' && !['gpt-4o', 'gpt-5.5-pro'].includes(model.id));
     }
     assert.equal(source.supportsWebSearch('openai', models[0].id), false);
     assert.equal(source.supportsWebSearch('claude', 'unknown'), false);
@@ -30,6 +30,8 @@ test('both registries and the shared root expose model capability without surfac
   assert.equal(typeof shared.normalizeSources, 'function');
   assert.equal(typeof shared.withSources, 'function');
   assert.equal(shared.WEB_SEARCH_MAX_USES_CLAUDE, 3);
+  assert.equal(shared.WEB_SEARCH_MAX_TOOL_CALLS_OPENAI, 3);
+  assert.equal(registry.MODEL_REGISTRY.filter(m => m.provider === "openai" && registry.supportsWebSearch("openai", m.id)).length, 10);
   assert.equal(shared.MAX_SOURCES, 20);
   assert.equal(shared.MAX_SOURCE_TITLE_LENGTH, 120);
   assert.equal(shared.MAX_SOURCE_URL_LENGTH, 2048);
