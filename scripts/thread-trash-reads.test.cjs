@@ -233,17 +233,6 @@ test("additional reuse inputs are guarded at their individual SELECTs", () => {
       live(query, true);
     }
   }
-  const like = read("app/api/lore/like/route.ts");
-  const parent = queries(like, "threads");
-  assert.equal(parent.length, 1);
-  assert.match(parent[0].methods[0].args, /user_id, deleted_at/);
-  assert.ok(!method(parent[0], "is"));
-  assert.ok(method(parent[0], "eq", /^"id", message\.thread_id$/));
-  assert.ok(like.indexOf("message.user_id !== user.id") < like.indexOf("if (thread.deleted_at)"));
-  assert.ok(like.indexOf("if (thread.deleted_at)") < like.indexOf("const { data: existing"));
-  const embedding = like.indexOf("embedding = await createEmbedding");
-  assert.ok(parent[0].end < embedding);
-  assert.match(like.slice(parent[0].end, embedding), /if \(!thread\)\s*return finalizeJson\(\{ error: "Message not found" \}, \{ status: 404 \}\)/);
 });
 
 test("bulk export establishes all live owned IDs, then scopes and pages every child table", () => {

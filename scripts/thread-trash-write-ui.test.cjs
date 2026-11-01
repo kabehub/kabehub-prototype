@@ -41,7 +41,7 @@ function setup() {
     'githubProgressState', 'thinkingContents', 'imageContextId', 'imageRefId', 'imageRefUpload', 'isImagePinned',
     'searchMatchIds', 'searchMatchIndex', 'activeThreadId', 'isTemporary', 'isExtracting', 'isNovelPaneOpen', 'isOutlineOpen',
     'tags', 'tagInputValue', 'showTagInput', 'showDialog', 'notes', 'editingNoteId', 'newNoteContent', 'messageNotes', 'drafts',
-    'shareSaving', 'sharePublic', 'shareHideMemos', 'shareAllowPromptFork', 'shareGenre', 'systemPromptSaving', 'rpSaving', 'likeStatus']) {
+    'shareSaving', 'sharePublic', 'shareHideMemos', 'shareAllowPromptFork', 'shareGenre', 'systemPromptSaving', 'rpSaving']) {
     c[`set${field[0].toUpperCase()}${field.slice(1)}`] = value => {
       state[field] = typeof value === 'function' ? value(state[field]) : value;
     };
@@ -193,11 +193,6 @@ for (const kind of ['409', '500', 'network', 'success']) test(`title save ${kind
   assert.equal(state.showDialog, kind !== 'success');
   if (kind === '409') common(notices);
   else if (kind !== 'success') assert.equal(notices[0][0], 'タイトルの保存に失敗しました');
-});
-test('Lore like 409 uses common toast and resets like status', async () => {
-  const { c, state, notices, alerts } = setup(); c.likeStatus = 'idle'; c.message = message;
-  await fileCallback('components/MessageBubble.tsx', 'handleLike', c)();
-  common(notices); assert.equal(state.likeStatus, 'idle'); assert.equal(alerts.length, 0);
 });
 test('both bubble editors keep editing and avoid duplicate generic alerts after the page notifies trash', async () => {
   for (const component of ['MessageBubble', 'RoleplayBubble']) for (const trash of [false, true]) {

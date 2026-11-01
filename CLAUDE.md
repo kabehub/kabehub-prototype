@@ -111,7 +111,6 @@ Argonの料金表示は目安です。APIが報告したトークンのみ集計
 | `app/api/lore/promotions/route.ts` | GET・Project Memoryから昇格したLoreの来歴（6フィールドのみ） |
 | `app/api/lore/[id]/route.ts` | PATCH（編集・固定・確認・アーカイブ） |
 | `app/api/lore/bulk-archive/route.ts` | POST・複数記憶を一括アーカイブ（is_pinned保護あり） |
-| `app/api/lore/like/route.ts` | POST・AI発言を「👍 記憶に追加」で liked_ai として保存。有効なカードは`plainifyKabeCards`で平文化し、埋め込み入力と`chunk_text`に同じ文字列を使う。原文は保存しない |
 | `app/api/lore/batch-train/route.ts` | POST・未学習のuserメッセージをEmbedding化してlore_embeddingsに保存 |
 | `app/api/lore/chunks/route.ts` / `app/api/lore/chunks/[id]/route.ts` | 前者はLore chunk一覧取得（GET）、後者は削除（DELETE） |
 | `app/api/lore/embed/route.ts` | POST：既存Embeddingを削除して新しいEmbeddingを生成・保存 |
@@ -214,7 +213,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ProjectSettingsTabs.tsx` | hookなしの制御タブ。ARIAと左右矢印／Home／Endによる選択・focus移動 |
 | `components/ProjectMemoryTab.tsx` | Memory選択時のみmount。読み取り専用サマリと初回生成／整理／会話からMemoryを更新／一覧の4ボタン。標準未作成かつ生成可能ならautoPrimary、4/4作成済みかつ更新可能ならupdatePrimary、それ以外はサマリ取得済み／エラー時にlistPrimary（同時に主ボタンは最大1つ）。更新の有効条件はbootstrapのdisabledと独立。生成中は「更新案を生成中…」。指示・参照パネルとtabpanel要素は常時mount |
 | `components/ProjectMemoryAutoUpdateModal.tsx` | 会話からの反映案（z-index 1100/1101、dialog／aria-modal）。ProjectMemoryDiffViewでtopicごとの差分・revision・origin・reasonを全選択から確認。user発言の使用件数・除外理由・見送りの確認位置記録を明示。警告用topic GET・選択に応じた注入量／Lore警告、すべて見送るの2段階確認、results全topic（unchangedを含む）の表示。0件選択の適用と結果表示後の再実行は禁止、適用中は閉じる／Escape／背景クリックを無効化 |
-| `components/MessageBubble.tsx` | 通常モードのメッセージ表示。「👍 記憶に追加」ボタン・編集/上書き再生成モーダル（ドロップダウン方式・v173） |
+| `components/MessageBubble.tsx` | 通常モードのメッセージ表示。編集/上書き再生成モーダル（ドロップダウン方式・v173） |
 | `components/RoleplayBubble.tsx` | なりきりモード用メッセージ表示（LINEライクUI） |
 | `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
 | `components/ArenaTimeline.tsx` | provider別Bubble・thinking表示付きのAI闘技場タイムライン |
@@ -336,11 +335,11 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1840件（チケットAで改行12ケース×default／shareの24件追加後）、全件成功・失敗／skipなし。`scripts/kabe-card-render.test.cjs`は既存27件＋追加24件の計51件、全件成功。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01 Phase 0実測で1827件、全件成功・失敗／skipなし。旧Lore登録入口の撤去で13件削除。proxy回帰テスト1件は同ファイル独自のヘルパーで追加され、TAP集計上はファイル全体が1件のまま。`scripts/kabe-card-render.test.cjs`は既存27件＋追加24件の計51件、全件成功。
 - mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件。2026-10-31の再計測はしていない）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
-テスト148本（`scripts/*.test.cjs`。2026-11-01時点の`git ls-files 'scripts/*.test.cjs'`で追跡済み148本）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（後者は2026-10-12、`git ls-files`の追跡済みファイルで実測）。
+テスト147本（`scripts/*.test.cjs`。2026-11-01 Phase 0で1本削除後）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（後者は2026-10-12、`git ls-files`の追跡済みファイルで実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -360,7 +359,6 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/rich-display-preference.test.cjs` | 既定ON・0のみOFF・storage例外・厳密な送信判定・同一タブの即時購読通知・別タブstorageイベントを検証 |
 | `scripts/kabe-card-system-prompt.test.cjs` | inline Markdown・箇条書き・改行を許可する規則全文のバイト固定・LFと末尾改行なし・注入条件・OFF文字列の不変を検証 |
 | `scripts/kabe-card.test.cjs` | 既存parse／閉鎖判定／limiterに、カード置換の41件を追加。外側フェンス・CRLF／CR／LF保持・無効／未閉鎖の原文保持・有効20枚制限・ASTとの意図的な認識差を検証。B2で平文化35件を追加し計150件。D73の形式・tone破棄・本文Markdown保持・混在・カードなしの完全一致・D74の区切り・D75のCRLF保持を検証 |
-| `scripts/lore-like-kabe-card.test.cjs` | 5件。埋め込み入力と`chunk_text`の一致、metadataの形、混在・カードなしの扱い、重複・Embedding失敗時にinsertしないことと従来のエラー応答を検証 |
 | `scripts/message-summary-kabe-card.test.cjs` | 24件。空要約のみtitleへフォールバック、非空の従来結果維持、UTF-16切り詰め維持、user貼り付け、Web／sharedの出力一致とmask互換を検証 |
 | `scripts/export-md2-fence.test.cjs` | 19件。実関数で先頭フェンス保持・provider見出し・後続メッセージがフェンス外にある構造、通常文／user／memoの従来出力、md／txt／CSV／ZIP JSONの不変を検証 |
 | `scripts/chat-rich-display.test.cjs` | route経由で全providerのON注入・非trueのOFF body互換・memo／一時／roleplay／novel除外・Claude marker位置・GitHub探索への非注入・trimへの反映を検証 |
@@ -608,7 +606,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | ペア正規化 | `lore_consolidation_dismissals` のペアは必ず `lore_id_a < lore_id_b` に正規化する |
 | dreaming threshold | **本番では 0.92 を使う**（v139で復旧済み） |
 | RPC自己結合性能 | `find_similar_lore_pairs` はO(n²)。大量記憶時は `find_similar_lore_pairs_v2`（LATERAL KNN方式）を使う |
-| batch-train対象 | **userメッセージのみ**。`role = 'user'` / `provider != 'memo'` / `provider != 'image_gen'` で絞り込み。AI発言の記憶化は「👍 記憶に追加」ボタンで対応（カード記法は平文化して保存） |
+| batch-train対象 | **userメッセージのみ**。`role = 'user'` / `provider != 'memo'` / `provider != 'image_gen'` で絞り込み。AI発言の記憶化は現在UIなし。既存の `liked_ai` 行はDreamingで `liked_ai_cleaned` に変換される |
 | liked_ai保護 | Dreaming保護条件は `extraction_version NOT IN ('user_edited', 'user_created', 'liked_ai')`。全RPCに適用済み |
 | v_found_count カウンター | `consolidate_dreaming_batch_multi` の件数検証はFORループ内のカウンター方式。FORループ後の `GET DIAGNOSTICS` はPostgreSQLの仕様で件数が取れない |
 | チャット記憶検索の発火条件 | トリガー19語と検索条件は `lib/lore/chat-search-plan.ts` の `buildChatLoreSearchPlan` に集約済み。memory に一本化し、Lore Book とクエリが同一ならembeddingを共有、異なれば並列生成して検索する。temporary チャットでは記憶検索を行わない。通常Web送信の添付本文によるMemory誤発火・入力超過は解消済み（B2-2、2026-10-04）。再生成・分岐編集は同一ページセッション内は保持した手入力を再利用。再読み込み後・保持前のメッセージ・本文が別経路で変わったメッセージ・mobile・旧クライアントは従来どおり userContent 全文へフォールバック。 |

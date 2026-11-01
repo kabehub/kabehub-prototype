@@ -149,7 +149,7 @@ assert.equal(
   `Refusing to run outside test project ${TEST_PROJECT_REF}`,
 );
 if (!openaiKey) {
-  throw new Error("PHASE_C_OPENAI_API_KEY or OPENAI_API_KEY is required for embed/like verification");
+  throw new Error("PHASE_C_OPENAI_API_KEY or OPENAI_API_KEY is required for embed verification");
 }
 
 const service = createClient(supabaseUrl, serviceRoleKey, {
@@ -288,26 +288,11 @@ async function run() {
       user_id: userA.id,
       role: "assistant",
       provider: "phase_c_verification",
-      content: "Phase C liked AI verification",
+      content: "Phase C branch anchor verification",
     })
     .select("id")
     .single();
-  expectNoError(messageError, "insert liked_ai source message");
-  await apiRequest(baseUrl, accessToken, "/api/lore/like", {
-    method: "POST",
-    headers: { "x-openai-api-key": openaiKey },
-    body: { messageId: message.id },
-  });
-  const { data: liked, error: likedError } = await service
-    .from("lore_embeddings")
-    .select("id, folder_name, project_id")
-    .eq("source_message_id", message.id)
-    .eq("extraction_version", "liked_ai")
-    .single();
-  expectNoError(likedError, "select liked_ai lore");
-  assert.equal(liked.folder_name, null);
-  assert.equal(liked.project_id, projectB);
-  pass("⑤ liked_ai→project_id伝播", liked);
+  expectNoError(messageError, "insert branch anchor source message");
 
   const mergeIds = await insertLore(service, userA.id, [
     { folderName: folderB, projectId: projectB, createdAt: "2026-01-01T00:00:00Z" },

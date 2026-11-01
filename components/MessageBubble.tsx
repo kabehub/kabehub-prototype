@@ -6,18 +6,10 @@ import { Message, MessageNote } from "@/types";
 import { MODEL_CONFIG, loadModel } from "./ChatInput";
 import { useState, memo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { webApiClient } from "@/lib/api-client";
-import { useToast } from "@/components/Toast";
-import { throwIfThreadTrashed, notifyThreadTrashed, isThreadTrashWriteError } from "@/lib/threads/trash-client";
+import { isThreadTrashWriteError } from "@/lib/threads/trash-client";
 import { getMessageDisplayInfo } from "@/lib/messageDisplay";
-import {
-  API_KEY_HEADER_NAMES,
-  buildApiKeyHeaders,
-  type ApiKeyStore,
-} from "@kabehub/shared";
 
 interface MessageBubbleProps {
-  apiKeyStore: ApiKeyStore;
   message: Message;
   isLast?: boolean;
   isLoading?: boolean;
@@ -61,7 +53,6 @@ interface MessageBubbleProps {
 }
 
 function MessageBubble({
-  apiKeyStore,
   message,
   isLast,
   isLoading,
@@ -90,7 +81,6 @@ function MessageBubble({
   onSendMemoToAI,
   onBranchToNewChat,
 }: MessageBubbleProps) {
-  const { showToast } = useToast();
   const isUser = message.role === "user";
   const isMemo = message.provider === "memo";
   const isImageGen = message.provider === "image_gen";
@@ -109,7 +99,6 @@ function MessageBubble({
   const [isSavingHidden, setIsSavingHidden] = useState(false);
 
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
-  const [likeStatus, setLikeStatus] = useState<"idle" | "loading" | "done" | "already">("idle");
 
   // ⋮ コンテキストメニュー
   const [menuOpen, setMenuOpen] = useState(false);
@@ -319,40 +308,6 @@ function MessageBubble({
       if (!isThreadTrashWriteError(error)) alert("保存に失敗しました");
     } finally {
       setIsSavingEdit(false);
-    }
-  };
-
-  const handleLike = async () => {
-    if (likeStatus !== "idle") return;
-    const apiKeyHeaders = await buildApiKeyHeaders(apiKeyStore, ["openai"]);
-    if (!apiKeyHeaders[API_KEY_HEADER_NAMES.openai]) {
-      alert("OpenAI APIキーが設定されていません。");
-      return;
-    }
-    setLikeStatus("loading");
-    try {
-      const res = await webApiClient.request("/api/lore/like", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...apiKeyHeaders,
-        },
-        body: JSON.stringify({ messageId: message.id }),
-      });
-      await throwIfThreadTrashed(res);
-      const data = await res.json();
-      if (data.alreadyLiked) {
-        setLikeStatus("already");
-      } else if (data.success) {
-        setLikeStatus("done");
-        setTimeout(() => setLikeStatus("idle"), 2000);
-      } else {
-        alert(data.error ?? "エラーが発生しました");
-        setLikeStatus("idle");
-      }
-    } catch (error) {
-      if (!notifyThreadTrashed(error, showToast)) alert("エラーが発生しました");
-      setLikeStatus("idle");
     }
   };
 
@@ -933,35 +888,6 @@ function MessageBubble({
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* 👍 記憶に追加ボタン（assistantのみ） */}
-        {!isUser && !isMemo && !isImageGen && (
-          <div style={{ marginTop: "4px", position: "relative", zIndex: 1 }}>
-            <button
-              onClick={handleLike}
-              disabled={likeStatus === "loading" || likeStatus === "already"}
-              style={{
-                fontSize: "10px",
-                fontFamily: "'JetBrains Mono', monospace",
-                color: (likeStatus === "done" || likeStatus === "already") ? "#38a169" : "var(--ink-faint)",
-                background: "none",
-                border: "none",
-                cursor: (likeStatus === "loading" || likeStatus === "already") ? "default" : "pointer",
-                padding: "2px 4px",
-                borderRadius: "4px",
-                transition: "color 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                if (likeStatus === "idle") (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                if (likeStatus === "idle") (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-faint)";
-              }}
-            >
-              {likeStatus === "loading" ? "⏳ 保存中…" : (likeStatus === "done" || likeStatus === "already") ? "✓ 記憶済み" : "👍 記憶に追加"}
-            </button>
           </div>
         )}
 

@@ -137,6 +137,12 @@ test("classification helpers are fail-closed and keep auth modes separate", () =
   assert.equal(isCorsEligibleApi("/api/mcp/threads", "GET"), false);
 });
 
+test("removed lore like route classification", () => {
+  assert.equal(classifyApi("/api/lore/like", "POST"), null);
+  assert.equal(classifyApi("/api/lore/like", "PATCH"), "bearer");
+  assert.equal(classifyApi("/api/lore/like", "GET"), null);
+});
+
 test("thread trash Cron has only an internal GET classification with an exact path boundary", () => {
   for (const pathname of ["/api/cron/thread-trash-purge", "/api/cron/thread-trash-purge/"]) {
     assert.equal(classifyApi(pathname, "GET"), "internal");

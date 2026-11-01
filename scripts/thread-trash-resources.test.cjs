@@ -19,7 +19,6 @@ const notes=require('../app/api/threads/[id]/notes/route.ts');
 const messageNotes=require('../app/api/threads/[id]/message-notes/route.ts');
 const drafts=require('../app/api/threads/[id]/drafts/route.ts');
 const tags=require('../app/api/threads/[id]/tags/route.ts');
-const like=require('../app/api/lore/like/route.ts');
 const {runBatchTrain}=require('../lib/lore/batchTrain.ts');
 const {deleteOwnedMessage}=require('../lib/messages/delete.ts');
 const trash={id:'trash-parent',deleted_at:'2026-10-01'};
@@ -72,16 +71,6 @@ test('message deletion refuses trash before Lore, message DELETE and Storage',as
 });
 test('thread-scoped absent message retains idempotent success without side effects',async()=>{
   db=sequence([row(null)]);assert.deepEqual(await deleteOwnedMessage({supabase:db,userId:'u',messageId:'m',threadId:'t'}),{ok:true});assert.equal(db.calls.length,1);
-});
-for(const [label,msg,parent,status] of [
-  ['missing message',null,null,404], ['missing parent',{thread_id:'t',user_id:'u'},null,404],
-  ['foreign message',{thread_id:'t',user_id:'other'}, {...trash,user_id:'other'},403],
-  ['foreign parent',{thread_id:'t',user_id:'u'}, {...trash,user_id:'other'},403],
-  ['owned trash',{thread_id:'t',user_id:'u'}, {...trash,user_id:'u'},409],
-  ['owned live wrong role',{thread_id:'t',user_id:'u',role:'user'}, {id:'t',user_id:'u',deleted_at:null},400],
-])test(`lore like privacy ordering: ${label}`,async()=>{
-  db=sequence(msg?[row(msg),row(parent)]:[row(null)]);embeddings=0;
-  const res=await like.POST(req('POST',{messageId:'m'}));assert.equal(res.status,status);assert.equal(embeddings,0);assert.ok(db.calls.every(c=>c.operation==='select'));
 });
 test('batchTrain skips trash before embedding/persistence and never marks learned',async()=>{
   embeddings=0;skipped=[];

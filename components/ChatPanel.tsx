@@ -2265,7 +2265,6 @@ const handleExport = (format: "txt" | "md" | "md2" | "csv", options: ExportOptio
       />
     ) : (
       <MessageBubble
-        apiKeyStore={apiKeyStore}
         message={msg}
         isLast={activeIdx === lastAssistantIndex}
         isLoading={isLoading}

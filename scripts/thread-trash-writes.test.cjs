@@ -118,11 +118,6 @@ test('batchTrain rechecks before persistence; skip bypasses learned flag',()=>{
   const s=section(read('lib/lore/batchTrain.ts'),'export async function runBatchTrain');
   ordered(s,'getOwnedThreadTrashState(supabase, userId, message.thread_id)','if (!parent.data || parent.data.deleted_at)','skippedCount: 1','continue;','await persistExtractedMemories','await markMessageLearnedBestEffort');
 });
-test('lore like owns both message and parent before trash, then role/duplicate/embedding',()=>{
-  const s=read('app/api/lore/like/route.ts');
-  assert.match(s,/\.select\("project_id, user_id, deleted_at"\)/);assert.doesNotMatch(s,/\.is\("deleted_at", null\)/);
-  ordered(s,'if (msgError || !message)','if (!thread)','if (message.user_id !== user.id || thread.user_id !== user.id)','if (thread.deleted_at)','if (message.role !== "assistant")','const { data: existing','embedding = await createEmbedding');
-});
 test('purge is used only by trash DELETE and the expiry Cron; collects before conditional DELETE/RPC and Storage',()=>{
   const s=read('lib/threads/purge.ts');
   ordered(s,'for (let offset = 0; ;)','.order("id").range(offset, offset + pageSize - 1)','if (error) return fail','if (!data?.length) break','collectOwnedStoragePaths(data, userId)','offset += data.length','let deleted: boolean','if (!deleted) return','await removeStoragePaths');

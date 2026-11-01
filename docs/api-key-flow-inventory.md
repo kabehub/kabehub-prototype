@@ -30,7 +30,6 @@ git grep -n -E "apiKey|anthropicKey|geminiKey|openaiKey|ideogramKey|openrouterKe
 | `app/image/page.tsx` / `handleGenerate` | 読取・内部送信 | Gemini、OpenAI、Ideogram、OpenRouter | 対応する4キー | 選択中の画像プロバイダー用 |
 | `app/novel-check/page.tsx` / `NovelCheckPage` | 読取・内部送信 | Gemini | `kabehub_gemini_key` | novel-check用 |
 | `app/memory/page.tsx` / Memory画面各ハンドラー | 読取・内部送信 | OpenAI | `kabehub_openai_key` | Loreの埋め込み・学習・統合用 |
-| `components/MessageBubble.tsx` / `handleLike` | 読取・内部送信 | OpenAI | `kabehub_openai_key` | LikeしたAI回答の埋め込み用 |
 | `components/NovelSettingsPane.tsx` / `handleEmbed` | 読取・内部送信 | OpenAI | `kabehub_openai_key` | Loreチャンク登録用 |
 
 LocalStorageキーは次の5種であり、名称は変更していない。
@@ -74,7 +73,6 @@ Web/Mobileのどちらでも、BYOK APIキーをKabeHubのアプリケーショ�
 | `app/memory/page.tsx` / `handleDreamingBatch` | `/api/lore/dreaming-batch` | `x-openai-api-key` | OpenAI chat/embedding |
 | `app/memory/page.tsx` / `handlePreviewMerge` | `/api/lore/consolidate/preview` | `x-openai-api-key` | OpenAI chat |
 | `app/memory/page.tsx` / 統合確定ハンドラー | `/api/lore/consolidate/merge` | `x-openai-api-key` | OpenAI embedding |
-| `components/MessageBubble.tsx` / `handleLike` | `/api/lore/like` | `x-openai-api-key` | OpenAI embedding |
 | `components/NovelSettingsPane.tsx` / `handleEmbed` | `/api/lore/embed` | `x-openai-api-key` | OpenAI embedding |
 
 クライアントからKabeHubへのカスタムヘッダー名は次の5種であり、名称は変更していない。
@@ -98,7 +96,6 @@ Web/Mobileのどちらでも、BYOK APIキーをKabeHubのアプリケーショ�
 | `app/api/projects/[projectId]/memory/consolidate/preview/route.ts` / `POST` | 受信・外部転送 / OpenAI | `lib/project-memory/consolidation.ts`から`lib/lore/openai.ts`を経由し`Authorization: Bearer`でChat Completionsへ送信 | なし。Previewのみを返し、承認後は既存topic PATCHが`source_refs`へprovenance metadataを書き込む（キーなし） | 共通helperとRouteがprovider/status/固定errorCodeのみ。snapshot本文・生成結果・キーは記録しない | 固定`Project Memoryの整理案を生成できませんでした` |
 | `app/api/lore/[id]/route.ts` / `PATCH`の`update_text` | 受信・外部転送 / OpenAI | 同上 | `lore_embeddings.update`あり（本文・embedding・分類のみ、キーなし） | 同上 | 同上 |
 | `app/api/lore/embed/route.ts` / `POST` | 受信・外部転送 / OpenAI | 同上 | 既存Lore削除と`lore_embeddings.insert`あり（本文・embeddingのみ、キーなし） | provider/status/固定errorCodeのみ | `{error, provider, status}`の固定メッセージ |
-| `app/api/lore/like/route.ts` / `POST` | 受信・外部転送 / OpenAI | 同上 | `lore_embeddings.insert`あり（既存message本文・embedding・由来metadataのみ、キーなし） | provider/status/固定errorCodeのみ | `{error, provider, status}`の固定メッセージ |
 | `app/api/lore/batch-train/route.ts` + `lib/lore/batchTrain.ts` | 受信・外部転送 / OpenAI | Chat CompletionsとEmbeddingを`Authorization: Bearer`で送信 | `lore_embeddings.insert`、`messages.update`あり（キーなし） | 共通helperの安全なメタデータのみ | 共通helperの固定メッセージ |
 | `app/api/lore/dreaming-batch/route.ts` + `lib/lore/dreaming.ts` | 受信・外部転送 / OpenAI | 同上 | Lore insert/updateと統合RPCあり。RPC引数はuser ID、Lore ID、本文、embedding、分類値のみ（キーなし） | 同上 | 結果内の失敗理由も固定メッセージ |
 | `app/api/lore/consolidate/preview/route.ts` / `POST` | 受信・外部転送 / OpenAI | Chat Completionsの`Authorization: Bearer` | なし | 同上 | 固定メッセージ |
