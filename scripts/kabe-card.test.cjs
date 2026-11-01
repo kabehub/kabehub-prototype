@@ -6,7 +6,7 @@ const {
   parseKabeCard, isKabeCardFenceClosed, createKabeCardLimiter,
   KABE_CARD_MAX_PER_MESSAGE, KABE_CARD_MAX_TITLE_LENGTH,
   KABE_CARD_MAX_BADGE_LENGTH, KABE_CARD_MAX_META_LENGTH, KABE_CARD_MAX_BODY_LENGTH,
-  replaceKabeCards,
+  replaceKabeCards, kabeCardToPlainText, plainifyKabeCards,
 } = require('../packages/shared/src/kabeCard.ts');
 
 const card = (overrides = {}) => ({
@@ -232,4 +232,73 @@ test('replace: D71 quoted 20 cards do not consume the top-level card budget', ()
   const quoted = Array.from({ length: 20 }, (_, i) =>
     cardFence(`title: quoted ${i + 1}`).split('\n').map(l => `> ${l}`).join('\n')).join('\n\n');
   assert.equal(replaceWithTitle(`${quoted}\n\n${cardFence('title: top')}`), `${quoted}\n\n[top]`);
+});
+
+const plainCardCases = [
+  ['badge only', { badge: 'B' }, 'T（B）\nbody'],
+  ['meta only', { meta: 'M' }, 'T（M）\nbody'],
+  ['badge and meta', { badge: 'B', meta: 'M' }, 'T（B／M）\nbody'],
+  ['no extras', {}, 'T\nbody'],
+  ['empty body without extras', { body: '' }, 'T'],
+  ['empty body with extras', { badge: 'B', meta: 'M', body: '' }, 'T（B／M）'],
+  ['Markdown body', { body: '**強調**\n- 項目' }, 'T\n**強調**\n- 項目'],
+];
+for (const [name, overrides, expected] of plainCardCases) {
+  test(`plain card: ${name}`, () => {
+    assert.strictEqual(kabeCardToPlainText(card({ title: 'T', ...overrides })), expected);
+  });
+}
+
+test('plain card: tone is discarded', () => {
+  const output = kabeCardToPlainText(card({ title: 'T', tone: 'warning' }));
+  assert.strictEqual(output, 'T\nbody');
+  assert.ok(!output.includes('warning'));
+});
+
+for (const [name, input, expected] of [
+  ['surrounding text preserved', `  前文 😀\n\n${cardFence('title: T\nbadge: B\nmeta: M\ntone: warning\nbody')}\n後文　 \n`, '  前文 😀\n\nT（B／M）\nbody\n後文　 \n'],
+  ['one blank line between cards', `${cardFence('title: A\nfirst')}\n\n${cardFence('title: B\nsecond')}`, 'A\nfirst\n\nB\nsecond'],
+  ['no blank line added between cards', `${cardFence('title: A\nfirst')}\n${cardFence('title: B\nsecond')}`, 'A\nfirst\nB\nsecond'],
+  ['valid and invalid cards mixed', `${cardFence('title: T\nbody')}\n\n${cardFence('badge: invalid\nraw')}`, `T\nbody\n\n${cardFence('badge: invalid\nraw')}`],
+  ['CRLF outside cards preserved', `前文\r\n\r\n${cardFence('title: T\nfirst\nsecond').replace(/\n/g, '\r\n')}\r\n\r\n後文\r\n`, '前文\r\n\r\nT\nfirst\nsecond\r\n\r\n後文\r\n'],
+]) {
+  test(`plainify: ${name}`, () => assert.strictEqual(plainifyKabeCards(input), expected));
+}
+
+for (const [name, input] of [
+  ['missing title', cardFence('badge: B\nbody')],
+  ['title overflow', cardFence(`title: ${'a'.repeat(KABE_CARD_MAX_TITLE_LENGTH + 1)}`)],
+  ['badge overflow', cardFence(`title: T\nbadge: ${'a'.repeat(KABE_CARD_MAX_BADGE_LENGTH + 1)}`)],
+  ['meta overflow', cardFence(`title: T\nmeta: ${'a'.repeat(KABE_CARD_MAX_META_LENGTH + 1)}`)],
+  ['body overflow', cardFence(`title: T\n${'a'.repeat(KABE_CARD_MAX_BODY_LENGTH + 1)}`)],
+  ['unclosed card', '```kabe-card\ntitle: T\nbody'],
+  ['other-language fence example', `\`\`\`\`markdown\n${cardFence('title: T\nbody')}\n\`\`\`\``],
+  ['three-backtick markdown example', `\`\`\`markdown\n${cardFence('title: T\nbody')}\n\`\`\``],
+  ['blockquote card', cardFence('title: T\nbody').split('\n').map(line => `> ${line}`).join('\n')],
+  ['list card', `- ${cardFence('title: T\nbody').replace(/\n/g, '\n  ')}`],
+  ['empty input', ''],
+  ['ordinary text', 'ordinary text'],
+  ['surrounding whitespace', ' \t ordinary text　 \n'],
+  ['CRLF text', 'first\r\nsecond\r\n'],
+  ['standalone CR text', 'first\rsecond\r'],
+  ['Japanese emoji and full-width text', '日本語 😀 Ｔ（Ｂ／Ｍ）　'],
+  ['ordinary Markdown', '# 見出し\n**強調**\n- 項目\n[link](https://example.com)'],
+  ['other-language code', '```python\nprint("hello")\n```'],
+]) {
+  test(`plainify: preserves exact input: ${name}`, () => {
+    assert.strictEqual(plainifyKabeCards(input), input);
+  });
+}
+
+for (const indentation of [1, 2, 3]) {
+  test(`plainify: preserves ${indentation}-space indented card`, () => {
+    const input = cardFence('title: T\nbody').split('\n').map(line => `${' '.repeat(indentation)}${line}`).join('\n');
+    assert.strictEqual(plainifyKabeCards(input), input);
+  });
+}
+
+test('plainify: only the first 20 of 21 cards are converted', () => {
+  const inputs = Array.from({ length: 21 }, (_, i) => cardFence(`title: T${i + 1}\nbody`));
+  assert.strictEqual(plainifyKabeCards(inputs.join('\n\n')),
+    [...inputs.slice(0, 20).map((_, i) => `T${i + 1}\nbody`), inputs[20]].join('\n\n'));
 });

@@ -1,5 +1,6 @@
 import { threadTrashResponse } from "@/lib/threads/trash-errors";
 import { NextRequest } from "next/server";
+import { plainifyKabeCards } from "@kabehub/shared";
 import { serviceRoleClient } from "@/lib/mcp-auth";
 import { requireRouteUser } from "@/lib/supabase/route-auth";
 import { AiProviderRequestError, createEmbedding } from "@/lib/lore/openai";
@@ -59,9 +60,11 @@ export async function POST(req: NextRequest) {
     return finalizeJson({ error: existingError.message }, { status: 500 });
   if (existing) return finalizeJson({ alreadyLiked: true });
 
+  const loreText = plainifyKabeCards(message.content);
+
   let embedding: number[];
   try {
-    embedding = await createEmbedding(openaiKey, message.content);
+    embedding = await createEmbedding(openaiKey, loreText);
   } catch (err) {
     const status = err instanceof AiProviderRequestError ? (err.status ?? 502) : 502;
     return finalizeJson(
@@ -73,7 +76,7 @@ export async function POST(req: NextRequest) {
   const { memoryKind, importanceScore, confidenceScore } = LIKED_AI_DEFAULTS;
   const { error: insertError } = await supabase.from("lore_embeddings").insert({
     user_id: user.id,
-    chunk_text: message.content,
+    chunk_text: loreText,
     embedding,
     source_type: "liked_ai",
     source_message_id: message.id,

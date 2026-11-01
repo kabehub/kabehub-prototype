@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/11/01 Lore「いいね」のカード平文化（B2）／2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -111,7 +111,7 @@ Argonの料金表示は目安です。APIが報告したトークンのみ集計
 | `app/api/lore/promotions/route.ts` | GET・Project Memoryから昇格したLoreの来歴（6フィールドのみ） |
 | `app/api/lore/[id]/route.ts` | PATCH（編集・固定・確認・アーカイブ） |
 | `app/api/lore/bulk-archive/route.ts` | POST・複数記憶を一括アーカイブ（is_pinned保護あり） |
-| `app/api/lore/like/route.ts` | POST・AI発言を「👍 記憶に追加」で liked_ai として保存 |
+| `app/api/lore/like/route.ts` | POST・AI発言を「👍 記憶に追加」で liked_ai として保存。有効なカードは`plainifyKabeCards`で平文化し、埋め込み入力と`chunk_text`に同じ文字列を使う。原文は保存しない |
 | `app/api/lore/batch-train/route.ts` | POST・未学習のuserメッセージをEmbedding化してlore_embeddingsに保存 |
 | `app/api/lore/chunks/route.ts` / `app/api/lore/chunks/[id]/route.ts` | 前者はLore chunk一覧取得（GET）、後者は削除（DELETE） |
 | `app/api/lore/embed/route.ts` | POST：既存Embeddingを削除して新しいEmbeddingを生成・保存 |
@@ -279,7 +279,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `lib/rate-limit.ts` | `checkChatRateLimit`。チャットのレート制限 |
 | `lib/storage-path-guard.ts` | Storageパスが指定ユーザーの名前空間配下にあるか検証 |
 | `lib/stringUtils.ts` | `@kabehub/shared`の`SECRET_MASK`／`generateMessageSummary`／`maskSecretNotation`を薄くre-export。要約の正本は`packages/shared/src/stringUtils.ts`で、従来結果が空の場合だけ先頭の有効カードtitleへフォールバック |
-| `packages/shared/src/kabeCard.ts` | カード型・parse・閉鎖判定・描画枚数制限と`replaceKabeCards`。置換は最上位・行頭0スペースの閉じた有効カード20枚まで。外側の0〜3スペースの他フェンスは読み飛ばし、未変更部分の改行を保持。引用／リスト／インデント内は対象外で、ASTレンダラーとは認識範囲・枚数集合が異なりうる |
+| `packages/shared/src/kabeCard.ts` | カード型・parse・閉鎖判定・描画枚数制限と`replaceKabeCards`。置換は最上位・行頭0スペースの閉じた有効カード20枚まで。外側の0〜3スペースの他フェンスは読み飛ばし、未変更部分の改行を保持。引用／リスト／インデント内は対象外で、ASTレンダラーとは認識範囲・枚数集合が異なりうる。`kabeCardToPlainText`／`plainifyKabeCards`はD73の`title（badge／meta）`＋本文へ変換し、toneは捨てる。括弧内は存在する値のみで、両方なければ括弧を省き、空の本文には改行を足さず、本文のMarkdownは保持。無効・未閉鎖・21枚目以降・D71対象外は原文保持。カード間の区切りとカード外の改行コードは原文どおりで、カード内のLFとの混在は正規化しない |
 | `lib/supabase.ts` | browser・Server Components・Route Handler用Supabase helperのbarrel export |
 | `lib/supabase/admin.ts` | Cron・管理バッチ用のservice role Supabaseクライアント生成 |
 | `lib/supabase/client-auth.ts` | browser側の`auth.getUser()`と認証エラー処理を共通化 |
@@ -336,11 +336,11 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1776件（カード下流対応B1の84件追加後）、全件成功・失敗／skipなし。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1816件（カード下流対応B2で純関数35件・Loreいいね5件の計40件追加後）、全件成功・失敗／skipなし。
 - mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件。2026-10-31の再計測はしていない）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
-テスト115本（`scripts/*.test.cjs`）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（2026-10-12、`git ls-files`の追跡済みファイルで実測）。
+テスト148本（`scripts/*.test.cjs`。2026-11-01時点の`git ls-files 'scripts/*.test.cjs'`で追跡済み147本＋B2新規未追跡`lore-like-kabe-card.test.cjs` 1本）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（後者は2026-10-12、`git ls-files`の追跡済みファイルで実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -359,7 +359,8 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
 | `scripts/rich-display-preference.test.cjs` | 既定ON・0のみOFF・storage例外・厳密な送信判定・同一タブの即時購読通知・別タブstorageイベントを検証 |
 | `scripts/kabe-card-system-prompt.test.cjs` | 規則全文のバイト固定・LFと末尾改行なし・注入条件・OFF文字列の不変を検証 |
-| `scripts/kabe-card.test.cjs` | 既存parse／閉鎖判定／limiterに、カード置換の41件を追加。外側フェンス・CRLF／CR／LF保持・無効／未閉鎖の原文保持・有効20枚制限・ASTとの意図的な認識差を検証 |
+| `scripts/kabe-card.test.cjs` | 既存parse／閉鎖判定／limiterに、カード置換の41件を追加。外側フェンス・CRLF／CR／LF保持・無効／未閉鎖の原文保持・有効20枚制限・ASTとの意図的な認識差を検証。B2で平文化35件を追加し計150件。D73の形式・tone破棄・本文Markdown保持・混在・カードなしの完全一致・D74の区切り・D75のCRLF保持を検証 |
+| `scripts/lore-like-kabe-card.test.cjs` | 5件。埋め込み入力と`chunk_text`の一致、metadataの形、混在・カードなしの扱い、重複・Embedding失敗時にinsertしないことと従来のエラー応答を検証 |
 | `scripts/message-summary-kabe-card.test.cjs` | 24件。空要約のみtitleへフォールバック、非空の従来結果維持、UTF-16切り詰め維持、user貼り付け、Web／sharedの出力一致とmask互換を検証 |
 | `scripts/export-md2-fence.test.cjs` | 19件。実関数で先頭フェンス保持・provider見出し・後続メッセージがフェンス外にある構造、通常文／user／memoの従来出力、md／txt／CSV／ZIP JSONの不変を検証 |
 | `scripts/chat-rich-display.test.cjs` | route経由で全providerのON注入・非trueのOFF body互換・memo／一時／roleplay／novel除外・Claude marker位置・GitHub探索への非注入・trimへの反映を検証 |
@@ -607,7 +608,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | ペア正規化 | `lore_consolidation_dismissals` のペアは必ず `lore_id_a < lore_id_b` に正規化する |
 | dreaming threshold | **本番では 0.92 を使う**（v139で復旧済み） |
 | RPC自己結合性能 | `find_similar_lore_pairs` はO(n²)。大量記憶時は `find_similar_lore_pairs_v2`（LATERAL KNN方式）を使う |
-| batch-train対象 | **userメッセージのみ**。`role = 'user'` / `provider != 'memo'` / `provider != 'image_gen'` で絞り込み。AI発言の記憶化は「👍 記憶に追加」ボタンで対応 |
+| batch-train対象 | **userメッセージのみ**。`role = 'user'` / `provider != 'memo'` / `provider != 'image_gen'` で絞り込み。AI発言の記憶化は「👍 記憶に追加」ボタンで対応（カード記法は平文化して保存） |
 | liked_ai保護 | Dreaming保護条件は `extraction_version NOT IN ('user_edited', 'user_created', 'liked_ai')`。全RPCに適用済み |
 | v_found_count カウンター | `consolidate_dreaming_batch_multi` の件数検証はFORループ内のカウンター方式。FORループ後の `GET DIAGNOSTICS` はPostgreSQLの仕様で件数が取れない |
 | チャット記憶検索の発火条件 | トリガー19語と検索条件は `lib/lore/chat-search-plan.ts` の `buildChatLoreSearchPlan` に集約済み。memory に一本化し、Lore Book とクエリが同一ならembeddingを共有、異なれば並列生成して検索する。temporary チャットでは記憶検索を行わない。通常Web送信の添付本文によるMemory誤発火・入力超過は解消済み（B2-2、2026-10-04）。再生成・分岐編集は同一ページセッション内は保持した手入力を再利用。再読み込み後・保持前のメッセージ・本文が別経路で変わったメッセージ・mobile・旧クライアントは従来どおり userContent 全文へフォールバック。 |
@@ -820,6 +821,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | リッチ会話UI Lv1 Web検索 | Claude（Phase 1a `04cc9ab`／1b `0ff9770`）とOpenAI（Phase 2a サーバー `eea4db6`／2b クライアント `d6ddd6a`）のWeb検索・出典チップ。詳細と判断（D番号）は`KabeHub_リッチ会話UI_Lv1Lv2_検討_引き継ぎ資料_v6.md`・`v7.md` |
 | リッチ会話UI Lv2 Phase 3b | AIのカード表示。UI設定のLocalStorageトグルは既定ON。通常送信・branch／light・編集再生成で有効なときだけrichDisplayを送り、回答生成用stableへカード規則を追加。一時モード・メモ・roleplay・小説Project・GitHub探索は除外。OFFでも過去のカード描画を維持。コミット：`a9d7044` |
 | カード下流対応 B1 | md2で先頭フェンスを保持しprovider見出しを付与。履歴・分岐・アウトラインの従来要約が空の場合だけ、先頭の有効カードtitleを表示。保存形式とmd／txt／CSV／JSON、検索・コピー・MCP・Lore・自動要約・描画は変更しない。引用／リスト内等のカードは要約ヘルパー対象外で、既存の非空要約を優先 |
+| カード下流対応 B2 | Lore「いいね」で有効なカードを`title（badge／meta）`＋本文へ変換して保存。toneは捨てる。原文はLoreに保存しない。対象外のカード（無効・未閉鎖・21枚目以降・引用／リスト／インデント内）は原文のまま。Dreaming、batch-train、Lore画面、モバイル、既存Loreは変更しない |
 | D37 gpt-5.5-pro画像入力の修正 | Pro分岐がChat Completions形式の画像をResponses APIへ送りHTTP 400になっていた不具合を、`buildResponsesInput`でResponses形式に変換して修正。Web検索側の同一変換も共通化。golden 96件のうちPro画像4件のみ新形式、残り92件は不変。npm test 1634件成功。本番で画像付きProの動作確認OK（`fb4d5c6`、2026-10-31） |
 
 > v174までの履歴に、v175以降は実ファイル・git logで確認できた上記項目だけを追記。以降のProject Memory機能全体は「API Routes（Project Memory）」・「Project Memory関連」節と `docs/applied/README.md` を参照。

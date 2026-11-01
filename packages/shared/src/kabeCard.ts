@@ -130,3 +130,13 @@ export function replaceKabeCards(
   if (parts.length === 0) return content;
   return parts.join("") + content.slice(cursor);
 }
+
+export function kabeCardToPlainText(card: KabeCard): string {
+  const extras = [card.badge, card.meta].filter(Boolean);
+  const header = extras.length ? `${card.title}（${extras.join("／")}）` : card.title;
+  return card.body ? `${header}\n${card.body}` : header;
+}
+
+export function plainifyKabeCards(content: string): string {
+  return replaceKabeCards(content, kabeCardToPlainText);
+}

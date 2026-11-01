@@ -149,6 +149,8 @@ export {
   parseKabeCard,
   isKabeCardFenceClosed,
   replaceKabeCards,
+  kabeCardToPlainText,
+  plainifyKabeCards,
   createKabeCardLimiter,
 } from "./kabeCard";
 
