@@ -820,7 +820,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 自動要約差分更新 Phase 3 | Memoryタブの4ボタン・更新モーダル・警告GET／Lore警告・双方向排他・ドロワー保護・全topic結果ラベルとonAppliedによる1回refresh（674f926） |
 | リッチ会話UI Lv1 Web検索 | Claude（Phase 1a `04cc9ab`／1b `0ff9770`）とOpenAI（Phase 2a サーバー `eea4db6`／2b クライアント `d6ddd6a`）のWeb検索・出典チップ。詳細と判断（D番号）は`KabeHub_リッチ会話UI_Lv1Lv2_検討_引き継ぎ資料_v6.md`・`v7.md` |
 | リッチ会話UI Lv2 Phase 3b | AIのカード表示。UI設定のLocalStorageトグルは既定ON。通常送信・branch／light・編集再生成で有効なときだけrichDisplayを送り、回答生成用stableへカード規則を追加。一時モード・メモ・roleplay・小説Project・GitHub探索は除外。OFFでも過去のカード描画を維持。コミット：`a9d7044` |
-| リッチ会話UI Lv2 カード本文の改行 | カード本文の単純な改行を `<br>` で表示（remark-breaks）。通常本文・モバイルは対象外。規則文面を『inline Markdown・箇条書き・改行』に整合。コミット：（後で追記） |
+| リッチ会話UI Lv2 カード本文の改行 | カード本文の単純な改行を `<br>` で表示（remark-breaks）。通常本文・モバイルは対象外。規則文面を『inline Markdown・箇条書き・改行』に整合。コミット：`709e7ee` |
 | カード下流対応 B1 | md2で先頭フェンスを保持しprovider見出しを付与。履歴・分岐・アウトラインの従来要約が空の場合だけ、先頭の有効カードtitleを表示。保存形式とmd／txt／CSV／JSON、検索・コピー・MCP・Lore・自動要約・描画は変更しない。引用／リスト内等のカードは要約ヘルパー対象外で、既存の非空要約を優先。コミット：`0eefd33` |
 | カード下流対応 B2 | Lore「いいね」で有効なカードを`title（badge／meta）`＋本文へ変換して保存。toneは捨てる。原文はLoreに保存しない。対象外のカード（無効・未閉鎖・21枚目以降・引用／リスト／インデント内）は原文のまま。Dreaming、batch-train、Lore画面、モバイル、既存Loreは変更しない。コミット：`5da5ee2` |
 | D37 gpt-5.5-pro画像入力の修正 | Pro分岐がChat Completions形式の画像をResponses APIへ送りHTTP 400になっていた不具合を、`buildResponsesInput`でResponses形式に変換して修正。Web検索側の同一変換も共通化。golden 96件のうちPro画像4件のみ新形式、残り92件は不変。npm test 1634件成功。本番で画像付きProの動作確認OK（`fb4d5c6`、2026-10-31） |
