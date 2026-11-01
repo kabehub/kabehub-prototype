@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/11/01 Lore「いいね」のカード平文化（B2）／2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/11/01 カード本文の改行表示（チケットA）／2026/11/01 Lore「いいね」のカード平文化（B2）／2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -69,7 +69,7 @@ git pull origin main
 | Embedding | OpenAI text-embedding-3-small（RAG・記憶機能で使用） |
 | ファイルストレージ | Supabase Storage（generated-imagesバケット） |
 | デプロイ | Vercel（kabehub.com）。Function RegionはダッシュボードでTokyo（hnd1）に設定済み（2026-10-08に本番レスポンスヘッダー x-vercel-id が hnd1 であることを確認）。`vercel.json`にはregionsを記載していない。regionsを追加するとダッシュボード設定より優先される（[Vercel公式設定仕様](https://vercel.com/docs/project-configuration/vercel-json#regions)） |
-| Markdown | react-markdown + remark-gfm + @tailwindcss/typography |
+| Markdown | react-markdown + remark-gfm（カード本文のみ remark-breaks）+ @tailwindcss/typography |
 
 Gemini 4 Argon（`gemini-4-argon`）のAPI利用には、対応する有料APIプロジェクトが必要です（無料枠・Google AI Proのみでは利用できません）。
 
@@ -336,11 +336,11 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 
 ### Scripts
 
-- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1816件（カード下流対応B2で純関数35件・Loreいいね5件の計40件追加後）、全件成功・失敗／skipなし。
+- 全テスト（scripts/ のみ）: `npm test`（実体は `node --test --test-reporter=tap "scripts/*.test.cjs"`）。2026-11-01実測で1840件（チケットAで改行12ケース×default／shareの24件追加後）、全件成功・失敗／skipなし。`scripts/kabe-card-render.test.cjs`は既存27件＋追加24件の計51件、全件成功。
 - mobileを含む場合: `npm run test:all`（実体は引数なしの `node --test`。2026-10-12実測で合計670件、全件成功。scriptsとの差は32件。2026-10-31の再計測はしていない）。
 - 件数はテスト追加に伴って増えるため、上記は時点の値。
 
-テスト148本（`scripts/*.test.cjs`。2026-11-01時点の`git ls-files 'scripts/*.test.cjs'`で追跡済み147本＋B2新規未追跡`lore-like-kabe-card.test.cjs` 1本）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（後者は2026-10-12、`git ls-files`の追跡済みファイルで実測）。
+テスト148本（`scripts/*.test.cjs`。2026-11-01時点の`git ls-files 'scripts/*.test.cjs'`で追跡済み148本）＋`testBootstrap.cjs`＋DB実環境検証`verify-*.mjs` 12本（後者は2026-10-12、`git ls-files`の追跡済みファイルで実測）。
 
 | ファイル | 目的 |
 |-|-|
@@ -358,7 +358,7 @@ LLMは`lib/internalModels.ts`の`LORE_CHAT_MODEL`（現在`gpt-5.6-luna`）を�
 | `scripts/calendar-route.test.cjs` | calendar Routeの認証・年月範囲・DB応答を検証 |
 | `scripts/chat-system-blocks.test.cjs` | systemブロックの順序・空除外・marker上限とoverflow選択・旧連結のbyte一致を検証 |
 | `scripts/rich-display-preference.test.cjs` | 既定ON・0のみOFF・storage例外・厳密な送信判定・同一タブの即時購読通知・別タブstorageイベントを検証 |
-| `scripts/kabe-card-system-prompt.test.cjs` | 規則全文のバイト固定・LFと末尾改行なし・注入条件・OFF文字列の不変を検証 |
+| `scripts/kabe-card-system-prompt.test.cjs` | inline Markdown・箇条書き・改行を許可する規則全文のバイト固定・LFと末尾改行なし・注入条件・OFF文字列の不変を検証 |
 | `scripts/kabe-card.test.cjs` | 既存parse／閉鎖判定／limiterに、カード置換の41件を追加。外側フェンス・CRLF／CR／LF保持・無効／未閉鎖の原文保持・有効20枚制限・ASTとの意図的な認識差を検証。B2で平文化35件を追加し計150件。D73の形式・tone破棄・本文Markdown保持・混在・カードなしの完全一致・D74の区切り・D75のCRLF保持を検証 |
 | `scripts/lore-like-kabe-card.test.cjs` | 5件。埋め込み入力と`chunk_text`の一致、metadataの形、混在・カードなしの扱い、重複・Embedding失敗時にinsertしないことと従来のエラー応答を検証 |
 | `scripts/message-summary-kabe-card.test.cjs` | 24件。空要約のみtitleへフォールバック、非空の従来結果維持、UTF-16切り詰め維持、user貼り付け、Web／sharedの出力一致とmask互換を検証 |
@@ -820,6 +820,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | 自動要約差分更新 Phase 3 | Memoryタブの4ボタン・更新モーダル・警告GET／Lore警告・双方向排他・ドロワー保護・全topic結果ラベルとonAppliedによる1回refresh（674f926） |
 | リッチ会話UI Lv1 Web検索 | Claude（Phase 1a `04cc9ab`／1b `0ff9770`）とOpenAI（Phase 2a サーバー `eea4db6`／2b クライアント `d6ddd6a`）のWeb検索・出典チップ。詳細と判断（D番号）は`KabeHub_リッチ会話UI_Lv1Lv2_検討_引き継ぎ資料_v6.md`・`v7.md` |
 | リッチ会話UI Lv2 Phase 3b | AIのカード表示。UI設定のLocalStorageトグルは既定ON。通常送信・branch／light・編集再生成で有効なときだけrichDisplayを送り、回答生成用stableへカード規則を追加。一時モード・メモ・roleplay・小説Project・GitHub探索は除外。OFFでも過去のカード描画を維持。コミット：`a9d7044` |
+| リッチ会話UI Lv2 カード本文の改行 | カード本文の単純な改行を `<br>` で表示（remark-breaks）。通常本文・モバイルは対象外。規則文面を『inline Markdown・箇条書き・改行』に整合。コミット：（後で追記） |
 | カード下流対応 B1 | md2で先頭フェンスを保持しprovider見出しを付与。履歴・分岐・アウトラインの従来要約が空の場合だけ、先頭の有効カードtitleを表示。保存形式とmd／txt／CSV／JSON、検索・コピー・MCP・Lore・自動要約・描画は変更しない。引用／リスト内等のカードは要約ヘルパー対象外で、既存の非空要約を優先。コミット：`0eefd33` |
 | カード下流対応 B2 | Lore「いいね」で有効なカードを`title（badge／meta）`＋本文へ変換して保存。toneは捨てる。原文はLoreに保存しない。対象外のカード（無効・未閉鎖・21枚目以降・引用／リスト／インデント内）は原文のまま。Dreaming、batch-train、Lore画面、モバイル、既存Loreは変更しない。コミット：`5da5ee2` |
 | D37 gpt-5.5-pro画像入力の修正 | Pro分岐がChat Completions形式の画像をResponses APIへ送りHTTP 400になっていた不具合を、`buildResponsesInput`でResponses形式に変換して修正。Web検索側の同一変換も共通化。golden 96件のうちPro画像4件のみ新形式、残り92件は不変。npm test 1634件成功。本番で画像付きProの動作確認OK（`fb4d5c6`、2026-10-31） |

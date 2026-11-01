@@ -1,6 +1,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import type { KabeCard, KabeCardTone } from "@kabehub/shared";
 import InlineMarkdownCode from "./InlineMarkdownCode";
 
@@ -61,7 +62,7 @@ export default function KabeCardView({
         {card.body && (
           <div style={{ fontSize: "13px", lineHeight: 1.7, color: "var(--ink, #1f2937)" }}>
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={[remarkGfm, remarkBreaks]}
               allowedElements={["p", "strong", "em", "del", "a", "code", "br", "ul", "ol", "li"]}
               unwrapDisallowed
               components={{

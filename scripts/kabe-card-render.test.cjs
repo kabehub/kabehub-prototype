@@ -218,3 +218,85 @@ test('render: card lists keep unsafe URLs, images, event attributes and raw HTML
     assert.match(html, />x<\/a>/);
   }
 });
+
+const countBreaks = (html) => (html.match(/<br\s*\/?>/g) || []).length;
+
+for (const variant of ['default', 'share']) {
+  test(`render: simple card newlines become breaks (${variant})`, () => {
+    const html = render(fence('title: A\n1行目\n2行目\n3行目'), variant);
+    assert.equal(countBreaks(html), 2, html);
+    for (const text of ['1行目', '2行目', '3行目']) assert.ok(html.includes(text), html);
+  });
+
+  test(`render: card paragraph breaks coexist with bullets (${variant})`, () => {
+    const html = render(fence('title: A\n説明文A\n説明文B\n- 項目A\n- 項目B'), variant);
+    const paragraph = html.match(/<p\b[^>]*>[\s\S]*?<\/p>/);
+    assert.ok(paragraph, html);
+    assert.equal(countBreaks(paragraph[0]), 1, html);
+    assert.equal((html.match(/<ul\b/g) || []).length, 1, html);
+    assert.equal((html.match(/<li\b/g) || []).length, 2, html);
+  });
+
+  test(`render: indented card list continuation becomes a break (${variant})`, () => {
+    const html = render(fence('title: A\n- 項目A\n  補足A\n- 項目B'), variant);
+    assert.equal((html.match(/<li\b/g) || []).length, 2, html);
+    assert.equal(countBreaks(html), 1, html);
+    assert.match(html, /<li[^>]*>項目A<br\s*\/?>\s*補足A/);
+  });
+
+  test(`render: lazy card list continuation becomes a break (${variant})`, () => {
+    const html = render(fence('title: A\n- 項目A\n補足A'), variant);
+    assert.equal((html.match(/<li\b/g) || []).length, 1, html);
+    assert.equal(countBreaks(html), 1, html);
+    assert.match(html, /<li[^>]*>項目A<br\s*\/?>\s*補足A/);
+  });
+
+  test(`render: card task list continuation breaks without inputs (${variant})`, () => {
+    const html = render(fence('title: A\n- [ ] todo\n  memo'), variant);
+    assert.equal(countBreaks(html), 1, html);
+    assert.doesNotMatch(html, /<input\b/);
+  });
+
+  test(`render: CRLF card newline becomes one break (${variant})`, () => {
+    const html = render(fence('title: A\n1行目\n2行目').replace(/\n/g, '\r\n'), variant);
+    assert.equal(countCards(html), 1, html);
+    assert.equal(countBreaks(html), 1, html);
+  });
+
+  test(`render: nested card lists add no breaks (${variant})`, () => {
+    const html = render(fence('title: A\n- a\n  - b'), variant);
+    assert.equal((html.match(/<ul\b/g) || []).length, 2, html);
+    assert.equal((html.match(/<li\b/g) || []).length, 2, html);
+    assert.equal(countBreaks(html), 0, html);
+  });
+
+  test(`render: inline card code newlines add no breaks (${variant})`, () => {
+    const html = render(fence('title: A\n`a\nb` と本文'), variant);
+    assert.equal(countBreaks(html), 0, html);
+    assert.match(html, /<code[^>]*>a b<\/code>/);
+  });
+
+  test(`render: explicit card hard break is not doubled (${variant})`, () => {
+    const html = render(fence('title: A\n行末スペース2つ  \n次の行'), variant);
+    assert.equal(countBreaks(html), 1, html);
+  });
+
+  test(`render: blank card line preserves separate paragraphs (${variant})`, () => {
+    const html = render(fence('title: A\n段落A\n\n段落B'), variant);
+    assert.equal((html.match(/<p\b/g) || []).length, 2, html);
+    assert.equal(countBreaks(html), 0, html);
+  });
+
+  test(`render: ordinary markdown newlines add no breaks (${variant})`, () => {
+    const html = render('通常本文A\n通常本文B', variant);
+    assert.equal(countBreaks(html), 0, html);
+  });
+
+  test(`render: only card newlines break in mixed markdown (${variant})`, () => {
+    const html = render('外A\n外B\n\n' + fence('title: A\n内A\n内B'), variant);
+    assert.equal(countCards(html), 1, html);
+    assert.equal(countBreaks(html), 1, html);
+    assert.match(html, /外A\n外B<\/p>/);
+    assert.match(html, /内A<br\s*\/?>\s*内B/);
+  });
+}

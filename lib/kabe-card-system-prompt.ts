@@ -10,7 +10,7 @@ export const KABE_CARD_SYSTEM_PROMPT = [
   "badge: 短いラベル（任意）",
   "tone: positive | neutral | warning | negative（任意）",
   "meta: 補足情報（任意）",
-  "本文（inline Markdownのみ）",
+  "本文（inline Markdown・箇条書き・改行を使える。見出し・表・コードブロックは使わない）",
   "```",
   "",
   "ルール:",
