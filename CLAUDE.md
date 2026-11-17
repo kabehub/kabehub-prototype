@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/11/17 ハイライトPhase 0（「👍 記憶に追加」ボタンと/api/lore/likeの撤去、2f2abb4）／2026/11/17 CLAUDE.mdの記述整合（マスク・MarkdownRenderer・マネタイズ優先度）／2026/11/01 カード本文の改行表示（チケットA）／2026/11/01 Lore「いいね」のカード平文化（B2）／2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/11/17 ハイライトPhase 0（「👍 記憶に追加」ボタンと/api/lore/likeの撤去、2f2abb4）／2026/11/17 CLAUDE.mdの記述整合（マスク・MarkdownRenderer・マネタイズ優先度）／2026/11/17 CSPの本番Enforce状態を反映（BYOK節・次に実装予定）／2026/11/01 カード本文の改行表示（チケットA）／2026/11/01 Lore「いいね」のカード平文化（B2）／2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -615,8 +615,8 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ### BYOK APIキー関連（H-21）
 
-- **リスク受容**: APIキーはLocalStorageに平文保存され、同一オリジンでXSSが発生した場合は生キーが読み取られうる。「CSP Enforce切替・運用ロードマップ」のEnforce切替後は発生確率が下がるが、許可済みスクリプトの侵害等に対する完全な防御ではない。本リスクは受容し、H-21はリスク受容＋H-21Cへの将来移管としてクローズする
-- **CSPの現状**: 現在はReport-Only運用中。Enforce切替は「CSP Enforce切替・運用ロードマップ」の別運用タスクであり、APIキー経路修正と混同しない
+- **リスク受容**: APIキーはLocalStorageに平文保存され、同一オリジンでXSSが発生した場合は生キーが読み取られうる。CSPは本番でEnforce済みのため発生確率は下がっているが、許可済みスクリプトの侵害等に対する完全な防御ではない。本リスクは受容し、H-21はリスク受容＋H-21Cへの将来移管としてクローズする
+- **CSPの現状**: 本番はEnforce（v178で`CSP_REPORT_ONLY=false`へ切替済み。2026-11-17に本番のレスポンスヘッダー`Content-Security-Policy`で確認）。切替は環境変数`CSP_REPORT_ONLY`が文字列`"false"`のときだけで、未設定・その他はReport-Only（`.env.local.example`の既定は`true`）。運用上の残作業は「CSP Enforce切替・運用ロードマップ」を参照。APIキー経路修正とCSP運用を混同しない
 - **送受信経路**: `docs/api-key-flow-inventory.md`を正とし、固定件数ではなく横断grep結果に追随して更新する
 - **Gemini外部転送**: KabeHubからGoogle APIへは`x-goog-api-key`を使う。URLクエリ`?key=...`へ戻さない
 - **H-21C（未着手・将来検討）**: BYOK資格情報の任意暗号化同期・複数端末対応。ローカル保存は廃止せずオプトイン同期とし、既存LocalStorageキーは明示操作でのみ移行する。生キーをブラウザへ返すAPIは作らず、登録・置換・削除だけを提供する
@@ -854,7 +854,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - 入力欄フッターの左端揃え・背景透過の見た目確認
 
 **個別ロードマップへ移管済み**
-- H-01（CSP Enforce切替）→「CSP Enforce切替・運用ロードマップ」
+- H-01（CSP Enforce運用）→「CSP Enforce切替・運用ロードマップ」（切替は完了。本番Enforceは2026-11-17にレスポンスヘッダーで確認）
 - H-23（PWA・Capacitor）→「PWA・Capacitorロードマップ」
 - H-24（pg_bigm検索）→「pg_bigm検索ロードマップ」
 - H-45（MCP拡張ツール）→「MCP拡張ロードマップ」
