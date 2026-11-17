@@ -59,7 +59,7 @@ git pull origin main
 
 | レイヤー | 技術 |
 |-|-|
-| フロントエンド | Next.js 16.2.11 (App Router) + React 19.2.8 + Tailwind CSS |
+| フロントエンド | Next.js 16.4.6 (App Router) + React 19.2.8 + Tailwind CSS |
 | DB | Supabase (PostgreSQL) — 法人アカウント admin@kabehub.com |
 | 認証 | Supabase Auth（Google OAuth）+ @supabase/ssr |
 | AI メイン | Anthropic Claude API（claude-sonnet-5-5 / claude-opus-5-5 / claude-haiku-5-5 / claude-fable-5 / claude-sonnet-5 / claude-opus-5 / claude-opus-4-8 / claude-opus-4-7 / claude-opus-4-6 / claude-sonnet-4-5 / claude-sonnet-4-6 / claude-haiku-4-5-20251001） |
@@ -549,7 +549,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 - スマホ判定ブレークポイントは **768px** で統一。`app/page.tsx` の `matchMedia("(max-width: 767px)")` と、`ChatInput.tsx` / `ChatInputCentered.tsx` が共有する`lib/inputUtils.ts`の`isMobileViewport()`を同時に確認する
 - iOS Safari の `matchMedia.addListener` フォールバック（`app/page.tsx`）は削除しないこと（古いiOSで動かなくなる）
-- **iPhone実機での動作は未確認**。サイドバードロワー・ヘッダー・＋ドロップアップ・モデルドロップダウン・会話履歴ドロワー・ソフトキーボード表示時の位置を要確認
+- iPhone実機での動作確認は完了済み（Rui確認、2026-11-17）。サイドバードロワー・ヘッダー・＋ドロップアップ・モデルドロップダウン・会話履歴ドロワー・ソフトキーボード表示時の位置に関わる変更をしたときは再確認する
 - `isToolMenuOpen`（＋ドロップアップ）と `openModelProvider`（モデルドロップダウン）は排他制御
 - スマホ対応の詳細な変更履歴・地雷は `KabeHub_スマホレスポンシブ対応_引き継ぎ_20260624_v166.md` を参照
 
@@ -836,7 +836,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 
 ## 既知の課題（未解決）
 
-- **iPhone実機確認未了**: モデルドロップダウン・サイドバードロワー・ヘッダー・＋ドロップアップ・会話履歴ドロワー・サイドバー折り畳みボタンの動作確認
 - `ProfilePage.tsx` の日本語テキストが英語になっている（v112でCodex文字化け対処のため・手動修正要）
 - 画像生成 Tech Debt（sharp圧縮・pg_cron自動削除・⭐Saveボタン・設定ページのデフォルトプロバイダー選択UI）
 - GitHub連携 Pinned Files失敗時のUI通知未実装（現状はconsole.warnのみ）。近接するUI改善ロードマップへ合流
@@ -846,12 +845,6 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 ---
 
 ## 次に実装予定
-
-**iPhone実機確認**
-- モデルドロップダウン・ソフトキーボード表示中の位置
-- サイドバードロワー・ヘッダー・＋ドロップアップ
-- サイドバー折り畳みボタン・アイコンバー
-- 入力欄フッターの左端揃え・背景透過の見た目確認
 
 **個別ロードマップへ移管済み**
 - H-01（CSP Enforce運用）→「CSP Enforce切替・運用ロードマップ」（切替は完了。本番Enforceは2026-11-17にレスポンスヘッダーで確認）
