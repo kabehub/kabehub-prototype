@@ -1,6 +1,6 @@
 # KabeHub プロジェクト設定
 
-最終更新: 2026/11/01 カード本文の改行表示（チケットA）／2026/11/01 Lore「いいね」のカード平文化（B2）／2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
+最終更新: 2026/11/17 ハイライトPhase 0（「👍 記憶に追加」ボタンと/api/lore/likeの撤去、2f2abb4）／2026/11/17 CLAUDE.mdの記述整合（マスク・MarkdownRenderer・マネタイズ優先度）／2026/11/01 カード本文の改行表示（チケットA）／2026/11/01 Lore「いいね」のカード平文化（B2）／2026/11/01 カード本文で箇条書き（ul／ol／li）を描画／2026/10/31 Lv2 Phase 3b（AIのカード表示）／2026/10/31 D37（gpt-5.5-proの画像入力をResponses形式へ修正、`lib/openai-responses-input.ts`新設、Web検索側と共通化）／2026/10/23 v207のテスト・本番適用済み状態をschema・台帳へ反映／2026/10/15 Gemini 4 ArgonをChat・Arenaへ追加、Geminiキャッシュ単価・thought本文除外を修正／2026/10/15 docsのv206適用済み表記を統一／2026/10/12 — OpenAI画像生成の標準モデルをgpt-image-2.5-sunburstへ変更（gpt-image-2は価格互換性のためhiddenで維持）／自動要約の差分更新Phase 1b〜3（preview・checkpoint・client・hook・警告・UI）を統合、v206適用済み・テスト件数・Memoryサマリrefresh契約を現行化
 > このファイルはコードと `git ls-files` の現行構成を突き合わせ、主要ファイルの実装内容を確認して更新。
 
 ## プロダクト概要
@@ -215,7 +215,7 @@ prototype側：`mcp_tokens`テーブル・`/settings`でのトークン発行UI�
 | `components/ProjectMemoryAutoUpdateModal.tsx` | 会話からの反映案（z-index 1100/1101、dialog／aria-modal）。ProjectMemoryDiffViewでtopicごとの差分・revision・origin・reasonを全選択から確認。user発言の使用件数・除外理由・見送りの確認位置記録を明示。警告用topic GET・選択に応じた注入量／Lore警告、すべて見送るの2段階確認、results全topic（unchangedを含む）の表示。0件選択の適用と結果表示後の再実行は禁止、適用中は閉じる／Escape／背景クリックを無効化 |
 | `components/MessageBubble.tsx` | 通常モードのメッセージ表示。編集/上書き再生成モーダル（ドロップダウン方式・v173） |
 | `components/RoleplayBubble.tsx` | なりきりモード用メッセージ表示（LINEライクUI） |
-| `components/MarkdownRenderer.tsx` | Markdownレンダリング + `[[text]]→████` マスク変換（variant="share"時のみ） |
+| `components/MarkdownRenderer.tsx` | Markdownレンダリング・kabe-card表示・コードブロックのコピー。言語指定がcsv／txtのときだけBlob＋a.downloadで保存できる（ファイル名はkabehub_UTC日時（分単位）.言語名）。variant="share"は共有ページ用のスタイル指定で、マスク処理は行わない。汎用ファイルカード・カード単体DL・AI単一回答のMD保存専用UIはない。mobileにも同等のcsv／txt DLがあるが、WebView専用の代替保存処理はない |
 | `components/ArenaTimeline.tsx` | provider別Bubble・thinking表示付きのAI闘技場タイムライン |
 | `components/BranchTree.tsx` | 分岐ツリー可視化コンポーネント（Phase B） |
 | `components/ExportModal.tsx` | TXT/MD/CSVエクスポートのUI。出力生成は`lib/exportUtils.ts`を利用 |
@@ -685,11 +685,11 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | ローカルGoogleログイン | OAuthリダイレクト先が本番URLなのでlocalhost認証は不可。本番で確認する |
 | shared_at 後方互換 | 既存の公開スレッドは `shared_at = null`。フィルターを無条件に適用すると既存スレッドが全件消える |
 | upsertのtitle必須 | `threads/[id]/route.ts` のupsertがINSERTに回った場合、titleが必要。`title: thread.title \|\| "無題"` を必ず含める |
-| remark-gfm の [[text]] 誤認識 | shareページのYOUメッセージはMarkdownRendererを経由せずプレーンテキストで `.replace(/\[\[(.+?)\]\]/g, "████")` する |
+| remark-gfm の [[text]] 誤認識 | shareページのYOUメッセージはMarkdownRendererを経由せずプレーンテキスト表示する。[[text]]のマスクは共有GET API（app/api/share/[token]/route.ts）がYOU・AI両方に適用済みで、描画側では置換しない |
 | フォルダ（Project）名変更の整合性 | 名前変更は`PATCH /api/projects/[projectId]`（`rename_project` RPC）に一本化されている。関連4テーブルの`folder_name`はRPCが同期するため、個別にUPDATEしない |
 | Claude system block | Claude system block の順序は stable(cache) → memory(cache・存在時のみ。`project-memory-topics`) → pinned(cache・存在時のみ) → dynamic(no cache)。空ブロックは作らない。Project Memory topicは複数でも**1つのcachedブロック**にまとめる（marker増加を避ける）。cache_control は message anchor を含めリクエスト全体で最大4個（system側は常に最大3、1枠をmessage anchor用に予約）。非Claude・Tool Loop・トークン見積もりは `buildCombinedSystemPrompt` と `cachedInsertionIndex` で同じ順序の文字列を復元する。Pinnedは `github_pinned_file` のコード封筒列を使う。Project MemoryとPinnedの各cachedブロックは自己完結でpreambleを各1個持つ。dynamicの参照群（lore_book / memory / Tool Loop）はrouteの `appendReferenceBlock` で最大1個。system全体でpreambleが常に1個とは限らない。リッチ表示の規則は `richDisplay===true` かつメモ・一時モード・roleplay・小説Projectのいずれでもないときだけ、回答生成用のstable末尾に足す。独立したsystem／cachedブロックは増やさず、OFF・欠落時は従来の文字列を保つ。GitHub探索には渡さない（探索はJSON配列だけを返させるため、base stableを使用）。非Claude・trim・見積もりにはcombined経由で反映する。クライアントは既定ONだが、サーバーは `richDisplay===true` のときだけ有効 |
 | Prompt Caching ヘッダー | `anthropic-beta: "prompt-caching-2024-07-31"` が必須。外すとcache_controlが無視される |
-| [[text]] マスク記法 | `MarkdownRenderer` は `variant="share"` のときのみマスクが動く。variant指定を忘れると素通りする |
+| [[text]] マスク記法 | マスクの正本はpackages/shared/src/stringUtils.tsのmaskSecretNotation／SECRET_MASK（"[redacted]"）。共有GET APIとfork API（app/api/share/[token]/fork/route.ts）で適用する。改行を含む閉じた[[...]]と、未閉鎖の[[以降の末尾をマスクする。variant="share"は表示用であり、マスクの成立条件ではない |
 | MessageBubble の pre-wrap | `isMemo` のみ `whiteSpace: "pre-wrap"`。user・assistantは `MarkdownRenderer` 経由でproseレンダリング |
 | OpenAI の max_tokens | `gpt-4o` は `max_tokens`、`gpt-5.4-mini` 以降は `max_completion_tokens`。`streamOpenAI` 内で分岐済み |
 | OpenAI の stream_options | `stream_options: { include_usage: true }` が必須。外すと `[OpenAI Cache]` ログが出ない |
@@ -752,7 +752,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 | v138 | 自動Dreamingバッチ（find_similar_lore_pairs_v2 LATERAL KNN・consolidate_dreaming_batch RPC・履歴API） |
 | v139 | 統合履歴UI・ロールバック（rollback RPC・履歴展開UI・tags union修正・threshold 0.92復旧） |
 | v140 | 本格Dreaming（3件以上統合・greedy chain clustering・multi RPC・batch-trainをuser発言のみに・limit 100） |
-| v141 | Memory Summary強化・一括アーカイブ・AI発言いいね学習（liked_ai・Dreaming保護3RPC更新） |
+| v141 | Memory Summary強化・一括アーカイブ・AI発言いいね学習（liked_ai・Dreaming保護3RPC更新）（UI入口と/api/lore/likeはハイライトPhase 0で撤去済み。既存のliked_ai行はDreamingでliked_ai_cleanedへ変換される） |
 | v142 | 会話UI改善（編集再生成のデフォルトAI選択・Enter即生成・サイドバードラッグ選択維持） |
 | v143 | BranchBubble表示位置修正（分岐元メッセージ直後にアンカー固定・branch_index単位グルーピング・message_number優先ソート） |
 | v144 | 新規会話スタートUI改善（中央配置の初期入力画面・ChatInputCentered新規・resolvedThreadId方式への統一） |
@@ -860,7 +860,7 @@ wrappedStream.start() → テキストを accumulatedText に蓄積
 - H-45（MCP拡張ツール）→「MCP拡張ロードマップ」
 - H-46（GitHub側revoke）→「GitHub revokeロードマップ」
 
-**Phase 4 マネタイズ**（最優先・未着手）
+**Phase 4 マネタイズ**（優先度低め・未着手。Rui判断）
 - おまかせプラン（クレジット制・月額500〜1,000円）
 - Stripe連携
 - クレジット残量チェック・上限到達時のセルフプラン誘導UI

@@ -843,7 +843,7 @@ function MessageBubble({
             ) : (
               <div style={{ width: "560px", maxWidth: "100%", display: "flex", flexDirection: "column", gap: "6px" }}>
                 <div style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", color: "var(--ink-muted)", lineHeight: 1.6 }}>
-                  テキストを選択して「マスク」を押すと <code style={{ background: "var(--border)", borderRadius: "3px", padding: "0 3px" }}>[[選択テキスト]]</code> に変換されます。共有ページでは ████ に表示されます。
+                  テキストを選択して「マスク」を押すと <code style={{ background: "var(--border)", borderRadius: "3px", padding: "0 3px" }}>[[選択テキスト]]</code> に変換されます。共有ページでは [redacted] に表示されます。
                 </div>
                 <textarea
                   id={`mask-editor-${message.id}`}
