@@ -16,13 +16,13 @@
 1. **3文字未満のキーワードではインデックスの恩恵が薄い**（pg_trgm はトライグラム＝3文字単位で分解するため、1〜2文字でも検索は動作するが遅い）。タイトル検索は比較的長いキーワードで使われるとして許容した。出典: 仕様書「注意点」。【資料】
 2. **RLS との組み合わせでインデックスが効かないことがある**。`EXPLAIN ANALYZE` で `Seq Scan` なら RLS ポリシーを確認する。出典: 仕様書「注意点」。【資料】
 3. **GIN インデックスは B-tree より大きい**。`title`（短文）は問題ないが、`messages.content` に足す場合はストレージ使用量に注意。出典: 仕様書「注意点」。【資料】
-4. **現行の `/api/search` は `messages.content` に対しても `ilike('%…%')` を使う**（`target` が `message`／`both`、`threads!inner(deleted_at)` の結合つき）。仕様書は「メッセージ本文は将来対応・インデックスサイズ大」としていたが、本文検索はすでに実装されており、`docs/schema.sql` には `pg_trgm` 拡張・trgm の GIN インデックスが存在しない（拡張は `vector` のみ）。したがって本文検索は部分一致のシーケンシャルスキャンで動いている可能性がある（適用の有無は schema.sql に記録なし）。CC の「pg_bigm 検索ロードマップ」（H-24）は未作成。出典: 仕様書、`app/api/search/route.ts:31-32,45,51`。【コード】【未確認】
+4. **現行の `/api/search` は `messages.content` に対しても `ilike('%…%')` を使う**（`target` が `message`／`both`、`threads!inner(deleted_at)` の結合つき）。仕様書は「メッセージ本文は将来対応・インデックスサイズ大」としていたが、本文検索はすでに実装されている。**`pg_trgm`・`pg_bigm` の拡張も trgm の GIN インデックスも未導入で、検索は `ilike` の全件走査**（Rui が 2026-11-25 に Supabase の SQL Editor で `select indexname from pg_indexes where indexdef ilike '%gin_trgm_ops%';` と `select extname from pg_extension where extname in ('pg_trgm','pg_bigm');` を実行し、どちらも0行。どの DB（本番／テスト）で実行したかは未記録）。`docs/schema.sql` にも `pg_trgm` 拡張・trgm のインデックスはない（拡張は `vector` のみ）。CC の「pg_bigm 検索ロードマップ」（H-24）は未作成。出典: 仕様書、`app/api/search/route.ts:31-32,45,51`、Rui の確認（2026-11-25）。【コード】【資料】
 
 CLAUDE.mdに既出: 1項目（`/api/search` が所有スレッドのタイトル・メッセージ本文を部分一致で検索する、と API 表に記載。H-24 の pg_bigm ロードマップが未作成であることも記載）。
 
 ## 未実装・宿題
 
-1. **`pg_trgm` の適用状況の確認**: 本番 DB に拡張・インデックス（`idx_threads_title_trgm`・`idx_threads_folder_name_trgm`）があるか。`docs/schema.sql` には記録がなく、`docs/applied/` にも trgm の migration はない。【資料】【コード】【未確認】
+1. **`pg_trgm` の導入判断**: 拡張・インデックス（`idx_threads_title_trgm`・`idx_threads_folder_name_trgm`）は未導入と確認済み（Rui、2026-11-25、地雷4。実行した DB は未記録）。仕様書の SQL 2行を適用するか、pg_bigm（H-24）を選ぶかは未決で、適用するなら `docs/applied/` への migration 化と `docs/schema.sql` への反映が必要。【資料】【コード】
 2. **メッセージ本文検索の高速化**: `messages.content` 向けのインデックス（`idx_messages_content_trgm`）と、CC が参照する pg_bigm（H-24）との関係の決定。日本語の部分一致検索に pg_trgm が適するかは資料に記載なし。【資料】【未確認】
 3. **`/explore` 側の検索**: 現行の `app/api/explore/route.ts` はタイトルを `ilike`（`:97`）、タグは `thread_tags!inner(name)`＋`eq`（`:100-101`）で検索しており、仕様書が想定した「`folder_name` 等への `ilike`」とは異なる。仕様書の対象一覧を現状に合わせて更新する必要がある。【コード】
 
