@@ -71,7 +71,7 @@ CLAUDE.mdに既出: 11項目（queryText 契約・19語トリガー・検索ポ�
 
 ## 矛盾・要照合
 
-1. **inventory.md の分類（解消）**: `画像入力対応メモ.md` は image-generation・B に変更済み（Rui 承認）。以下は変更前の指摘: 内容は画像生成の img2img（参照画像＋プロンプトで派生画像）で chat-core ではない。image-generation の資料。さらにコードには `imageRefId` ほか実装が入っており（`app/api/image-gen/route.ts:332-361`、OpenAI／Ideogram remix の分岐）、メモの「未実装」は陳腐化している。【コード】
+1. **inventory.md の分類（解消）**: `画像入力対応メモ.md` は image-generation・B に変更済み（Rui 承認）。以下は変更前の指摘: 内容は画像生成の img2img（参照画像＋プロンプトで派生画像）で chat-core ではない。image-generation の資料。さらにコードには `imageRefId`・`imageRefUpload` の受け付けが入っており（`app/api/image-gen/route.ts:332-361`）、Gemini と Ideogram（`/remix`）は対応するが、OpenAI は `handleOpenAI` が「OpenAIはimg2imgに非対応です」の 400 を返す（`:146-148`）。メモの「OpenAI は `images.edit()` で対応」は未実装で、「未実装」という記述全体は一部陳腐化している。【コード】
 2. **inventory.md の分類（解消）**: `Pinnedキャッシュ化_引き継ぎ資料_v1.md` を C→B に変更済み（Rui 承認）。上記の判断・地雷に反映した。【資料】
 3. **v111 Fix 5 と実装の差**: 資料は 200,000 **バイト**の名称 `MAX_ACCUMULATED_BYTES`・「超過時点までを保存」とするが、実装は `MAX_ACCUMULATED_CHARS = 200_000`（UTF-16文字数、コメントは日本語で約600KB相当）で、超過時に `TRUNCATION_NOTICE`（「[…以降は長さ上限により省略されました]」）を本文末尾に付加して切り詰める。CC に記載なし。【コード】
 4. **v111 Fix 3 のコード例と現行**: 例は `lib/lore.ts` の `searchLore`（`match_lore_embeddings`、`folderName` 基準）だが、現行は `lib/lore/search.ts` と `project_id` 基準（v186・v187 で移行済み）。`lib/lore.ts` は存在しない。資料のコード例は参照してはならない。【コード】
