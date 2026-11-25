@@ -99,7 +99,7 @@ docs/
 |-|-|-|
 | `chat-core.md` | `/api/chat`、ストリーミング（Promise Bridge）、system ブロックと prompt cache、context window、rate limit、queryText 契約 | CLAUDE.md、チャット参照元 v10、Pinnedキャッシュ化 v1 |
 | `models-and-pricing.md` | `modelRegistry`、pricing、Thinking／effort、内部モデル、`ai_usage_events`、`/stats` | 内部モデル刷新 v6、Argon v1、v176、モデル追加チケット |
-| `branching-and-regenerate.md` | 分岐・世界線・再生成（light／branch）・編集再生成・分岐ツリー・新しいチャットに分岐 | 分岐履歴レールUI v1〜v7、分岐ツリー v8〜v9、PhaseA5/PhaseB 資料、codexBranchingMode 実装メモ、再生成二重発言バグ |
+| `branching-and-regenerate.md` | 分岐・世界線・再生成（light／branch）・編集再生成・分岐ツリー・新しいチャットに分岐 | 分岐履歴レールUI v1〜v7、分岐ツリー v8〜v9、PhaseA5/PhaseB 資料、再生成二重発言バグ |
 | `chat-ui.md` | ChatInput／ChatInputCentered、送信キー、サイドバー、スマホのレスポンシブ | スマホ対応 v166、変更履歴アーカイブ v160-v172、UIリデザイン v1〜v3 |
 | `rich-conversation.md` | Web検索・出典チップ・カード記法・リッチ表示モード | リッチ会話UI 統合 v12（D1〜D80） |
 | `threads.md` | スレッド・タグ・メモ・下書き・カレンダー・メッセージ操作 | 引き継ぎ資料各版 |

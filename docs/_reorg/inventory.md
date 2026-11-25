@@ -12,11 +12,11 @@
 | 本表§2の旧フォルダ行数 | 632 |
 | リポジトリ `docs/`（`applied/` 除く）＋`CLAUDE.md`（§3） | 29 |
 | リポジトリ `docs/applied/`（§4。README含む） | 52 |
-| 旧フォルダの内訳 A / B / C | 53 / 128 / 451 |
+| 旧フォルダの内訳 A / B / C | 52 / 132 / 448 |
 
-検算: 53+128+451 = 632（旧フォルダ 632 件と一致）。
+検算: 52+132+448 = 632（旧フォルダ 632 件と一致）。
 
-方針書の見込み（「精読は全体の1〜2割」）との比較: 精読Aは 8.4%、A+Bは 28.6%。
+方針書の見込み（「精読は全体の1〜2割」）との比較: 精読Aは 8.2%、A+Bは 29.1%。
 
 種類別（旧フォルダ）: 引き継ぎ 365、監査 95、方針ドラフト 69、備忘録 34、Codex指示書 25、ログ 17、その他 16、実装報告 11
 
@@ -26,9 +26,9 @@
 
 | 対象機能 | 旧A | 旧B | 旧C | リポA | リポB | リポC | A+B合計 |
 |-|-|-|-|-|-|-|-|
-| chat-core | 2 | 3 | 9 | 0 | 0 | 0 | 5 |
+| chat-core | 1 | 4 | 8 | 0 | 0 | 0 | 5 |
 | models-and-pricing | 4 | 1 | 8 | 0 | 1 | 0 | 6 |
-| branching-and-regenerate | 2 | 12 | 9 | 0 | 0 | 0 | 14 |
+| branching-and-regenerate | 2 | 11 | 8 | 0 | 0 | 0 | 13 |
 | chat-ui | 2 | 2 | 3 | 0 | 0 | 0 | 4 |
 | rich-conversation | 1 | 6 | 14 | 0 | 0 | 0 | 7 |
 | threads | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -36,15 +36,15 @@
 | search | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | export | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | sharing-and-explore | 2 | 0 | 0 | 0 | 0 | 0 | 2 |
-| lore-rag | 6 | 6 | 13 | 1 | 0 | 0 | 13 |
-| project-memory | 5 | 12 | 54 | 0 | 2 | 1 | 19 |
-| auto-summary | 1 | 0 | 14 | 0 | 0 | 0 | 1 |
+| lore-rag | 6 | 7 | 13 | 1 | 0 | 0 | 14 |
+| project-memory | 5 | 12 | 53 | 0 | 2 | 1 | 19 |
+| auto-summary | 1 | 1 | 13 | 0 | 0 | 0 | 2 |
 | github-integration | 3 | 4 | 0 | 0 | 0 | 0 | 7 |
 | mcp | 2 | 4 | 1 | 0 | 0 | 0 | 6 |
 | arena | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| image-generation | 1 | 1 | 0 | 0 | 0 | 1 | 2 |
+| image-generation | 0 | 2 | 0 | 0 | 0 | 1 | 2 |
 | novel-and-roleplay | 2 | 1 | 0 | 0 | 0 | 0 | 3 |
-| auth-and-security | 9 | 33 | 102 | 1 | 3 | 10 | 46 |
+| auth-and-security | 9 | 34 | 102 | 1 | 3 | 10 | 47 |
 | mobile | 5 | 10 | 64 | 1 | 2 | 0 | 18 |
 | highlight | 1 | 1 | 2 | 0 | 0 | 0 | 2 |
 | (横断) history/changelog・status | 5 | 37 | 244 | 2 | 0 | 51 | 44 |
@@ -260,7 +260,7 @@
 | KabeHub_タスク10_GitHub_OAuth_mobile化_引き継ぎ資料_2026-08-24.md | 2026-08-24 | 14.8KB | 引き継ぎ | mobile / github-integration | B | GitHub OAuthのmobile化 |
 | KabeHub_タスク10_作業終了メモ_2026-08-26.md | 2026-08-26 | 6.3KB | 引き継ぎ | mobile / github-integration | B | GitHub OAuthのmobile化 |
 | KabeHub_タスク10_残作業まとめ_2026-08-25.md | 2026-08-25 | 7.4KB | 引き継ぎ | mobile / github-integration | B | GitHub OAuthのmobile化 |
-| KabeHub_チャット参照元整理_Pinnedキャッシュ化_引き継ぎ資料_v1.md | 2026-10-02* | 17.3KB | 引き継ぎ | chat-core / project-memory | C | 旧版 |
+| KabeHub_チャット参照元整理_Pinnedキャッシュ化_引き継ぎ資料_v1.md | 2026-10-02* | 17.3KB | 引き継ぎ | chat-core | B | Pinned Filesのキャッシュ化（別トラックのv1）。旧版ではない。B1抽出時の指摘によりRui承認 |
 | KabeHub_チャット参照元整理_Project_Memoryチャット注入_引き継ぎ資料_v2.md | 2026-10-02* | 26.5KB | 引き継ぎ | chat-core / project-memory | C | 旧版 |
 | KabeHub_チャット参照元整理_Project_Memoryチャット注入_引き継ぎ資料_v3.md | 2026-10-03* | 14.8KB | 引き継ぎ | chat-core / project-memory | C | 旧版 |
 | KabeHub_チャット参照元整理_Project_Memoryチャット注入_引き継ぎ資料_v4.md | 2026-10-03* | 11.8KB | 引き継ぎ | chat-core / project-memory | C | 旧版 |
@@ -314,7 +314,7 @@
 | KabeHub_引き継ぎメモ_分岐履歴レールUI_v4.md | 2026-06-13* | 18.4KB | 引き継ぎ | branching-and-regenerate | C | 旧版 |
 | KabeHub_引き継ぎメモ_分岐履歴レールUI_v5.md | 2026-06-13* | 30.9KB | 引き継ぎ | branching-and-regenerate | C | 旧版 |
 | KabeHub_引き継ぎメモ_分岐履歴レールUI_v6.md | 2026-06-14* | 29.5KB | 引き継ぎ | branching-and-regenerate | C | 旧版 |
-| KabeHub_引き継ぎメモ_分岐履歴レールUI_v7.md | 2026-06-14* | 41.2KB | 引き継ぎ | branching-and-regenerate | C | 旧版 |
+| KabeHub_引き継ぎメモ_分岐履歴レールUI_v7.md | 2026-06-14* | 41.2KB | 引き継ぎ | branching-and-regenerate | B | 分岐履歴レールUIの最終版(v7)。B1抽出時の指摘によりRui承認 |
 | KabeHub_引き継ぎ資料_2026-08-10.md | 2026-08-10 | 14.5KB | 引き継ぎ | (横断) history/changelog・status | B | 8月のセッション引き継ぎ。08-16総括に内容が含まれない（行一致3〜5/74〜103） |
 | KabeHub_引き継ぎ資料_2026-08-12.md | 2026-08-12 | 11.9KB | 引き継ぎ | (横断) history/changelog・status | B | 8月のセッション引き継ぎ。08-16総括に内容が含まれない（行一致3〜5/74〜103） |
 | KabeHub_引き継ぎ資料_2026-08-13.md | 2026-08-13 | 14.7KB | 引き継ぎ | (横断) history/changelog・status | B | 8月のセッション引き継ぎ。08-16総括に内容が含まれない（行一致3〜5/74〜103） |
@@ -603,7 +603,7 @@
 | KabeHub_自動要約_現状整理_引き継ぎ資料_v11.md | 2026-10-07* | 9.3KB | 引き継ぎ | auto-summary | C | 旧版 |
 | KabeHub_自動要約_現状整理_引き継ぎ資料_v12.md | 2026-10-07* | 15.3KB | 引き継ぎ | auto-summary | C | 旧版 |
 | KabeHub_自動要約_現状整理_引き継ぎ資料_v13.md | 2026-10-08* | 21.3KB | 引き継ぎ | auto-summary | C | 旧版 |
-| KabeHub_自動要約_現状整理_引き継ぎ資料_v14.md | 2026-10-08* | 18.7KB | 引き継ぎ | auto-summary | C | 旧版 |
+| KabeHub_自動要約_現状整理_引き継ぎ資料_v14.md | 2026-10-08* | 18.7KB | 引き継ぎ | auto-summary | B | v15が参照する§5だけ読む。B1抽出時の指摘によりRui承認 |
 | KabeHub_自動要約_現状整理_引き継ぎ資料_v15.md | 2026-10-15* | 12.1KB | 引き継ぎ | auto-summary | A | 系列の最新版(v15) |
 | KabeHub_自動要約_現状整理_引き継ぎ資料_v2.md | 2026-10-02* | 13.9KB | 引き継ぎ | auto-summary | C | 旧版 |
 | KabeHub_自動要約_現状整理_引き継ぎ資料_v3.md | 2026-10-02* | 17.6KB | 引き継ぎ | auto-summary | C | 旧版 |
@@ -626,7 +626,7 @@
 | Supabase法人移行 トラブルシューティング記録.txt | 2026-04-09* | 2.3KB | 備忘録 | (横断) operations | A | トラブルシューティング記録（runbook候補） |
 | V102差分.txt | 2026-05-30* | 4.7KB | 引き継ぎ | image-generation | B | v102変更サマリー（画像生成のチャット統合） |
 | codex-instruction-folder-settings-to-project-settings.md | 2026-09-12* | 9.4KB | Codex指示書 | project-memory | B |  |
-| codexBranchingMode実装メモ.txt | 2026-06-07* | 117.2KB | ログ | branching-and-regenerate | B | Codex実行ログ形式(120KB)。§4-1出典に指定あり。要点だけ拾う |
+| codexBranchingMode実装メモ.txt | 2026-06-07* | 117.2KB | ログ | lore-rag | B | v133 Memory Summary UIのCodex実行ログ(120KB)。分岐ではなくlore-rag。B1抽出時の指摘によりRui承認 |
 | codex_instruction_v184_project_memory_topic_rpcs.md | 2026-09-09* | 8.3KB | Codex指示書 | project-memory | B |  |
 | codex_mcp_handover.md | 2026-06-04* | 5.4KB | 引き継ぎ | mcp | A |  |
 | codex実装メモ.txt | 2026-06-06* | 62.3KB | ログ | branching-and-regenerate | B | Codex実行ログ形式(64KB)。先頭30行でhandleRegenerate・MessageBubble・ChatPanel関連と判定 |
@@ -675,13 +675,13 @@
 | 壁打ちエディタ_設計資料.md | 2026-03-28* | 6.5KB | 方針ドラフト | (横断) overview | C | 旧版（v2あり） |
 | 壁打ちエディタ_設計資料_v2.md | 2026-03-28* | 8.9KB | 方針ドラフト | (横断) overview | A | 初期プロダクト設計の最新版 |
 | 壁打ち引き継ぎ資料_20260328.md | 2026-03-28 | 5.7KB | 引き継ぎ | (横断) overview | B | 最初期の引き継ぎ |
-| 実装方針資料.txt | 2026-08-04* | 6.2KB | 備忘録 | branching-and-regenerate | B | restore-branch routeの確認メモ（Codexレビュー応答） |
+| 実装方針資料.txt | 2026-08-04* | 6.2KB | 備忘録 | auth-and-security | B | 監査F（MF-1 Commit 5・MF-2分割）の実装方針。restore-branchは1行のみ。B1抽出時の指摘によりRui承認 |
 | 引き継ぎ資料_MF-2a着手前_2026-08-05.md | 2026-08-05 | 6.9KB | 引き継ぎ | auth-and-security | B | 監査F対応ロードマップ同名版とは別内容（セッション引き継ぎ。5〜7KB対87KB。行一致1/40程度） |
 | 引き継ぎ資料_MF-2実装方針確定_2026-08-04.md | 2026-08-04 | 5.4KB | 引き継ぎ | auth-and-security | B | 監査F対応ロードマップ同名版とは別内容（セッション引き継ぎ。5〜7KB対87KB。行一致1/40程度） |
 | 引継ぎUIその1.txt | 2026-06-12* | 6.2KB | 備忘録 | branching-and-regenerate | B | LibreChat分岐ロジックの調査メモ |
 | 振り返り_Hook実装_20260516.md | 2026-05-16 | 5.5KB | 備忘録 | mcp | B | ClaudeCode→KabeHub自動保存Hookの振り返り |
 | 未実装機能.txt | 2026-11-17* | 639B | 備忘録 | (横断) roadmap/backlog | B | 未実装アイデアのメモ（箇条書き639B） |
-| 画像入力対応メモ.md | 2026-06-01* | 3.2KB | 備忘録 | image-generation / chat-core | A | 画像入力対応の調査メモ（§4-1出典） |
+| 画像入力対応メモ.md | 2026-06-01* | 3.2KB | 備忘録 | image-generation | B | img2img調査メモ。imageRefIdは実装済みでメモの「未実装」は古い。B1抽出時の指摘によりRui承認 |
 | 記憶まわり追加.txt | 2026-06-09* | 20.5KB | 備忘録 | lore-rag | B | RAG・記憶まわりの改善検討（liked_ai等） |
 | 設計指示書.txt | 2026-03-28* | 3.3KB | 方針ドラフト | (横断) overview | B | 初期MVPの設計指示（2026-03） |
 | 連携トラブルシューティング.txt | 2026-06-02* | 2.6KB | 備忘録 | github-integration / (横断) operations | A |  |
@@ -696,7 +696,7 @@
 | CLAUDE.md | 2026-11-17* | 135.4KB | その他 | (横断) history/changelog・status / (横断) overview | A | 現行の正本（約139KB）。最後にスリム化する対象 |
 | docs/KabeHub_folder_name統一_Phase3_実装報告_v1.md | 2026-09-15* | 5.9KB | 実装報告 | project-memory | B | archive移動候補 |
 | docs/KabeHub_folder_name統一_Phase5C_実装ログ.md | 2026-09-16* | 3.0KB | 実装報告 | project-memory | B | archive移動候補 |
-| docs/_reorg/KabeHub_ドキュメント再編_方針_v2.md | 2026-11-25* | 29.7KB | その他 | (横断) overview | A | 本再編の方針書（全文読了） |
+| docs/_reorg/KabeHub_ドキュメント再編_方針_v2.md | 2026-11-25* | 30.1KB | その他 | (横断) overview | A | 本再編の方針書（全文読了） |
 | docs/ai-usage-cost-handover.md | 2026-08-19* | 3.8KB | 引き継ぎ | models-and-pricing | B | AI利用コスト計測の引き継ぎ |
 | docs/api-key-flow-inventory.md | 2026-11-01* | 16.5KB | その他 | auth-and-security | A | BYOK経路の棚卸し正本。security/へ移動予定 |
 | docs/archive/codex-instruction-proxy-paths-memory-topics.md | 2026-09-09* | 4.9KB | Codex指示書 | project-memory | C | 既にarchive済み |
@@ -806,7 +806,7 @@ migration SQL は方針書§3のとおり現状維持（読まない）。README
 - 自動要約: 欠番 なし
 - Lore昇格ルール: 欠番 なし
 - リッチ会話UI: 欠番 なし
-- チャット参照元整理: 欠番 なし
+- チャット参照元整理: 欠番 v1
 - 内部モデル刷新: 欠番 なし
 - PMM post-MVPバックログ: 欠番 なし
 - 分岐UI（レール＋ツリー）: 欠番 なし
@@ -836,6 +836,17 @@ migration SQL は方針書§3のとおり現状維持（読まない）。README
 | 17 | Capacitor化 系列のA/B | 線引き | 現状のまま | Rui確定 |
 | 18 | 監査Aロードマップの本数 | 方針書は中間版15本・16版と記載 | A系列19本（最終版を除く中間版18本）。方針書を訂正 | 方針書§1-1の16版→19本、§6 C欄の15本→18本に訂正した |
 | 19 | full-audit-*.md 9本（旧フォルダ側） | docs/audit/との重複 | C（docs/audit/は現状維持） | Rui確定 |
+
+### 6-2. B1抽出時の指摘によるRui承認（2026-11-25）
+
+| 対象 | 変更 | 理由 |
+|-|-|-|
+| codexBranchingMode実装メモ.txt | 対象機能 branching-and-regenerate → lore-rag、扱いB | B1抽出時の指摘によりRui承認 |
+| 実装方針資料.txt | 対象機能 branching-and-regenerate → auth-and-security、扱いB | B1抽出時の指摘によりRui承認 |
+| 画像入力対応メモ.md | 対象機能 chat-core → image-generation、扱い A → B（imageRefIdは実装済みでメモの「未実装」は古い） | B1抽出時の指摘によりRui承認 |
+| チャット参照元整理_Pinnedキャッシュ化_引き継ぎ資料_v1.md | C → B（別トラックのv1で旧版ではない） | B1抽出時の指摘によりRui承認 |
+| 分岐履歴レールUI v7 | C → B（無印〜v6はC） | B1抽出時の指摘によりRui承認 |
+| 自動要約_現状整理_引き継ぎ資料_v14 | C → B（v15が参照する§5だけ読む） | B1抽出時の指摘によりRui承認 |
 
 ### 6-1. 矛盾・要照合
 
