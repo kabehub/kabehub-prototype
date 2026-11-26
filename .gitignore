@@ -28,3 +28,7 @@ app/test-login/
 apps/mobile/.idea/
 
 docs/internal/
+
+# Local-only: Codex/Claude outputs and IDE project files
+artifacts/
+apps/.idea/
