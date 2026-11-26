@@ -883,7 +883,7 @@ migration SQL は方針書§3のとおり現状維持（読まない）。README
 | Bearer／MCPトークン形式の実値 | `Bearer …20桁以上` `kh_…` | `scripts/proxy.test.cjs` の `Bearer cron-only-test-token`（テスト用ダミー）のみ→問題なし |
 | 40桁以上のhex（キー・ハッシュ混入の確認） | `[A-Fa-f0-9]{40,}` | `docs/api-key-flow-inventory.md` 3行目＝コミットハッシュ、`docs/audit/full-audit-d/f/g/i-*.md`＝64桁のSHA-256（MCPトークンhashのテストベクトルとみられる）。→鍵ではない（値の素性は未確認だが、鍵形式ではない） |
 | 追跡されている環境ファイル | `git ls-files` で `.env*`・`*.pem`・`*.key` 等 | `.env.local.example` のみ。値は空かプレースホルダのみ（`https://your-project.supabase.co`・`your-anon-key`）→問題なし |
-| Supabase URL（参考） | `*.supabase.co` | `docs/mobile-env-setup.md` に `lfrdzrdmrxmqqwmxmyxx.supabase.co`（`NEXT_PUBLIC_SUPABASE_URL`＝ブラウザに公開される値）。anon keyは「（本番anon key）」という文字列で値なし。**どのプロジェクトのrefか**（本番かテストか）はRuiの確認事項 |
+| Supabase URL（参考） | `*.supabase.co` | `docs/mobile-env-setup.md` に `<project-ref>.supabase.co`（`NEXT_PUBLIC_SUPABASE_URL`＝ブラウザに公開される値）。anon keyは「（本番anon key）」という文字列で値なし。**どのプロジェクトのrefか**（本番かテストか）はRuiの確認事項 |
 
 未確認（範囲外）: git履歴（過去のコミットに削除済みの秘密が残っていないか）、`docs/audit/full-audit-*-log.txt` 等の旧フォルダ側（リポジトリには入らないため対象外）、`apps/` ・`app/` 等のコード側。
 
